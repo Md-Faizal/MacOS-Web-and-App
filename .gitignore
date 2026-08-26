@@ -6,3 +6,15 @@ tmp/
 *.log
 .DS_Store
 Thumbs.db
+
+# SQLite temp files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Android build outputs & local config
+.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+

@@ -395,7 +395,7 @@ module.exports = function(db) {
      * Verify the current token
      */
     verify: (req, res) => {
-      res.json({ success: true, user: req.user });
+      res.json({ success: true, authenticated: true, user: req.user });
     },
 
     /**
