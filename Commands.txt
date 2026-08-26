@@ -546,6 +546,52 @@ SET/VERIFY ADMIN DEFAULTS IN DB:
   node backend/scripts/set-admin-defaults.js
 
 ================================================================================
+📦 GIT VERSION CONTROL & REPOSITORY MANAGEMENT
+================================================================================
+
+DAILY WORKFLOW (SAVE YOUR PROGRESS):
+  1. Check what files you changed:
+     git status
+
+  2. See exact line-by-line code changes:
+     git diff
+
+  3. Save a checkpoint (Commit):
+     git add .
+     git commit -m "Describe what changes you made"
+
+  4. View version history (Timeline):
+     git log --oneline
+     git log -n 5 --graph --oneline
+
+PANIC BUTTONS & UNDOING MISTAKES:
+  - Discard all uncommitted edits (revert back to last save point):
+    git restore .
+
+  - Unstage files you added by mistake before committing:
+    git restore --staged <file>
+
+  - Go back to a specific previous commit:
+    git checkout <commit-hash>
+    (To return back to latest: git checkout master)
+
+BRANCHING (SAFE TESTING & EXPERIMENTATION):
+  1. Create and switch to an experiment branch:
+     git checkout -b test-new-feature
+
+  2. Work, edit, and test freely. If you love it, merge into master:
+     git checkout master
+     git merge test-new-feature
+
+  3. If you hate it, simply delete the branch without touching master:
+     git checkout master
+     git branch -D test-new-feature
+
+CLEANING UNTRACKED FILES / STATUS:
+  - Check ignored vs tracked files:
+    git status --ignored
+
+================================================================================
 Last Updated: August 26, 2026
 Environments: Dev (MacOS-Development/) | Windows Prod | Ubuntu VM (my-mac)
 Domain: https://mac.faizal.uk (Cloudflare → IPv6 Windows / IPv4 Ubuntu)
