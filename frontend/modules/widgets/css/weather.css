@@ -1,0 +1,955 @@
+/* Weather Widget Styling */
+.mac-w-weather {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white !important;
+  border: none !important;
+  overflow: hidden !important;
+  position: relative;
+  z-index: 1;
+  transition: background 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Weather Background Animations */
+.mac-w-weather-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Clear Sky / Sun / Moon */
+.mac-w-weather.clear {
+  background: linear-gradient(135deg, #ffce00 0%, #ff7300 100%);
+}
+
+.mac-w-sun {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle, #fff700 0%, #ffae00 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 30px #ffae00;
+  animation: mac-w-sun-pulse 4s ease-in-out infinite;
+}
+
+@keyframes mac-w-sun-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 20px #ffae00; }
+  50% { transform: scale(1.1); box-shadow: 0 0 40px #ffae00; }
+}
+
+.mac-w-moon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 35px;
+  height: 35px;
+  background: radial-gradient(circle, #f0f0f0 0%, #b0b0b0 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+  animation: mac-w-moon-glow 5s ease-in-out infinite;
+}
+
+.mac-w-star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: white;
+  border-radius: 50%;
+  animation: mac-w-star-twinkle 2s ease-in-out infinite;
+}
+
+@keyframes mac-w-star-twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Clouds */
+.mac-w-weather.clouds {
+  background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%);
+}
+.mac-w-cloud {
+  position: absolute;
+  width: 60px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 20px;
+  filter: blur(10px);
+  animation: mac-w-cloud-drift linear infinite;
+}
+
+@keyframes mac-w-cloud-drift {
+  from { transform: translateX(-80px); }
+  to { transform: translateX(200px); }
+}
+
+/* Rain */
+.mac-w-weather.rain {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.mac-w-rain-drop {
+  position: absolute;
+  width: 2px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.4);
+  animation: mac-w-rain-fall linear infinite;
+}
+
+@keyframes mac-w-rain-fall {
+  from { transform: translateY(-20px) rotate(15deg); }
+  to { transform: translateY(200px) rotate(15deg); }
+}
+
+/* Snow */
+.mac-w-weather.snow {
+  background: linear-gradient(135deg, #e6e9f0 0%, #eef1f5 100%);
+  color: #333 !important;
+}
+.mac-w-snow-flake {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: white;
+  border-radius: 50%;
+  filter: blur(1px);
+  animation: mac-w-snow-fall linear infinite;
+}
+
+@keyframes mac-w-snow-fall {
+  0% { transform: translateY(-20px) translateX(0); }
+  100% { transform: translateY(220px) translateX(30px); }
+}
+
+/* Storm / Lightning */
+.mac-w-weather.storm {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+}
+
+.mac-w-lightning {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: white;
+  opacity: 0;
+  z-index: 1;
+  animation: mac-w-lightning-flash 5s ease-in infinite;
+}
+
+@keyframes mac-w-lightning-flash {
+  0%, 90%, 100% { opacity: 0; }
+  92% { opacity: 0.3; }
+  93% { opacity: 0; }
+  94% { opacity: 0.5; }
+  96% { opacity: 0; }
+}
+
+/* Mist / Fog */
+.mac-w-weather.fog {
+  background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%);
+}
+
+.mac-w-mist {
+  position: absolute;
+  width: 150px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.2);
+  filter: blur(20px);
+  border-radius: 50%;
+  animation: mac-w-mist-drift 10s linear infinite;
+}
+
+@keyframes mac-w-mist-drift {
+  from { transform: translateX(-150px); opacity: 0; }
+  20% { opacity: 0.5; }
+  80% { opacity: 0.5; }
+  to { transform: translateX(300px); opacity: 0; }
+}
+
+/* Windy */
+.mac-w-weather.windy {
+  background: linear-gradient(135deg, #5c7c8a 0%, #3a4a5a 100%);
+}
+
+.mac-w-wind-line {
+  position: absolute;
+  width: 40px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.3);
+  animation: mac-w-wind-sweep 1s linear infinite;
+}
+
+@keyframes mac-w-wind-sweep {
+  from { transform: translateX(-50px); opacity: 0; }
+  50% { opacity: 0.5; }
+  to { transform: translateX(200px); opacity: 0; }
+}
+
+/* Widget Content Styles */
+.mac-w-weather-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 2;
+}
+
+.mac-w-weather-city {
+  font-size: 18px; /* Balanced size */
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.mac-w-weather-city:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mac-w-weather-temp {
+  font-size: 48px;
+  font-weight: 200;
+  margin: 0; /* Removed 10px 0 margin to allow stacking */
+  cursor: pointer;
+  z-index: 2;
+  transition: transform 0.2s;
+}
+
+.mac-w-weather-temp:hover {
+  transform: scale(1.05);
+}
+
+.mac-w-weather-footer {
+  z-index: 2;
+}
+
+.mac-w-weather-condition {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mac-w-weather-stats {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* Location Modal Styles */
+.weather-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weather-modal {
+  width: 400px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+[data-theme="dark"] .weather-modal {
+  background: rgba(40, 40, 40, 0.85);
+  color: white;
+}
+
+.weather-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.weather-search-container {
+  display: flex;
+  gap: 10px;
+}
+
+.weather-search-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  outline: none;
+}
+
+[data-theme="dark"] .weather-search-input {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.weather-map-container {
+  width: 100%;
+  height: 200px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  cursor: crosshair;
+}
+
+.weather-map-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.weather-map-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--mac-w-accent-red);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--mac-w-accent-red);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.weather-results {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Time-of-Day Backgrounds */
+.mac-w-weather.night {
+  background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%) !important;
+}
+
+.mac-w-weather.sunrise, .mac-w-weather.sunset {
+  background: linear-gradient(135deg, #ff5f6d 0%, #ffc371 100%) !important;
+}
+
+/* Content Transitions */
+.mac-w-weather-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+  animation: mac-w-content-fade 0.8s ease-out;
+}
+
+@keyframes mac-w-content-fade {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Search Result Animation */
+.weather-result-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  animation: weather-result-slide 0.3s ease-out both;
+}
+
+@keyframes weather-result-slide {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.weather-result-item:nth-child(1) { animation-delay: 0.05s; }
+.weather-result-item:nth-child(2) { animation-delay: 0.1s; }
+.weather-result-item:nth-child(3) { animation-delay: 0.15s; }
+.weather-result-item:nth-child(4) { animation-delay: 0.2s; }
+.weather-result-item:nth-child(5) { animation-delay: 0.2s; }
+
+.weather-result-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .weather-result-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.weather-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.weather-btn {
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.weather-btn.primary {
+  background: #007aff;
+  color: white;
+}
+
+.weather-btn.secondary {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Expanded Weather Widget Layout */
+.mac-w-weather.expanded .mac-w-weather-content {
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 10px;
+  padding-top: 15px; /* Moved closer to the top in expanded mode too */
+}
+
+.mac-w-weather.expanded .mac-w-weather-primary {
+  flex: none;
+  border-right: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-right: 0;
+  padding-bottom: 10px;
+  display: flex;
+  flex-direction: row; /* City/Temp and Footer side-by-side on top */
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.mac-w-weather.expanded .mac-w-weather-temp {
+  margin: 0;
+  font-size: 32px;
+}
+
+.mac-w-weather.expanded .mac-w-weather-footer {
+  text-align: right !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  padding-top: 25px !important;
+  position: static !important; /* Make it static so button aligns to widget instead of footer */
+}
+
+.mac-w-weather-primary {
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-w-weather-main-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px; /* Added spacing from temp */
+}
+
+/* Make header absolute so it stays at corner regardless of row/col layout */
+.mac-w-weather-header {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  right: 15px;
+  width: calc(100% - 30px);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 10;
+  pointer-events: none; /* Allow interaction with city name below it */
+}
+
+.mac-w-weather:not(.expanded) {
+  padding: 18px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important; /* Left aligned everything */
+  justify-content: space-between !important;
+  height: 100% !important;
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-primary {
+  margin-top: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-main-info {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  justify-content: center !important; /* Vertically centering temp */
+  width: 100% !important;
+  align-items: flex-start !important;
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-city {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin-bottom: 5px !important;
+  opacity: 0.8 !important;
+  position: static !important; /* Removed absolute placement */
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-temp {
+  font-size: 64px !important;
+  font-weight: 200 !important;
+  text-align: left !important;
+  margin-left: -4px !important; /* Optical adjustment for large numbers */
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-footer {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  width: 100% !important;
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-condition {
+  font-size: 14px !important; /* Larger condition */
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-stats {
+  font-size: 12px !important; /* Larger stats */
+}
+
+.mac-w-forecast {
+  display: flex !important;
+  flex: 1 !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: stretch !important;
+  gap: 3px !important;
+  width: 100% !important;
+  padding: 0 10px 5px 10px !important;
+  box-sizing: border-box !important;
+}
+
+.mac-w-forecast-day {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  padding: 6px 1px !important;
+  border-radius: 8px !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  transition: transform 0.2s, background 0.2s !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.mac-w-forecast-day:hover {
+  transform: scale(1.05) !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+.mac-w-forecast-date {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  opacity: 0.9 !important;
+  text-align: center !important;
+}
+
+.mac-w-forecast-icon {
+  font-size: 16px !important;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2)) !important;
+  flex: 1 !important;
+  text-align: center !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.mac-w-forecast-temps {
+  font-size: 9px !important;
+  opacity: 0.9 !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+.mac-w-weather-footer {
+  position: relative !important;
+}
+
+/* Resize Button */
+.mac-w-weather-resize-btn {
+  position: absolute !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+  transition: all 0.2s ease !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  padding: 0 !important;
+  z-index: 100 !important;
+  opacity: 0 !important; /* Hidden by default */
+  visibility: visible !important;
+}
+
+/* In small view, button is in bottom-right of relative footer */
+.mac-w-weather:not(.expanded) .mac-w-weather-resize-btn {
+  bottom: 0px !important;
+  right: 0px !important;
+}
+
+.mac-w-weather:hover .mac-w-weather-resize-btn {
+  opacity: 1 !important; /* Show on focus/hover */
+}
+
+.mac-w-weather-resize-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: scale(1.1) !important;
+}
+
+.mac-w-weather-resize-btn:active {
+  transform: scale(0.95) !important;
+}
+
+/* In expanded view, button stays at top-right of widget relative container */
+.mac-w-weather.expanded .mac-w-weather-resize-btn {
+  top: 10px !important;
+  right: 10px !important;
+  bottom: auto !important;
+}
+/* AQI Badge */
+.mac-w-aqi-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+
+.mac-w-aqi-badge.good { background: rgba(52, 199, 89, 0.8); color: white; }
+.mac-w-aqi-badge.moderate { background: rgba(255, 204, 0, 0.8); color: black; }
+.mac-w-aqi-badge.sensitive { background: rgba(255, 149, 0, 0.8); color: white; }
+.mac-w-aqi-badge.unhealthy { background: rgba(255, 59, 48, 0.8); color: white; }
+.mac-w-aqi-badge.very-unhealthy { background: rgba(175, 82, 222, 0.8); color: white; }
+.mac-w-aqi-badge.hazardous { background: rgba(125, 0, 0, 0.8); color: white; }
+
+/* View-specific AQI visibility */
+.mac-w-aqi-small, .mac-w-aqi-large {
+  display: none !important;
+}
+
+/* Small View: Beside temp */
+.mac-w-weather:not(.expanded) .mac-w-aqi-small {
+  display: block !important;
+  flex-shrink: 0 !important;
+  margin-top: 16px !important;
+  font-size: 9px !important; /* Slightly smaller to fit better */
+  padding: 1px 6px !important; /* Slightly more compact */
+}
+
+.mac-w-weather-temp-container {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 6px !important; /* Reduced gap */
+  width: 100% !important;
+  padding-right: 10px !important; /* Ensure some padding from right edge */
+  box-sizing: border-box !important;
+}
+
+.mac-w-weather-city-container {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+.mac-w-weather:not(.expanded) .mac-w-weather-city {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin-bottom: 5px !important;
+  opacity: 0.8 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+/* Large View: Left of footer */
+.mac-w-weather.expanded .mac-w-aqi-large {
+  display: block !important;
+}
+
+.mac-w-weather.expanded .mac-w-weather-footer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px;
+  text-align: right;
+}
+
+.mac-w-weather-info-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.mac-w-weather.expanded .mac-w-weather-info-group {
+  align-items: flex-end;
+}
+
+/* Weather Big View Modal */
+.mac-w-weather-big-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.mac-w-weather-big-view-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mac-w-weather-big-view-modal {
+  width: 900px;
+  max-width: 90%;
+  height: 600px;
+  max-height: 85vh;
+  background: rgba(255, 255, 255, 0.1);
+  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  border-radius: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 50px 100px rgba(0, 0, 0, 0.3);
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+  position: relative;
+  overflow: hidden;
+  color: white;
+  transform: scale(0.9);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mac-w-weather-big-view-overlay.active .mac-w-weather-big-view-modal {
+  transform: scale(1);
+}
+
+.mac-w-weather-big-view-close {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 10;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.mac-w-weather-big-view-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.mac-w-weather-big-view-content {
+  display: flex;
+  height: 100%;
+}
+
+.mac-w-weather-big-view-left {
+  flex: 1.2;
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mac-w-big-city {
+  font-size: 42px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -1px;
+}
+
+.mac-w-big-temp {
+  font-size: 110px;
+  font-weight: 100;
+  margin: 10px 0;
+  letter-spacing: -3px;
+}
+
+.mac-w-big-condition {
+  font-size: 24px;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.mac-w-big-hi-lo {
+  font-size: 18px;
+  opacity: 0.7;
+  margin-top: 5px;
+}
+
+.mac-w-big-aqi-banner {
+  margin-top: 30px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-block;
+  backdrop-filter: blur(10px);
+}
+
+.mac-w-big-aqi-banner.good { background: rgba(52, 199, 89, 0.25); color: #34c759; border: 1px solid rgba(52, 199, 89, 0.3); }
+.mac-w-big-aqi-banner.moderate { background: rgba(255, 204, 0, 0.25); color: #ffcc00; border: 1px solid rgba(255, 204, 0, 0.3); }
+.mac-w-big-aqi-banner.sensitive { background: rgba(255, 149, 0, 0.25); color: #ff9500; border: 1px solid rgba(255, 149, 0, 0.3); }
+.mac-w-big-aqi-banner.unhealthy { background: rgba(255, 59, 48, 0.25); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.3); }
+
+.mac-w-big-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin-top: 40px;
+}
+
+.mac-w-big-stat-card {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 15px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mac-w-big-stat-card .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.5;
+  margin-bottom: 5px;
+}
+
+.mac-w-big-stat-card .value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mac-w-weather-big-view-right {
+  flex: 1;
+  padding: 50px 40px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.mac-w-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  opacity: 0.7;
+  margin-bottom: 25px;
+}
+
+.mac-w-big-forecast-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 10px;
+}
+
+/* Custom Scrollbar */
+.mac-w-big-forecast-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mac-w-big-forecast-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.mac-w-big-forecast-row {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border-radius: 12px;
+  transition: background 0.2s;
+}
+
+.mac-w-big-forecast-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mac-w-big-forecast-day {
+  flex: 1.5;
+  font-weight: 500;
+}
+
+.mac-w-big-forecast-icon {
+  flex: 0.8;
+  font-size: 24px;
+}
+
+.mac-w-big-forecast-condition {
+  flex: 1.2;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.mac-w-big-forecast-temp {
+  flex: 1;
+  text-align: right;
+  font-weight: 600;
+}
+
+.mac-w-big-forecast-temp .low {
+  opacity: 0.4;
+  margin-left: 8px;
+  font-weight: 400;
+}

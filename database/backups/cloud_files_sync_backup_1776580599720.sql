@@ -1,0 +1,11 @@
+CREATE TABLE "cloud_files" (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  original_name TEXT NOT NULL,
+  mime_type TEXT,
+  size INTEGER,
+  path TEXT NOT NULL,
+  space TEXT DEFAULT 'personal',
+  uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)

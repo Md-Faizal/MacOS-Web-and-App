@@ -1,0 +1,1133 @@
+/* Clock Widget Styling */
+.mac-w-clock-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.mac-w-analog-clock {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, var(--sky-color-1, #1e2a4a) 0%, var(--sky-color-2, #0a0e1a) 100%);
+  position: relative;
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.5), 
+              0 2px 10px rgba(255,255,255,0.05),
+              0 0 var(--glow-radius, 10px) rgba(255, 174, 0, var(--glow-alpha, 0.1));
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 1s ease, box-shadow 0.5s ease;
+}
+
+/* Day State */
+.mac-w-analog-clock.day {
+  /* Dynamic background used */
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.1), 
+              0 2px 10px rgba(255,255,255,0.2),
+              0 0 var(--glow-radius, 10px) rgba(255, 255, 255, var(--glow-alpha, 0.1));
+}
+
+/* Evening State */
+.mac-w-analog-clock.evening {
+  /* Dynamic background used */
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.2), 
+              0 2px 10px rgba(255,255,255,0.1),
+              0 0 var(--glow-radius, 10px) rgba(255, 120, 0, var(--glow-alpha, 0.2));
+}
+
+/* Celestial Elements Visibility */
+.mac-w-stars, .mac-w-moon, .mac-w-sun {
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+}
+
+.mac-w-analog-clock.night .mac-w-stars,
+.mac-w-analog-clock.night .mac-w-moon {
+  opacity: 1;
+}
+
+.mac-w-analog-clock.day .mac-w-sun {
+  opacity: 1;
+}
+
+.mac-w-analog-clock.evening .mac-w-stars {
+  opacity: 0.3;
+}
+
+.mac-w-star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 0 3px white;
+}
+
+/* Weather Effects */
+.mac-w-haze {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 2s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mac-w-ripple-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.mac-w-ripple {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  animation: mac-w-ripple-anim 2s infinite;
+  opacity: 0;
+}
+
+@keyframes mac-w-ripple-anim {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+.mac-w-twinkle {
+  animation: mac-w-twinkle-anim 3s infinite ease-in-out;
+}
+
+@keyframes mac-w-twinkle-anim {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.mac-w-moon, .mac-w-sun {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0; /* Updated in JS */
+  transition: opacity 1s ease, transform 1s cubic-bezier(0.19, 1, 0.22, 1);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.mac-w-moon {
+  width: 22px;
+  height: 22px;
+  background: #fdfdfd;
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), inset -4px -2px 0 rgba(0,0,0,0.1);
+  margin-left: -11px;
+  margin-top: -11px;
+}
+
+.mac-w-sun {
+  width: 24px;
+  height: 24px;
+  background: radial-gradient(circle, #fff700 0%, #ffae00 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 20px #ffae00, 0 0 40px rgba(255, 174, 0, 0.3);
+  margin-left: -12px;
+  margin-top: -12px;
+}
+
+.mac-w-clock-hand {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  transform-origin: bottom center;
+  border-radius: 4px;
+}
+
+.mac-w-hour-hand {
+  width: 4px;
+  height: 35px;
+  background: #ffffff;
+  z-index: 10;
+  box-shadow: 0 0 5px rgba(255,255,255,0.2);
+}
+
+.mac-w-minute-hand {
+  width: 3px;
+  height: 45px;
+  background: #e0e0e0;
+  z-index: 11;
+}
+
+.mac-w-second-hand {
+  width: 1.5px;
+  height: 50px;
+  background: #ff3b30;
+  z-index: 12;
+  box-shadow: 0 0 8px rgba(255, 59, 48, 0.4);
+}
+
+.mac-w-clock-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  background: #ff3b30;
+  border-radius: 50%;
+  z-index: 13;
+  border: 2px solid white;
+}
+
+/* Markers */
+.mac-w-clock-marker.minute {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 1px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  transform-origin: 50% 51px; /* 55px radius - 4px top */
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mac-w-clock-marker.hour {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 2px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  transform-origin: 50% 53px; /* 55px radius - 2px top */
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mac-w-clock-number {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  pointer-events: none;
+  z-index: 2;
+  text-align: center;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.3s ease, font-weight 0.3s ease;
+}
+
+.mac-w-clock-number.current-hour {
+  color: #ff3b30;
+  font-weight: 900;
+}
+
+/* Dynamic Contrast for Day/Morning View */
+.mac-w-analog-clock.day .mac-w-clock-number {
+  color: #1a1a1a;
+}
+
+.mac-w-analog-clock.day .mac-w-clock-marker.minute {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.mac-w-analog-clock.day .mac-w-clock-marker.hour {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.mac-w-analog-clock.day .mac-w-clock-number.current-hour {
+  color: #d70000; /* Slightly darker red for light background */
+}
+
+.mac-w-clock-marker.current-marker {
+  background: #ff3b30 !important;
+  opacity: 1 !important;
+  width: 2px !important;
+  height: 7px !important;
+  z-index: 2;
+  box-shadow: 0 0 8px rgba(255, 59, 48, 0.4);
+}
+
+.mac-w-clock-marker.hour.current-marker {
+  height: 10px !important;
+}
+
+/* Clock Settings Button */
+.mac-w-clock-settings-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.mac-w-clock:hover .mac-w-clock-settings-btn {
+  opacity: 1;
+}
+
+.mac-w-clock-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(45deg);
+}
+
+/* Expanded State & World Clock Grid */
+.mac-w-clock.expanded {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mac-w-expanded-view {
+  display: flex !important;
+  flex-direction: row !important;
+  height: 100% !important;
+  width: 100% !important;
+  align-items: center !important;
+}
+
+.mac-w-local-section {
+  flex: 0 0 160px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+}
+
+.mac-w-divider {
+  width: 1px !important;
+  height: 70% !important;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1) !important;
+}
+
+.mac-w-world-section {
+  flex: 1 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  padding: 10px 0 !important; /* Removed left/right padding */
+  display: flex !important;
+  align-items: center !important;
+}
+
+.mac-w-world-scroll {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 15px !important;
+  overflow-x: auto !important;
+  height: 100% !important;
+  align-items: center !important;
+  padding: 0 15px 12px 15px !important; /* Re-added padding on the scroll container itself for cards */
+}
+
+/* Premium Subtle Scrollbar */
+.mac-w-world-scroll::-webkit-scrollbar {
+  height: 6px !important; /* Increased height from 4px to 6px */
+  display: block !important;
+}
+
+.mac-w-world-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-radius: 10px !important;
+  margin: 0 20px !important;
+}
+
+.mac-w-world-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.mac-w-world-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+.mac-w-world-card {
+  flex: 0 0 100px !important;
+  height: 140px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 16px !important;
+  padding: 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  backdrop-filter: blur(5px) !important;
+}
+
+.mac-w-world-card:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  transform: scale(1.05) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.mac-w-world-card-header {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 2px !important;
+}
+
+.mac-w-world-name {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 90px !important;
+}
+
+.mac-w-world-offset {
+  font-size: 8px !important;
+  font-weight: 600 !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  padding: 1px 4px !important;
+  border-radius: 4px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.mac-w-world-digital {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: white !important;
+  margin-top: 4px !important;
+}
+
+.mac-w-world-daydate {
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  text-transform: uppercase !important;
+}
+
+/* Analog Small Overrides */
+.mac-w-analog-clock.small {
+  width: 50px !important;
+  height: 50px !important;
+  margin-bottom: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.mac-w-analog-clock.small .mac-w-hour-hand {
+  width: 2px !important;
+  height: 14px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-minute-hand {
+  width: 1.5px !important;
+  height: 20px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-second-hand {
+  width: 0.8px !important;
+  height: 22px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-clock-center {
+  width: 4px !important;
+  height: 4px !important;
+  border-width: 1px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-moon {
+  width: 10px !important;
+  height: 10px !important;
+  margin-left: -5px !important;
+  margin-top: -5px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-sun {
+  width: 12px !important;
+  height: 12px !important;
+  margin-left: -6px !important;
+  margin-top: -6px !important;
+}
+
+.mac-w-analog-clock.small .mac-w-clock-marker.current-marker {
+  width: 1.5px !important;
+  height: 4px !important;
+  box-shadow: 0 0 4px rgba(255, 59, 48, 0.4) !important;
+}
+
+.mac-w-analog-clock.small .mac-w-clock-marker.minute {
+  position: absolute !important;
+  top: 2px !important;
+  left: 50% !important;
+  height: 2px !important;
+  transform-origin: 50% 23px !important; /* 25px radius - 2px top */
+}
+
+.mac-w-analog-clock.small .mac-w-clock-marker.hour {
+  position: absolute !important;
+  top: 1px !important;
+  left: 50% !important;
+  width: 1.5px !important;
+  height: 3px !important;
+  transform-origin: 50% 24px !important; /* 25px radius - 1px top */
+}
+
+.mac-w-analog-clock.small .mac-w-clock-number {
+  font-size: 6px !important;
+  font-weight: 700 !important;
+}
+
+/* Resize Button */
+.mac-w-clock-resize-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.mac-w-clock:hover .mac-w-clock-resize-btn {
+  opacity: 1;
+}
+
+.mac-w-clock-resize-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+/* Labels in single view */
+.mac-w-time-label {
+  font-weight: 700;
+  font-size: 18px;
+  margin-top: 4px;
+  color: white;
+}
+
+.mac-w-date-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Shake animation for no space */
+@keyframes no-space-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.no-space-shake {
+  animation: no-space-shake 0.2s ease-in-out 2;
+}
+
+/* Big View Modal */
+.mac-w-big-view-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 999999;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.mac-w-big-view-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.mac-w-big-view-modal {
+  width: 700px;
+  height: 400px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 32px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+  display: flex !important;
+  transform: scale(0.9) translateY(20px);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mac-w-big-view-overlay.active .mac-w-big-view-modal {
+  transform: scale(1) translateY(0);
+}
+
+.mac-w-big-view-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px;
+  z-index: 10;
+  transition: all 0.2s ease;
+}
+
+.mac-w-big-view-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(90deg);
+}
+
+.mac-w-big-view-content {
+  display: flex !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.mac-w-big-view-left {
+  flex: 0 0 350px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.mac-w-big-view-right {
+  flex: 1 !important;
+  padding: 40px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  color: white !important;
+}
+
+.mac-w-big-city-name {
+  font-size: 38px !important;
+  font-weight: 800 !important;
+  margin: 0 !important;
+  letter-spacing: -0.5px !important;
+}
+
+.mac-w-big-timezone {
+  font-size: 14px !important;
+  opacity: 0.6 !important;
+  margin-bottom: 25px !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+.mac-w-big-digital-time {
+  font-size: 56px !important;
+  font-weight: 200 !important;
+  margin-bottom: 5px !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.mac-w-big-date {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  margin-bottom: 30px !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.mac-w-big-details {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  padding: 15px !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.mac-w-detail-item {
+  display: flex !important;
+  justify-content: space-between !important;
+  font-size: 14px !important;
+}
+
+.mac-w-detail-item .label {
+  opacity: 0.5 !important;
+  font-weight: 600 !important;
+}
+
+.mac-w-detail-item .value {
+  font-weight: 700 !important;
+}
+
+/* Analog Big Overrides */
+.mac-w-analog-clock.big {
+  width: 240px !important;
+  height: 240px !important;
+  --number-offset: -95px;
+  --celestial-offset: -100px;
+}
+
+.mac-w-analog-clock.big .mac-w-hour-hand {
+  width: 8px !important;
+  height: 70px !important;
+  z-index: 10;
+}
+
+.mac-w-analog-clock.big .mac-w-minute-hand {
+  width: 6px !important;
+  height: 100px !important;
+  z-index: 11;
+}
+
+.mac-w-analog-clock.big .mac-w-second-hand {
+  width: 2px !important;
+  height: 110px !important;
+  z-index: 12;
+}
+
+.mac-w-analog-clock.big .mac-w-clock-center {
+  width: 14px !important;
+  height: 14px !important;
+  z-index: 13;
+}
+
+.mac-w-analog-clock.big .mac-w-clock-marker.minute {
+  position: absolute !important;
+  top: 6px !important;
+  left: 50% !important;
+  height: 8px !important;
+  transform-origin: 50% 114px !important; /* 120px radius - 6px top */
+}
+
+.mac-w-analog-clock.big .mac-w-clock-marker.hour {
+  position: absolute !important;
+  top: 3px !important;
+  left: 50% !important;
+  width: 3px !important;
+  height: 12px !important;
+  transform-origin: 50% 117px !important; /* 120px radius - 3px top */
+}
+
+.mac-w-analog-clock.big .mac-w-clock-number {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+}
+
+/* Responsive Overrides for Big View Modal */
+@media (max-width: 1024px) {
+  .mac-w-big-view-modal {
+    width: 650px !important;
+    height: 400px !important;
+  }
+
+  .mac-w-big-view-left {
+    flex: 0 0 300px !important;
+  }
+
+  .mac-w-analog-clock.big {
+    width: 200px !important;
+    height: 200px !important;
+    --number-offset: -80px;
+    --celestial-offset: -85px;
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-marker.minute {
+    top: 5px !important;
+    height: 7px !important;
+    transform-origin: 50% 95px !important;
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-marker.hour {
+    top: 3px !important;
+    height: 11px !important;
+    transform-origin: 50% 97px !important;
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-number {
+    font-size: 18px !important;
+  }
+
+  .mac-w-analog-clock.big .mac-w-hour-hand { height: 60px !important; width: 6px !important; }
+  .mac-w-analog-clock.big .mac-w-minute-hand { height: 85px !important; width: 5px !important; }
+  .mac-w-analog-clock.big .mac-w-second-hand { height: 95px !important; width: 1.8px !important; }
+}
+
+@media (max-width: 768px) {
+  .mac-w-big-view-modal {
+    width: 90% !important;
+    height: auto !important;
+    max-height: 90vh !important;
+    flex-direction: column !important;
+    border-radius: 24px !important;
+    overflow-y: auto !important;
+    padding-bottom: 30px !important;
+  }
+
+  .mac-w-big-view-close {
+    right: auto !important;
+    left: 20px !important;
+    top: 20px !important;
+  }
+
+  .mac-w-big-view-left {
+    flex: 0 0 200px !important;
+    padding: 20px !important;
+    background: transparent !important;
+  }
+
+  .mac-w-big-view-right {
+    padding: 0 25px 25px 25px !important;
+    text-align: center !important;
+    overflow-y: visible !important;
+  }
+
+  .mac-w-big-city-name {
+    font-size: 24px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .mac-w-big-timezone {
+    font-size: 11px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .mac-w-big-digital-time {
+    font-size: 38px !important;
+    margin-bottom: 0 !important;
+  }
+
+  .mac-w-big-date {
+    font-size: 14px !important;
+    margin-bottom: 15px !important;
+  }
+
+  .mac-w-analog-clock.big {
+    width: 150px !important;
+    height: 150px !important;
+    --number-offset: -58px;
+    --celestial-offset: -60px;
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-marker.minute {
+    top: 4px !important;
+    height: 6px !important;
+    transform-origin: 50% 71px !important; /* (150/2) - 4 = 71 */
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-marker.hour {
+    top: 2px !important;
+    height: 10px !important;
+    transform-origin: 50% 73px !important; /* (150/2) - 2 = 73 */
+  }
+
+  .mac-w-analog-clock.big .mac-w-clock-number {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+  }
+
+  .mac-w-analog-clock.big .mac-w-hour-hand { height: 42px !important; width: 4.5px !important; }
+  .mac-w-analog-clock.big .mac-w-minute-hand { height: 58px !important; width: 3.5px !important; }
+  .mac-w-analog-clock.big .mac-w-second-hand { height: 65px !important; width: 1.2px !important; }
+  .mac-w-analog-clock.big .mac-w-sun,
+  .mac-w-analog-clock.big .mac-w-moon { 
+    transform: scale(0.8) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .mac-w-big-view-modal {
+    width: 95% !important;
+    max-height: 90vh !important;
+  }
+
+  .mac-w-big-view-left {
+    flex: 0 0 220px !important;
+    padding: 20px !important;
+  }
+
+  .mac-w-big-view-right {
+    padding: 20px !important;
+  }
+
+  .mac-w-big-city-name {
+    font-size: 24px !important;
+  }
+
+  .mac-w-big-digital-time {
+    font-size: 36px !important;
+  }
+
+  .mac-w-analog-clock.big {
+    width: 150px !important;
+    height: 150px !important;
+  }
+
+  .mac-w-analog-clock.big .mac-w-hour-hand { height: 40px !important; }
+  .mac-w-analog-clock.big .mac-w-minute-hand { height: 60px !important; }
+  .mac-w-analog-clock.big .mac-w-second-hand { height: 70px !important; }
+}
+
+/* Folding Phone / Square-ish Screens */
+@media (min-width: 481px) and (max-width: 768px) and (min-aspect-ratio: 1/1) {
+  .mac-w-big-view-modal {
+    flex-direction: row !important;
+    height: 350px !important;
+  }
+  
+  .mac-w-big-view-left {
+    flex: 0 0 250px !important;
+  }
+}
+
+/* Modal Content Styles */
+.clock-settings-modes {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+[data-theme="dark"] .clock-settings-modes {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.clock-mode-tab {
+  flex: 1;
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: all 0.2s ease;
+}
+
+.clock-mode-tab.active {
+  background: white;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  color: #007aff;
+}
+
+[data-theme="dark"] .clock-mode-tab.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.clock-settings-content {
+  min-height: 100px;
+  margin-bottom: 10px;
+}
+
+.clock-panel {
+  display: none;
+}
+
+.clock-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.clock-preview {
+  font-size: 32px;
+  font-weight: 700;
+  text-align: center;
+  padding: 20px 0;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.05);
+  border-radius: 12px;
+}
+
+
+/* Vertical Wheel Pickers */
+.manual-pickers-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 25px 5px; /* Increased padding for arrows */
+  border-radius: 16px;
+  position: relative;
+  height: 160px; /* Slightly taller */
+  mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+}
+
+.mac-w-picker-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  height: 100%;
+}
+
+.mac-w-picker-arrow {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  color: #007aff;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 4px;
+  z-index: 10;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.mac-w-picker-arrow:hover {
+  opacity: 1;
+  background: rgba(0, 122, 255, 0.05);
+}
+
+.mac-w-picker-arrow.up {
+  top: -15px;
+}
+
+.mac-w-picker-arrow.down {
+  bottom: -15px;
+}
+
+[data-theme="dark"] .mac-w-picker-arrow {
+  color: #0a84ff;
+}
+
+[data-theme="dark"] .manual-pickers-container {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mac-w-picker {
+  position: relative;
+  height: 100%;
+  width: 55px; /* Slightly wider for months */
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mac-w-picker::-webkit-scrollbar {
+  display: none;
+}
+
+.mac-w-picker-item {
+  height: 35px;
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  scroll-snap-align: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  width: 100%;
+}
+
+[data-theme="dark"] .mac-w-picker-item {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.mac-w-picker-item.selected {
+  color: #007aff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .mac-w-picker-item.selected {
+  color: white;
+}
+
+.mac-w-picker-highlight {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 95%;
+  height: 35px;
+  background: rgba(0, 122, 255, 0.1);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+[data-theme="dark"] .mac-w-picker-highlight {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.manual-reset-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 5px;
+}
+
+.manual-reset-btn {
+  background: none;
+  border: none;
+  color: #007aff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.manual-reset-btn:hover {
+  background: rgba(0, 122, 255, 0.1);
+}

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MacOS</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description"
+    content="A beautiful MacOS-inspired web application with wallpaper management and productivity tools">
+  <meta name="theme-color" content="#667eea">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MacOS">
+  <link rel="apple-touch-icon" href="/assets/Images/Favicon.png">
+  <link rel="manifest" href="/manifest.json">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <script>
+    // Standard Session Management on Landing:
+    (async function() {
+      try {
+        const isRemembered = localStorage.getItem('macos_remember_me_active') === 'true';
+        if (!isRemembered) {
+          sessionStorage.removeItem('macos_session_active');
+          await fetch('/api/auth/logout', { method: 'POST' });
+          console.log('✓ Anonymous landing: Clean session state');
+        } else {
+          console.log('✓ Remember Me active: Ready for swipe unlock');
+        }
+      } catch (err) {
+        console.error('Landing session sync failed:', err);
+      }
+    })();
+
+    // Handle browser extension messages gracefully
+    if (window.chrome && window.chrome.runtime) {
+      window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        try { sendResponse({}); } catch (e) {}
+        return true;
+      });
+    }
+  </script>
+
+  <link rel="icon" href="/assets/Images/Favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-D5G8rSGO.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/desktop-y9lyFXz3.js">
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
+  <link rel="stylesheet" crossorigin href="/assets/desktop-CYWaaGZd.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-DgaYKjWF.css">
+</head>
+
+<body>
+
+  <!-- Wallpaper Background -->
+  <div id="wallpaperBackground"
+    style="background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg');"></div>
+
+  <!-- Blur Overlay -->
+  <div class="blur-overlay" id="blurOverlay"></div>
+
+  <!-- Top Bar: Production Weather & Status Header -->
+  <div class="top-bar">
+    <div class="top-bar-center">
+      <div class="homepage-weather-display weather-display homepage" id="homepageWeatherDisplay">
+        <span class="homepage-weather-icon weather-icon" id="homepageWeatherIcon">☁️</span>
+        <span class="weather-temp" id="homepageWeatherTemp">--°</span>
+      </div>
+    </div>
+    
+    <div class="top-bar-right">
+      <div class="login-page-clock hidden-by-default" id="loginPageClock">
+        <div class="weather-display login" id="loginWeatherDisplay">
+          <span class="weather-icon" id="loginWeatherIcon">☁️</span>
+          <span class="weather-temp" id="loginWeatherTemp">--°</span>
+        </div>
+        <div id="loginClockDisplay" class="login-clock-display">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Centered Login Modal (Exact Production UI structure + Multi-User & Google Login) -->
+  <div class="login-modal" id="loginModal">
+    <div class="modal-avatar" id="modalAvatar">🧑‍💻</div>
+    <div class="modal-username" id="modalUsername">User</div>
+    
+    <div class="password-wrapper">
+      <div id="passwordProtectionSection" style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        
+        <div class="password-field-container" id="passwordFieldContainer">
+          <label class="password-label">Password</label>
+          <div class="password-input-wrapper">
+            <input 
+              type="password" 
+              class="password-input" 
+              id="loginPasswordInput" 
+              placeholder="password"
+              autocomplete="current-password"
+            >
+            <button class="password-toggle" id="passwordToggleBtn" type="button" title="Toggle Password">
+              <svg id="eyeIcon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+            <button class="password-submit-btn" id="passwordSubmitArrowBtn" type="button" title="Sign In">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-hints-row">
+          <a class="touchid-text" id="touchidText">(or swipe finger across reader)</a>
+          <a class="forgot-text" id="forgotPasswordText">Forgot Password?</a>
+        </div>
+
+        <!-- Google Sign-in with minimal subtle divider -->
+        <div class="mac-or-divider"><span>or</span></div>
+        <div id="googleSignInBtnContainer" class="google-signin-container"></div>
+        
+        <!-- Hidden Remember Me checkbox -->
+        <div style="display: none;"><input type="checkbox" id="rememberMeCheckbox"></div>
+        <div id="loginStatusMessage" class="login-status-error" style="display: none;"></div>
+      </div>
+
+      <!-- No Password Section -->
+      <div id="noPasswordSection" style="display: none; text-align: center;">
+        <button type="button" class="login-button" id="unlockButton" style="display: inline-block;">Click to Unlock</button>
+      </div>
+
+      <!-- Security Question Section -->
+      <div id="securityQuestionSection" style="display: none; width: 100%; flex-direction: column; gap: 10px;">
+        <div style="background: rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; border: 1px solid rgba(255,255,255,0.15); text-align: left;">
+          <div id="recoveryAdminBadge" style="color: #60a5fa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Admin Recovery</div>
+          <div id="challengeQuestionDisplay" style="color: rgba(255,255,255,0.9); font-size: 0.9rem; font-weight: 500; line-height: 1.4;"></div>
+        </div>
+        <div class="password-field-container" style="width: 100%;">
+          <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer (Press Enter)" autocomplete="off">
+        </div>
+        <button type="button" class="login-button" id="verifyAnswerBtn" style="margin-top: 6px; width: 100%; display: block;">Verify Answer</button>
+        <button type="button" id="cancelRecoveryBtn" style="background: none; border: none; color: rgba(255,255,255,0.7); font-size: 0.82rem; margin-top: 4px; cursor: pointer;">← Back to Sign In</button>
+      </div>
+
+      <!-- New Password Section -->
+      <div id="passwordResetSection" style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+        <div style="color: rgba(255,255,255,0.9); font-size: 0.95rem; font-weight: 600; margin-bottom: 4px;">Set New Administrator Password</div>
+        <div class="password-field-container">
+          <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password" autocomplete="new-password">
+        </div>
+        <div class="password-field-container">
+          <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password (Press Enter)" autocomplete="new-password">
+        </div>
+        <button type="button" class="login-button" id="confirmResetBtn" style="margin-top: 5px; width: 100%; display: block;">Save & Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Big Clock (Top Center - Production Layout) -->
+  <div class="clock-container" id="clockContainer">
+    <div class="date" id="dateDisplay">Loading...</div>
+    <div class="time" id="timeDisplay" data-time="00:00">00:00</div>
+  </div>
+
+  <!-- User Profile Lock Badge (Bottom Center - Exact Production Layout) -->
+  <div class="user-profile" id="profileBadge">
+    <div class="avatar" id="profileAvatar">🧑‍💻</div>
+    <div class="username" id="profileUsername">User</div>
+    <div class="hint" id="profileHint">Touch ID or Enter Password</div>
+  </div>
+
+  <!-- Remember Me Security Warning Modal -->
+  <div class="macos-system-modal" id="rememberMeWarningModal">
+    <div class="modal-icon-badge warning">⚠️</div>
+    <div class="modal-title-text">Security Notice</div>
+    <div class="modal-desc-text">
+      Enabling <strong>Remember Me</strong> allows anyone with physical access to this computer to unlock it by swiping up without entering a password.
+      <br><br>
+      <strong>Do NOT enable this on public or shared computers.</strong>
+    </div>
+    <div class="modal-actions-col">
+      <button type="button" class="modal-action-btn-primary" id="confirmRememberMeBtn">Enable Anyway</button>
+      <button type="button" class="modal-action-btn-secondary" id="cancelRememberMeBtn">Keep Disabled</button>
+    </div>
+  </div>
+
+  <!-- Worker Pending Approval Modal -->
+  <div class="macos-system-modal" id="workerPendingModal" style="display: none; max-width: 360px; padding: 24px; text-align: center;">
+    <div id="pendingWorkerAvatar" style="width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 10px; overflow: hidden; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+    <div id="pendingWorkerName" style="color: #ffffff; font-size: 1.1rem; font-weight: 600; margin-bottom: 2px;">Worker Name</div>
+    <div id="pendingWorkerEmail" style="color: rgba(255,255,255,0.6); font-size: 0.8rem; margin-bottom: 16px;">worker@gmail.com</div>
+
+    <div style="background: rgba(255,255,255,0.08); border: 1px dashed rgba(255,255,255,0.3); border-radius: 16px; padding: 14px; margin-bottom: 16px;">
+      <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.6); margin-bottom: 6px;">Your Access Request Code</div>
+      <div id="pendingInviteCodeDisplay" style="font-family: monospace; font-size: 1.8rem; font-weight: 800; letter-spacing: 4px; color: #60a5fa; user-select: all;">------</div>
+      <button id="copyInviteCodeBtn" type="button" style="margin-top: 6px; padding: 4px 10px; font-size: 0.75rem; background: rgba(255,255,255,0.15); border: none; border-radius: 8px; color: #ffffff; cursor: pointer;">📋 Copy Code</button>
+    </div>
+
+    <div id="pendingQrContainer" style="margin-bottom: 16px;">
+      <img id="pendingQrImage" src="" alt="QR Code" style="width: 140px; height: 140px; border-radius: 12px; background: white; padding: 6px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" />
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #fbbf24; font-size: 0.82rem; font-weight: 500; margin-bottom: 16px;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #fbbf24; display: inline-block;"></span>
+      <span>Waiting for manager approval...</span>
+    </div>
+
+    <p style="color: rgba(255,255,255,0.5); font-size: 0.75rem; line-height: 1.4; margin-bottom: 14px;">
+      Share this code with your manager. This window will automatically unlock once approved.
+    </p>
+
+    <button type="button" id="cancelPendingBtn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; padding: 8px 16px; color: #ffffff; font-size: 0.8rem; cursor: pointer;">Cancel / Sign Out</button>
+  </div>
+
+  <!-- Touch ID Dedicated Setup Page Modal -->
+  <div id="touchIdSetupModal" class="macos-system-modal" style="z-index: 50;">
+    <div style="margin-bottom: 12px; font-size: 44px; display: inline-block;">🤚</div>
+    <div class="modal-title-text" style="margin-bottom: 8px; font-size: 1.25rem; font-weight: 600; color: white;">Enable Touch ID</div>
+    <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; line-height: 1.45; margin-bottom: 22px; text-align: center;">
+      Use Touch ID for faster and secure access next time on this device without having to re-type your password.
+    </p>
+    <div id="touchIdErrorText" style="display: none; font-size: 0.85rem; color: #ef4444; margin-bottom: 16px; text-align: center;"></div>
+    <div class="modal-actions-col">
+      <button class="modal-action-btn-primary" id="confirmTouchIdSetup">Enable Touch ID</button>
+      <button type="button" class="modal-action-btn-secondary" id="cancelTouchIdSetup">Not Now / Continue to Desktop</button>
+    </div>
+  </div>
+
+  <!-- Account Linking Conflict Modal (Pre-Hijacking Defense) -->
+  <div id="accountLinkModal" class="macos-system-modal" style="z-index: 60;">
+    <div style="margin-bottom: 12px; font-size: 40px; display: inline-block;">🔗</div>
+    <div class="modal-title-text" style="margin-bottom: 8px; font-size: 1.15rem; font-weight: 600; color: white;">Account Exists</div>
+    <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; line-height: 1.45; margin-bottom: 16px; text-align: center;" id="accountLinkEmailText">
+      An account with this email already exists.
+    </p>
+    <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; line-height: 1.45; margin-bottom: 22px; text-align: center;">
+      Please enter your local password to prove ownership and link your Google account.
+    </p>
+    <input type="password" id="linkPasswordInput" class="password-input" style="width: 100%; margin-bottom: 12px; padding: 10px 14px;" placeholder="Password" aria-label="Link Account Password">
+    <div id="linkErrorText" style="display: none; font-size: 0.85rem; color: #ef4444; margin-bottom: 16px; text-align: center;" aria-live="polite">Incorrect password.</div>
+    <div class="modal-actions-col">
+      <button class="modal-action-btn-primary" id="confirmLinkBtn">Link Accounts</button>
+      <button type="button" class="modal-action-btn-secondary" id="cancelLinkBtn">Cancel</button>
+    </div>
+  </div>
+  
+  <script src="js/auth/LoginController.js"></script>
+
+  <!-- Standardized Components -->
+
+  <!-- Service Worker Registration for PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => { console.log('✓ Service Worker registered successfully:', registration); })
+          .catch(error => { console.log('✗ Service Worker registration failed:', error); });
+      });
+    }
+    // Initial security and profile check
+    checkSecurityStatus();
+    syncProfile();
+  </script>
+</body>
+
+</html>

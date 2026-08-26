@@ -1,0 +1,21 @@
+CREATE TABLE contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  address TEXT,
+  gstin TEXT,
+  licence_no TEXT,
+  pan TEXT,
+  total_sales REAL DEFAULT 0,
+  avg_sales REAL DEFAULT 0,
+  favorite_product_id INTEGER,
+  opening_balance REAL DEFAULT 0,
+  notes TEXT,
+  transport_preference TEXT,
+  type TEXT DEFAULT 'Customer',
+  active TEXT DEFAULT 'INACTIVE',
+  last_activity DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)

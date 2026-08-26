@@ -1,0 +1,262 @@
+/**
+ * AnalyticsApp - An analytics application built with AppWindow
+ * Refactored to use multi-file architecture for better maintainability.
+ */
+
+class AnalyticsApp extends AppWindow {
+  constructor(containerId, callbacks = {}, params = null) {
+    const width = window.innerWidth;
+    let config = { appId: 'analytics', appName: 'Analytics', containerId: containerId, callbacks: callbacks };
+    
+    if (width < 768) {
+      const mobileSizes = AppWindow.calculateMobileSizing();
+      config = { ...config, width: mobileSizes.width, height: mobileSizes.height };
+    } else if (width < 1024) {
+      config = { ...config, width: '550px', height: '500px' };
+    } else {
+      config = { ...config, width: '600px', height: '500px' };
+    }
+    
+    super(config);
+    this.window.classList.add('analytics-window');
+
+    this.currentView = 'dashboard';
+    this.currentCustomerId = null;
+    this.initialParams = params;
+    this.customers = [];
+    
+    // View Instances
+    this.dashboardView = null;
+    this.profileView = null;
+    this.salesView = null;
+    this.productsView = null;
+    this.orderView = null;
+    this.agingView = null;
+    this.compView = null;
+
+    this.setupAnalyticsUI();
+  }
+
+  async setupAnalyticsUI() {
+    this.buildAnalyticsLayout();
+    this.setupHeaderControls();
+    this.setupAnalyticsEventListeners();
+    
+    // Load initial data
+    await this.refreshCustomerList();
+    
+    if (this.initialParams && this.initialParams.customerId) {
+        this.switchView('customer-profile', this.initialParams.initialCustomerId || this.initialParams.customerId);
+    } else {
+      this.switchView('dashboard');
+    }
+
+    window.currentAnalyticsApp = this;
+  }
+
+  handleDeepLink(params) {
+    if (params && params.customerId) {
+        this.switchView('customer-profile', params.customerId);
+    }
+  }
+
+  buildAnalyticsLayout() {
+    const contentArea = this.getContentArea();
+    contentArea.style.display = 'flex';
+    contentArea.style.overflow = 'hidden';
+    contentArea.style.height = '100%';
+
+    contentArea.innerHTML = `
+      <div class="analytics-sidebar">
+        <span class="analytics-sidebar-header">BI Reporting</span>
+        <button class="analytics-menu-item active" data-view="dashboard">📊 Dashboard</button>
+        <button class="analytics-menu-item" data-view="sales">📈 Sales Reports</button>
+        <button class="analytics-menu-item" data-view="comparative">⚖️ Comparative Analysis</button>
+        <button class="analytics-menu-item" data-view="orders">🚚 Order Funnel</button>
+        <button class="analytics-menu-item" data-view="aging">👥 AR Aging & RFM</button>
+        <button class="analytics-menu-item" data-view="products">📦 Product Velocity</button>
+        
+        <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(0,0,0,0.08);">
+        
+        <span class="analytics-sidebar-header">Customer Insights</span>
+        <div class="analytics-customer-list">
+          <div class="loading-spinner">Loading customers...</div>
+        </div>
+      </div>
+      <div class="analytics-main">
+        <div class="analytics-view-container">
+          <!-- Content dynamic injection -->
+        </div>
+      </div>
+    `;
+
+    this.sidebar = contentArea.querySelector('.analytics-sidebar');
+    this.sidebarList = contentArea.querySelector('.analytics-customer-list');
+    this.viewContainer = contentArea.querySelector('.analytics-view-container');
+  }
+
+  setupHeaderControls() {
+    const container = document.getElementById(this.containerId);
+    const titleBar = container.querySelector('.app-title-bar');
+    if (!titleBar) return;
+    
+    const leftControls = document.createElement('div');
+    leftControls.className = 'analytics-left-controls';
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'analytics-header-btn';
+    expandBtn.id = 'expandBtn';
+    expandBtn.title = 'Show/Hide Sidebar';
+    expandBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+        <line x1="9" y1="3" x2="9" y2="21"></line>
+        <line x1="5.5" y1="9" x2="6.5" y2="9"></line>
+        <line x1="5.5" y1="12" x2="6.5" y2="12"></line>
+        <line x1="5.5" y1="15" x2="6.5" y2="15"></line>
+      </svg>
+    `;
+    leftControls.appendChild(expandBtn);
+    
+    const trafficLights = titleBar.querySelector('.app-traffic-lights');
+    if (trafficLights) {
+      titleBar.insertBefore(leftControls, trafficLights.nextSibling);
+    }
+    
+    const spacer = titleBar.querySelector('.title-spacer');
+    const rightControls = document.createElement('div');
+    rightControls.className = 'analytics-header-controls';
+    
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'analytics-header-buttons';
+    buttonsContainer.innerHTML = `
+      <button class="analytics-header-btn" id="analyticsRefreshBtn" title="Refresh Data">↻</button>
+      <button class="analytics-header-btn" id="analyticsPrintBtn" title="Print Report">⎙</button>
+    `;
+    
+    const headerSearch = document.createElement('input');
+    headerSearch.type = 'text';
+    headerSearch.className = 'analytics-header-search';
+    headerSearch.id = 'headerSearch';
+    headerSearch.placeholder = 'Search Customers';
+    
+    rightControls.appendChild(buttonsContainer);
+    rightControls.appendChild(headerSearch);
+    
+    if (spacer) {
+      spacer.parentNode.replaceChild(rightControls, spacer);
+    }
+    
+    this.headerSearch = headerSearch;
+    headerSearch.addEventListener('input', (e) => this.filterCustomers(e.target.value));
+  }
+
+  setupAnalyticsEventListeners() {
+    const expandBtn = document.getElementById('expandBtn');
+    expandBtn?.addEventListener('click', () => {
+      this.sidebar.classList.toggle('hidden');
+    });
+
+    this.sidebar.addEventListener('click', (e) => {
+      const item = e.target.closest('.analytics-sidebar-item, .analytics-menu-item');
+      if (!item) return;
+
+      this.sidebar.querySelectorAll('.analytics-sidebar-item, .analytics-menu-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+
+      if (item.dataset.view) {
+        this.switchView(item.dataset.view);
+      } else if (item.dataset.id) {
+        this.switchView('customer-profile', item.dataset.id);
+      }
+    });
+
+    document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => this.refreshAllData());
+    document.getElementById('analyticsPrintBtn')?.addEventListener('click', () => window.print());
+  }
+
+  async refreshCustomerList() {
+    try {
+      const resp = await fetch('/api/contacts');
+      const data = await resp.json();
+      this.customers = data.filter(c => c.type === 'Customer');
+      this.renderCustomerList(this.customers);
+    } catch (err) {
+      console.error('Failed to load customers:', err);
+    }
+  }
+
+  renderCustomerList(customers) {
+    if (!this.sidebarList) return;
+    
+    if (customers.length === 0) {
+      this.sidebarList.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; font-size:12px;">No customers found</div>';
+      return;
+    }
+
+    this.sidebarList.innerHTML = customers.map(c => `
+      <button class="analytics-sidebar-item" data-id="${c.id}">
+        <span class="customer-item-name">${c.name}</span>
+        <span class="customer-item-sales">ID: ${c.id} • ${c.active || 'INACTIVE'}</span>
+      </button>
+    `).join('');
+  }
+
+  filterCustomers(query) {
+    const filtered = this.customers.filter(c => 
+      c.name.toLowerCase().includes(query.toLowerCase()) || 
+      c.id.toString().includes(query)
+    );
+    this.renderCustomerList(filtered);
+  }
+
+  async switchView(view, id = null) {
+    this.currentView = view;
+    this.currentCustomerId = id;
+
+    // Highlight active sidebar item
+    if (this.sidebar) {
+      this.sidebar.querySelectorAll('.analytics-menu-item').forEach(item => {
+        if (item.dataset.view === view) item.classList.add('active');
+        else item.classList.remove('active');
+      });
+    }
+
+    switch(view) {
+      case 'dashboard':
+        if (!this.dashboardView) this.dashboardView = new AnalyticsDashboard(this);
+        await this.dashboardView.render();
+        break;
+      case 'customer-profile':
+        if (!this.profileView) this.profileView = new CustomerProfileView(this);
+        await this.profileView.render(id);
+        break;
+      case 'sales':
+        if (!this.salesView) this.salesView = new SalesReportsView(this);
+        await this.salesView.render();
+        break;
+      case 'comparative':
+        if (!this.compView) this.compView = new ComparativeAnalyticsView(this);
+        await this.compView.render();
+        break;
+      case 'orders':
+        if (!this.orderView) this.orderView = new OrderAnalyticsView(this);
+        await this.orderView.render();
+        break;
+      case 'aging':
+        if (!this.agingView) this.agingView = new CustomerAgingView(this);
+        await this.agingView.render();
+        break;
+      case 'products':
+        if (!this.productsView) this.productsView = new ProductMetricsView(this);
+        await this.productsView.render();
+        break;
+    }
+  }
+
+  async refreshAllData() {
+    await this.refreshCustomerList();
+    this.switchView(this.currentView, this.currentCustomerId);
+  }
+}
+
+window.AnalyticsApp = AnalyticsApp;

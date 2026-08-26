@@ -1,0 +1,74 @@
+/* Battery Widget Styling */
+.mac-w-battery {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.mac-w-battery-visual {
+  width: 60px;
+  height: 30px;
+  border: 2px solid var(--mac-w-text-primary);
+  border-radius: 8px;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.mac-w-battery-level {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  bottom: 2px;
+  background: #34c759;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.mac-w-battery-tip {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 10px;
+  background: var(--mac-w-text-primary);
+  border-radius: 0 4px 4px 0;
+}
+
+.mac-w-battery-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--mac-w-text-primary);
+}
+
+/* Charging / AC Power States */
+.mac-w-battery-visual.charging::after {
+  content: '⚡';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  color: white;
+  text-shadow: 0 0 4px rgba(0,0,0,0.5);
+  z-index: 2;
+}
+
+.mac-w-battery-visual.ac-power {
+  border-color: #34c759;
+}
+
+.mac-w-battery-visual.ac-power::after {
+  content: '🔌';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+}
+
+.mac-w-battery-visual.ac-power .mac-w-battery-level {
+  background: rgba(52, 199, 89, 0.3) !important;
+  width: 100% !important;
+}

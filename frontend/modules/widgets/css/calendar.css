@@ -1,0 +1,93 @@
+/* Calendar Widget Styling */
+.mac-w-calendar {
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-w-calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--mac-w-accent-red);
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.mac-w-calendar-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.calendar-nav-btn {
+  background: none;
+  border: none;
+  color: var(--mac-w-accent-red);
+  font-size: 18px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: background 0.2s;
+  pointer-events: auto;
+}
+
+.calendar-nav-btn:hover {
+  background: rgba(255, 59, 48, 0.1);
+}
+
+.mac-w-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  font-size: 11px;
+}
+
+.mac-w-day-name {
+  color: var(--mac-w-text-secondary);
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.mac-w-day-number {
+  text-align: center;
+  padding: 3px 0;
+  color: var(--mac-w-text-primary);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.mac-w-day-number:hover:not(.mac-w-day-today) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mac-w-day-today {
+  background: var(--mac-w-text-primary);
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+}
+.is-sunday {
+  color: var(--mac-w-accent-red) !important;
+}
+
+.mac-w-calendar-month-title {
+  cursor: pointer;
+  user-select: none;
+}
+
+.mac-w-reset-anim {
+  animation: mac-w-reset-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes mac-w-reset-pop {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.02); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}

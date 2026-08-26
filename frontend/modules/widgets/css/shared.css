@@ -1,0 +1,39 @@
+/* Shared Widget Styles - Common variables and base glass container */
+
+:root {
+  --mac-w-glass-bg: rgba(255, 255, 255, 0.35);
+  --mac-w-glass-border: rgba(255, 255, 255, 0.4);
+  --mac-w-glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  --mac-w-text-primary: #1d1d1f;
+  --mac-w-text-secondary: #515154;
+  --mac-w-accent-red: #ff3b30;
+}
+
+[data-theme="dark"] {
+  --mac-w-glass-bg: rgba(28, 28, 30, 0.6);
+  --mac-w-glass-border: rgba(255, 255, 255, 0.1);
+  --mac-w-text-primary: #ffffff;
+  --mac-w-text-secondary: #8e8e93;
+}
+
+/* Base Widget Container */
+.mac-widget-glass {
+  width: 100%;
+  height: 100%;
+  background: var(--mac-w-glass-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  border: 1px solid var(--mac-w-glass-border);
+  border-radius: 28px;
+  box-shadow: var(--mac-w-glass-shadow);
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}

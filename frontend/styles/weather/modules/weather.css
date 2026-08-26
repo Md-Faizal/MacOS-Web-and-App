@@ -1,0 +1,90 @@
+﻿/* ========================================
+   STANDARDIZED WEATHER COMPONENT STYLES
+   ======================================== */
+
+/* Base Weather Display Styles */
+.weather-display {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
+}
+
+/* Light background variant */
+.weather-display.light-bg {
+  color: #000000;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+/* Dark background variant */
+.weather-display.dark-bg {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Weather Icon Styling */
+.weather-icon {
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: brightness(0) invert(1); /* White monochrome effect */
+}
+
+.weather-display.light-bg .weather-icon {
+  filter: brightness(0); /* Black for light backgrounds */
+}
+
+/* Weather Temperature */
+.weather-temp {
+  font-weight: 600;
+}
+
+/* Homepage Weather Display - Top Right Corner */
+.weather-display.homepage {
+  position: fixed;
+  top: 8px;
+  right: 20px;
+  z-index: 20;
+}
+
+body.login-active .weather-display.homepage {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Login Page Weather Display - Inline */
+.weather-display.login {
+  font-size: 0.9rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .weather-display {
+    font-size: 0.8rem;
+    gap: 4px;
+  }
+
+  .weather-icon {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .weather-display {
+    font-size: 0.75rem;
+    gap: 3px;
+  }
+
+  .weather-icon {
+    font-size: 0.8rem;
+  }
+}

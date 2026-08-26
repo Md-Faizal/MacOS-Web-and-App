@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "dev:local",
+			"problemMatcher": [],
+			"label": "npm: dev:local",
+			"detail": "concurrently \"npm run backend\" \"npm run dev\""
+		}
+	]
+}

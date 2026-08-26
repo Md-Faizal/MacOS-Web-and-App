@@ -1,0 +1,16 @@
+{
+  "id": "tahoe-beach",
+  "name": "Tahoe Beach",
+  "description": "Beautiful sandy beach at Lake Tahoe with crystal clear water",
+  "category": "nature",
+  "tags": ["beach", "sand", "water", "tahoe", "light"],
+  "type": "static",
+  "format": "image",
+  "variants": [
+    {
+      "name": "light",
+      "file": "tahoe-beach.light.jpg"
+    }
+  ],
+  "thumbnail": "thumbnail.jpg"
+}

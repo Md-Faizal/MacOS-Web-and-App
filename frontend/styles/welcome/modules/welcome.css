@@ -1,0 +1,279 @@
+/* ========================================
+   WELCOME PAGE STYLES
+   ======================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow: hidden;
+  width: 100%;
+  height: 100vh;
+}
+
+/* ========== BACKGROUND ========== */
+.welcome-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg') !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-attachment: fixed !important;
+  z-index: -1;
+}
+
+/* ========== MAIN CONTAINER ========== */
+.welcome-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem;
+  z-index: 1;
+}
+
+/* ========== TOP SECTION - TIME & DATE ========== */
+.lock-screen-content {
+  margin-top: 8vh;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  animation: fadeInDown 0.8s ease-out;
+}
+
+.date-text {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  margin: 0;
+  margin-bottom: 2px;
+}
+
+.time-text {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 8.5rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -2px;
+  mix-blend-mode: overlay;
+  opacity: 0.9;
+  margin: 0;
+}
+
+/* ========== MIDDLE SECTION - BOTTOM ========== */
+.welcome-bottom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeInUp 0.8s ease-out 0.2s backwards;
+}
+
+.welcome-bottom .glass-container {
+  width: 100%;
+  max-width: 28rem;
+  min-width: auto;
+}
+
+.welcome-bottom .glass-content {
+  padding: 1.5rem 2rem;
+}
+
+/* ========== USER PROFILE ========== */
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.user-avatar {
+  flex-shrink: 0;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.user-avatar svg {
+  width: 28px;
+  height: 28px;
+  stroke: white;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 0.25rem;
+}
+
+.user-action {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+/* ========== NAVIGATION BUTTONS ========== */
+.welcome-nav {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  animation: fadeInUp 0.8s ease-out 0.4s backwards;
+  margin-bottom: 2rem;
+}
+
+.nav-button {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.glass-button {
+  position: relative;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), inset 1px 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15), inset 1px 1px 0 rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+.glass-button:active {
+  transform: translateY(0);
+}
+
+/* ========== ANIMATIONS ========== */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== RESPONSIVE DESIGN ========== */
+@media (max-width: 768px) {
+  .welcome-container {
+    padding: 1rem;
+  }
+
+  .welcome-time {
+    font-size: 4rem;
+  }
+
+  .welcome-date {
+    font-size: 1rem;
+  }
+
+  .welcome-bottom .glass-container {
+    max-width: 100%;
+  }
+
+  .welcome-nav {
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .glass-button {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-top {
+    margin-top: 2rem;
+  }
+
+  .welcome-time {
+    font-size: 3rem;
+  }
+
+  .welcome-nav {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .glass-button {
+    width: 100%;
+    max-width: 200px;
+  }
+
+  .user-avatar {
+    width: 45px;
+    height: 45px;
+  }
+
+  .user-avatar svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* ========== DARK MODE SUPPORT ========== */
+@media (prefers-color-scheme: dark) {
+  .welcome-bg {
+    background: linear-gradient(135deg, #1a3a5c 0%, #0d2a42 50%, #051a2d 100%);
+  }
+
+  .glass-button {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Seeding Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        h2 {
+            color: #667eea;
+            font-size: 20px;
+            margin: 0 0 15px 0;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+        }
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 101, 101, 0.4);
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .status.success {
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+        .status.error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .status.info {
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+        .log {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            color: #333;
+            margin-top: 15px;
+        }
+        .log-line {
+            line-height: 1.6;
+            margin-bottom: 4px;
+        }
+        .log-success { color: #22c55e; }
+        .log-error { color: #ef4444; }
+        .log-info { color: #3b82f6; }
+        .log-warning { color: #f59e0b; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+        }
+        .info-box {
+            background: #f0fdf4;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #48bb78;
+            color: #166534;
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+        .warning-box {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #f59e0b;
+            color: #78350f;
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 Database Seeding Tool</h1>
+        <p class="subtitle">Populate your apps with realistic dummy data</p>
+
+        <!-- Backend Seeding Section -->
+        <div class="section">
+            <h2>🗄️ Backend Database (SQLite)</h2>
+            <p>The backend database has already been seeded with the following data:</p>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Customers</div>
+                    <div class="stat-value">10</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Products</div>
+                    <div class="stat-value">25</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Variants</div>
+                    <div class="stat-value">83</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Batches</div>
+                    <div class="stat-value">119</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bills</div>
+                    <div class="stat-value">20</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bill Items</div>
+                    <div class="stat-value">62</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Payments</div>
+                    <div class="stat-value">10</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Credit Notes</div>
+                    <div class="stat-value">4</div>
+                </div>
+            </div>
+            <div class="info-box">
+                ✅ Backend database has been successfully seeded! Access the data via the Billing API endpoints at localhost:3000/api/
+            </div>
+        </div>
+
+        <!-- Frontend Seeding Section -->
+        <div class="section">
+            <h2>📱 Frontend Apps (localStorage)</h2>
+            <p>Seed your client-side apps with sample data to test all features:</p>
+            <div class="button-group">
+                <button class="btn-primary" onclick="seedAllApps()">🌱 Seed All Apps</button>
+                <button class="btn-primary" onclick="seedNotes()">📝 Notes Only</button>
+                <button class="btn-primary" onclick="seedAnalytics()">📊 Analytics Only</button>
+                <button class="btn-primary" onclick="seedCalendar()">📅 Calendar Only</button>
+                <button class="btn-primary" onclick="seedContacts()">👥 Contacts Only</button>
+                <button class="btn-primary" onclick="seedTasks()">✓ Tasks Only</button>
+            </div>
+            <div class="button-group">
+                <button class="btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
+            </div>
+            <div id="status" class="status"></div>
+            <div id="log" class="log" style="display: none;"></div>
+        </div>
+
+        <!-- Instructions Section -->
+        <div class="section">
+            <h2>📖 Instructions</h2>
+            <ol style="line-height: 1.8;">
+                <li><strong>Verify Backend:</strong> Check that the SQLite database has been populated (done ✅)</li>
+                <li><strong>Seed Frontend:</strong> Click "Seed All Apps" button above to populate localStorage with sample data</li>
+                <li><strong>Test Apps:</strong> Navigate to your apps and verify they display the dummy data</li>
+                <li><strong>Clear Data:</strong> Use the "Clear All Data" button to reset everything</li>
+            </ol>
+        </div>
+
+        <!-- Details Section -->
+        <div class="section">
+            <h2>📊 What Gets Seeded</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <h3 style="color: #667eea; margin-top: 0;">Backend (billing.db)</h3>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>10 company customers with email & phone</li>
+                        <li>25 pharmaceutical products in 5 categories</li>
+                        <li>83 product variants with SKUs</li>
+                        <li>119 batch records with quantities</li>
+                        <li>20 sales bills with dates & totals</li>
+                        <li>62 line items per bills</li>
+                        <li>10 payment records</li>
+                        <li>4 credit note/returns</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 style="color: #667eea; margin-top: 0;">Frontend (localStorage)</h3>
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>📝 5 sample notes with timestamps</li>
+                        <li>📊 Analytics dashboard with metrics</li>
+                        <li>📅 6 calendar events</li>
+                        <li>👥 7 contact entries</li>
+                        <li>✓ 6 task items</li>
+                        <li>⚙️ System settings</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tips Section -->
+        <div class="section">
+            <h2>💡 Tips</h2>
+            <div class="warning-box">
+                <strong>Note:</strong> The backend database (billing.db) was automatically seeded when you ran the <code>seed-data-fixed.js</code> script. Use this tool to seed the client-side apps.
+            </div>
+            <div class="info-box">
+                <strong>Tip:</strong> Reload your app pages after seeding to see the new data appear. Clear your browser cache if needed.
+            </div>
+        </div>
+
+        <!-- Help Section -->
+        <div class="section">
+            <h2>❓ Troubleshooting</h2>
+            <dl style="line-height: 1.8;">
+                <dt><strong>Data not showing in app?</strong></dt>
+                <dd>Try reloading the page and checking browser console (F12) for errors</dd>
+                
+                <dt><strong>Want to clear and start fresh?</strong></dt>
+                <dd>Click "Clear All Data" and then reseed</dd>
+                
+                <dt><strong>Backend API not working?</strong></dt>
+                <dd>Make sure the Node.js server is running: <code>npm run dev</code></dd>
+                
+                <dt><strong>Database file missing?</strong></dt>
+                <dd>Run: <code>node database/seed-data-fixed.js</code> from project root</dd>
+            </dl>
+        </div>
+    </div>
+
+    <script src="./database/seed-app-data.js"></script>
+    <script>
+        // Logging functionality
+        const logElement = document.getElementById('log');
+        const statusElement = document.getElementById('status');
+
+        function log(message, type = 'info') {
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const icons = {
+                success: '✓',
+                error: '✗',
+                info: 'ℹ',
+                warning: '⚠'
+            };
+            
+            line.textContent = `[${timestamp}] ${icons[type]} ${message}`;
+            logElement.appendChild(line);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function showStatus(message, type) {
+            statusElement.className = `status show ${type}`;
+            statusElement.innerHTML = message;
+        }
+
+        function seedAllApps() {
+            if (!window.AppDataSeeder) {
+                showStatus('❌ Error: AppDataSeeder not loaded', 'error');
+                return;
+            }
+
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding all apps...', 'info');
+            log('Starting seed process...', 'info');
+
+            try {
+                log('Seeding Notes...', 'info');
+                AppDataSeeder.seedNotes();
+                log('✓ Notes app seeded', 'success');
+
+                log('Seeding Analytics...', 'info');
+                AppDataSeeder.seedAnalytics();
+                log('✓ Analytics app seeded', 'success');
+
+                log('Seeding Calendar...', 'info');
+                AppDataSeeder.seedCalendar();
+                log('✓ Calendar app seeded', 'success');
+
+                log('Seeding Contacts...', 'info');
+                AppDataSeeder.seedContacts();
+                log('✓ Contacts app seeded', 'success');
+
+                log('Seeding Tasks...', 'info');
+                AppDataSeeder.seedTasks();
+                log('✓ Tasks app seeded', 'success');
+
+                log('Seeding Settings...', 'info');
+                AppDataSeeder.seedSettings();
+                log('✓ Settings seeded', 'success');
+
+                log('All apps seeded successfully!', 'success');
+                showStatus('✅ Successfully seeded all apps! Reload your app pages to see the data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function seedNotes() {
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding Notes...', 'info');
+            log('Seeding Notes app...', 'info');
+            try {
+                AppDataSeeder.seedNotes();
+                log('✓ Notes app seeded', 'success');
+                showStatus('✅ Notes app seeded! Reload page to see data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function seedAnalytics() {
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding Analytics...', 'info');
+            log('Seeding Analytics app...', 'info');
+            try {
+                AppDataSeeder.seedAnalytics();
+                log('✓ Analytics app seeded', 'success');
+                showStatus('✅ Analytics app seeded! Reload page to see data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function seedCalendar() {
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding Calendar...', 'info');
+            log('Seeding Calendar app...', 'info');
+            try {
+                AppDataSeeder.seedCalendar();
+                log('✓ Calendar app seeded', 'success');
+                showStatus('✅ Calendar app seeded! Reload page to see data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function seedContacts() {
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding Contacts...', 'info');
+            log('Seeding Contacts app...', 'info');
+            try {
+                AppDataSeeder.seedContacts();
+                log('✓ Contacts app seeded', 'success');
+                showStatus('✅ Contacts app seeded! Reload page to see data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function seedTasks() {
+            logElement.style.display = 'block';
+            logElement.innerHTML = '';
+            showStatus('🌱 Seeding Tasks...', 'info');
+            log('Seeding Tasks app...', 'info');
+            try {
+                AppDataSeeder.seedTasks();
+                log('✓ Tasks app seeded', 'success');
+                showStatus('✅ Tasks app seeded! Reload page to see data.', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearAllData() {
+            if (confirm('⚠️ Are you sure you want to clear all app data? This cannot be undone.')) {
+                logElement.style.display = 'block';
+                logElement.innerHTML = '';
+                showStatus('🗑️ Clearing all data...', 'info');
+                
+                const keys = [
+                    'notes_app_data',
+                    'analytics_app_data',
+                    'calendar_app_data',
+                    'contacts_app_data',
+                    'tasks_app_data',
+                    'app_settings'
+                ];
+
+                keys.forEach(key => {
+                    localStorage.removeItem(key);
+                    log(`✓ Cleared ${key}`, 'success');
+                });
+
+                log('All localStorage data cleared', 'success');
+                showStatus('✅ All app data cleared! Reload pages to see changes.', 'success');
+            }
+        }
+
+        // Show instructions on load
+        window.addEventListener('load', () => {
+            log('Database seeding tool ready!', 'success');
+            log('Click buttons above to seed your apps', 'info');
+        });
+    </script>
+</body>
+</html>

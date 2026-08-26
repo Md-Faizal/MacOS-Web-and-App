@@ -1,0 +1,42 @@
+Assets Folder Structure and Contents
+===================================
+
+Assets/
+├── Fonts/                # (Empty folder)
+├── Images/
+│   ├── 112909-red-and-black-blurred-background-vector.jpg   # Background image
+│   ├── Analytics.png     # Analytics app icon
+│   ├── Calculator.png    # Calculator app icon
+│   ├── Calender.png      # Calendar app icon
+│   ├── Contact.png       # Contacts app icon
+│   ├── Favicon.png       # Website favicon
+│   ├── Launchpad.png     # Launchpad app icon
+│   ├── List.png          # List app icon
+│   ├── Notes.png         # Notes app icon
+│   ├── pngimg.com - apple_logo_PNG19680.png # Apple logo
+│   ├── Quick Settings.png # Quick settings icon
+│   ├── Search.png        # Search icon
+│   ├── Settings.png      # Settings icon
+│   ├── Siri.png          # Siri icon
+│   ├── Spotify.png       # Spotify icon
+│   ├── Wallpaper/        # Wallpaper images and videos
+│   │   ├── Dynamic/      # Dynamic wallpapers (videos)
+│   │   │   ├── tahoe-day/
+│   │   │   │   ├── Tahoe-day.light.mp4      # Daytime wallpaper video
+│   │   │   │   └── wallpaper.json           # Metadata for tahoe-day
+│   │   │   ├── tahoe-landscape/
+│   │   │   │   ├── tahoe-landscape.dark.mp4 # Landscape dark wallpaper video
+│   │   │   │   ├── tahoe-landscape.light.mp4# Landscape light wallpaper video
+│   │   │   │   └── wallpaper.json           # Metadata for tahoe-landscape
+│   │   │   ├── tahoe-portrait/
+│   │   │   │   ├── tahoe-portrait.dark.mov  # Portrait dark wallpaper video
+│   │   │   │   ├── tahoe-portrait.light.mov # Portrait light wallpaper video
+│   │   │   │   └── wallpaper.json           # Metadata for tahoe-portrait
+│   │   ├── Static/      # Static wallpapers (images)
+│   │   │   ├── tahoe-beach/
+│   │   │   │   ├── tahoe-beach.light.jpg    # Static light wallpaper image
+│   │   │   │   └── wallpaper.json           # Metadata for tahoe-beach
+│   │   │   ├── tahoe-beach-2/
+│   │   │   │   ├── tahoe-beach-2.light.jpg  # Static light wallpaper image
+│   │   │   │   └── wallpaper.json           # Metadata for tahoe-beach-2
+│   │   └── WALLPAPER_METADATA_TEMPLATE.json # Template for wallpaper metadata

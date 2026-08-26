@@ -1,0 +1,553 @@
+================================================================================
+                    DEVELOPMENT & PRODUCTION COMMANDS
+                MacOS Website - Dual Hosting Setup (March 2026)
+================================================================================
+
+📁 FOLDER STRUCTURE:
+  MacOS-Development/   ← Source code (all edits happen here)
+  MacOS-Production/    ← Windows production (built, runs on port 80, IPv6)
+  Ubuntu VM            ← /home/ubuntu/MacOS-Production (Nginx + PM2, port 80)
+
+  Domain: https://mac.faizal.uk
+  SSH Alias: my-mac → ubuntu@<VM-IP>
+
+================================================================================
+🛠️  DEVELOPMENT (MacOS-Development/)
+================================================================================
+
+START DEV SERVER (frontend + backend together):
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Development"
+  npm run dev:local
+  
+  Frontend: http://localhost:5173
+  Backend:  http://localhost:3002
+
+START SEPARATELY:
+  Terminal 1 - Backend only (port 3002):
+    npm run backend
+
+  Terminal 2 - Frontend Vite dev (port 5173):
+    npm run dev
+
+BUILD FOR PRODUCTION:
+  npm run build
+  (Creates dist/ with hashed assets in dist/assets/)
+
+PREVIEW PRODUCTION BUILD LOCALLY:
+  npm run preview
+
+CHECK DEV HEALTH:
+  node tools/healthcheck.mjs dev
+
+================================================================================
+🪟 WINDOWS PRODUCTION (MacOS-Production/)
+================================================================================
+
+DEPLOY DEV → WINDOWS PROD:
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Development"
+  powershell -ExecutionPolicy Bypass -File "Deploy Scripts\MacOS-Production.ps1"
+
+  DRY RUN (see what would happen):
+  powershell -ExecutionPolicy Bypass -File "Deploy Scripts\MacOS-Production.ps1" -DryRun
+
+START PM2 (Windows Production):
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Production"
+  pm2 start ecosystem.config.js --env production --update-env
+
+  Services started:
+    ✓ backend     → port 3001  (IPv6 ::)
+    ✓ frontend    → port 80    (IPv6 ::, dual-stack)
+    ✓ ipv6-updater → auto-updates Cloudflare AAAA record
+
+STOP PM2 (Windows):
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Production"
+  pm2 stop ecosystem.config.js
+
+RESTART PM2 (Windows):
+  pm2 restart ecosystem.config.js --env production --update-env
+
+RESTART SINGLE SERVICE (Windows):
+  pm2 restart backend
+  pm2 restart frontend
+  pm2 restart ipv6-updater
+
+DELETE ALL (fresh start):
+  pm2 delete all
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Production"
+  pm2 start ecosystem.config.js --env production --update-env
+  pm2 save
+
+ENABLE AUTO-START ON WINDOWS REBOOT:
+  pm2 startup
+  pm2 save
+
+VIEW LOGS (Windows):
+  pm2 logs                   (all services)
+  pm2 logs backend           (backend only)
+  pm2 logs frontend          (frontend only)
+  pm2 logs --lines 100       (last 100 lines)
+  pm2 logs | grep error      (errors only)
+
+MONITOR (Windows):
+  pm2 monit                  (real-time CPU/memory dashboard)
+  pm2 status                 (quick status table)
+
+CHECK PRODUCTION HEALTH (Windows):
+  node tools/healthcheck.mjs prod
+  curl http://127.0.0.1/api/health
+
+================================================================================
+🐧 UBUNTU VM PRODUCTION (/home/ubuntu/MacOS-Production)
+================================================================================
+
+SSH INTO VM:
+  ssh my-mac
+
+  export SSH_TARGET=my-mac
+
+─── DEPLOY DEV → UBUNTU VM ────────────────────────────────────────────────────
+
+FULL DEPLOY (build + sync + nginx reload + restart services):
+  cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Development"
+  bash "Deploy Scripts/deploy-ubuntu.sh"
+
+SKIP WALLPAPERS (faster, ~5GB saved):
+  bash "Deploy Scripts/deploy-ubuntu.sh" --skip-assets
+
+DRY RUN (see what would happen):
+  bash "Deploy Scripts/deploy-ubuntu.sh" --dry-run
+
+MANUAL ASSET SYNC ONLY (emergency fix, no rebuild):
+  scp -r dist/assets my-mac:/home/ubuntu/MacOS-Production/
+
+─── PM2 ON UBUNTU VM ──────────────────────────────────────────────────────────
+
+START PM2 (Ubuntu):
+  ssh my-mac 'cd /home/ubuntu/MacOS-Production && pm2 start ecosystem.config.js --env oraclevm --only backend,frontend --update-env'
+
+  Services started:
+    ✓ backend   → port 3001  (IPv4 0.0.0.0)
+    ✓ frontend  → port 3000  (IPv4 0.0.0.0, behind Nginx)
+    (ipv6-updater NOT started on Ubuntu - Windows only)
+
+STOP PM2 (Ubuntu):
+  ssh my-mac 'pm2 stop all'
+  # or stop specific services:
+  ssh my-mac 'pm2 stop backend'
+  ssh my-mac 'pm2 stop frontend'
+
+RESTART PM2 (Ubuntu):
+  ssh my-mac 'cd /home/ubuntu/MacOS-Production && pm2 restart ecosystem.config.js --env oraclevm --only backend,frontend --update-env'
+
+RESTART SINGLE SERVICE (Ubuntu):
+  ssh my-mac 'pm2 restart backend'
+  ssh my-mac 'pm2 restart frontend'
+
+DELETE ALL AND FRESH START (Ubuntu):
+  ssh my-mac 'pm2 delete all && cd /home/ubuntu/MacOS-Production && pm2 start ecosystem.config.js --env oraclevm --only backend,frontend --update-env && pm2 save'
+
+ENABLE AUTO-START ON VM REBOOT:
+  ssh my-mac 'pm2 startup && pm2 save'
+
+VIEW STATUS (Ubuntu):
+  ssh my-mac 'pm2 status'
+
+VIEW LOGS (Ubuntu):
+  ssh my-mac 'pm2 logs'                         (all services, streaming)
+  ssh my-mac 'pm2 logs backend --lines 50'       (last 50 backend lines)
+  ssh my-mac 'pm2 logs frontend --lines 50'      (last 50 frontend lines)
+
+MONITOR (Ubuntu):
+  ssh my-mac 'pm2 monit'
+
+CHECK PRODUCTION HEALTH (Ubuntu):
+  ssh my-mac 'curl http://127.0.0.1:3001/api/health'
+  ssh my-mac 'curl http://127.0.0.1:3000/'
+
+─── NGINX ON UBUNTU VM ────────────────────────────────────────────────────────
+
+STATUS:
+  ssh my-mac 'sudo systemctl status nginx'
+
+RELOAD CONFIG (after nginx conf change):
+  ssh my-mac 'sudo nginx -t && sudo systemctl reload nginx'
+
+RESTART NGINX:
+  ssh my-mac 'sudo systemctl restart nginx'
+
+UPDATE NGINX CONFIG FROM REPO:
+  scp macos-nginx.conf my-mac:/tmp/macos-nginx.conf
+  ssh my-mac 'sudo cp /tmp/macos-nginx.conf /etc/nginx/sites-available/mac.faizal.uk && sudo nginx -t && sudo systemctl reload nginx'
+
+VIEW NGINX LOGS:
+  ssh my-mac 'sudo tail -50 /var/log/nginx/error.log'
+  ssh my-mac 'sudo tail -50 /var/log/nginx/access.log'
+
+CHECK ACTIVE NGINX CONFIGS:
+  ssh my-mac 'ls /etc/nginx/sites-enabled/'
+
+─── FILES ON UBUNTU VM ────────────────────────────────────────────────────────
+
+LIST PRODUCTION FILES:
+  ssh my-mac 'ls /home/ubuntu/MacOS-Production/'
+
+CHECK ASSETS EXIST:
+  ssh my-mac 'ls /home/ubuntu/MacOS-Production/assets/'
+
+DISK USAGE:
+  ssh my-mac 'du -sh /home/ubuntu/MacOS-Production/*'
+
+ROLLBACK TO LAST BACKUP:
+  ssh my-mac 'ls /home/ubuntu/MacOS-Production/backups/'
+  # then copy the backup folder back:
+  ssh my-mac 'cp -r /home/ubuntu/MacOS-Production/backups/<TIMESTAMP>/assets /home/ubuntu/MacOS-Production/'
+
+================================================================================
+🌐 PORT MAPPING REFERENCE
+================================================================================
+
+  ENVIRONMENT       FRONTEND             BACKEND         BINDING
+  ─────────────     ──────────────       ────────────    ──────────────────
+  Dev (Vite)        :5173                :3002           localhost
+  Windows Prod      :80                  :3001           :: (IPv6 dual-stack)
+  Ubuntu VM         :3000 → Nginx:80     :3001           0.0.0.0 (IPv4)
+
+  Nginx on Ubuntu proxies:
+    /api  → http://127.0.0.1:3001  (backend)
+    /     → http://127.0.0.1:3000  (frontend)
+    /assets/  → served directly from disk (no proxy)
+    /frontend/ → served directly from disk (no proxy)
+
+================================================================================
+🔄 IPv6 UPDATER (Windows Only)
+================================================================================
+
+  Runs automatically via PM2 as 'ipv6-updater' process.
+  Updates Cloudflare AAAA record when your Windows IPv6 changes.
+
+  Script: scripts_py/ipv6-updater.py
+  Status: pm2 status (check ipv6-updater row)
+  Logs:   pm2 logs ipv6-updater
+
+================================================================================
+🔍 TESTING & HEALTH CHECKS
+================================================================================
+
+DEV:
+  curl http://localhost:3002/api/health
+  curl http://localhost:5173
+
+WINDOWS PRODUCTION:
+  curl http://127.0.0.1/api/health
+  curl http://127.0.0.1/
+
+UBUNTU VM:
+  ssh my-mac 'curl http://127.0.0.1:3001/api/health'
+  ssh my-mac 'curl http://127.0.0.1:3000/'
+
+GLOBAL (Cloudflare):
+  curl https://mac.faizal.uk/api/health
+  Visit: https://mac.faizal.uk
+
+IPv6 SPECIFIC:
+  ping -6 mac.faizal.uk
+  curl -6 https://mac.faizal.uk
+
+================================================================================
+🚨 TROUBLESHOOTING
+================================================================================
+
+ERROR 522 (Cloudflare can't reach origin):
+  Windows: Check pm2 status - frontend must bind to :: (IPv6)
+           pm2 restart frontend && pm2 logs frontend
+  Ubuntu:  Check nginx + pm2 status on VM
+           ssh my-mac 'pm2 status && sudo systemctl status nginx'
+
+Nginx "conflicting server name" warning:
+  ssh my-mac 'ls /etc/nginx/sites-enabled/'
+  ssh my-mac 'sudo rm /etc/nginx/sites-enabled/<OLD-CONFIG>'
+  ssh my-mac 'sudo nginx -t && sudo systemctl reload nginx'
+
+Assets 404 on Ubuntu (JS/CSS not loading):
+  1. Check if assets exist: ssh my-mac 'ls /home/ubuntu/MacOS-Production/assets/'
+  2. If missing, re-sync: scp -r dist/assets my-mac:/home/ubuntu/MacOS-Production/
+  3. Hard refresh browser: Ctrl+Shift+R
+
+CSS MIME type error ('text/html' instead of 'text/css'):
+  Nginx served wrong file. Check nginx config is active:
+  ssh my-mac 'sudo nginx -t && sudo systemctl reload nginx'
+
+PM2 "Environment [production] is not defined":
+  Always use --env flag: pm2 start ecosystem.config.js --env production --update-env
+  (env blocks must be named env_production / env_oraclevm in ecosystem.config.js)
+
+Port 80 EACCES on Ubuntu (permission denied):
+  sudo setcap 'cap_net_bind_service=+ep' $(which node)
+
+Services crash loop on Ubuntu:
+  ssh my-mac 'pm2 logs --lines 100'
+  (check for missing files or database errors)
+
+================================================================================
+📋 DEPLOYMENT CHECKLIST
+================================================================================
+
+Before deploying:
+  ☐ Test in dev: npm run dev:local
+  ☐ No console errors in browser
+  ☐ Backend health: curl http://localhost:3002/api/health
+
+Deploy to Windows:
+  ☐ powershell -ExecutionPolicy Bypass -File "Deploy Scripts\MacOS-Production.ps1"
+  ☐ pm2 status (check all online)
+  ☐ Visit https://mac.faizal.uk
+
+Deploy to Ubuntu VM:
+  ☐ bash "Deploy Scripts/deploy-ubuntu.sh"
+  ☐ Check deploy output for any warnings
+  ☐ ssh my-mac 'pm2 status && ls /home/ubuntu/MacOS-Production/assets/'
+  ☐ Hard refresh browser: Ctrl+Shift+R
+  ☐ Visit https://mac.faizal.uk
+
+================================================================================
+🤝 MULTI-USER INFRASTRUCTURE (Added Aug 2026)
+================================================================================
+
+  Overview:
+    Owner  → Hybrid login: local password + Touch ID + Google Sign-In (same account)
+    Worker → Google Sign-In only → pending approval → restricted access
+    Admin Panel → /modules/admin/ (owner-only web module)
+
+────────────────────────────────────────────────────────────────────────────────
+📦 DATABASE MIGRATIONS
+────────────────────────────────────────────────────────────────────────────────
+
+RUN MIGRATIONS MANUALLY (dev):
+  node -e "require('./backend/core/db/database-manager').initialize()"
+
+VERIFY MIGRATION 008 APPLIED (check new tables exist):
+  sqlite3 database/MacOS.db ".tables"
+  sqlite3 database/MacOS.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users','user_permissions','user_contact_access','activity_log','owner_notifications','android_update_channels');"
+
+LIST ALL USERS (dev debug):
+  sqlite3 database/MacOS.db "SELECT id, email, role, status, invite_code FROM users;"
+
+LIST PENDING USERS:
+  sqlite3 database/MacOS.db "SELECT id, google_email, invite_code, created_at FROM users WHERE status='pending';"
+
+RESET OWNER ACCOUNT (emergency - if locked out):
+  sqlite3 database/MacOS.db "UPDATE users SET token_version = token_version + 1 WHERE role='owner';"
+
+BACKUP DATABASE MANUALLY:
+  node -e "const dm = new (require('./backend/core/db/database-manager'))(); dm.ensureBackupDirectory(); dm.connectDatabase(); dm.backupDatabase();"
+  # Or simply copy:
+  copy database\MacOS.db database\backups\MacOS-manual-backup.db  (Windows)
+  cp database/MacOS.db database/backups/MacOS-manual-backup.db    (Linux/Mac)
+
+CHECK DATABASE ON UBUNTU VM:
+  ssh my-mac 'sqlite3 /home/ubuntu/MacOS-Production/database/MacOS.db ".tables"'
+  ssh my-mac 'sqlite3 /home/ubuntu/MacOS-Production/database/MacOS.db "SELECT id, email, role, status FROM users;"'
+
+────────────────────────────────────────────────────────────────────────────────
+👤 USER MANAGEMENT (API - use after server is running)
+────────────────────────────────────────────────────────────────────────────────
+
+  Note: Replace <TOKEN> with owner's auth_token cookie value for curl commands.
+  Easier to use the Admin Panel UI at https://mac.faizal.uk/#admin
+
+LIST ALL USERS:
+  curl -b "auth_token=<TOKEN>" https://mac.faizal.uk/api/admin/users
+
+GET USER DETAILS + PERMISSIONS:
+  curl -b "auth_token=<TOKEN>" https://mac.faizal.uk/api/admin/users/<USER_ID>
+
+APPROVE A PENDING WORKER (with their invite code):
+  curl -X POST -b "auth_token=<TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{"inviteCode":"ABC123"}' \
+    https://mac.faizal.uk/api/admin/users/<USER_ID>/approve
+
+SUSPEND A WORKER (immediately invalidates their session):
+  curl -X POST -b "auth_token=<TOKEN>" \
+    https://mac.faizal.uk/api/admin/users/<USER_ID>/suspend
+
+SET MODULE PERMISSIONS FOR A WORKER:
+  curl -X PUT -b "auth_token=<TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{"billing":{"can_view":1,"can_create":1,"can_edit":1,"can_delete":0},"contacts":{"can_view":1,"can_create":0,"can_edit":0,"can_delete":0}}' \
+    https://mac.faizal.uk/api/admin/users/<USER_ID>/permissions
+
+SET ALLOWED CONTACTS FOR A WORKER (by contact IDs):
+  curl -X PUT -b "auth_token=<TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{"contactIds":[1,5,12,34]}' \
+    https://mac.faizal.uk/api/admin/users/<USER_ID>/contacts
+
+ASSIGN APK UPDATE CHANNEL FOR A WORKER:
+  curl -X PUT -b "auth_token=<TOKEN>" \
+    -H "Content-Type: application/json" \
+    -d '{"channel":"testing"}' \
+    https://mac.faizal.uk/api/admin/users/<USER_ID>/channel
+
+GET OWNER NOTIFICATIONS (pending approvals etc):
+  curl -b "auth_token=<TOKEN>" https://mac.faizal.uk/api/admin/notifications
+
+────────────────────────────────────────────────────────────────────────────────
+📋 ACTIVITY LOG (API)
+────────────────────────────────────────────────────────────────────────────────
+
+GET FULL ACTIVITY LOG (owner only):
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity"
+
+FILTER BY USER:
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity?userId=<USER_ID>"
+
+FILTER BY MODULE:
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity?module=billing"
+
+FILTER BY DATE RANGE:
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity?from=2026-08-01&to=2026-08-31"
+
+FILTER BY PLATFORM:
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity?platform=android"
+
+EXPORT ACTIVITY LOG AS CSV:
+  curl -b "auth_token=<TOKEN>" "https://mac.faizal.uk/api/admin/activity/export" -o activity-log.csv
+
+DATABASE DIRECT QUERY (dev/debug):
+  sqlite3 database/MacOS.db "SELECT u.email, a.module, a.action, a.resource_type, a.resource_name, a.platform, a.created_at FROM activity_log a JOIN users u ON a.user_id = u.id ORDER BY a.created_at DESC LIMIT 50;"
+
+────────────────────────────────────────────────────────────────────────────────
+📱 ANDROID APK UPDATE CHANNELS (NEW - replaces single-channel publish)
+────────────────────────────────────────────────────────────────────────────────
+
+  BEFORE (old - single channel):
+    bash scripts/publish-android-update.sh
+    powershell scripts/publish-android-update.ps1
+
+  AFTER (new - channel-aware):
+
+PUBLISH TO TESTING CHANNEL (debug build - for internal testers):
+  bash scripts/publish-android-update.sh --channel testing --version-name 2.1.0
+  bash scripts/publish-android-update.sh --channel testing --version-name 2.1.0 --release-notes "New Google login UI"
+
+PUBLISH TO PRODUCTION CHANNEL (release build - for live workers):
+  bash scripts/publish-android-update.sh --channel production --version-name 2.0.5
+  bash scripts/publish-android-update.sh --channel production --version-name 2.0.5 --release-notes "Stable multi-user release"
+
+DRY RUN (preview what would happen without building):
+  bash scripts/publish-android-update.sh --channel testing --dry-run
+  bash scripts/publish-android-update.sh --channel production --dry-run
+
+SKIP REMOTE UPLOAD (local only):
+  bash scripts/publish-android-update.sh --channel testing --skip-remote
+
+POWERSHELL EQUIVALENTS (Windows):
+  .\scripts\publish-android-update.ps1 -Channel testing -VersionName "2.1.0"
+  .\scripts\publish-android-update.ps1 -Channel production -VersionName "2.0.5"
+  .\scripts\publish-android-update.ps1 -Channel production -DryRun
+
+CHECK WHICH VERSION IS ON EACH CHANNEL (API):
+  curl https://mac.faizal.uk/api/android/update/check?channel=production
+  curl https://mac.faizal.uk/api/android/update/check?channel=testing
+
+CHECK CHANNEL FOLDERS ON UBUNTU VM:
+  ssh my-mac 'ls -lh /home/ubuntu/MacOS-Production/backend/uploads/android-app/production/'
+  ssh my-mac 'ls -lh /home/ubuntu/MacOS-Production/backend/uploads/android-app/testing/'
+  ssh my-mac 'cat /home/ubuntu/MacOS-Production/backend/uploads/android-app/production/update-manifest.json'
+  ssh my-mac 'cat /home/ubuntu/MacOS-Production/backend/uploads/android-app/testing/update-manifest.json'
+
+────────────────────────────────────────────────────────────────────────────────
+🚀 DEPLOY COMMANDS (UPDATED FOR MULTI-USER)
+────────────────────────────────────────────────────────────────────────────────
+
+FULL DEPLOY (unchanged - backend/ rsync already covers new admin module):
+  bash "Deploy Scripts/deploy-ubuntu.sh"
+
+  Note: deploy-ubuntu.sh now preserves uploads/ folder (not just database/backups/logs)
+  This protects production/ and testing/ APK channel folders from being wiped.
+
+HOTFIX DEPLOY (no rebuild - for config/backend-only changes):
+  bash "Deploy Scripts/deploy-ubuntu.sh" --hotfix
+
+VERIFY MIGRATION RAN ON VM AFTER DEPLOY:
+  ssh my-mac 'sqlite3 /home/ubuntu/MacOS-Production/database/MacOS.db "SELECT name FROM sqlite_master WHERE type='"'"'table'"'"' AND name='"'"'users'"'"';"'
+
+UPDATE NGINX CONFIG WITH SSE SUPPORT (after macos-nginx.conf updated):
+  scp macos-nginx.conf my-mac:/tmp/macos-nginx.conf
+  ssh my-mac 'sudo cp /tmp/macos-nginx.conf /etc/nginx/sites-available/mac.faizal.uk && sudo nginx -t && sudo systemctl reload nginx'
+
+TEST SSE ENDPOINT IS ALIVE (should stream, not close immediately):
+  curl -N -b "auth_token=<TOKEN>" https://mac.faizal.uk/api/realtime/events
+
+────────────────────────────────────────────────────────────────────────────────
+🔑 ENVIRONMENT VARIABLES (NEW - must add to .env on server)
+────────────────────────────────────────────────────────────────────────────────
+
+  Add these to .env (dev) and set manually on Ubuntu VM .env after first deploy:
+
+  # Google OAuth - Worker Login (separate from profile-link client if needed)
+  GOOGLE_WORKER_CLIENT_ID=<from Google Cloud Console>
+
+  # Firebase Cloud Messaging - Owner push notifications on Android
+  FCM_SERVER_KEY=<from Firebase Console → Project Settings → Cloud Messaging>
+
+  # Owner seed (used by migration 008 to create owner user record)
+  OWNER_EMAIL=your@email.com
+  OWNER_NAME=Mohammad Faizal
+
+SET ON UBUNTU VM (one-time after first deploy):
+  ssh my-mac
+  nano /home/ubuntu/MacOS-Production/.env
+  # Add the above variables, save, then:
+  cd /home/ubuntu/MacOS-Production && pm2 restart ecosystem.config.js --env oraclevm --only backend --update-env
+
+VERIFY ENV VARS LOADED:
+  ssh my-mac 'cd /home/ubuntu/MacOS-Production && node -e "require(\"dotenv\").config(); console.log(\"OWNER_EMAIL:\", process.env.OWNER_EMAIL, \"| FCM:\", !!process.env.FCM_SERVER_KEY)"'
+
+────────────────────────────────────────────────────────────────────────────────
+🔍 MULTI-USER HEALTH CHECKS & DEBUGGING
+────────────────────────────────────────────────────────────────────────────────
+
+CHECK AUTH STATUS (is server multi-user ready?):
+  curl https://mac.faizal.uk/api/auth/status
+
+VERIFY WORKER GOOGLE LOGIN ENDPOINT:
+  curl -X POST -H "Content-Type: application/json" \
+    -d '{"idToken":"<GOOGLE_ID_TOKEN>"}' \
+    https://mac.faizal.uk/api/auth/google/worker-login
+
+CHECK PERMISSIONS FOR LOGGED-IN USER:
+  curl -b "auth_token=<TOKEN>" https://mac.faizal.uk/api/profile/permissions
+
+COUNT ACTIVITY LOG ENTRIES:
+  sqlite3 database/MacOS.db "SELECT COUNT(*) as total_events, platform, module FROM activity_log GROUP BY platform, module ORDER BY total_events DESC;"
+
+CHECK IF TOKEN IS INVALIDATED (test suspend worked):
+  curl -b "auth_token=<OLD_TOKEN>" https://mac.faizal.uk/api/auth/verify
+  # Should return 401 if user was suspended or token_version incremented
+
+CHECK SSE REALTIME CONNECTION:
+  ssh my-mac 'curl -N -s -b "auth_token=<TOKEN>" http://127.0.0.1:3001/api/realtime/events &'
+  # Then in another terminal trigger a new user registration and watch for event
+
+TROUBLESHOOT WORKER CAN'T LOGIN:
+  1. Check Google client ID matches: grep GOOGLE_WORKER_CLIENT_ID .env
+  2. Check user status: sqlite3 database/MacOS.db "SELECT status, invite_code FROM users WHERE google_email='worker@gmail.com';"
+  3. Check token_version: sqlite3 database/MacOS.db "SELECT token_version FROM users WHERE google_email='worker@gmail.com';"
+
+TROUBLESHOOT WORKER SEES WRONG CONTACTS:
+  sqlite3 database/MacOS.db "SELECT c.name FROM contacts c JOIN user_contact_access uca ON c.id = uca.contact_id WHERE uca.user_id='<USER_ID>';"
+
+RUN MULTI-USER AUTH TEST SUITE:
+  node backend/scripts/test-auth-multiuser.js
+
+SET/VERIFY ADMIN DEFAULTS IN DB:
+  node backend/scripts/set-admin-defaults.js
+
+================================================================================
+Last Updated: August 26, 2026
+Environments: Dev (MacOS-Development/) | Windows Prod | Ubuntu VM (my-mac)
+Domain: https://mac.faizal.uk (Cloudflare → IPv6 Windows / IPv4 Ubuntu)
+Multi-User: Google Sign-In (workers) | Hybrid local+Google (owner) | Admin Panel
+================================================================================

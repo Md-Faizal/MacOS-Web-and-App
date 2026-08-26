@@ -1,0 +1,147 @@
+<div class="ai-vision-app">
+  
+  <!-- Static Desktop Sidebar -->
+  <nav class="ai-vision-sidebar" id="aiVisionSidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-icon">📷</div>
+      <h3>AI Vision Manager</h3>
+    </div>
+    <div class="ai-vision-tab active" data-tab="scan">
+      <span class="tab-icon">🔍</span> 
+      <span class="tab-label">Camera Scan</span>
+    </div>
+    <div class="ai-vision-tab" data-tab="profiles">
+      <span class="tab-icon">📚</span> 
+      <span class="tab-label">Knowledge Base</span>
+    </div>
+    <div class="ai-vision-tab" data-tab="teach">
+      <span class="tab-icon">🎓</span> 
+      <span class="tab-label">Teach AI</span>
+    </div>
+  </nav>
+
+  <!-- Main Content Area -->
+  <div class="ai-vision-content">
+    
+    <!-- Camera View (Scan Pane) -->
+    <div class="ai-vision-pane active" id="pane-scan">
+      <div class="ai-scanner-container" id="aiScannerContainer">
+        
+        <!-- Video Feed -->
+        <video id="aiCameraFeed" class="ai-camera-feed" autoplay playsinline muted></video>
+
+        <!-- Siri/Gemini Glow Overlay -->
+        <div class="ai-glow-border" id="aiGlowBorder"></div>
+
+        <!-- Top Bar with Gradient -->
+        <div class="ai-top-bar">
+          <div class="ai-top-bar-text" id="aiScanCounter">SCANS: 0</div>
+        </div>
+
+        <!-- Scanning matrix animation -->
+        <div class="ai-scan-matrix-overlay" id="aiScanMatrixOverlay"></div>
+        
+        <!-- Sweeping laser line -->
+        <div class="ai-scanner-sweeper" id="aiScannerSweeper"></div>
+
+        <!-- Result Overlay -->
+        <div class="ai-result-overlay" id="aiResultOverlay">
+          <div class="ai-result-close" id="aiResultCloseBtn">✕</div>
+          <div class="ai-result-header">
+            <i class="fas fa-check-circle"></i> Scan Complete
+          </div>
+          <div id="aiScanResultsContent" class="ai-scan-results-content">
+            <!-- Results rendered here -->
+          </div>
+        </div>
+
+        <!-- Right Side Controls (Capsule + Shutter) -->
+        <div class="ai-right-controls">
+          <!-- Capsule Controls -->
+          <div class="ai-capsule-controls">
+            <button class="ai-capsule-btn" id="aiBtnZoom" title="Toggle Zoom">
+              <span class="zoom-text">1x</span>
+            </button>
+            <button class="ai-capsule-btn" id="aiBtnGallery" title="Upload from Gallery">
+              <span>🖼️</span>
+            </button>
+            <button class="ai-capsule-btn" id="aiBtnFlashlight" title="Toggle Flashlight">
+              <span>🔦</span>
+            </button>
+            <input type="file" id="aiGalleryInput" accept="image/*" style="display:none;">
+          </div>
+
+          <!-- Squircle Shutter Button -->
+          <div class="ai-scan-trigger-wrapper">
+            <button class="ai-scan-trigger" id="aiScanTriggerBtn" title="Tap to Scan">
+              <span class="ai-scan-trigger-text">SCAN</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bottom Sheet for Recent Scans -->
+        <div class="ai-bottom-sheet" id="aiBottomSheet">
+          <div class="ai-bottom-sheet-handle-wrap" id="aiBottomSheetHandle">
+            <div class="ai-bottom-sheet-handle"></div>
+          </div>
+          <div class="ai-bottom-sheet-content">
+            <h3 class="ai-sheet-title" style="display: none;">Recent Scans</h3>
+            <div class="ai-sheet-empty" id="aiRecentScansEmpty">No recent scans.</div>
+            <div id="aiRecentScansList" class="ai-recent-scans-list">
+              <!-- Dynamically added recent scans -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div> <!-- End Scan Pane -->
+
+    <!-- Profiles Pane -->
+    <div class="ai-vision-pane" id="pane-profiles">
+      <div class="ai-pane-header">
+        <h2>Knowledge Base</h2>
+        <p>These are the packaging designs and labels the AI has learned.</p>
+      </div>
+      <div class="ai-padded-content">
+        <div class="ai-profiles-grid" id="aiProfilesGrid">
+          <!-- Profiles rendered here dynamically -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Teach Pane -->
+    <div class="ai-vision-pane" id="pane-teach">
+      <div class="ai-pane-header">
+        <h2>Teach New Label</h2>
+        <p>Upload or capture an image to train the AI model.</p>
+      </div>
+      <div class="ai-padded-content">
+        <div class="ai-teach-container">
+          <div class="ai-form-group">
+            <label>Product Name (Search)</label>
+            <input type="text" id="aiTeachProduct" list="aiTeachProductsList" placeholder="Search product catalogue..." autocomplete="off">
+            <datalist id="aiTeachProductsList"></datalist>
+          </div>
+
+          <div class="ai-form-group">
+            <label>Upload Image (or use Camera)</label>
+            <input type="file" id="aiTeachImageInput" accept="image/*" capture="environment">
+          </div>
+
+          <div class="ai-preview-box" id="aiTeachPreviewBox">
+            <span class="placeholder-text">Image Preview</span>
+          </div>
+
+          <div class="ai-form-group">
+            <label>Custom Label Notes (Optional)</label>
+            <input type="text" id="aiTeachNotes" placeholder="e.g. New 2026 Packaging Design">
+          </div>
+
+          <button class="ai-btn-primary" id="aiTeachSubmitBtn">SAVE TO KNOWLEDGE BASE</button>
+          <div id="aiTeachStatus" class="ai-teach-status"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

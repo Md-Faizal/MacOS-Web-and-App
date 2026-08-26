@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MacOS-Home</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="A beautiful MacOS-inspired web application with wallpaper management and productivity tools">
+  <meta name="theme-color" content="#667eea">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MacOS">
+  <link rel="apple-touch-icon" href="/assets/Favicon-CjgEC6R8.png">
+  <link rel="manifest" href="/assets/manifest-B2zw_Mip.json">
+  
+  <style id="auth-guard-style">
+    body { display: none !important; }
+  </style>
+  <script>
+    // Strict Session Guard: Block direct unauthenticated access to home.html
+    (async function() {
+      const redirectToLogin = () => {
+        window.location.replace('index.html');
+      };
+
+      try {
+        const isSessionActive = sessionStorage.getItem('macos_session_active') === 'true';
+        const isRemembered = localStorage.getItem('macos_remember_me_active') === 'true';
+
+        // 1. If not remembered and no active session flag, immediately reject
+        if (!isSessionActive && !isRemembered) {
+          console.warn('Unauthorized: No active session. Redirecting to login...');
+          redirectToLogin();
+          return;
+        }
+
+        // 2. Validate session with backend verification endpoint
+        const verifyRes = await fetch('/api/auth/verify');
+        if (!verifyRes.ok) {
+          console.warn('Unauthorized: Session invalid on backend. Redirecting to login...');
+          sessionStorage.removeItem('macos_session_active');
+          redirectToLogin();
+          return;
+        }
+
+        const verifyData = await verifyRes.json();
+        if (!verifyData.authenticated) {
+          sessionStorage.removeItem('macos_session_active');
+          redirectToLogin();
+          return;
+        }
+
+        // 3. Mark session active and reveal page content
+        sessionStorage.setItem('macos_session_active', 'true');
+        const guardStyle = document.getElementById('auth-guard-style');
+        if (guardStyle) guardStyle.remove();
+
+        // 4. Start periodic background session validation (every 2 minutes)
+        setInterval(async () => {
+          try {
+            const checkRes = await fetch('/api/auth/verify');
+            if (!checkRes.ok) throw new Error('Session invalid');
+            const data = await checkRes.json();
+            if (!data.authenticated) throw new Error('Not authenticated');
+          } catch (e) {
+            console.warn('Background session validation failed, locking screen...');
+            sessionStorage.removeItem('macos_session_active');
+            window.location.href = './index.html';
+          }
+        }, 120000); // 2 minutes
+      } catch (err) {
+        console.error('Session verification error:', err);
+        redirectToLogin();
+      }
+    })();
+
+    // Handle browser extension messages gracefully to suppress "Unchecked runtime.lastError" warnings
+    if (window.chrome && window.chrome.runtime) {
+      window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        // Silently ignore messages from extensions
+        try {
+          sendResponse({});
+        } catch (e) {
+          // Port might be closed, ignore
+        }
+        return true; // Keep the message channel open
+      });
+    }
+  </script>
+  
+  <link rel="icon" href="/assets/Favicon-CjgEC6R8.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* ===== BASE RESET ===== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      background: #000;
+    }
+
+
+    /* ===== WALLPAPER BACKGROUND ===== */
+    #wallpaperBackground {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+    }
+
+
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      padding: 2rem;
+      z-index: 1;
+    }
+
+    /* ===== DESKTOP AREA LAYOUT & SCROLLBAR HIDING ===== */
+    .desktop-area {
+      overflow: auto;
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE and Edge */
+      scroll-behavior: smooth;
+    }
+    .desktop-area::-webkit-scrollbar {
+      display: none; /* Chrome, Safari and Opera */
+    }
+
+    /* ===== TIME & DATE DISPLAY ===== */
+    .time-date-container {
+      text-align: center;
+      animation: slideInDown 0.8s ease-out;
+    }
+
+    .time-display {
+      font-size: 4.5rem;
+      font-weight: 800;
+      color: #ffffff;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      letter-spacing: -1px;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .date-info {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.25rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.9);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .day {
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .date {
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .separator {
+      width: 2px;
+      height: 1.25rem;
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    /* ===== BOTTOM APP BAR (moved to app-bar.css) ===== */
+
+    /* ===== LOGIN PAGE CLOCK ===== */
+    /* ===== TOP BAR CONTAINER & LAYOUT ===== */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 25;
+    }
+
+    .top-bar-left {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    .top-bar-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    /* AI ASSISTANT BUTTON */
+    .ai-assistant-btn {
+      background: none;
+      border: none;
+      padding: 0 !important;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .ai-assistant-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+    }
+
+    .ai-assistant-btn:active {
+      transform: scale(0.95);
+    }
+
+    .ai-assistant-icon {
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+    }
+
+    /* ===== APPLE LOGO - TOP LEFT ===== */
+    .apple-logo {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      z-index: 25;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .apple-logo:hover {
+      opacity: 0.8;
+      transform: scale(1.1);
+    }
+
+    .apple-logo svg {
+      width: 100%;
+      height: 100%;
+      fill: #ffffff;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    }
+
+    .apple-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    }
+
+    /* ===== RECENT APP DISPLAY ===== */
+    .recent-app-display {
+      display: flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      max-width: 150px;
+    }
+
+    .recent-app-display:hover {
+      transform: scale(1.05);
+    }
+
+    .recent-app-name {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* ===== TOP RIGHT TIME & WEATHER DISPLAY ===== */
+    .top-right-display {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      z-index: 20;
+      animation: slideInRight 0.8s ease-out;
+    }
+
+    .time-weather-section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #ffffff;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .time-weather-time {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .time-weather-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .time-weather-day {
+      letter-spacing: 0.3px;
+    }
+
+    .time-weather-date {
+      letter-spacing: 0.3px;
+    }
+
+    /* ===== WEATHER DISPLAY IN APP BAR ===== */
+    .weather-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.95);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .weather-icon-display {
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .weather-temp-display {
+      font-weight: 600;
+      min-width: 35px;
+    }
+
+    /* ===== QUICK SETTINGS CONTAINER ===== */
+    .quick-settings-container {
+      display: flex;
+      align-items: center;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes slideInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    /* ===== RESPONSIVE DESIGN ===== */
+    @media (max-width: 768px) {
+      .time-display {
+        font-size: 3rem;
+      }
+
+      .date-info {
+        font-size: 1rem;
+        gap: 1rem;
+      }
+
+      .bottom-app-bar {
+        padding: 0 0.3rem 0.3rem;
+        min-height: 80px;
+      }
+
+      .glass-app-bar {
+        max-width: 100%;
+        min-height: 62px;
+        padding: 0.2rem 0.25rem;
+      }
+
+      .app-bar-item {
+        padding: 0.15rem 0.3rem;
+        min-width: 50px;
+      }
+
+      .app-bar-icon {
+        font-size: 1.2rem;
+        width: 26px;
+        height: 26px;
+      }
+
+      .app-bar-label {
+        font-size: 0.6rem;
+      }
+
+      .app-slot {
+        min-width: 48px;
+        min-height: 44px;
+        padding: 0.12rem 0.15rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .time-display {
+        font-size: 2.5rem;
+      }
+
+      .date-info {
+        font-size: 0.9rem;
+        gap: 0.8rem;
+      }
+
+      .separator {
+        height: 1rem;
+      }
+
+      .bottom-app-bar {
+        padding: 0 0.2rem 0.3rem;
+        min-height: 76px;
+      }
+
+      .glass-app-bar {
+        max-width: 100%;
+        min-height: 58px;
+        padding: 0.2rem 0.2rem;
+        border-radius: 0.7rem;
+      }
+
+      .app-bar-item {
+        padding: 0.12rem 0.25rem;
+        min-width: 45px;
+      }
+
+      .app-bar-icon {
+        font-size: 0.95rem;
+        width: 22px;
+        height: 22px;
+      }
+
+      .app-bar-label {
+        font-size: 0.52rem;
+      }
+
+      .app-slot {
+        min-width: 42px;
+        min-height: 40px;
+        padding: 0.1rem 0.12rem;
+      }
+
+      .main-content {
+        gap: 1rem;
+      }
+    }
+
+    /* Extra small devices (landscape phones, small tablets) */
+    @media (max-width: 600px) and (max-height: 500px) {
+      .bottom-app-bar {
+        min-height: 70px;
+        padding: 0 0.2rem 0.2rem;
+      }
+
+      .glass-app-bar {
+        min-height: 55px;
+        padding: 0.2rem 0.2rem;
+      }
+
+      .app-bar-item {
+        min-width: 40px;
+        padding: 0.15rem 0.2rem;
+      }
+
+      .app-bar-icon {
+        font-size: 0.9rem;
+        width: 20px;
+        height: 20px;
+      }
+
+      .app-bar-label {
+        font-size: 0.5rem;
+      }
+    }
+
+    /* Tablet and iPad Portrait */
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .bottom-app-bar {
+        padding: 0 1rem 0.5rem;
+        min-height: 95px;
+      }
+
+      .glass-app-bar {
+        max-width: 85%;
+        min-height: 70px;
+        padding: 0.4rem 1rem;
+      }
+
+      .app-bar-item {
+        padding: 0.35rem 0.6rem;
+        min-width: 65px;
+      }
+
+      .app-bar-icon {
+        font-size: 1.5rem;
+        width: 30px;
+        height: 30px;
+      }
+
+      .app-bar-label {
+        font-size: 0.7rem;
+      }
+
+      .app-slot {
+        min-width: 58px;
+        min-height: 50px;
+      }
+    }
+
+    /* Large screens and desktops */
+    @media (min-width: 1025px) {
+      .bottom-app-bar {
+        padding: 0 2rem 0.5rem;
+      }
+
+      .glass-app-bar {
+        max-width: 70%;
+      }
+    }
+
+    /* Optimize for touch devices */
+    @media (hover: none) and (pointer: coarse) {
+      .app-bar-item,
+      .app-slot {
+        min-width: 54px;
+        min-height: 54px;
+      }
+
+      .app-bar-item:active {
+        background: rgba(255, 255, 255, 0.25);
+      }
+    }
+
+    /* ===== DESKTOP AREA ===== */
+    #desktopArea {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .desktop-area::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .desktop-area::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .desktop-area::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 5px;
+    }
+
+    .desktop-area::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .desktop-shortcut {
+      cursor: grab;
+    }
+
+    .desktop-shortcut:hover .shortcut-icon-container {
+      transform: scale(1.1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .shortcut-icon-container {
+      transition: all 0.2s ease;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/home-DLClfD86.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/desktop-y9lyFXz3.js">
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
+  <link rel="stylesheet" crossorigin href="/assets/desktop-CYWaaGZd.css">
+  <link rel="stylesheet" crossorigin href="/assets/home-DKjIZxH3.css">
+</head>
+<body>
+  <!-- ========================================
+       TOP BAR - SYSTEM STATUS & CONTROLS
+       ======================================== -->
+  
+  <!-- Wallpaper Background - Backup hardcoded wallpaper -->
+  <div id="wallpaperBackground" style="background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg');"></div>
+
+  <!-- Top Bar Container -->
+  <div class="top-bar">
+    
+    <!-- Top Bar Left: Apple Logo -->
+    <div class="top-bar-left">
+      <div class="apple-logo" id="appleLogo">
+        <img src="/assets/Images/pngimg.com - apple_logo_PNG19680.png" alt="Apple Logo">
+      </div>
+      <div class="recent-app-display" id="recentAppDisplay">
+        <span class="recent-app-name"></span>
+      </div>
+    </div>
+
+    <!-- Top Bar Right: Search, Settings, Weather, and Time -->
+    <div class="top-bar-right">
+      <div class="login-page-clock" id="loginPageClock">
+        <!-- Search Icon -->
+        <button class="top-bar-icon-button search-icon-button" id="searchButton" title="Search">
+          <img src="/assets/Images/Search.png" alt="Search" class="top-bar-icon-img">
+        </button>
+        
+        <!-- Search Panel (hidden by default) -->
+        <div class="search-panel" id="searchPanel">
+          <div class="search-panel-content">
+            <div class="search-input-wrapper">
+              <input 
+                type="text" 
+                class="search-input" 
+                id="searchInput" 
+                placeholder="Search..."
+                autocomplete="off"
+              >
+              <button class="search-close-btn" id="closeSearchBtn">&times;</button>
+            </div>
+            <div class="search-results" id="searchResults"></div>
+          </div>
+        </div>
+        
+        <!-- Quick Settings Icon -->
+        <div id="quickSettingsContainer" class="quick-settings-container"></div>
+        
+        <!-- AI Assistant (Siri) Button -->
+        <button id="aiAssistantBtn" class="ai-assistant-btn" title="AI Assistant">
+          <img src="/assets/Images/Siri.png" alt="AI Assistant" class="ai-assistant-icon">
+        </button>
+        
+        <!-- Weather Display -->
+        <div class="weather-display login" id="loginWeatherDisplay">
+          <span class="weather-icon" id="loginWeatherIcon">☁️</span>
+          <span class="weather-temp" id="loginWeatherTemp">--°</span>
+        </div>
+        
+        <!-- Clock Display -->
+        <div id="loginClockDisplay" class="login-clock-display">Loading...</div>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- Main Content -->
+
+  <!-- Notes App Container -->
+  <div id="notesAppContainer"></div>
+
+  <!-- Analytics App Container -->
+  <div id="analyticsAppContainer"></div>
+  <div id="cloudAppContainer"></div>
+  <div id="settingsContainer"></div>
+
+  <!-- Billing App Container -->
+  <div id="billingAppContainer"></div>
+
+  <!-- Calendar App Container -->
+  <div id="calendarAppContainer"></div>
+
+  <!-- Calculator App Container -->
+  <div id="calculatorAppContainer"></div>
+
+  <!-- Settings App Container -->
+  <div id="settingsAppContainer"></div>
+
+  <!-- Contacts App Container -->
+  <div id="contactsAppContainer"></div>
+
+  <!-- Launchpad Container -->
+  <div id="launchpadAppContainer"></div>
+
+  <!-- Product Manager Container -->
+  <div id="productAppContainer"></div>
+
+  <!-- AI Vision Container -->
+  <div id="aiVisionAppContainer"></div>
+
+  <!-- Bottom Dock -->
+  <div class="dock-container">
+    <div class="dock" id="dockContainer">
+      <!-- App icons will be added here -->
+    </div>
+  </div>
+
+  <!-- Shared Scripts -->
+  <!-- Unified Wallpaper Engine -->
+  
+  <!-- Display Components -->
+  
+  <!-- AI Assistant -->
+  
+  <!-- Chart.js for dashboard visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  
+  <!-- App Window Framework -->
+  
+  <!-- Notes App -->
+
+  <!-- Billing App -->
+
+  <!-- Analytics App -->
+
+  <!-- Calendar App -->
+
+  <!-- Calculator App -->
+
+  <!-- Settings App -->
+  <!-- App Launchers -->
+
+  <!-- Product Manager App -->
+
+  <!-- Launchpad App -->
+
+    <!-- AI Vision Services & App -->
+
+    <!-- App Bar & Dock Module -->
+  
+
+  <!-- Context Menu Actions Module -->
+
+  <!-- Desktop Widgets Panel -->
+
+  <!-- Desktop Context Menu -->
+
+  <!-- Desktop Manager -->
+
+  <!-- Diagnostic: Verify all billing scripts loaded -->
+
+  <!-- Service Worker Registration for PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('✓ Service Worker registered successfully:', registration);
+          })
+          .catch(error => {
+            console.log('✗ Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
+</body>
+</html>

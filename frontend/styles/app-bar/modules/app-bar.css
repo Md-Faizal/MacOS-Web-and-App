@@ -1,0 +1,272 @@
+/* ===== DOCK CONTAINER STYLES ===== */
+.dock-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+  min-height: 85px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0.5rem 0.5rem;
+  /* Keep the dock on top of all app windows */
+  z-index: 1000000;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.1) 100%);
+  /* Allow pointer events to pass through empty dock area for window resizing */
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ===== DOCK ===== */
+.dock {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-behavior: smooth;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 70px;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37),
+              inset 1px 1px 0 rgba(255, 255, 255, 0.6),
+              inset 0 0 10px rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.35rem;
+  animation: slideInUp 0.8s ease-out;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.dock:active {
+  cursor: grabbing;
+}
+
+/* Hide scrollbar */
+.dock::-webkit-scrollbar {
+  display: none;
+}
+
+.dock {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ===== DOCK ITEMS ===== */
+.dock-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 1rem;
+  transition: all 0.35s cubic-bezier(0.2, 1, 0.2, 1);
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  /* Re-enable pointer events for dock items */
+  pointer-events: auto;
+  min-width: 60px;
+  flex-shrink: 0;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* ===== DRAG AND DROP ANIMATIONS ===== */
+@keyframes pickUp {
+  0% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.15) translateY(-8px);
+    opacity: 0.8;
+  }
+}
+
+@keyframes drop {
+  0% {
+    transform: scale(1.15) translateY(-8px);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Swap animation: fade out/in with slight scale to match Apple-like style */
+@keyframes swap {
+  0% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.98) translateY(-6px);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.dock-item.dragging {
+  animation: pickUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.dock-item.dropping {
+  animation: drop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.dock-item.swapping {
+  /* Use a smoother ease for fade transition to fit Apple theme */
+  animation: swap 0.45s ease-in-out forwards;
+}
+
+.dock-icon {
+  font-size: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  transition: transform 0.35s cubic-bezier(0.2, 1, 0.2, 1);
+}
+
+.dock-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: none;
+}
+
+/* ===== DOCK INDICATOR DOT ===== */
+.dock-indicator {
+  width: 5px;
+  height: 5px;
+  background: #ffffff;
+  border-radius: 50%;
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s ease-out, background 0.3s ease-out;
+}
+
+.dock-item.active .dock-indicator,
+.dock-slot:has(.dock-item.active) .dock-indicator {
+  opacity: 1;
+}
+
+.dock-item.minimized .dock-indicator,
+.dock-slot:has(.dock-item.minimized) .dock-indicator {
+  opacity: 1;
+  background: #fbbf24;
+}
+
+/* ===== DOCK ITEM HOVER/ACTIVE STATE ===== */
+/* ===== DOCK MAGNIFICATION EFFECT REMOVED ===== */
+/* Keep only essential dock item hover background and active state */
+.dock-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.dock-item:active {
+  transform: scale(0.95);
+}
+
+.dock-item.active {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+/* ===== DOCK SLOT STYLES ===== */
+.dock-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  cursor: auto;
+  padding: 0.15rem 0.2rem;
+  border-radius: 1rem;
+  transition: background 0.3s ease, transform 0.3s ease;
+  transform-origin: bottom;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  min-width: 50px;
+  flex-shrink: 0;
+  position: relative;
+  min-height: 48px;
+  user-select: none;
+  -webkit-user-select: none;
+  /* Re-enable pointer events for dock slots */
+  pointer-events: auto;
+}
+
+/* Show grab cursor only on non-empty slots */
+.dock-slot:not(:empty) {
+  cursor: grab;
+}
+
+.dock-slot:not(:empty):active {
+  cursor: grabbing;
+}
+
+.dock-slot.dragging {
+  opacity: 0.6;
+  cursor: grabbing;
+  transform: scale(0.95);
+}
+
+.dock-slot.drag-over {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Ensure empty slots remain flexible */
+.dock-slot:empty {
+  display: flex !important;
+  pointer-events: auto;
+}
+
+.dock-slot:empty.hidden {
+  display: none !important;
+  pointer-events: none;
+}
+
+.dock-slot:empty:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 1rem;
+}
+
+/* ===== DOCK SLOT DIVIDER ===== */
+.dock-slot-divider {
+  width: 1px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 0 0.35rem;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+

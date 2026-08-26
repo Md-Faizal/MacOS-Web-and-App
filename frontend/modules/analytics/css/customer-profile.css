@@ -1,0 +1,100 @@
+/* Customer Profile specific styles for Analytics */
+.analytics-window .profile-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.analytics-window .profile-info h2 { 
+  margin: 0; 
+  font-size: 28px; 
+  color: #1e293b;
+}
+
+.analytics-window .profile-info p { 
+  margin: 4px 0 0 0; 
+  color: #64748b; 
+  font-size: 14px; 
+}
+
+.analytics-window .profile-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.analytics-window .badge {
+  padding: 6px 12px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.analytics-window .stats-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.analytics-window .mini-stat {
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+.analytics-window .mini-stat-label { 
+  font-size: 11px; 
+  color: #64748b; 
+  font-weight: 600; 
+  text-transform: uppercase; 
+}
+
+.analytics-window .mini-stat-value { 
+  font-size: 20px; 
+  font-weight: 700; 
+  margin-top: 4px; 
+  color: #334155; 
+}
+
+.analytics-window .products-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 8px 0;
+  scrollbar-width: none;
+}
+
+.analytics-window .product-tag {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.analytics-window .product-tag-name { 
+  font-weight: 700; 
+  font-size: 13px; 
+  margin-bottom: 4px; 
+  color: #1e293b;
+}
+
+.analytics-window .product-tag-freq { 
+  font-size: 11px; 
+  color: #64748b; 
+}
+
+.analytics-window .list-section {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+}

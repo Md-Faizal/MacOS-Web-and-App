@@ -1,0 +1,47 @@
+2026-03-12 20:01:19 +05:30: Running in environment: production
+2026-03-12 20:01:19 +05:30: ✓ Production environment detected
+2026-03-12 20:01:19 +05:30: 
+🔧 Initializing Database Manager...
+2026-03-12 20:01:19 +05:30: ✓ Connected to database: C:\Users\HP\Desktop\MacOS Project\MacOS-Development\database\MacOS.db (production)
+2026-03-12 20:01:19 +05:30: ✓ No old tables found (clean installation)
+2026-03-12 20:01:19 +05:30: 🧹 Checking for unknown tables and columns...
+2026-03-12 20:01:20 +05:30: ✓ Schema cleanup completed
+2026-03-12 20:01:20 +05:30: ✓ Database schema initialized (all tables created/verified)
+2026-03-12 20:01:20 +05:30: ✓ Database integrity verified
+2026-03-12 20:01:20 +05:30: ✓ Active tables: app_settings, batches, categories, contacts, customer_item_memory, invoice_items, invoices, ledger, notes, order_items, orders, payments, products, status_checks, variants
+2026-03-12 20:01:20 +05:30: ✓ Database initialization completed successfully
+
+2026-03-12 20:01:20 +05:30: ✓ Database initialized and ready
+
+2026-03-12 20:01:20 +05:30: [LOAD] bill-calculator.js starting...
+2026-03-12 20:01:20 +05:30: 🔧 Initializing APIs...
+2026-03-12 20:01:20 +05:30: ✓ Billing using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Orders using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Payments using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Variants using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Batches using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Credit Notes using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Invoices using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Product List using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Contacts using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Notes using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Calendar using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Analytics using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Settings using centralized database
+2026-03-12 20:01:20 +05:30: ✓ Smart Suggestions using centralized database
+2026-03-12 20:01:20 +05:30: ✓ AI Assistant using centralized database
+2026-03-12 20:01:20 +05:30: ✓ All modules initialized (9/15)
+
+2026-03-12 20:01:20 +05:30: 📡 Mounting API routes...
+2026-03-12 20:01:20 +05:30: ✓ All 10 API routes mounted
+
+2026-03-12 20:01:20 +05:30: ═══════════════════════════════════════════════════════════
+2026-03-12 20:01:20 +05:30: ✨ Backend MacOS API Server running on port 3001 (host ::)
+2026-03-12 20:01:20 +05:30: ───────────────────────────────────────────────────────────
+2026-03-12 20:01:20 +05:30: Local: http://localhost:3001
+2026-03-12 20:01:20 +05:30: LAN:   http://127.0.0.1:3001
+2026-03-12 20:01:20 +05:30: ───────────────────────────────────────────────────────────
+2026-03-12 20:01:20 +05:30: 📚 API Documentation: http://localhost:3001/api
+2026-03-12 20:01:20 +05:30: 💚 Health Check:      http://localhost:3001/api/health
+2026-03-12 20:01:20 +05:30: ═══════════════════════════════════════════════════════════
+

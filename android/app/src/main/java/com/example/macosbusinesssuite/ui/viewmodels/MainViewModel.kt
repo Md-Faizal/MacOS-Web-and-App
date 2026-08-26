@@ -1,0 +1,1467 @@
+package com.example.macosbusinesssuite.ui.viewmodels
+
+import android.app.Application
+import android.content.Context
+import android.os.Environment
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.macosbusinesssuite.AppUpdateNotificationManager
+import com.example.macosbusinesssuite.AppUpdateUtils
+import com.example.macosbusinesssuite.BuildConfig
+import com.example.macosbusinesssuite.data.api.NetworkClient
+import com.example.macosbusinesssuite.data.api.SessionManager
+import com.example.macosbusinesssuite.data.model.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.io.File
+
+enum class ThemeMode {
+    DARK, LIGHT, AUTO
+}
+
+sealed class AndroidUpdateUiState {
+    data object Idle : AndroidUpdateUiState()
+    data object Checking : AndroidUpdateUiState()
+    data object UpToDate : AndroidUpdateUiState()
+    data class Available(val manifest: AndroidUpdateManifest?) : AndroidUpdateUiState()
+    data class CachedAvailable(
+        val cachedFile: File,
+        val versionName: String,
+        val versionCode: Int
+    ) : AndroidUpdateUiState()
+    data class VersionConflict(
+        val cachedVersionName: String,
+        val cachedVersionCode: Int,
+        val serverManifest: AndroidUpdateManifest
+    ) : AndroidUpdateUiState()
+    data class Downloading(
+        val progress: Float = 0f,
+        val downloadedMB: String = "0 MB",
+        val totalMB: String = "0 MB"
+    ) : AndroidUpdateUiState()
+    data class Verifying(val step: String = "Verifying integrity...") : AndroidUpdateUiState()
+    data class ReadyToInstall(val file: File) : AndroidUpdateUiState()
+    data class Error(val message: String, val retryable: Boolean = true) : AndroidUpdateUiState()
+}
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    val sessionManager = SessionManager(application)
+
+    // Theme Mode State
+    private val _themeMode = MutableStateFlow(ThemeMode.AUTO)
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+    }
+
+    // Navigation & Auth state
+    private val _isLoggedIn = MutableStateFlow(sessionManager.isLoggedIn)
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _serverUrl = MutableStateFlow(sessionManager.serverUrl)
+    val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // Profile & Device States
+    private val _profile = MutableStateFlow<ProfileData?>(null)
+    val profile: StateFlow<ProfileData?> = _profile.asStateFlow()
+
+    private val _devices = MutableStateFlow<List<DeviceItem>>(emptyList())
+    val devices: StateFlow<List<DeviceItem>> = _devices.asStateFlow()
+
+    // Security & Auth Settings States
+    private val _passwordSet = MutableStateFlow(false)
+    val passwordSet: StateFlow<Boolean> = _passwordSet.asStateFlow()
+
+    private val _hasSecurityQuestion = MutableStateFlow(false)
+    val hasSecurityQuestion: StateFlow<Boolean> = _hasSecurityQuestion.asStateFlow()
+
+    private val _biometricEnabled = MutableStateFlow(sessionManager.biometricEnabled)
+    val biometricEnabled: StateFlow<Boolean> = _biometricEnabled.asStateFlow()
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        sessionManager.biometricEnabled = enabled
+        _biometricEnabled.value = enabled
+    }
+
+    private val _marqueeEnabled = MutableStateFlow(sessionManager.marqueeEnabled)
+    val marqueeEnabled: StateFlow<Boolean> = _marqueeEnabled.asStateFlow()
+
+    fun setMarqueeEnabled(enabled: Boolean) {
+        sessionManager.marqueeEnabled = enabled
+        _marqueeEnabled.value = enabled
+    }
+
+    fun setRemoteLoggingEnabled(enabled: Boolean) {
+        sessionManager.remoteLoggingEnabled = enabled
+        try {
+            com.example.macosbusinesssuite.util.RemoteLogger.setEnabled(enabled)
+        } catch (_: Exception) {}
+    }
+
+    fun clearLocalLogs() {
+        try {
+            com.example.macosbusinesssuite.util.RemoteLogger.clearLocalLogs()
+        } catch (_: Exception) {}
+    }
+
+    // Module States
+    private val _products = MutableStateFlow<List<Product>>(emptyList())
+    val products: StateFlow<List<Product>> = _products.asStateFlow()
+
+    private val _categories = MutableStateFlow<List<Category>>(emptyList())
+    val categories: StateFlow<List<Category>> = _categories.asStateFlow()
+
+    private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
+    val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+
+    private val _bills = MutableStateFlow<List<Bill>>(emptyList())
+    val bills: StateFlow<List<Bill>> = _bills.asStateFlow()
+
+    private val _billingSummary = MutableStateFlow<BillingSummary?>(null)
+    val billingSummary: StateFlow<BillingSummary?> = _billingSummary.asStateFlow()
+
+    private val _analyticsSummary = MutableStateFlow<AnalyticsSummary?>(null)
+    val analyticsSummary: StateFlow<AnalyticsSummary?> = _analyticsSummary.asStateFlow()
+
+    private val _executiveKPI = MutableStateFlow<ExecutiveKPI?>(null)
+    val executiveKPI: StateFlow<ExecutiveKPI?> = _executiveKPI.asStateFlow()
+
+    private val _salesTrends = MutableStateFlow<List<SalesTrendPoint>>(emptyList())
+    val salesTrends: StateFlow<List<SalesTrendPoint>> = _salesTrends.asStateFlow()
+
+    private val _topProducts = MutableStateFlow<List<TopProductItem>>(emptyList())
+    val topProducts: StateFlow<List<TopProductItem>> = _topProducts.asStateFlow()
+
+    private val _topCustomers = MutableStateFlow<List<TopCustomerItem>>(emptyList())
+    val topCustomers: StateFlow<List<TopCustomerItem>> = _topCustomers.asStateFlow()
+
+    private val _salesDeepDive = MutableStateFlow<SalesDeepDiveResponse?>(null)
+    val salesDeepDive: StateFlow<SalesDeepDiveResponse?> = _salesDeepDive.asStateFlow()
+
+    private val _orderFunnel = MutableStateFlow<OrderFunnelResponse?>(null)
+    val orderFunnel: StateFlow<OrderFunnelResponse?> = _orderFunnel.asStateFlow()
+
+    private val _arAging = MutableStateFlow<ARAgingResponse?>(null)
+    val arAging: StateFlow<ARAgingResponse?> = _arAging.asStateFlow()
+
+    private val _rfmSegmentation = MutableStateFlow<List<RFMCustomerItem>>(emptyList())
+    val rfmSegmentation: StateFlow<List<RFMCustomerItem>> = _rfmSegmentation.asStateFlow()
+
+    private val _productVelocity = MutableStateFlow<ProductVelocityResponse?>(null)
+    val productVelocity: StateFlow<ProductVelocityResponse?> = _productVelocity.asStateFlow()
+
+    private val _categoryPerformance = MutableStateFlow<List<CategoryPerformanceItem>>(emptyList())
+    val categoryPerformance: StateFlow<List<CategoryPerformanceItem>> = _categoryPerformance.asStateFlow()
+
+    private val _comparativeYoY = MutableStateFlow<YoYResponse?>(null)
+    val comparativeYoY: StateFlow<YoYResponse?> = _comparativeYoY.asStateFlow()
+
+    private val _comparativeMoM = MutableStateFlow<List<MoMItem>>(emptyList())
+    val comparativeMoM: StateFlow<List<MoMItem>> = _comparativeMoM.asStateFlow()
+
+    private val _comparativeQoQ = MutableStateFlow<List<QoQItem>>(emptyList())
+    val comparativeQoQ: StateFlow<List<QoQItem>> = _comparativeQoQ.asStateFlow()
+
+    private val _comparativeCustom = MutableStateFlow<CustomComparisonResult?>(null)
+    val comparativeCustom: StateFlow<CustomComparisonResult?> = _comparativeCustom.asStateFlow()
+
+    private val _selectedCustomerStats = MutableStateFlow<CustomerStats?>(null)
+    val selectedCustomerStats: StateFlow<CustomerStats?> = _selectedCustomerStats.asStateFlow()
+
+    private val _selectedCustomer = MutableStateFlow<Contact?>(null)
+    val selectedCustomer: StateFlow<Contact?> = _selectedCustomer.asStateFlow()
+
+    private val _analyticsLoading = MutableStateFlow<Boolean>(false)
+    val analyticsLoading: StateFlow<Boolean> = _analyticsLoading.asStateFlow()
+
+    private val _updateState = MutableStateFlow<AndroidUpdateUiState>(AndroidUpdateUiState.Idle)
+    val updateState: StateFlow<AndroidUpdateUiState> = _updateState.asStateFlow()
+
+    // Cached manifest from last successful check
+    private val _updateManifest = MutableStateFlow<AndroidUpdateManifest?>(null)
+    val updateManifest: StateFlow<AndroidUpdateManifest?> = _updateManifest.asStateFlow()
+
+    // Preflight warnings from last check
+    private val _preflightWarnings = MutableStateFlow<List<String>>(emptyList())
+    val preflightWarnings: StateFlow<List<String>> = _preflightWarnings.asStateFlow()
+
+    // Update history lineage
+    private val _updateHistory = MutableStateFlow<List<AndroidVersionHistory>>(emptyList())
+    val updateHistory: StateFlow<List<AndroidVersionHistory>> = _updateHistory.asStateFlow()
+
+    // Update check cooldown (24 hours in millis)
+    private val UPDATE_CHECK_COOLDOWN_MS = 24 * 60 * 60 * 1000L
+    private val UPDATE_PREFS_NAME = "android_update_prefs"
+    private val KEY_LAST_UPDATE_CHECK = "last_update_check_ms"
+
+    init {
+        // If not keep logged in, clear session on startup
+        if (!sessionManager.keepLoggedIn) {
+            sessionManager.clearSession()
+        }
+
+        // If local preferences indicate logged in, stay logged in and load data
+        if (sessionManager.isLoggedIn) {
+            _isLoggedIn.value = true
+            loadAllData()
+            checkAuthStatus()
+        } else {
+            _isLoggedIn.value = false
+            checkAuthStatus()
+        }
+
+        // Post-installation detection on startup
+        checkPostInstallSuccess()
+
+        // Silent auto-check for updates on app startup (if enabled)
+        if (sessionManager.autoUpdateCheckEnabled) {
+            silentUpdateCheckIfDue()
+        }
+    }
+
+    fun updateServerUrl(url: String) {
+        sessionManager.serverUrl = url
+        _serverUrl.value = sessionManager.serverUrl
+        NetworkClient.resetClient()
+        checkAuthStatus()
+    }
+
+    fun checkAuthStatus() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.getAuthStatus()
+                if (response.isSuccessful && response.body()?.authenticated == true) {
+                    _isLoggedIn.value = true
+                    sessionManager.isLoggedIn = true
+                    loadAllData()
+                } else if (!sessionManager.isLoggedIn) {
+                    _isLoggedIn.value = false
+                }
+            } catch (e: Exception) {
+                // Keep local session if server temporary unreachable
+            }
+        }
+    }
+
+    fun login(username: String, password: String, keepLoggedIn: Boolean = false, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.login(LoginRequest(username = username, password = password))
+                if (response.isSuccessful && response.body()?.success == true) {
+                    _isLoggedIn.value = true
+                    sessionManager.isLoggedIn = true
+                    sessionManager.keepLoggedIn = keepLoggedIn
+                    response.body()?.token?.let { token ->
+                        sessionManager.authToken = token
+                    }
+                    response.body()?.user?.let {
+                        sessionManager.userId = it.id ?: "admin_auth"
+                        sessionManager.userName = it.username ?: username
+                        sessionManager.userEmail = it.email ?: ""
+                        sessionManager.userRole = it.role ?: "owner"
+                        sessionManager.userStatus = "active"
+                    }
+                    loadAllData()
+                    onResult(true, null)
+                } else {
+                    val msg = response.body()?.message ?: "Login failed. Check credentials."
+                    _errorMessage.value = msg
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                val msg = "Connection error: ${e.localizedMessage}"
+                _errorMessage.value = msg
+                onResult(false, msg)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun googleWorkerLogin(idToken: String, onResult: (Boolean, String?, Map<String, Any?>?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.googleWorkerLogin(
+                    mapOf(
+                        "idToken" to idToken,
+                        "deviceName" to android.os.Build.MODEL,
+                        "deviceType" to "Android"
+                    )
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    val status = body["status"] as? String ?: "pending"
+                    if (status == "active") {
+                        val token = body["token"] as? String
+                        val role = body["role"] as? String ?: "worker"
+                        val updateChannel = body["updateChannel"] as? String ?: "production"
+                        val userObj = body["user"] as? Map<*, *>
+                        
+                        sessionManager.isLoggedIn = true
+                        sessionManager.authToken = token
+                        sessionManager.userRole = role
+                        sessionManager.userStatus = status
+                        sessionManager.updateChannel = updateChannel
+                        userObj?.let {
+                            sessionManager.userId = it["id"] as? String
+                            sessionManager.userName = it["name"] as? String
+                            sessionManager.userEmail = it["email"] as? String
+                            sessionManager.userPicture = it["picture"] as? String
+                        }
+                        _isLoggedIn.value = true
+                        loadAllData()
+                        onResult(true, null, body)
+                    } else {
+                        onResult(false, null, body)
+                    }
+                } else {
+                    val msg = "Google sign-in failed. Please try again."
+                    _errorMessage.value = msg
+                    onResult(false, msg, null)
+                }
+            } catch (e: Exception) {
+                val msg = "Connection error: ${e.localizedMessage}"
+                _errorMessage.value = msg
+                onResult(false, msg, null)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun checkWorkerStatus(inviteCode: String?, email: String?, onResult: (Boolean, Map<String, Any?>?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.checkWorkerStatus(inviteCode = inviteCode, email = email)
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    val isApproved = body["approved"] == true || body["status"] == "active"
+                    if (isApproved) {
+                        val token = body["token"] as? String
+                        val role = body["role"] as? String ?: "worker"
+                        val updateChannel = body["updateChannel"] as? String ?: "production"
+                        val userObj = body["user"] as? Map<*, *>
+
+                        sessionManager.isLoggedIn = true
+                        sessionManager.authToken = token
+                        sessionManager.userRole = role
+                        sessionManager.userStatus = "active"
+                        sessionManager.updateChannel = updateChannel
+                        userObj?.let {
+                            sessionManager.userId = it["id"] as? String
+                            sessionManager.userName = it["name"] as? String
+                            sessionManager.userEmail = it["email"] as? String
+                            sessionManager.userPicture = it["picture"] as? String
+                        }
+                        _isLoggedIn.value = true
+                        loadAllData()
+                    }
+                    onResult(isApproved, body)
+                } else {
+                    onResult(false, null)
+                }
+            } catch (_: Exception) {
+                onResult(false, null)
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                service.logout()
+            } catch (_: Exception) {}
+            sessionManager.clearSession()
+            _isLoggedIn.value = false
+        }
+    }
+
+    /**
+     * Check if the app was recently updated and trigger post-install success notification.
+     */
+    private fun checkPostInstallSuccess() {
+        val currentCode = BuildConfig.VERSION_CODE
+        val lastCode = sessionManager.lastInstalledVersionCode
+
+        if (lastCode > 0 && currentCode > lastCode) {
+            AppUpdateNotificationManager.showPostInstallSuccessNotification(
+                getApplication(),
+                BuildConfig.VERSION_NAME,
+                currentCode
+            )
+            AppUpdateUtils.clearCachedApk(getApplication(), sessionManager)
+        }
+        sessionManager.lastInstalledVersionCode = currentCode
+    }
+
+    /**
+     * Fetch release lineage history from backend.
+     */
+    fun fetchUpdateHistory() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.getAndroidUpdateHistory()
+                if (response.isSuccessful) {
+                    _updateHistory.value = response.body() ?: emptyList()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Toggle background update checker setting.
+     */
+    fun setAutoUpdateCheckEnabled(enabled: Boolean) {
+        sessionManager.autoUpdateCheckEnabled = enabled
+        if (!enabled) {
+            AppUpdateNotificationManager.dismissAllUpdateNotifications(getApplication())
+        }
+    }
+
+    /**
+     * Silent auto-check on startup with 24-hour cooldown.
+     * Posts interactive notification if update is found.
+     */
+    private fun silentUpdateCheckIfDue() {
+        if (!sessionManager.autoUpdateCheckEnabled) return
+
+        val prefs = getApplication<Application>().getSharedPreferences(UPDATE_PREFS_NAME, Context.MODE_PRIVATE)
+        val lastCheck = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+        val now = System.currentTimeMillis()
+
+        if (now - lastCheck < UPDATE_CHECK_COOLDOWN_MS) return
+
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.getAndroidUpdateManifest()
+                if (response.isSuccessful) {
+                    val manifest = response.body()
+                    val currentVersionCode = BuildConfig.VERSION_CODE
+                    val currentVersionName = BuildConfig.VERSION_NAME
+                    val remoteVersionCode = manifest?.versionCode ?: 0
+                    val remoteVersionName = manifest?.versionName ?: currentVersionName
+                    val shouldUpdate = remoteVersionCode > currentVersionCode ||
+                            AppUpdateUtils.isNewerVersion(remoteVersionName, currentVersionName)
+
+                    if (shouldUpdate && manifest != null) {
+                        _updateManifest.value = manifest
+                        _updateState.value = AndroidUpdateUiState.Available(manifest)
+                        AppUpdateNotificationManager.showUpdateAvailableNotification(
+                            getApplication(),
+                            manifest
+                        )
+                    }
+
+                    prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, now).apply()
+                }
+            } catch (_: Exception) {
+                // Silent
+            }
+        }
+    }
+
+    /**
+     * Manual update check — evaluates cached APKs, server manifests, and version conflicts.
+     */
+    fun checkForAndroidUpdate(onComplete: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            _updateState.value = AndroidUpdateUiState.Checking
+            fetchUpdateHistory()
+            try {
+                val currentVersionCode = BuildConfig.VERSION_CODE
+                val currentVersionName = BuildConfig.VERSION_NAME
+
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.getAndroidUpdateManifest()
+                val manifest = if (response.isSuccessful) response.body() else null
+                if (manifest != null) {
+                    _updateManifest.value = manifest
+                }
+
+                // Check cached APK validity & SHA-256 anti-corruption
+                val hasCached = AppUpdateUtils.hasValidCachedApk(
+                    getApplication(),
+                    sessionManager,
+                    currentVersionCode,
+                    expectedSha256 = if (manifest != null && sessionManager.cachedApkVersionCode == manifest.versionCode) manifest.sha256 else null
+                )
+                val cachedFile = AppUpdateUtils.getCachedApkFile(sessionManager)
+                val cachedCode = sessionManager.cachedApkVersionCode
+                val cachedName = sessionManager.cachedApkVersionName ?: "1.0.0"
+
+                if (response.isSuccessful) {
+                    val manifest = response.body()
+                    _updateManifest.value = manifest
+
+                    val remoteVersionCode = manifest?.versionCode ?: 0
+                    val remoteVersionName = manifest?.versionName ?: currentVersionName
+                    val serverIsNewerThanCurrent = remoteVersionCode > currentVersionCode ||
+                            AppUpdateUtils.isNewerVersion(remoteVersionName, currentVersionName)
+
+                    val serverIsNewerThanCached = hasCached && (
+                            remoteVersionCode > cachedCode ||
+                                    AppUpdateUtils.isNewerVersion(remoteVersionName, cachedName)
+                            )
+
+                    when {
+                        // Conflict: cached APK exists, but server has a strictly newer version
+                        serverIsNewerThanCached && manifest != null -> {
+                            _updateState.value = AndroidUpdateUiState.VersionConflict(
+                                cachedVersionName = cachedName,
+                                cachedVersionCode = cachedCode,
+                                serverManifest = manifest
+                            )
+                            AppUpdateNotificationManager.showUpdateAvailableNotification(
+                                getApplication(),
+                                manifest
+                            )
+                            onComplete?.invoke(true, "A newer update (v${manifest.versionName}) is available than your cached download.")
+                        }
+
+                        // Cached download is valid and up to date with server
+                        hasCached && cachedFile != null -> {
+                            _updateState.value = AndroidUpdateUiState.CachedAvailable(
+                                cachedFile = cachedFile,
+                                versionName = cachedName,
+                                versionCode = cachedCode
+                            )
+                            onComplete?.invoke(true, "Cached update v$cachedName is ready to install.")
+                        }
+
+                        // Server has a newer update (no cached file)
+                        serverIsNewerThanCurrent && manifest != null -> {
+                            val preflight = AppUpdateUtils.runPreflightChecks(
+                                getApplication(),
+                                manifest.fileSize,
+                                manifest.minSdkVersion
+                            )
+                            _preflightWarnings.value = preflight.warnings
+
+                            if (!preflight.canProceed) {
+                                _updateState.value = AndroidUpdateUiState.Error(
+                                    preflight.errors.joinToString("\n"),
+                                    retryable = false
+                                )
+                            } else {
+                                _updateState.value = AndroidUpdateUiState.Available(manifest)
+                                AppUpdateNotificationManager.showUpdateAvailableNotification(
+                                    getApplication(),
+                                    manifest
+                                )
+                            }
+                            onComplete?.invoke(true, manifest.releaseNotes)
+                        }
+
+                        else -> {
+                            _updateState.value = AndroidUpdateUiState.UpToDate
+                            onComplete?.invoke(false, null)
+                        }
+                    }
+
+                    val prefs = getApplication<Application>().getSharedPreferences(UPDATE_PREFS_NAME, Context.MODE_PRIVATE)
+                    prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, System.currentTimeMillis()).apply()
+
+                } else if (hasCached && cachedFile != null) {
+                    // Offline fallback: use cached APK
+                    _updateState.value = AndroidUpdateUiState.CachedAvailable(
+                        cachedFile = cachedFile,
+                        versionName = cachedName,
+                        versionCode = cachedCode
+                    )
+                    onComplete?.invoke(true, "Server unreachable, but cached update v$cachedName is ready.")
+                } else {
+                    _updateState.value = AndroidUpdateUiState.Error("Unable to contact update server (HTTP ${response.code()})")
+                    onComplete?.invoke(false, null)
+                }
+            } catch (e: Exception) {
+                val hasCached = AppUpdateUtils.hasValidCachedApk(getApplication(), sessionManager, BuildConfig.VERSION_CODE)
+                val cachedFile = AppUpdateUtils.getCachedApkFile(sessionManager)
+                if (hasCached && cachedFile != null) {
+                    _updateState.value = AndroidUpdateUiState.CachedAvailable(
+                        cachedFile = cachedFile,
+                        versionName = sessionManager.cachedApkVersionName ?: "1.0.0",
+                        versionCode = sessionManager.cachedApkVersionCode
+                    )
+                    onComplete?.invoke(true, "Offline: cached update ready to install.")
+                } else {
+                    _updateState.value = AndroidUpdateUiState.Error(e.localizedMessage ?: "Update check failed")
+                    onComplete?.invoke(false, null)
+                }
+            }
+        }
+    }
+
+    /**
+     * Download the update APK using the enterprise update engine, verify integrity, and install.
+     */
+    fun downloadAndInstallAndroidUpdate(context: Context, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            _updateState.value = AndroidUpdateUiState.Downloading()
+            try {
+                val manifest = _updateManifest.value
+                if (manifest == null) {
+                    _updateState.value = AndroidUpdateUiState.Error("No update manifest available. Check for updates first.")
+                    onComplete?.invoke(false, "No manifest")
+                    return@launch
+                }
+
+                val apkUrl = manifest.apkUrl.takeIf { it.isNotBlank() }
+                if (apkUrl == null) {
+                    _updateState.value = AndroidUpdateUiState.Error("Update manifest has no download URL.")
+                    onComplete?.invoke(false, "No APK URL")
+                    return@launch
+                }
+
+                // Resolve relative URLs
+                val resolvedApkUrl = if (apkUrl.startsWith("http")) {
+                    apkUrl
+                } else {
+                    val base = sessionManager.serverUrl.removeSuffix("/api/").removeSuffix("/")
+                    if (apkUrl.startsWith("/")) "$base$apkUrl" else "$base/$apkUrl"
+                }
+
+                val outputFile = File(
+                    context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+                    manifest.fileName ?: "latest.apk"
+                )
+
+                // Clean up old APKs before downloading
+                AppUpdateUtils.cleanupOldApks(context, keepFile = null)
+
+                // Download with progress tracking, SHA-256 verification, and retry
+                val result = AppUpdateUtils.downloadApkWithProgress(
+                    apkUrl = resolvedApkUrl,
+                    outputFile = outputFile,
+                    expectedSha256 = manifest.sha256,
+                    expectedSize = manifest.fileSize,
+                    onProgress = { progress ->
+                        _updateState.value = AndroidUpdateUiState.Downloading(
+                            progress = progress.progress,
+                            downloadedMB = progress.downloadedMB,
+                            totalMB = progress.totalMB
+                        )
+                        // Post ongoing notification
+                        val pct = (progress.progress * 100).toInt()
+                        AppUpdateNotificationManager.showDownloadingNotification(
+                            getApplication(),
+                            pct,
+                            progress.downloadedMB,
+                            progress.totalMB
+                        )
+                    }
+                )
+
+                when (result) {
+                    is AppUpdateUtils.DownloadResult.Success -> {
+                        _updateState.value = AndroidUpdateUiState.Verifying("Integrity verified ✓")
+                        _updateState.value = AndroidUpdateUiState.ReadyToInstall(result.file)
+
+                        // Save cached APK metadata
+                        sessionManager.setCachedApkInfo(
+                            result.file.absolutePath,
+                            manifest.versionCode,
+                            manifest.versionName
+                        )
+
+                        // Show Ready to Install Notification
+                        AppUpdateNotificationManager.showReadyToInstallNotification(
+                            getApplication(),
+                            result.file,
+                            manifest.versionName,
+                            manifest.versionCode
+                        )
+
+                        // Check install permission before opening prompt
+                        if (!AppUpdateUtils.canInstallPackages(context)) {
+                            AppUpdateUtils.openInstallPermissionSettings(context)
+                        } else {
+                            AppUpdateUtils.openInstallPrompt(context, result.file)
+                        }
+                        onComplete?.invoke(true, "Update downloaded and verified")
+                    }
+                    is AppUpdateUtils.DownloadResult.Error -> {
+                        _updateState.value = AndroidUpdateUiState.Error(
+                            result.message,
+                            retryable = result.retryable
+                        )
+                        onComplete?.invoke(false, result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                _updateState.value = AndroidUpdateUiState.Error(
+                    e.localizedMessage ?: "Download failed unexpectedly"
+                )
+                onComplete?.invoke(false, e.localizedMessage)
+            }
+        }
+    }
+
+    /**
+     * Reset the update state back to Idle (e.g., after dismissing an error).
+     */
+    fun resetUpdateState() {
+        _updateState.value = AndroidUpdateUiState.Idle
+        _preflightWarnings.value = emptyList()
+    }
+
+    /**
+     * Launch installer for a cached APK.
+     */
+    fun installCachedApk(context: Context) {
+        val file = AppUpdateUtils.getCachedApkFile(sessionManager)
+        if (file != null) {
+            val versionName = sessionManager.cachedApkVersionName ?: "1.0.0"
+            val versionCode = sessionManager.cachedApkVersionCode
+            _updateState.value = AndroidUpdateUiState.ReadyToInstall(file)
+            AppUpdateNotificationManager.showReadyToInstallNotification(context, file, versionName, versionCode)
+            if (!AppUpdateUtils.canInstallPackages(context)) {
+                AppUpdateUtils.openInstallPermissionSettings(context)
+            } else {
+                AppUpdateUtils.openInstallPrompt(context, file)
+            }
+        } else {
+            _updateState.value = AndroidUpdateUiState.Error("Cached update file not found.")
+        }
+    }
+
+    /**
+     * Delete cached APK from device storage and reset state.
+     */
+    fun deleteCachedApk(context: Context) {
+        AppUpdateUtils.clearCachedApk(context, sessionManager)
+        AppUpdateNotificationManager.dismissAllUpdateNotifications(context)
+        _updateState.value = AndroidUpdateUiState.Idle
+        checkForAndroidUpdate()
+    }
+
+    /**
+     * User chooses "Download Newest" during a version conflict.
+     * Clears old cached APK and downloads server version.
+     */
+    fun resolveConflictUseServerVersion(context: Context, serverManifest: AndroidUpdateManifest) {
+        AppUpdateUtils.clearCachedApk(getApplication(), sessionManager)
+        _updateManifest.value = serverManifest
+        _updateState.value = AndroidUpdateUiState.Available(serverManifest)
+        downloadAndInstallAndroidUpdate(context)
+    }
+
+    /**
+     * User chooses "Install Cached" during a version conflict.
+     */
+    fun resolveConflictUseCachedVersion(context: Context) {
+        installCachedApk(context)
+    }
+
+    fun loadAllData() {
+        loadProfile()
+        loadDevices()
+        loadSecurityStatus()
+        loadProducts()
+        loadContacts()
+        loadBills()
+        loadAnalytics()
+    }
+
+    // ==================== PROFILE & DEVICES ====================
+    fun loadProfile() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getProfile()
+                if (res.isSuccessful && res.body()?.profile != null) {
+                    _profile.value = res.body()?.profile
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun updateProfile(fullName: String, email: String, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.updateProfile(UpdateProfileRequest(full_name = fullName, email_id = email))
+                if (res.isSuccessful) {
+                    loadProfile()
+                    onComplete(true)
+                } else {
+                    onComplete(false)
+                }
+            } catch (e: Exception) {
+                onComplete(false)
+            }
+        }
+    }
+
+    fun loadDevices() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getDevices()
+                if (res.isSuccessful) {
+                    _devices.value = res.body()?.devices ?: emptyList()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun logoutDevice(deviceId: String) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.logoutDevice(deviceId)
+                if (res.isSuccessful) {
+                    loadDevices()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun logoutAllDevices() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.logoutAllDevices()
+                if (res.isSuccessful) {
+                    logout()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // ==================== SECURITY & AUTH ====================
+    fun loadSecurityStatus() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getAuthStatus()
+                if (res.isSuccessful) {
+                    val status = res.body()
+                    _passwordSet.value = status?.passwordSet == true
+                    _hasSecurityQuestion.value = status?.hasSecurityQuestion == true
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // ==================== PRODUCTS ====================
+    fun loadProducts(query: String? = null) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getProducts(search = query)
+                if (res.isSuccessful) {
+                    _products.value = res.body() ?: emptyList()
+                }
+                val catRes = service.getCategories()
+                if (catRes.isSuccessful) {
+                    _categories.value = catRes.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Products load error: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun createProduct(product: Product, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.createProduct(product)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateProduct(productId: String, product: Product, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.updateProduct(productId, product)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun deleteProduct(productId: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.deleteProduct(productId)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    // ==================== CATEGORIES ====================
+    fun createCategory(name: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.createCategory(mapOf("name" to name))
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateCategory(categoryId: String, newName: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.updateCategory(categoryId, mapOf("name" to newName))
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun deleteCategory(categoryId: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.deleteCategory(categoryId)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    // ==================== VARIANTS & BATCHES ====================
+    fun createVariant(productId: String, packSizeValue: Double, packSizeType: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val payload = mapOf<String, Any>(
+                    "product_id" to productId,
+                    "pack_size_value" to packSizeValue,
+                    "pack_size_type" to packSizeType
+                )
+                val res = service.createVariant(payload)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun createBatch(variantId: String, batchNo: String, mrp: Double, mfgDate: String?, expDate: String?, unitsSold: Int = 0, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val payload = mutableMapOf<String, Any>(
+                    "variant_id" to variantId,
+                    "batch_no" to batchNo,
+                    "mrp" to mrp,
+                    "units_sold" to unitsSold
+                )
+                mfgDate?.let { payload["mfg_date"] = it }
+                expDate?.let { payload["exp_date"] = it }
+
+                val res = service.createBatch(payload)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun deleteBatch(batchId: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.deleteBatch(batchId)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateVariant(variantId: String, packSizeValue: Double, packSizeType: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val payload = mapOf<String, Any>(
+                    "pack_size_value" to packSizeValue,
+                    "pack_size_type" to packSizeType
+                )
+                val res = service.updateVariant(variantId, payload)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateBatch(batchId: String, batchNo: String, mrp: Double, mfgDate: String?, expDate: String?, unitsSold: Int = 0, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val payload = mutableMapOf<String, Any>(
+                    "batch_no" to batchNo,
+                    "mrp" to mrp,
+                    "units_sold" to unitsSold
+                )
+                mfgDate?.let { payload["mfg_date"] = it }
+                expDate?.let { payload["exp_date"] = it }
+
+                val res = service.updateBatch(batchId, payload)
+                if (res.isSuccessful) {
+                    loadProducts()
+                    onComplete(true, null)
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    // ==================== CONTACTS ====================
+    fun loadContacts() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getContacts()
+                if (res.isSuccessful && res.body() != null) {
+                    val body = res.body()!!
+                    val array = if (body.isJsonArray) body.asJsonArray else body.asJsonObject?.get("data")?.asJsonArray ?: body.asJsonObject?.get("contacts")?.asJsonArray
+                    val listType = object : com.google.gson.reflect.TypeToken<List<Contact>>() {}.type
+                    _contacts.value = array?.let { com.google.gson.Gson().fromJson(it, listType) } ?: emptyList()
+                } else {
+                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
+                    _errorMessage.value = "Failed to load contacts: $err"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Contacts load error: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun createContact(contact: Contact, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.createContact(contact)
+                if (res.isSuccessful) {
+                    loadContacts()
+                    onComplete(true, null)
+                } else {
+                    val rawErr = res.errorBody()?.string()
+                    val errMsg = if (!rawErr.isNullOrEmpty()) rawErr else "HTTP ${res.code()} ${res.message()}"
+                    _errorMessage.value = "Create contact error: $errMsg"
+                    onComplete(false, errMsg)
+                }
+            } catch (e: Exception) {
+                val errMsg = e.localizedMessage ?: "Connection error"
+                _errorMessage.value = "Create contact exception: $errMsg"
+                onComplete(false, errMsg)
+            }
+        }
+    }
+
+    fun updateContact(contact: Contact, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.updateContact(contact.id, contact)
+                if (res.isSuccessful) {
+                    loadContacts()
+                    onComplete(true, null)
+                } else {
+                    val rawErr = res.errorBody()?.string()
+                    val errMsg = if (!rawErr.isNullOrEmpty()) rawErr else "HTTP ${res.code()} ${res.message()}"
+                    _errorMessage.value = "Update contact error: $errMsg"
+                    onComplete(false, errMsg)
+                }
+            } catch (e: Exception) {
+                val errMsg = e.localizedMessage ?: "Connection error"
+                _errorMessage.value = "Update contact exception: $errMsg"
+                onComplete(false, errMsg)
+            }
+        }
+    }
+
+    fun deleteContact(id: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.deleteContact(id)
+                if (res.isSuccessful) {
+                    loadContacts()
+                    onComplete(true, null)
+                } else {
+                    val rawErr = res.errorBody()?.string()
+                    val errMsg = if (!rawErr.isNullOrEmpty()) rawErr else "HTTP ${res.code()} ${res.message()}"
+                    _errorMessage.value = "Delete contact error: $errMsg"
+                    onComplete(false, errMsg)
+                }
+            } catch (e: Exception) {
+                val errMsg = e.localizedMessage ?: "Connection error"
+                _errorMessage.value = "Delete contact exception: $errMsg"
+                onComplete(false, errMsg)
+            }
+        }
+    }
+
+    // ==================== BILLING ====================
+    fun loadBills() {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getBills()
+                if (res.isSuccessful) {
+                    val gson = Gson()
+                    val body = res.body()
+                    val array = if (body?.isJsonArray == true) body.asJsonArray else body?.asJsonObject?.get("data")?.asJsonArray ?: body?.asJsonObject?.get("transactions")?.asJsonArray
+                    val listType = object : TypeToken<List<Bill>>() {}.type
+                    _bills.value = array?.let { gson.fromJson(it, listType) } ?: emptyList()
+                }
+                val sumRes = service.getBillingSummary()
+                if (sumRes.isSuccessful) {
+                    try {
+                        val body = sumRes.body()
+                        val gson = Gson()
+                        val obj = when {
+                            body?.isJsonObject == true -> body.asJsonObject
+                            else -> null
+                        }
+                        val dataElem = obj?.get("data") ?: body
+                        val summary = dataElem?.let { gson.fromJson(it, BillingSummary::class.java) }
+                        _billingSummary.value = summary
+                    } catch (_: Exception) {
+                        _billingSummary.value = null
+                    }
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Bills load error: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    fun createBill(request: CreateBillRequest, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.createBill(request)
+                if (res.isSuccessful) {
+                    loadBills()
+                    loadProducts()
+                    loadAnalytics()
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, "Failed to create bill: ${res.code()}")
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    // ==================== ANALYTICS ====================
+    fun loadAnalytics() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val dashRes = service.getDashboardSummary()
+                if (dashRes.isSuccessful) _analyticsSummary.value = dashRes.body()
+
+                val kpiRes = service.getExecutiveKPI()
+                if (kpiRes.isSuccessful) _executiveKPI.value = kpiRes.body()
+
+                val trendRes = service.getSalesTrend()
+                if (trendRes.isSuccessful) _salesTrends.value = trendRes.body() ?: emptyList()
+
+                val topProdRes = service.getTopProducts()
+                if (topProdRes.isSuccessful) _topProducts.value = topProdRes.body() ?: emptyList()
+
+                val topCustRes = service.getTopCustomers()
+                if (topCustRes.isSuccessful) _topCustomers.value = topCustRes.body() ?: emptyList()
+
+            } catch (e: Exception) {
+                _errorMessage.value = "Analytics load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadSalesDeepDive(period: String = "monthly") {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getSalesDeepDive(period)
+                if (res.isSuccessful) {
+                    _salesDeepDive.value = res.body()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Sales deep dive load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadOrderFunnel() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getOrderFunnel()
+                if (res.isSuccessful) {
+                    _orderFunnel.value = res.body()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Order funnel load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadARAgingAndRFM() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val agingRes = service.getARAging()
+                if (agingRes.isSuccessful) {
+                    _arAging.value = agingRes.body()
+                }
+                val rfmRes = service.getRFMSegmentation()
+                if (rfmRes.isSuccessful) {
+                    _rfmSegmentation.value = rfmRes.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Aging & RFM load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadProductVelocity() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val velRes = service.getProductVelocity()
+                if (velRes.isSuccessful) {
+                    _productVelocity.value = velRes.body()
+                }
+                val catRes = service.getCategoryPerformance()
+                if (catRes.isSuccessful) {
+                    _categoryPerformance.value = catRes.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Product velocity load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadComparativeYoY() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getComparativeYoY("yoy")
+                if (res.isSuccessful) {
+                    _comparativeYoY.value = res.body()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "YoY analysis load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadComparativeMoM() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getComparativeMoM("mom")
+                if (res.isSuccessful) {
+                    _comparativeMoM.value = res.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "MoM analysis load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadComparativeQoQ() {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getComparativeQoQ("qoq")
+                if (res.isSuccessful) {
+                    _comparativeQoQ.value = res.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "QoQ analysis load error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun runCustomComparison(sA: String, eA: String, sB: String, eB: String) {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val res = service.getComparativeCustom("custom", sA, eA, sB, eB)
+                if (res.isSuccessful) {
+                    _comparativeCustom.value = res.body()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Custom comparison error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun loadCustomerStats(customerId: String) {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val statsRes = service.getCustomerStats(customerId)
+                if (statsRes.isSuccessful) {
+                    _selectedCustomerStats.value = statsRes.body()
+                }
+                val contactRes = service.getContact(customerId)
+                if (contactRes.isSuccessful) {
+                    _selectedCustomer.value = contactRes.body()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Customer stats error: ${e.localizedMessage}"
+            } finally {
+                _analyticsLoading.value = false
+            }
+        }
+    }
+
+    fun clearSelectedCustomer() {
+        _selectedCustomer.value = null
+        _selectedCustomerStats.value = null
+    }
+
+    fun refreshAllAnalyticsData(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            _analyticsLoading.value = true
+            try {
+                loadAnalytics()
+                loadContacts()
+            } finally {
+                _analyticsLoading.value = false
+                onComplete()
+            }
+        }
+    }
+}
+

@@ -1,0 +1,80 @@
+/* Product Metrics specific styles for Analytics */
+.analytics-window .dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.analytics-window .stat-card {
+  padding: 20px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.analytics-window .stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3) !important;
+}
+
+.analytics-window .stat-label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.analytics-window .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  margin-top: 8px;
+  color: #1e293b;
+  letter-spacing: -1px;
+}
+
+.analytics-window .list-section {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.analytics-window .list-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #334155;
+}
+
+.analytics-window .list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+  font-size: 13px;
+  transition: background 0.2s ease;
+}
+
+.analytics-window .list-row:hover:not([style*="font-weight:700"]) {
+  background: rgba(139, 92, 246, 0.02);
+}
+
+.analytics-window .row-label { 
+  font-weight: 500;
+  color: #475569;
+}
+
+.analytics-window .row-value { 
+  color: var(--analytics-primary); 
+  font-weight: 700; 
+}

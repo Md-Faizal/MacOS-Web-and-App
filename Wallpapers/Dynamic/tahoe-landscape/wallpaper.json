@@ -1,0 +1,23 @@
+{
+  "id": "tahoe-landscape",
+  "name": "Tahoe Landscape",
+  "description": "Scenic landscape views of Lake Tahoe with natural transitions",
+  "category": "nature",
+  "tags": ["landscape", "tahoe", "mountains", "scenery", "light", "dark"],
+  "type": "dynamic",
+  "format": "video",
+  "variants": [
+    {
+      "name": "light",
+      "file": "tahoe-landscape.light.mp4",
+      "dimension": "3840x2160"
+    },
+    {
+      "name": "dark",
+      "file": "tahoe-landscape.dark.mp4",
+      "dimension": "3840x2160"
+    }
+  ],
+  "thumbnail": "thumbnail.jpg",
+  "duration": 120
+}

@@ -1,0 +1,1992 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MacOS</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description"
+    content="A beautiful MacOS-inspired web application with wallpaper management and productivity tools">
+  <meta name="theme-color" content="#667eea">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MacOS">
+  <link rel="apple-touch-icon" href="/assets/Images/Favicon.png">
+  <link rel="manifest" href="/manifest.json">
+
+  <script>
+    // Industrial Standard Session Termination: Clear session on backend AND frontend when landing on login page
+    (async function() {
+      try {
+        // Clear robust flag
+        sessionStorage.removeItem('macos_session_active');
+        // Clear backend cookie
+        await fetch('/api/auth/logout', { method: 'POST' });
+        console.log('✓ Session terminated (Flag cleared & Backend logout)');
+      } catch (err) {
+        console.error('Logout failed:', err);
+      }
+    })();
+
+    // Handle browser extension messages gracefully to suppress "Unchecked runtime.lastError" warnings
+    if (window.chrome && window.chrome.runtime) {
+      window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        // Silently ignore messages from extensions
+        try {
+          sendResponse({});
+        } catch (e) {
+          // Port might be closed, ignore
+        }
+        return true; // Keep the message channel open
+      });
+    }
+  </script>
+
+  <link rel="icon" href="/assets/Images/Favicon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles/clock-display/modules/clock-display.css">
+  <link rel="stylesheet" href="/styles/weather/modules/weather.css">
+  <link rel="stylesheet" href="/shared/connectivity.css">
+
+  <style>
+    /* BASE RESET */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+
+    /* CLOCK WRAPPER */
+    .clock-container {
+      position: absolute;
+      top: 11vh;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: fadeInSimple 1.5s ease-out;
+    }
+
+    /* ========================================
+       TOP BAR - SYSTEM STATUS & CONTROLS
+       ======================================== */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 20;
+    }
+
+    .top-bar-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .top-bar-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    /* WEATHER DISPLAY FOR HOMEPAGE - TOP RIGHT */
+    .homepage-weather-display {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+      white-space: nowrap;
+      transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
+    }
+
+    .homepage-weather-display.light-bg {
+      color: #000000;
+      text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+    }
+
+    .homepage-weather-display.dark-bg {
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    body.login-active .homepage-weather-display {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .homepage-weather-icon {
+      font-size: 1rem;
+      line-height: 1;
+      filter: brightness(0) invert(1);
+    }
+
+    .homepage-weather-display.light-bg .homepage-weather-icon {
+      filter: brightness(0);
+    }
+
+    /* WEATHER DISPLAY FOR HOMEPAGE - OLD */
+    .homepage-weather {
+      display: none;
+    }
+
+    /* DATE STYLE */
+    .date {
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: -10px;
+      letter-spacing: 0.5px;
+    }
+
+    /* THE LIQUID GLASS TIME STYLE */
+    .time {
+      font-size: 7.5rem;
+      font-weight: 800;
+      letter-spacing: -4px;
+      line-height: 1.2;
+
+      background: linear-gradient(to bottom,
+          rgba(255, 255, 255, 0.8) 0%,
+          rgba(255, 255, 255, 0.4) 100%);
+
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      position: relative;
+      animation: softFadeIn 1.5s ease-out forwards;
+    }
+
+    .time::after {
+      content: attr(data-time);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.2);
+      color: transparent;
+      opacity: 0.5;
+    }
+
+    /* LOGIN PAGE CLOCK - TOP RIGHT */
+    /* USER PROFILE STYLES */
+    .user-profile {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: white;
+      animation: fadeInSimple 2s ease-out;
+    }
+
+    .avatar,
+    .username,
+    .hint {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      margin-bottom: 12px;
+      background: #d1d1d6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 32px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    }
+
+    .username {
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      margin-bottom: 4px;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      font-weight: 400;
+      opacity: 0.75;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .hint:hover {
+      opacity: 1;
+    }
+
+    .hint span {
+      display: inline-block;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    /* ERROR SHAKE ANIMATION */
+    .error-shake {
+      animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+      border-color: rgba(255, 59, 48, 0.5) !important;
+    }
+
+    @keyframes shake {
+
+      10%,
+      90% {
+        transform: translate3d(-1px, 0, 0);
+      }
+
+      20%,
+      80% {
+        transform: translate3d(2px, 0, 0);
+      }
+
+      30%,
+      50%,
+      70% {
+        transform: translate3d(-4px, 0, 0);
+      }
+
+      40%,
+      60% {
+        transform: translate3d(4px, 0, 0);
+      }
+    }
+
+    .hint-separator {
+      padding: 0 4px;
+    }
+
+    .avatar:hover {
+      transform: scale(1.05);
+    }
+
+    .username:hover {
+      opacity: 0.8;
+    }
+
+    /* BLUR OVERLAY */
+    .blur-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      backdrop-filter: blur(20px);
+      background: rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+      z-index: 10;
+    }
+
+    .blur-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* LOGIN MODAL */
+    .login-modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      z-index: 20;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s ease;
+    }
+
+    .login-modal.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .modal-avatar {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 48px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-username {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .password-wrapper {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .password-field-container {
+      position: relative;
+      width: 360px;
+    }
+
+    .password-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 8px;
+      display: none;
+      text-align: left;
+    }
+
+    .password-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-input {
+      width: 100%;
+      padding: 10px 40px 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.25);
+      color: white;
+      font-size: 0.95rem;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      outline: none;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 6px 6px rgba(0, 0, 0, 0.2), 0 0 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .password-input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .password-input:focus {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 1.2rem;
+      padding: 4px;
+      transition: color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .password-toggle:hover {
+      color: rgba(255, 255, 255, 1);
+    }
+
+    .login-links-row {
+      position: relative;
+      width: 360px; /* Matches password field width */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .touchid-text {
+      font-size: 0.85rem;
+      color: #fff;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.2s ease;
+    }
+
+    .touchid-text:hover {
+      opacity: 0.8;
+    }
+
+    .forgot-password-link {
+      position: absolute;
+      right: 0;
+    }
+
+    .login-button {
+      margin-top: 8px;
+      padding: 10px 28px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      display: none;
+    }
+
+    .login-button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .login-button:active {
+      transform: scale(0.98);
+    }
+
+    /* HIDE CLOCK AND PROFILE WHEN LOGIN ACTIVE */
+    body.login-active .clock-container,
+    body.login-active .user-profile {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translate(-50%, -100vh) !important;
+      transition: none !important;
+    }
+
+    @keyframes softFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes fadeInSimple {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @media (max-width: 1024px) {
+      .password-field-container {
+        width: 320px;
+      }
+      .login-links-row {
+        width: 320px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .time {
+        font-size: 5rem;
+        letter-spacing: -2px;
+      }
+
+      .date {
+        font-size: 1.1rem;
+      }
+
+      .password-field-container {
+        width: 280px;
+      }
+      .login-links-row {
+        width: 280px;
+      }
+
+      #touchidText {
+        position: absolute;
+        left: 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .password-field-container {
+        width: 240px;
+      }
+      .login-links-row {
+        width: 240px;
+      }
+
+      .password-input {
+        padding: 10px 36px 10px 12px;
+        font-size: 0.9rem;
+      }
+
+      .password-toggle {
+        font-size: 1rem;
+      }
+    }
+
+    /* WALLPAPER BACKGROUND */
+    #wallpaperBackground {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      pointer-events: none;
+    }
+
+    /* Keep wallpaper video playing during login modal */
+    #wallpaperBackground video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Elements follow drag */
+    .draggable-content {
+      transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.5s ease-out;
+      will-change: transform, opacity;
+      /* Ensure base state has centering */
+      transform: translateX(-50%);
+    }
+
+    /* State: Dragging - Instant feedback */
+    body[data-unlock-state="dragging"] .draggable-content {
+      transition: none !important;
+    }
+
+    /* State: Unlocking - Fly out smoothly (CSS fallback) */
+    body[data-unlock-state="unlocking"] .draggable-content {
+      transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.6s ease-out !important;
+      transform: translate(-50%, -100vh) !important;
+      opacity: 0 !important;
+    }
+
+    /* State: Finished - Hidden by login-active but maintaining position */
+    body[data-unlock-state="finished"] .draggable-content {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translate(-50%, -100vh) !important;
+      transition: none !important;
+    }
+
+    /* AUTOFILL DETECTION */
+    @keyframes onAutofillStart { from {} to {} }
+    input:-webkit-autofill {
+      animation-name: onAutofillStart;
+    }
+  </style>
+</head>
+
+<body data-unlock-state="locked">
+
+  <!-- ========================================
+       TOP BAR - SYSTEM STATUS & CONTROLS
+       ======================================== -->
+
+  <!-- Wallpaper Background - Backup hardcoded wallpaper -->
+  <div id="wallpaperBackground"
+    style="background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg');"></div>
+
+  <!-- Blur Overlay -->
+  <div class="blur-overlay" id="blurOverlay"></div>
+
+  <!-- Top Bar Container -->
+  <div class="top-bar">
+
+    <!-- Top Bar Center: Homepage Weather Display -->
+    <div class="top-bar-center">
+      <div class="homepage-weather-display weather-display homepage" id="homepageWeatherDisplay">
+        <span class="homepage-weather-icon weather-icon" id="homepageWeatherIcon">☁️</span>
+        <span class="weather-temp" id="homepageWeatherTemp">--°</span>
+      </div>
+    </div>
+
+    <!-- Top Bar Right: Login Clock and Weather Display (hidden by default) -->
+    <div class="top-bar-right">
+      <div class="login-page-clock hidden-by-default" id="loginPageClock">
+        <!-- Weather Display -->
+        <div class="weather-display login" id="loginWeatherDisplay">
+          <span class="weather-icon" id="loginWeatherIcon">☁️</span>
+          <span class="weather-temp" id="loginWeatherTemp">--°</span>
+        </div>
+
+        <!-- Clock Display -->
+        <div id="loginClockDisplay" class="login-clock-display">Loading...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="login-modal" id="loginModal">
+    <div class="modal-avatar">🧑‍💻</div>
+    <div class="modal-username" id="modalUsername">Mohammad Faizal</div>
+    <div class="password-wrapper">
+      <!-- Password Section -->
+      <div id="passwordProtectionSection"
+        style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+        <div class="password-field-container">
+          <label class="password-label">Password</label>
+          <div class="password-input-wrapper">
+            <input type="password" class="password-input" id="loginPasswordInput" placeholder="password"
+              autocomplete="off">
+            <button class="password-toggle" id="passwordToggleBtn">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="login-links-row">
+          <a class="touchid-text" id="touchidText">(Touch ID)</a>
+          <a class="touchid-text forgot-password-link" id="forgotPasswordText"
+            style="font-size: 0.75rem; opacity: 0.6;">Forgot Password?</a>
+        </div>
+
+        <div id="securityQuestionSection" style="display: none; width: 100%;">
+          <div id="challengeQuestionDisplay"
+            style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 10px; font-weight: 500; text-align: center;">
+          </div>
+          <div class="password-field-container" style="width: 100%;">
+            <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer"
+              autocomplete="off">
+          </div>
+          <button class="login-button" id="verifyAnswerBtn" style="margin-top: 10px;">Verify Answer</button>
+        </div>
+
+        <!-- New Password Section -->
+        <div id="passwordResetSection"
+          style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+          <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 5px;">Set New Password</div>
+          <div class="password-field-container">
+            <div class="password-input-wrapper">
+              <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password"
+                autocomplete="off">
+              <button class="password-toggle" id="resetNewToggleBtn" type="button">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="password-field-container">
+            <div class="password-input-wrapper">
+              <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password"
+                autocomplete="off">
+              <button class="password-toggle" id="resetConfirmToggleBtn" type="button">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <button class="login-button" id="confirmResetBtn" style="margin-top: 5px;">Save & Sign In</button>
+        </div>
+      </div>
+
+      <!-- No Password Section -->
+      <div id="noPasswordSection" style="display: none; width: 100%; text-align: center;">
+        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 20px;">Unlocked</div>
+        <button class="login-button" id="unlockButton">Swipe up or Click to Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Setup modal is now purely redirected to Profile, but we keep a simple version if needed for first-time prompt -->
+  <div id="touchIdSetupModal" class="login-modal">
+    <div class="login-modal-content" style="width: 100%; max-width: 300px;">
+      <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🤚</div>
+      <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Touch ID</div>
+      <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px; text-align: center;">
+        Enter your password to enable Touch ID for this account.
+      </p>
+      <div class="password-field-container" style="width: 100%; margin-bottom: 15px;">
+        <div class="password-input-wrapper">
+          <input type="password" id="setupPasswordInput" class="password-input" placeholder="Password"
+            autocomplete="current-password">
+          <button class="password-toggle" id="setupPasswordToggleBtn">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; width: 100%;">
+        <button class="login-button" id="cancelTouchIdSetup"
+          style="background: rgba(255,255,255,0.1); flex: 1;">Cancel</button>
+        <button class="login-button" id="confirmTouchIdSetup" style="flex: 2;">Enable Touch ID</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="clock-container draggable-content">
+    <div class="date" id="dateDisplay">Loading...</div>
+    <div class="time" id="timeDisplay" data-time="00:00">00:00</div>
+  </div>
+
+  <div class="user-profile draggable-content">
+    <div class="avatar" id="profileAvatar">🧑‍💻</div>
+    <div class="username" id="profileUsername">Mohammad Faizal</div>
+    <div class="hint" id="profileHint">
+      <span id="hintTouchId">Touch ID</span>
+      <span class="hint-separator">or</span>
+      <span id="hintPassword">Enter Password</span>
+    </div>
+  </div>
+
+  </div>
+
+  <script>
+    // Login modal functionality
+    const blurOverlay = document.getElementById('blurOverlay');
+    const loginModal = document.getElementById('loginModal');
+    const passwordInput = document.getElementById('loginPasswordInput');
+    const passwordToggle = document.getElementById('passwordToggleBtn');
+    const loginButton = document.getElementById('loginButton');
+    const touchidText = document.getElementById('touchidText');
+    const modalUsername = document.getElementById('modalUsername');
+    const profileAvatar = document.getElementById('profileAvatar');
+    const profileUsername = document.getElementById('profileUsername');
+    const profileHint = document.getElementById('profileHint');
+    const loginClockDisplay = document.getElementById('loginClockDisplay');
+
+    // Touch ID Setup / Generic Security Setup
+    const touchIdSetupModal = document.getElementById('touchIdSetupModal');
+    const setupPasswordInput = document.getElementById('setupPasswordInput'); // Used in some biometric registration logic
+
+    const hintTouchId = document.getElementById('hintTouchId');
+    const hintPassword = document.getElementById('hintPassword');
+
+    // Biometric setup buttons
+    const cancelTouchIdSetup = document.getElementById('cancelTouchIdSetup');
+    const confirmTouchIdSetup = document.getElementById('confirmTouchIdSetup');
+
+    // Weather displays - will be initialized later
+    let homepageWeatherDisplay = null;
+    let loginWeatherDisplay = null;
+    let homeTimeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+
+    // Update the homepage clock and date display
+    function updateHomepageClock() {
+      let now = new Date();
+
+      // Apply Global Settings
+      if (homeTimeSettings.mode === 'location' && homeTimeSettings.timezone) {
+        try {
+          const locStr = now.toLocaleString('en-US', { timeZone: homeTimeSettings.timezone });
+          now = new Date(locStr);
+        } catch (e) {
+          console.error('Invalid timezone:', homeTimeSettings.timezone);
+        }
+      } else if (homeTimeSettings.mode === 'manual' && homeTimeSettings.manualOffset) {
+        now = new Date(now.getTime() + homeTimeSettings.manualOffset);
+      }
+
+      // Format Date: "Tue Jul 8"
+      const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
+      const dateStr = now.toLocaleDateString('en-US', dateOptions).replace(',', '');
+
+      // Format Time: 12-hour style (no AM/PM)
+      let hours = now.getHours();
+      if (hours === 0) {
+        hours = 12;
+      } else if (hours > 12) {
+        hours = hours - 12;
+      }
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const timeStr = `${hours.toString().padStart(2, '0')}:${minutes}`;
+
+      // Update DOM elements
+      const dateElement = document.getElementById('dateDisplay');
+      const timeElement = document.getElementById('timeDisplay');
+
+      if (dateElement) {
+        dateElement.textContent = dateStr;
+      }
+
+      if (timeElement) {
+        timeElement.textContent = timeStr;
+        timeElement.setAttribute('data-time', timeStr);
+      }
+    }
+
+    // Listen for sync
+    window.addEventListener('mac-time-sync', (e) => {
+      homeTimeSettings = e.detail;
+      updateHomepageClock();
+    });
+    
+    // Initial and periodic updates
+    updateHomepageClock();
+    setInterval(updateHomepageClock, 1000);
+
+    function updateLoginPageClock() {
+      let now = new Date();
+      if (homeTimeSettings.mode === 'location' && homeTimeSettings.timezone) {
+        try {
+          const locStr = now.toLocaleString('en-US', { timeZone: homeTimeSettings.timezone });
+          now = new Date(locStr);
+        } catch (e) {
+          console.error('Invalid timezone:', homeTimeSettings.timezone);
+        }
+      } else if (homeTimeSettings.mode === 'manual' && homeTimeSettings.manualOffset) {
+        now = new Date(now.getTime() + homeTimeSettings.manualOffset);
+      }
+
+      const weekday = now.toLocaleDateString('en-US', { weekday: 'short' });
+      const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      let hours = now.getHours();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const formatted = `${weekday} ${monthDay} ${hours}:${minutes} ${ampm}`;
+
+      const el = document.getElementById('loginClockDisplay');
+      if (el) {
+        el.textContent = formatted;
+      }
+    }
+
+    function getBackgroundBrightness() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = function () {
+        try {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+
+          // Sample brightness from multiple points in the image
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          let brightness = 0;
+
+          // Sample every 10th pixel for performance
+          for (let i = 0; i < data.length; i += 40) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            brightness += (r * 299 + g * 587 + b * 114) / 1000;
+          }
+
+          brightness = brightness / (data.length / 40);
+
+          // Only use black text for very bright/white backgrounds (>200 brightness)
+          const bgClass = brightness > 200 ? 'light-bg' : 'dark-bg';
+          const bgClassRemove = brightness > 200 ? 'dark-bg' : 'light-bg';
+
+          if (loginPageClock) {
+            loginPageClock.classList.remove(bgClassRemove);
+            loginPageClock.classList.add(bgClass);
+          }
+
+          const weatherElement = document.getElementById('homepageWeatherDisplay');
+          if (weatherElement) {
+            weatherElement.classList.remove(bgClassRemove);
+            weatherElement.classList.add(bgClass);
+          }
+        } catch (e) {
+          console.error('Error in getBackgroundBrightness img.onload:', e);
+        }
+      };
+
+      img.src = '/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg';
+    }
+
+    function activateLoginState() {
+      document.body.classList.add('login-active');
+      if (blurOverlay) blurOverlay.classList.add('active');
+      if (loginPageClock) loginPageClock.classList.add('active');
+
+      // Keep wallpaper video playing during login
+      const wallpaperBg = document.getElementById('wallpaperBackground');
+      if (wallpaperBg) {
+        const video = wallpaperBg.querySelector('video');
+        if (video && video.paused) {
+          video.play().catch(() => { });
+        }
+      }
+
+      getBackgroundBrightness();
+      updateLoginPageClock();
+    }
+
+    async function openLoginModal() {
+      await checkSecurityStatus();
+
+      const noPassSection = document.getElementById('noPasswordSection');
+      const isNoPass = noPassSection && noPassSection.style.display !== 'none';
+
+      if (isNoPass) {
+        // If no password is set, just unlock and go home
+        handleUnlock();
+        return;
+      }
+
+      activateLoginState();
+      if (loginModal) loginModal.classList.add('active');
+      if (passwordInput) {
+        setTimeout(() => {
+          if (document.getElementById('passwordProtectionSection').style.display !== 'none') {
+            passwordInput.focus();
+          }
+        }, 300);
+      }
+    }
+
+    function closeLoginModal() {
+      document.body.classList.remove('login-active');
+      if (blurOverlay) blurOverlay.classList.remove('active');
+      if (loginModal) loginModal.classList.remove('active');
+      if (touchIdSetupModal) touchIdSetupModal.classList.remove('active');
+      if (loginPageClock) loginPageClock.classList.remove('active');
+      if (passwordInput) passwordInput.value = '';
+      if (passwordInput) passwordInput.type = 'password';
+      if (setupPasswordInput) setupPasswordInput.value = '';
+
+      // Reset sections visibility
+      const passField = document.querySelector('#passwordProtectionSection .password-field-container');
+      if (passField) passField.style.display = 'block';
+
+      const tText = document.getElementById('touchidText');
+      if (tText) tText.style.display = 'block';
+
+      const fText = document.getElementById('forgotPasswordText');
+      if (fText) fText.style.display = 'block';
+
+      const sQuest = document.getElementById('securityQuestionSection');
+      if (sQuest) sQuest.style.display = 'none';
+
+      const pReset = document.getElementById('passwordResetSection');
+      if (pReset) pReset.style.display = 'none';
+
+      // Clear reset fields
+      const rnPass = document.getElementById('resetNewPassword');
+      if (rnPass) rnPass.value = '';
+
+      const rcPass = document.getElementById('resetConfirmPassword');
+      if (rcPass) rcPass.value = '';
+
+      const sAns = document.getElementById('securityAnswerInput');
+      if (sAns) sAns.value = '';
+
+      // Resume wallpaper video after modal closes
+      const wallpaperBg = document.getElementById('wallpaperBackground');
+      if (wallpaperBg) {
+        const video = wallpaperBg.querySelector('video');
+        if (video && video.paused) {
+          video.play().catch(() => { });
+        }
+      }
+
+      // Cleanup swipe visuals
+      document.body.setAttribute('data-unlock-state', 'locked');
+      resetDragVisuals();
+    }
+
+    function togglePasswordVisibility() {
+      const eyeIcon = document.getElementById('eyeIcon');
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        eyeIcon.style.strokeDasharray = '0';
+      } else {
+        passwordInput.type = 'password';
+        eyeIcon.style.strokeDasharray = '0';
+      }
+    }
+
+    function handleTouchID() {
+      const isEnabled = localStorage.getItem('touchIdEnabled') === 'true';
+
+      activateLoginState();
+
+      if (!isEnabled) {
+        if (loginModal) loginModal.classList.remove('active');
+        if (touchIdSetupModal) touchIdSetupModal.classList.add('active');
+        if (setupPasswordInput) setTimeout(() => setupPasswordInput.focus(), 300);
+      } else {
+        authenticateBiometrics();
+      }
+    }
+
+    async function registerBiometrics() {
+      const password = setupPasswordInput.value;
+      if (!password) {
+        alert('Please enter your password.');
+        return;
+      }
+
+      const securityQuestion = document.getElementById('setupQuestionSelect')?.value;
+      const securityAnswer = document.getElementById('setupAnswerInput')?.value;
+
+      try {
+        // FIRST: Verify password with backend
+        const authRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+
+        if (!authRes.ok) {
+          const authData = await authRes.json();
+          alert(authData.error || 'Incorrect password');
+          return;
+        }
+
+        // SECOND: If password is correct, proceed with biometric registration
+        if (!window.PublicKeyCredential) {
+          alert('Biometric authentication is not supported by your browser.');
+          return;
+        }
+
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const userID = 'user-' + Date.now();
+        const publicKeyCredentialCreationOptions = {
+          challenge: challenge,
+          rp: {
+            name: "MacOS Web",
+            id: window.location.hostname || "localhost",
+          },
+          user: {
+            id: Uint8Array.from(userID, c => c.charCodeAt(0)),
+            name: "Mohammad Faizal",
+            displayName: "Faizal",
+          },
+          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+          authenticatorSelection: {
+            authenticatorAttachment: "platform",
+            userVerification: "required"
+          },
+          timeout: 60000,
+          attestation: "none"
+        };
+
+        const credential = await navigator.credentials.create({
+          publicKey: publicKeyCredentialCreationOptions
+        });
+
+        if (credential) {
+          localStorage.setItem('touchIdEnabled', 'true');
+          const bufferToBase64 = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+          localStorage.setItem('touchIdCredId', bufferToBase64(credential.rawId));
+
+          alert('✓ Security setup successful!');
+          closeLoginModal();
+          setTimeout(() => {
+            window.location.href = './home.html';
+          }, 300);
+        }
+      } catch (err) {
+        console.error('Biometric registration failed:', err);
+        alert('Biometric setup failed or was cancelled.');
+        closeLoginModal();
+      }
+    }
+
+    async function authenticateBiometrics() {
+      try {
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const credIdBase64 = localStorage.getItem('touchIdCredId');
+        if (!credIdBase64) return;
+
+        const base64ToBuffer = (base64) => Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        const credId = base64ToBuffer(credIdBase64);
+
+        const publicKeyCredentialRequestOptions = {
+          challenge: challenge,
+          allowCredentials: [{
+            id: credId,
+            type: 'public-key',
+            transports: ['internal'],
+          }],
+          userVerification: "required",
+          timeout: 60000,
+        };
+
+        const assertion = await navigator.credentials.get({
+          publicKey: publicKeyCredentialRequestOptions
+        });
+ 
+        if (assertion) {
+          // Send success to backend to create session
+          const { deviceName, deviceType } = await getDeviceInfo();
+          
+          const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              biometric: true, 
+              deviceName, 
+              deviceType 
+            })
+          });
+ 
+          if (response.ok) {
+            // Set robust session flag
+            sessionStorage.setItem('macos_session_active', 'true');
+            
+            closeLoginModal();
+            setTimeout(() => {
+              window.location.href = './home.html';
+            }, 300);
+          } else {
+            const data = await response.json();
+            alert(data.error || 'Biometric login failed');
+          }
+        }
+      } catch (err) {
+        console.error('Biometric authentication failed:', err);
+        if (err.name !== 'NotAllowedError') {
+          alert('Biometric authentication failed. Please enter your password.');
+        }
+        closeLoginModal();
+      }
+    }
+
+    async function syncProfile() {
+      // Load from cache for instant UI response (essential for lock screen as session is terminated)
+      const cachedName = localStorage.getItem('macos_user_display_name');
+      const cachedPicture = localStorage.getItem('macos_user_display_picture');
+      
+      const avatarElements = [
+        document.querySelector('.modal-avatar'),
+        document.getElementById('profileAvatar')
+      ];
+      const usernameElements = [
+        document.getElementById('modalUsername'),
+        document.getElementById('profileUsername')
+      ];
+
+      if (cachedName) {
+        usernameElements.forEach(el => { if (el) el.textContent = cachedName; });
+      } else {
+        usernameElements.forEach(el => { if (el) el.textContent = "Mohammad Faizal"; });
+      }
+
+      avatarElements.forEach(el => {
+        if (el) {
+          if (cachedPicture) {
+            el.innerHTML = `<img src="${cachedPicture}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            el.style.background = 'transparent';
+          } else {
+            el.innerHTML = '🧑‍💻';
+            el.style.background = '';
+          }
+        }
+      });
+    }
+
+    // Sync profile across tabs and on local updates
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'macos_user_display_name' || e.key === 'macos_user_display_picture') {
+        syncProfile();
+      }
+    });
+    window.addEventListener('macos-profile-updated', () => syncProfile());
+
+    // Auto-login on autofill
+    if (passwordInput) {
+      passwordInput.addEventListener('animationstart', (e) => {
+        if (e.animationName === 'onAutofillStart' && passwordInput.value) {
+          handleLogin();
+        }
+      });
+    }
+
+    if (setupPasswordInput) {
+      setupPasswordInput.addEventListener('animationstart', (e) => {
+        if (e.animationName === 'onAutofillStart' && setupPasswordInput.value) {
+          registerBiometrics();
+        }
+      });
+    }
+
+    async function checkSecurityStatus() {
+      try {
+        const res = await fetch('/api/auth/status');
+        const data = await res.json();
+
+        const passwordSection = document.getElementById('passwordProtectionSection');
+        const noPasswordSection = document.getElementById('noPasswordSection');
+        const hintElement = document.getElementById('profileHint');
+
+        if (data.passwordSet) {
+          if (passwordSection) passwordSection.style.display = 'block';
+          if (noPasswordSection) noPasswordSection.style.display = 'none';
+          if (hintElement) {
+            hintElement.innerHTML = '<span id="hintTouchId">Touch ID</span> <span class="hint-separator">or</span> <span id="hintPassword">Enter Password</span>';
+            // Re-attach listeners to the new spans
+            document.getElementById('hintTouchId')?.addEventListener('click', (e) => {
+              e.stopPropagation();
+              handleTouchID();
+            });
+            document.getElementById('hintPassword')?.addEventListener('click', (e) => {
+              e.stopPropagation();
+              openLoginModal();
+            });
+          }
+        } else {
+          if (passwordSection) passwordSection.style.display = 'none';
+          if (noPasswordSection) noPasswordSection.style.display = 'block';
+          if (hintElement) {
+            hintElement.style.background = 'none';
+            hintElement.style.border = 'none';
+            hintElement.style.padding = '0';
+            hintElement.textContent = 'Swipe Up to Unlock';
+          }
+        }
+      } catch (err) {
+        console.error('Status check failed:', err);
+      }
+    }
+
+    async function getDeviceInfo() {
+      const userAgent = navigator.userAgent;
+      let deviceName = 'Generic Device';
+      let deviceType = /Mobi|Android/i.test(userAgent) ? 'Mobile' : 'Desktop';
+      
+      // 0. Try local system info API (High Fidelity detection for local machine and matching platforms)
+      try {
+        const res = await fetch('/api/system/info');
+        if (res.ok) {
+          const data = await res.json();
+          const clientPlatform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+          const platformMatch = (data.platform === 'win32' && clientPlatform.includes('win')) ||
+                                (data.platform === 'darwin' && (clientPlatform.includes('mac') || clientPlatform.includes('iphone'))) ||
+                                (data.platform === 'linux' && clientPlatform.includes('linux'));
+
+          if (platformMatch && data.model && !data.model.toLowerCase().includes('generic') && !data.model.toLowerCase().includes('pc')) {
+            deviceName = data.model;
+          } else if (data.hostname && !data.hostname.toLowerCase().includes('localhost')) {
+            // Heuristic: If hostname looks like hardware (e.g., "HP-Desktop"), use it as a hint for generic desktops
+            // ONLY if the client platform family matches the likely hostname brand
+            const lowerHostname = data.hostname.toLowerCase();
+            const clientPlatform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+
+            if (lowerHostname.includes('hp') && clientPlatform.includes('win')) {
+              deviceName = 'HP Slim Desktop';
+            } else if (lowerHostname.includes('mac') && data.platform === 'darwin') {
+              // Only adopt MacBook Pro if the server is actually a Mac and contains 'mac' in hostname
+              // This avoids false positives on "MacOS-Project" Linux VMs
+              deviceName = 'MacBook Pro';
+            } else if (lowerHostname.includes('dell') && clientPlatform.includes('win')) {
+              deviceName = 'Dell Desktop';
+            } else if (!platformMatch && deviceType === 'Desktop') {
+              // If it's a generic desktop and the hostname is something like "HP-XXXX", use it
+              if (lowerHostname.includes('-') && lowerHostname.length > 5) {
+                deviceName = data.hostname;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('System info API failed:', e);
+      }
+
+      // 1. Try modern Client Hints API for high-entropy model data
+      if (deviceName === 'Generic Device' && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+        try {
+          const hints = await navigator.userAgentData.getHighEntropyValues(['model', 'platform', 'platformVersion']);
+          if (hints.model) {
+            deviceName = hints.model;
+            // Add brand if possible
+            if (userAgent.includes('Samsung')) deviceName = 'Samsung ' + deviceName;
+            else if (userAgent.includes('Pixel')) deviceName = 'Google ' + deviceName;
+          } else if (hints.platform) {
+            deviceName = hints.platform + ' PC';
+          }
+        } catch (e) {
+          console.warn('UserAgentData hints failed:', e);
+        }
+      }
+
+      // 2. Fallback/Regex-based detection for legacy or restricted environments
+      if (deviceName === 'Generic Device' || deviceName.includes('PC')) {
+        if (userAgent.includes('iPhone')) {
+          // Detect specific iPhone models from UA if possible (often just "iPhone")
+          deviceName = 'iPhone';
+          if (window.screen.height >= 844) deviceName = 'iPhone 15 Pro'; // Mocking/Estimating for demo
+        } else if (userAgent.includes('iPad')) {
+          deviceName = 'iPad Pro';
+        } else if (userAgent.includes('Macintosh')) {
+          deviceName = 'MacBook Pro';
+        } else if (userAgent.includes('Windows')) {
+          // Extract specific Windows version or common hardware marks
+          deviceName = 'Windows PC';
+          if (userAgent.includes('x64')) deviceName += ' (x64)';
+        } else if (userAgent.includes('Android')) {
+          const modelMatch = userAgent.match(/Android.*;\s*([^;)]+)\s*[);]/);
+          if (modelMatch && modelMatch[1]) {
+            deviceName = modelMatch[1].trim();
+          } else {
+            deviceName = 'Android Device';
+          }
+        }
+      }
+
+      // Add a touch of personalization if not already specific
+      const genericNames = ['Windows PC', 'MacBook Pro', 'iPhone', 'Generic Device'];
+      if (genericNames.some(name => deviceName.includes(name))) {
+        const firstName = profileUsername.textContent.split(' ')[0];
+        deviceName = `${firstName}'s ${deviceName}`;
+      }
+      
+      return { deviceName, deviceType };
+    }
+
+    let autoLoginDebounce = null;
+    async function tryAutoLogin() {
+      const password = passwordInput.value;
+      if (!password) return;
+
+      const { deviceName, deviceType } = await getDeviceInfo();
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, deviceName, deviceType })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Set robust session flag
+          sessionStorage.setItem('macos_session_active', 'true');
+
+          if (data.needsReset) {
+            alert('⚠️ Recovery access granted. Please reset your password in Settings.');
+          }
+
+          closeLoginModal();
+          setTimeout(() => {
+            window.location.href = './home.html';
+          }, 300);
+        }
+      } catch (err) {
+        // Silent fail for auto-login
+        console.warn('Auto-login attempt failed (silent):', err);
+      }
+    }
+
+    async function handleLogin() {
+      const password = passwordInput.value;
+      if (!password) {
+        // Just shake or ignore if empty, matching macOS behavior
+        passwordInput.classList.add('error-shake');
+        setTimeout(() => passwordInput.classList.remove('error-shake'), 500);
+        return;
+      }
+
+      const { deviceName, deviceType } = await getDeviceInfo();
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, deviceName, deviceType })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Set robust session flag
+          sessionStorage.setItem('macos_session_active', 'true');
+
+          if (data.needsReset) {
+            alert('⚠️ Recovery access granted. Please reset your password in Settings.');
+          }
+
+          closeLoginModal();
+          setTimeout(() => {
+            window.location.href = './home.html';
+          }, 300);
+        } else {
+          // EXPLICIT LOGIN ERROR: Feedback provided
+          passwordInput.classList.add('error-shake');
+          setTimeout(() => passwordInput.classList.remove('error-shake'), 500);
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        alert('Could not connect to authentication server');
+      }
+    }
+
+    // Attach auto-unlock listener
+    if (passwordInput) {
+      passwordInput.addEventListener('input', () => {
+        clearTimeout(autoLoginDebounce);
+        // Small debounce (150ms) to avoid overlapping requests while typing fast
+        autoLoginDebounce = setTimeout(tryAutoLogin, 150);
+      });
+    }
+
+    async function handleUnlock() {
+      const { deviceName, deviceType } = await getDeviceInfo();
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: null, deviceName, deviceType }) // No password needed
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Set robust session flag
+          sessionStorage.setItem('macos_session_active', 'true');
+
+          closeLoginModal();
+          setTimeout(() => {
+            window.location.href = './home.html';
+          }, 300);
+        }
+      } catch (err) {
+        console.error('Unlock error:', err);
+      }
+    }
+
+    async function handleForgotPassword() {
+      try {
+        const response = await fetch('/api/auth/challenge');
+        const data = await response.json();
+
+        if (data.question) {
+          document.querySelector('#passwordProtectionSection .password-field-container').style.display = 'none';
+          // Fix: loginButton was removed earlier, so we don't try to hide it anymore
+          document.getElementById('touchidText').style.display = 'none';
+          document.getElementById('forgotPasswordText').style.display = 'none';
+
+          const questionSection = document.getElementById('securityQuestionSection');
+          const questionDisplay = document.getElementById('challengeQuestionDisplay');
+
+          questionDisplay.textContent = data.question;
+          questionSection.style.display = 'block';
+
+          document.getElementById('verifyAnswerBtn').onclick = async () => {
+            const answer = document.getElementById('securityAnswerInput').value;
+            if (!answer) return;
+
+            const vRes = await fetch('/api/auth/verify-answer', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ answer })
+            });
+
+            if (vRes.ok) {
+              const vData = await vRes.json();
+              // Set robust session flag (elevation counts as active session)
+              sessionStorage.setItem('macos_session_active', 'true');
+
+              // Transition to Reset Section
+              questionSection.style.display = 'none';
+              const resetSection = document.getElementById('passwordResetSection');
+              resetSection.style.display = 'flex';
+
+              // Handle Reset Password Confirmation
+              document.getElementById('confirmResetBtn').onclick = async () => {
+                const newPassword = document.getElementById('resetNewPassword').value;
+                const confirmPassword = document.getElementById('resetConfirmPassword').value;
+
+                if (!newPassword || newPassword !== confirmPassword) {
+                  alert('Passwords do not match');
+                  return;
+                }
+
+                const updateRes = await fetch('/api/auth/update-security', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${vData.elevationToken}`
+                  },
+                  body: JSON.stringify({ newPassword })
+                });
+
+                if (updateRes.ok) {
+                  alert('✓ Password updated successfully! Please sign in with your new password.');
+
+                  // Reset modal UI to standard login state
+                  document.getElementById('passwordResetSection').style.display = 'none';
+                  document.querySelector('#passwordProtectionSection .password-field-container').style.display = 'block';
+                  document.getElementById('touchidText').style.display = 'block';
+                  document.getElementById('forgotPasswordText').style.display = 'block';
+
+                  // Clear fields
+                  document.getElementById('resetNewPassword').value = '';
+                  document.getElementById('resetConfirmPassword').value = '';
+                  document.getElementById('securityAnswerInput').value = '';
+                  passwordInput.value = '';
+                  passwordInput.focus();
+                } else {
+                  const errData = await updateRes.json();
+                  alert(errData.error || 'Failed to update password');
+                }
+              };
+            } else {
+              alert('Incorrect answer');
+            }
+          };
+        } else {
+          alert('Security questions not set up. Use your recovery key.');
+        }
+      } catch (err) {
+        console.error('Challenge error:', err);
+      }
+    }
+
+    // Modal Triggers
+    const oldOpenLoginModal = openLoginModal;
+    openLoginModal = function () {
+      oldOpenLoginModal();
+      checkSecurityStatus();
+    };
+
+    const unlockBtn = document.getElementById('unlockButton');
+    if (unlockBtn) unlockBtn.addEventListener('click', handleUnlock);
+
+    const proceedBtn = document.getElementById('proceedToHome');
+    if (proceedBtn) proceedBtn.addEventListener('click', () => {
+      handleUnlock();
+    });
+
+    // Add click listeners to profile elements
+    if (profileAvatar) profileAvatar.addEventListener('click', openLoginModal);
+    if (profileUsername) profileUsername.addEventListener('click', openLoginModal);
+
+    if (hintTouchId) {
+      hintTouchId.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleTouchID();
+      });
+    }
+
+    if (hintPassword) {
+      hintPassword.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLoginModal();
+      });
+    }
+
+    // Login button click
+    if (loginButton) {
+      // Button is now removed from HTML, but we keep the logic here 
+      // in case we need to re-enable it or for reference.
+      // loginButton.addEventListener('click', handleLogin);
+    }
+
+    // Password toggle button
+    if (passwordToggle) passwordToggle.addEventListener('click', togglePasswordVisibility);
+
+    // Touch ID text click
+    if (touchidText) touchidText.addEventListener('click', handleTouchID);
+
+    // Forgot Password click
+    const forgotPasswordText = document.getElementById('forgotPasswordText');
+    if (forgotPasswordText) forgotPasswordText.addEventListener('click', handleForgotPassword);
+
+    // Password input - Enter key to submit
+    if (passwordInput) {
+      passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation(); // Prevent global document listener from double-firing
+          const isNoPass = document.getElementById('noPasswordSection')?.style.display !== 'none';
+          if (isNoPass) handleUnlock();
+          else handleLogin();
+        }
+      });
+    }
+
+    // Touch ID Setup buttons
+    if (cancelTouchIdSetup) cancelTouchIdSetup.addEventListener('click', closeLoginModal);
+    if (confirmTouchIdSetup) confirmTouchIdSetup.addEventListener('click', registerBiometrics);
+    if (setupPasswordInput) {
+      setupPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          registerBiometrics();
+        }
+      });
+    }
+
+    const securityAnswerInput = document.getElementById('securityAnswerInput');
+    if (securityAnswerInput) {
+      securityAnswerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('verifyAnswerBtn')?.click();
+        }
+      });
+    }
+
+    const resetNewPasswordInput = document.getElementById('resetNewPassword');
+    if (resetNewPasswordInput) {
+      resetNewPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('resetConfirmPassword')?.focus();
+        }
+      });
+    }
+
+    const resetConfirmPasswordInput = document.getElementById('resetConfirmPassword');
+    if (resetConfirmPasswordInput) {
+      resetConfirmPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('confirmResetBtn')?.click();
+        }
+      });
+    }
+
+    const setupPasswordToggleBtn = document.getElementById('setupPasswordToggleBtn');
+    if (setupPasswordToggleBtn) {
+      setupPasswordToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('setupPasswordInput');
+        if (input) {
+          input.type = input.type === 'password' ? 'text' : 'password';
+        }
+      });
+    }
+
+    // Reset password section toggles
+    const resetNewToggleBtn = document.getElementById('resetNewToggleBtn');
+    if (resetNewToggleBtn) {
+      resetNewToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('resetNewPassword');
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    }
+
+    const resetConfirmToggleBtn = document.getElementById('resetConfirmToggleBtn');
+    if (resetConfirmToggleBtn) {
+      resetConfirmToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('resetConfirmPassword');
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    }
+
+    // Close modal when clicking blur overlay
+    if (blurOverlay) blurOverlay.addEventListener('click', closeLoginModal);
+
+    // Update login page clock when visible
+    let loginClockInterval;
+
+    if (loginPageClock) {
+      const observer = new MutationObserver(() => {
+        if (loginPageClock.classList.contains('active')) {
+          if (loginClockInterval) clearInterval(loginClockInterval);
+          loginClockInterval = setInterval(updateLoginPageClock, 1000);
+        } else {
+          if (loginClockInterval) clearInterval(loginClockInterval);
+        }
+      });
+
+      observer.observe(loginPageClock, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // Bottom-to-top drag gesture to open login
+    let isDragging = false;
+    let dragStartY = 0;
+    let dragThreshold = window.innerHeight / 2; // Default, will re-calc on window resize
+    
+    window.addEventListener('resize', () => {
+      dragThreshold = window.innerHeight / 2;
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      // Only start drag on homepage (not during login or transition)
+      const currentState = document.body.getAttribute('data-unlock-state');
+      if (currentState === 'locked') {
+        isDragging = true;
+        dragStartY = e.clientY;
+        document.body.setAttribute('data-unlock-state', 'dragging');
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const currentY = e.clientY;
+        const dragDistance = dragStartY - currentY; // Positive = upward
+
+        // VISUAL FEEDBACK: Move elements with drag
+        if (dragDistance > 0) {
+          const dragTranslate = Math.min(dragDistance, dragThreshold * 1.1);
+          
+          document.querySelectorAll('.draggable-content').forEach(el => {
+            el.style.transform = `translate(-50%, -${dragTranslate}px)`;
+          });
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      
+      const currentY = e.clientY;
+      const dragDistance = dragStartY - currentY;
+      
+      isDragging = false;
+
+      if (dragDistance > dragThreshold) {
+        // SUCCESS: Fly out
+        executeUnlockSequence();
+      } else {
+        // CANCEL: Snap back
+        document.body.setAttribute('data-unlock-state', 'locked');
+        resetDragVisuals();
+      }
+    });
+
+    function executeUnlockSequence() {
+      document.body.setAttribute('data-unlock-state', 'unlocking');
+      
+      // APPLY EXIT ANIMATION DIRECTLY (Industrial Standard)
+      document.querySelectorAll('.draggable-content').forEach(el => {
+        el.style.transition = 'transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.6s ease-out';
+        el.style.transform = 'translate(-50%, -100vh)';
+        el.style.opacity = '0';
+      });
+
+      // Precise handover to login modal
+      const firstEl = document.querySelector('.draggable-content');
+      if (firstEl) {
+        const onTransitionEnd = (e) => {
+          if (e.propertyName === 'transform') {
+            firstEl.removeEventListener('transitionend', onTransitionEnd);
+            document.body.setAttribute('data-unlock-state', 'finished');
+            openLoginModal();
+          }
+        };
+        firstEl.addEventListener('transitionend', onTransitionEnd);
+        
+        // Backup timeout in case transitionend fails
+        setTimeout(() => {
+          if (document.body.getAttribute('data-unlock-state') === 'unlocking') {
+            document.body.setAttribute('data-unlock-state', 'finished');
+            openLoginModal();
+          }
+        }, 1000);
+      } else {
+        openLoginModal();
+      }
+    }
+
+    function resetDragVisuals() {
+      document.querySelectorAll('.draggable-content').forEach(el => {
+        el.style.transition = ''; // Restore CSS-defined transitions
+        el.style.transform = ''; // Reverts to translateX(-50%) from CSS
+        el.style.opacity = '';
+      });
+    }
+
+    // Touch gesture support
+    document.addEventListener('touchstart', (e) => {
+      const currentState = document.body.getAttribute('data-unlock-state');
+      if (currentState === 'locked') {
+        isDragging = true;
+        dragStartY = e.touches[0].clientY;
+        document.body.setAttribute('data-unlock-state', 'dragging');
+      }
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (isDragging) {
+        const currentY = e.touches[0].clientY;
+        const dragDistance = dragStartY - currentY;
+
+        if (dragDistance > 0) {
+          const dragTranslate = Math.min(dragDistance, dragThreshold * 1.1);
+          document.querySelectorAll('.draggable-content').forEach(el => {
+            el.style.transform = `translate(-50%, -${dragTranslate}px)`;
+          });
+        }
+      }
+    });
+
+    document.addEventListener('touchend', (e) => {
+      if (!isDragging) return;
+      
+      const currentY = e.changedTouches[0].clientY;
+      const dragDistance = dragStartY - currentY;
+      
+      isDragging = false;
+
+      if (dragDistance > dragThreshold) {
+        executeUnlockSequence();
+      } else {
+        document.body.setAttribute('data-unlock-state', 'locked');
+        resetDragVisuals();
+      }
+    });
+
+    // Global keydown listener to open login modal when typing on desktop
+    document.addEventListener('keydown', (e) => {
+      // If login modal is active, Esc should close it
+      if (document.body.classList.contains('login-active')) {
+        if (e.key === 'Escape') {
+          closeLoginModal();
+        } else if (e.key === 'Enter') {
+          // If login modal is active, try to submit
+          const isNoPass = document.getElementById('noPasswordSection')?.style.display !== 'none';
+          if (isNoPass) handleUnlock();
+          else handleLogin();
+        }
+      } else {
+        // If on lock screen, Enter opens login modal or unlocks if no password
+        // Also check if no modifier keys are held down (to avoid triggering on shortcuts like Ctrl+R)
+        const isPrintableKey = e.key.length === 1;
+        const isEnter = e.key === 'Enter';
+        const noModifiers = !e.ctrlKey && !e.altKey && !e.metaKey;
+
+        if ((isPrintableKey || isEnter) && noModifiers) {
+          openLoginModal();
+
+          // Focus immediately to capture the keystroke
+          if (passwordInput) {
+            passwordInput.focus();
+          }
+        }
+      }
+    });
+  </script>
+
+  <!-- Standardized Components -->
+  <script src="/scripts/clock-display/modules/clock.js"></script>
+  <script src="/scripts/weather/modules/weather.js"></script>
+  <!-- Unified Wallpaper Engine -->
+
+  <!-- Main Components -->
+
+  <!-- Service Worker Registration for PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('✓ Service Worker registered successfully:', registration);
+          })
+          .catch(error => {
+            console.log('✗ Service Worker registration failed:', error);
+          });
+      });
+    }
+
+    // Initialize Weather Displays
+    if (typeof WeatherDisplay !== 'undefined') {
+      window.homepageWeatherDisplay = new WeatherDisplay('homepageWeatherDisplay', { useMetricUnits: true });
+      window.loginWeatherDisplay = new WeatherDisplay('loginWeatherDisplay', { useMetricUnits: true });
+    }
+
+    // Initialize Login Page Clock Display
+    if (typeof ClockDisplay !== 'undefined') {
+      window.loginClockComponent = new ClockDisplay('loginClockDisplay', { format: '12h', showComma: false });
+    }
+
+    // Connectivity Status Monitor & Toast
+    (function () {
+      let toast = document.createElement('div');
+      toast.id = 'connectivity-toast';
+      toast.className = 'connectivity-toast';
+      document.body.appendChild(toast);
+      let timer;
+      function showToast(msg, type, timeout = null) {
+        toast.textContent = msg;
+        toast.className = `connectivity-toast active ${type}`;
+        if (timeout) {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            toast.classList.remove('active');
+          }, timeout);
+        }
+      }
+      function onOffline() {
+        showToast('No connection', 'offline', 3000);
+      }
+      function onOnline() {
+        if (toast.classList.contains('offline')) {
+          showToast('Back online', 'online', 3000);
+        } else {
+          toast.classList.remove('active');
+        }
+      }
+      window.addEventListener('offline', onOffline);
+      window.addEventListener('online', onOnline);
+      if (!navigator.onLine) onOffline();
+    })();
+
+    // Initial security and profile check
+    checkSecurityStatus();
+    syncProfile();
+  </script>
+</body>
+
+</html>

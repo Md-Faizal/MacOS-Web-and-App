@@ -1,0 +1,1073 @@
+/* ═══════════════════════════════════════════════════════════════════
+   QR CODE PRICE LIST — NEO-BRUTALIST GLASSMORPHIC PRINT STYLESHEET
+   Design: Vibrant, High-Contrast Neo-Brutalist Aesthetic
+   Layout: A4 PORTRAIT · Variant Horizontal Batch Rows
+   Typography: Plus Jakarta Sans
+   ═══════════════════════════════════════════════════════════════════ */
+
+.qr-print-container {
+  display: none;
+}
+
+@media print {
+
+  /* ── Design Tokens ──────────────────────────────────────────────── */
+  :root {
+    --qr-bg:          #f4f6fb;
+    --qr-primary:     #0038ff; /* Electric Blue */
+    --qr-secondary:   #ffea00; /* Vibrant Yellow */
+    --qr-accent:      #00f0ff; /* Neon Cyan */
+    --qr-green:       #76b900; /* Nvidia Green */
+    --qr-red:         #ff2a4b; /* Accent Red */
+    --qr-white:       #ffffff;
+    --qr-border-black:#000000;
+    --qr-text:        #0d0f12;
+    --qr-text-muted:  #5C687D;
+    
+    --qr-radius:      12px;
+    --qr-radius-lg:   20px;
+    
+    --qr-shadow:      6px 6px 0px var(--qr-border-black);
+    --qr-shadow-sm:   3px 3px 0px var(--qr-border-black);
+    
+    --qr-font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --qr-font-body:    'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  /* ── Global Print Reset ─────────────────────────────────────────── */
+  body * {
+    visibility: hidden;
+  }
+
+  body, html {
+    background: var(--qr-bg) !important;
+    color: var(--qr-text) !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .qr-print-container,
+  .qr-print-container * {
+    visibility: visible;
+  }
+
+  .qr-print-container {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: var(--qr-bg) !important;
+    padding: 0;
+    margin: 0;
+    color: var(--qr-text) !important;
+    font-family: var(--qr-font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── Page: A4 PORTRAIT (Zero-Margin Optimized) ─────────────────── */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  .qr-print-page {
+    display: block;
+    font-family: var(--qr-font-body);
+    position: relative;
+    box-sizing: border-box;
+    width: 210mm;
+    min-height: 297mm;
+    padding: 14mm 12mm 24mm 12mm; /* Equal 14mm top space and 14mm bottom space above 10mm footer */
+    overflow: hidden;
+    background: var(--qr-bg) !important;
+  }
+
+  .qr-print-page.qr-toc-page {
+    display: block;
+    height: auto;
+    min-height: 297mm;
+    padding: 10mm 12mm 20mm 12mm;
+  }
+
+  /* Grid Overlay background */
+  .qr-neo-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+    background-size: 36px 36px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DOCUMENT HEADER — Neo Brutalist Header
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-doc-header {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 24px 48px;
+    background: var(--qr-white);
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    box-shadow: var(--qr-shadow);
+    margin-bottom: 24px;
+  }
+
+  .qr-doc-brand {
+    font-family: var(--qr-font-display);
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--qr-primary);
+    margin: 0 0 4px 0;
+  }
+
+  .qr-doc-title {
+    margin: 0;
+    font-family: var(--qr-font-display);
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--qr-text);
+    letter-spacing: -1px;
+    line-height: 1.1;
+  }
+
+  .qr-doc-subtitle {
+    margin: 6px 0 0 0;
+    font-family: var(--qr-font-body);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-text);
+    background: var(--qr-secondary);
+    display: inline-block;
+    padding: 4px 12px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 8px;
+    box-shadow: var(--qr-shadow-sm);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     METRICS ROW — Bold Pills
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-metrics-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .qr-metric-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 44px;
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    background: var(--qr-white);
+    min-width: 140px;
+    position: relative;
+    box-shadow: var(--qr-shadow);
+  }
+
+  .qr-metric-pill .metric-value {
+    font-family: var(--qr-font-display);
+    font-size: 36px;
+    font-weight: 900;
+    color: var(--qr-text);
+    line-height: 1;
+  }
+
+  .qr-metric-pill .metric-label {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--qr-text);
+    margin-top: 6px;
+  }
+
+  .qr-metric-pill.accent {
+    background: var(--qr-primary);
+  }
+
+  .qr-metric-pill.accent .metric-value,
+  .qr-metric-pill.accent .metric-label {
+    color: var(--qr-white);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     CATEGORY CLOUD
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-category-cloud {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 30px;
+  }
+
+  .qr-cat-tag {
+    background: var(--qr-white);
+    color: var(--qr-text);
+    padding: 6px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    border: 2px solid var(--qr-border-black);
+    box-shadow: var(--qr-shadow-sm);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     TABLE OF CONTENTS
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-toc-section {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 20px;
+    width: 100%;
+    height: auto;
+    box-sizing: border-box;
+    background: var(--qr-white);
+    padding: 20px 24px;
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    box-shadow: var(--qr-shadow);
+    text-align: left;
+  }
+
+  .qr-toc-heading {
+    font-family: var(--qr-font-body);
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-text);
+    border-bottom: 3px solid var(--qr-border-black);
+    padding-bottom: 10px;
+    margin-bottom: 16px;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .qr-toc-columns {
+    display: block;
+    width: 100%;
+    height: auto;
+    box-sizing: border-box;
+    column-count: 2;
+    column-gap: 28px;
+    column-fill: balance;
+    text-align: left;
+  }
+
+  .qr-toc-letter {
+    font-family: var(--qr-font-display);
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--qr-primary);
+    margin-top: 14px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--qr-border-black);
+    break-after: avoid;
+    break-inside: avoid;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+  }
+
+  .qr-toc-letter:first-child {
+    margin-top: 0;
+  }
+
+  .qr-toc-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 6px;
+    font-size: 12.5px;
+    text-decoration: none;
+    color: inherit;
+    break-inside: avoid;
+    text-align: left;
+  }
+
+  .qr-toc-name {
+    font-weight: 800;
+    color: var(--qr-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 62%;
+    flex-shrink: 0;
+    text-align: left;
+  }
+
+  .qr-toc-dots {
+    flex: 1;
+    border-bottom: 2px dotted var(--qr-border-black);
+    margin: 0 8px;
+    position: relative;
+    top: -2px;
+    min-width: 10px;
+  }
+
+  .qr-toc-info {
+    font-size: 11.5px;
+    color: var(--qr-text);
+    font-weight: 800;
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: var(--qr-secondary);
+    padding: 2px 6px;
+    border: 1px solid var(--qr-border-black);
+    border-radius: 4px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     POPULAR SUGGESTIONS — Fills remaining space on TOC page
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-popular-section {
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    margin-top: 16px;
+    padding: 18px 20px;
+    background: var(--qr-primary);
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    box-shadow: var(--qr-shadow);
+    box-sizing: border-box;
+    max-height: 40mm;
+  }
+
+  .qr-popular-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .qr-popular-title {
+    font-family: var(--qr-font-body);
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--qr-white);
+  }
+
+  .qr-popular-diamond {
+    font-size: 10px;
+    color: var(--qr-accent);
+  }
+
+  .qr-popular-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  .qr-popular-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--qr-white);
+    border: 2px solid var(--qr-border-black);
+    border-radius: 20px;
+    padding: 5px 14px;
+    box-shadow: 3px 3px 0px var(--qr-border-black);
+    white-space: nowrap;
+  }
+
+  .qr-popular-chip.gold {
+    background: var(--qr-secondary);
+    border-width: 3px;
+  }
+
+  .qr-popular-chip .pop-name {
+    font-size: 11px;
+    font-weight: 900;
+    color: var(--qr-text);
+  }
+
+  .qr-popular-chip .pop-cat {
+    font-size: 9px;
+    font-weight: 800;
+    color: var(--qr-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .qr-popular-chip .pop-stats {
+    font-size: 9px;
+    font-weight: 900;
+    color: var(--qr-white);
+    background: var(--qr-primary);
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--qr-border-black);
+  }
+
+  .qr-popular-chip.gold .pop-stats {
+    background: var(--qr-border-black);
+  }
+
+  .qr-popular-shapes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+
+  .qr-popular-shapes .shape {
+    position: absolute;
+    opacity: 0.12;
+  }
+
+  .qr-popular-shapes .shape-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 5px solid var(--qr-accent);
+    top: -15px;
+    right: 30px;
+  }
+
+  .qr-popular-shapes .shape-cross {
+    font-size: 60px;
+    font-weight: 900;
+    color: var(--qr-secondary);
+    bottom: -10px;
+    left: 20px;
+    line-height: 1;
+  }
+
+  .qr-popular-shapes .shape-square {
+    width: 40px;
+    height: 40px;
+    border: 5px solid var(--qr-white);
+    transform: rotate(15deg);
+    top: 10px;
+    left: 60px;
+  }
+
+  .qr-popular-shapes .shape-dots {
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--qr-accent);
+    letter-spacing: 8px;
+    bottom: 5px;
+    right: 50px;
+  }
+
+  .qr-popular-shapes .shape-zigzag {
+    font-size: 50px;
+    color: var(--qr-secondary);
+    top: 5px;
+    right: 150px;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     PRODUCT CONTAINER — 2-Column Masonry Layout for Efficiency
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-catalog-products {
+    display: block;
+    width: 100%;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     LETTER BREAKPOINT
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-letter-break {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+    margin-bottom: 12px;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid;
+    width: 100%;
+  }
+
+  .qr-letter-break .letter-char {
+    font-family: var(--qr-font-display);
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--qr-text);
+    line-height: 1;
+    flex-shrink: 0;
+    text-shadow: 3px 3px 0 var(--qr-accent);
+  }
+
+  .qr-letter-break .letter-line {
+    flex: 1;
+    height: 4px;
+    background: var(--qr-border-black);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     PRODUCT SECTION — Bold Block Layout
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-product-block {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 14px;
+    page-break-inside: auto;
+    break-inside: auto;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .qr-product-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--qr-primary);
+    border: 2px solid var(--qr-border-black);
+    border-radius: var(--qr-radius);
+    margin-bottom: 6px;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: var(--qr-shadow-sm);
+  }
+
+  .qr-product-title-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    position: relative;
+  }
+
+  .qr-product-name {
+    position: relative;
+    font-family: var(--qr-font-body);
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--qr-white);
+    margin: 0;
+  }
+
+  .qr-category-pill {
+    display: inline-flex;
+    align-items: center;
+    background: var(--qr-white);
+    color: var(--qr-text);
+    border: 1px solid var(--qr-border-black);
+    padding: 1px 8px;
+    border-radius: 14px;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .qr-gold-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--qr-secondary);
+    color: var(--qr-text);
+    border: 1.5px solid var(--qr-border-black);
+    padding: 2px 8px;
+    border-radius: 14px;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .qr-batch-count-badge {
+    position: relative;
+    font-size: 10px;
+    font-weight: 900;
+    color: var(--qr-text);
+    background: var(--qr-accent);
+    padding: 2px 8px;
+    border: 1.5px solid var(--qr-border-black);
+    border-radius: 14px;
+    white-space: nowrap;
+  }
+
+  .qr-product-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 9.5px;
+    color: var(--qr-text);
+    margin-bottom: 6px;
+    padding-left: 4px;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .qr-product-meta .meta-label {
+    font-weight: 900;
+    color: var(--qr-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 9.5px;
+    background: #e2e8f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--qr-border-black);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     VARIANT BLOCK
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-variant-block {
+    margin-top: 6px;
+    margin-bottom: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .qr-variant-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--qr-secondary);
+    color: var(--qr-text);
+    padding: 2px 8px;
+    border: 1.5px solid var(--qr-border-black);
+    border-radius: 14px;
+    font-size: 10.5px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* Horizontal Row of Batches across width */
+  .qr-batch-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .qr-batch-card {
+    border: 2px solid var(--qr-border-black);
+    border-radius: var(--qr-radius);
+    overflow: hidden;
+    background: var(--qr-white);
+    page-break-inside: avoid;
+    box-shadow: 3px 3px 0px var(--qr-border-black);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  /* Card Header Strip */
+  .qr-batch-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    background: var(--qr-accent);
+    border-bottom: 2px solid var(--qr-border-black);
+  }
+
+  .qr-batch-no {
+    font-size: 12px;
+    font-weight: 900;
+    color: var(--qr-text);
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    background: var(--qr-white);
+    padding: 2px 6px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 4px;
+  }
+
+  .qr-batch-mrp {
+    font-family: var(--qr-font-display);
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--qr-text);
+    background: var(--qr-secondary);
+    padding: 2px 8px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 6px;
+    transform: rotate(2deg);
+  }
+
+  /* Card Body */
+  .qr-batch-body {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  .qr-batch-data {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .qr-data-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .qr-data-label {
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-primary);
+  }
+
+  .qr-data-value {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--qr-text);
+  }
+
+  .qr-data-value.expiry {
+    color: var(--qr-red);
+  }
+
+  /* Scannable Large QR Container */
+  .qr-code-area {
+    flex-shrink: 0;
+  }
+
+  .qr-code-link {
+    display: block;
+    text-decoration: none;
+  }
+
+  .qr-code-img {
+    display: block;
+    width: 65px;
+    height: 65px;
+    object-fit: contain;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 6px;
+    background: var(--qr-white);
+    padding: 3px;
+    box-shadow: 2px 2px 0px var(--qr-border-black);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     ORNAMENTAL SEPARATOR
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-ornament {
+    display: none; /* Removed for Neo-Brutalist clean block layout */
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     BATCH VIEW — Detail Card
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-detail-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 850px;
+    margin: 0 auto 30px;
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    overflow: hidden;
+    background: var(--qr-white);
+    box-shadow: var(--qr-shadow);
+  }
+
+  .qr-detail-card-header {
+    background: var(--qr-primary);
+    color: var(--qr-white);
+    padding: 20px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 3px solid var(--qr-border-black);
+  }
+
+  .qr-detail-card-header h3 {
+    margin: 0;
+    font-family: var(--qr-font-body);
+    font-size: 22px;
+    font-weight: 900;
+  }
+
+  .qr-detail-card-header .mrp-tag {
+    font-family: var(--qr-font-display);
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--qr-text);
+    background: var(--qr-secondary);
+    padding: 4px 16px;
+    border: 3px solid var(--qr-border-black);
+    border-radius: 12px;
+    box-shadow: 3px 3px 0px var(--qr-border-black);
+    transform: rotate(3deg);
+  }
+
+  .qr-detail-card-body {
+    padding: 30px;
+  }
+
+  .qr-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+
+  .qr-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: #f4f6fb;
+    padding: 12px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: var(--qr-radius);
+    box-shadow: 2px 2px 0px var(--qr-border-black);
+  }
+
+  .qr-detail-label {
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-primary);
+  }
+
+  .qr-detail-value {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--qr-text);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     BATCH VIEW — QR Sizes Row
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-sizes-row {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 50px;
+    padding: 24px 0 10px;
+    border-top: 3px solid var(--qr-border-black);
+  }
+
+  .qr-size-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .qr-size-frame {
+    display: inline-block;
+    padding: 12px;
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius);
+    background: var(--qr-white);
+    box-shadow: var(--qr-shadow-sm);
+  }
+
+  .qr-size-label {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-text);
+    background: var(--qr-accent);
+    padding: 4px 12px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 12px;
+  }
+
+  .qr-img-sm { width: 90px; height: 90px; display: block; }
+  .qr-img-md { width: 150px; height: 150px; display: block; }
+  .qr-img-lg { width: 240px; height: 240px; display: block; }
+
+  /* ══════════════════════════════════════════════════════════════════
+     CONTEXT BAR (Batch View) — Full Width
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-context-bar {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    gap: 12px;
+    padding: 16px 24px;
+    background: var(--qr-white);
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    margin-bottom: 30px;
+    font-size: 14px;
+    color: var(--qr-text);
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: var(--qr-shadow);
+  }
+
+  .qr-context-bar .ctx-sep {
+    color: var(--qr-primary);
+    font-weight: 900;
+  }
+
+  .qr-context-bar .ctx-label {
+    font-weight: 900;
+    color: var(--qr-primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 11px;
+    margin-right: 6px;
+  }
+
+  .qr-context-bar .ctx-value {
+    font-weight: 900;
+    color: var(--qr-text);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     PRODUCT SUMMARY (Product View)
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-product-summary {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-around;
+    gap: 20px;
+    margin-bottom: 24px;
+    padding: 18px 24px;
+    background: var(--qr-white);
+    border: 3px solid var(--qr-border-black);
+    border-radius: var(--qr-radius-lg);
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: var(--qr-shadow);
+  }
+
+  .qr-product-summary .summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .qr-product-summary .summary-label {
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-primary);
+  }
+
+  .qr-product-summary .summary-value {
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--qr-text);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DOCUMENT FOOTER
+     ══════════════════════════════════════════════════════════════════ */
+  .qr-doc-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    margin-top: 0;
+    padding: 10px 12mm 10px 12mm;
+    background: var(--qr-white);
+    border-top: 3px solid var(--qr-border-black);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--qr-text);
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Interactive PDF Link Adjustments */
+  .qr-print-container a {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .qr-print-container a:hover {
+    opacity: 0.85;
+  }
+
+  .qr-doc-footer .footer-left {
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--qr-primary);
+  }
+
+  .qr-doc-footer .footer-center {
+    font-size: 16px;
+    color: var(--qr-secondary);
+    letter-spacing: 10px;
+    -webkit-text-stroke: 1px var(--qr-border-black);
+  }
+
+  .qr-doc-footer .footer-right {
+    font-weight: 800;
+    background: var(--qr-white);
+    padding: 4px 10px;
+    border: 2px solid var(--qr-border-black);
+    border-radius: 8px;
+    box-shadow: 2px 2px 0px var(--qr-border-black);
+  }
+
+  /* ── Page Break Controls ────────────────────────────────────────── */
+  .qr-toc-page {
+    page-break-after: always;
+  }
+
+  .qr-page-break {
+    page-break-before: always;
+  }
+
+} /* end @media print */
