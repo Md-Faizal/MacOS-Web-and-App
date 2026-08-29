@@ -50,6 +50,11 @@ module.exports = function(db) {
         params.push(payment_method);
       }
 
+      if (req.user && req.user.role === 'worker') {
+        const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+        sql += ` AND (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
+      }
+
       sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 

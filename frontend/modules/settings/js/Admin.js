@@ -6,19 +6,107 @@ export class AdminComponent {
     this.auditLogs = [];
     this.eventSource = null;
     this.currentTab = 'workers';
+    this.allContacts = [];
+    this.selectedContactIds = [];
+    this.functionalOverrides = {};
     
-    // Available desktop apps for workers
+    // Available desktop apps for workers with proposed functional permissions
     this.APP_LIST = [
-      { id: 'billing', name: 'Billing', icon: '💰', desc: 'Create bills, receive payments, print invoices' },
-      { id: 'products', name: 'Product List', icon: '🛍️', desc: 'Product catalog, batches, variants, pricing' },
-      { id: 'contacts', name: 'Contacts', icon: '👥', desc: 'Customer & supplier accounts, ledger' },
-      { id: 'analytics', name: 'Analytics', icon: '📊', desc: 'Sales trends, customer profiling, financial reports' },
-      { id: 'notes', name: 'Notes', icon: '📝', desc: 'Personal notes and customer scratchpad' },
-      { id: 'calendar', name: 'Calendar', icon: '📅', desc: 'Schedules, appointments, follow-ups' },
-      { id: 'cloud', name: 'Cloud Files', icon: '☁️', desc: 'Document cloud backups, invoice exports' },
-      { id: 'calculator', name: 'Calculator', icon: '🧮', desc: 'Standard business calculator utility' },
-      { id: 'ai-vision', name: 'AI Camera', icon: '📸', desc: 'AI smart scanner and image recognition' },
-      { id: 'settings', name: 'Settings', icon: '⚙️', desc: 'Worker profile & wallpaper settings' }
+      { 
+        id: 'billing', 
+        name: 'Billing', 
+        icon: '💰', 
+        desc: 'Create bills, receive payments, print invoices',
+        options: [
+          { key: 'allow_discounts', label: 'Allow Item & Invoice Discounts', desc: 'Worker can apply price discounts on bills', default: true },
+          { key: 'allow_credit_sales', label: 'Allow Credit Sales (Unpaid Due)', desc: 'Worker can issue invoices with pending balances', default: true },
+          { key: 'allow_void_bill', label: 'Allow Voiding / Deleting Bills', desc: 'Worker can cancel and delete invoices', default: false },
+          { key: 'allow_orders', label: 'Allow Creating Draft Orders', desc: 'Worker can place pending customer orders', default: true }
+        ]
+      },
+      { 
+        id: 'products', 
+        name: 'Product List', 
+        icon: '🛍️', 
+        desc: 'Product catalog, batches, variants, pricing',
+        options: [
+          { key: 'view_cost_price', label: 'View Wholesale Cost & Margins', desc: 'Show wholesale buying cost on products', default: false },
+          { key: 'edit_prices', label: 'Edit Product Catalog Prices', desc: 'Worker can change standard selling rates', default: false },
+          { key: 'manage_inventory', label: 'Adjust Inventory & Batches', desc: 'Worker can alter physical stock quantities', default: false }
+        ]
+      },
+      { 
+        id: 'contacts', 
+        name: 'Contacts', 
+        icon: '👥', 
+        desc: 'Customer & supplier accounts, ledger',
+        isContactPicker: true
+      },
+      { 
+        id: 'analytics', 
+        name: 'Analytics', 
+        icon: '📊', 
+        desc: 'Sales trends, customer profiling, financial reports',
+        options: [
+          { key: 'view_profit_margins', label: 'View Profit & Gross Margins', desc: 'Display profit calculations and net yield', default: false },
+          { key: 'view_customer_aging', label: 'View Customer Aging Reports', desc: 'Show 30/60/90+ days overdue analysis', default: true },
+          { key: 'limit_30_days', label: 'Limit View to Past 30 Days', desc: 'Restrict analytics historical window', default: false }
+        ]
+      },
+      { 
+        id: 'notes', 
+        name: 'Notes', 
+        icon: '📝', 
+        desc: 'Personal notes and customer scratchpad',
+        options: [
+          { key: 'view_shared_notes', label: 'Access Shared Store Notes', desc: 'Worker can read general store memos', default: true }
+        ]
+      },
+      { 
+        id: 'calendar', 
+        name: 'Calendar', 
+        icon: '📅', 
+        desc: 'Schedules, appointments, follow-ups',
+        options: [
+          { key: 'view_store_schedule', label: 'View Store Calendar & Deadlines', desc: 'Show appointments and follow-up alerts', default: true }
+        ]
+      },
+      { 
+        id: 'cloud', 
+        name: 'Cloud Files', 
+        icon: '☁️', 
+        desc: 'Document cloud backups, invoice exports',
+        options: [
+          { key: 'allow_uploads', label: 'Allow Uploading New Files', desc: 'Worker can upload documents and invoice scans', default: true }
+        ]
+      },
+      { 
+        id: 'calculator', 
+        name: 'Calculator', 
+        icon: '🧮', 
+        desc: 'Standard business calculator utility',
+        options: [
+          { key: 'standard_mode', label: 'Standard Calculator Mode', desc: 'Allow normal calculation operations', default: true }
+        ]
+      },
+      { 
+        id: 'ai-vision', 
+        name: 'AI Camera', 
+        icon: '📸', 
+        desc: 'AI smart scanner and image recognition',
+        options: [
+          { key: 'enable_ocr', label: 'Enable Smart Invoice Scanning', desc: 'Worker can scan bills with device camera', default: true }
+        ]
+      },
+      { 
+        id: 'settings', 
+        name: 'Settings', 
+        icon: '⚙️', 
+        desc: 'Worker profile & wallpaper settings',
+        options: [
+          { key: 'allow_wallpapers', label: 'Allow Customizing Wallpaper', desc: 'Worker can pick desktop wallpapers', default: true }
+        ]
+      }
     ];
     this.DEFAULT_APPS = ['billing', 'products', 'contacts', 'analytics'];
   }
@@ -78,7 +166,7 @@ export class AdminComponent {
 
         <!-- Worker Edit Modal -->
         <div id="workerEditModal" class="admin-modal-overlay">
-          <div class="admin-modal" style="max-width: 600px;">
+          <div class="admin-modal" style="max-width: 620px;">
             <div class="modal-header">
               <h3 class="modal-title" id="modalWorkerName">Edit Worker</h3>
               <button class="modal-close" id="closeModalBtn">×</button>
@@ -94,21 +182,15 @@ export class AdminComponent {
 
               <div class="form-group">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                  <label class="form-label" style="margin-bottom:0;">App Permissions (Home Screen & Dock)</label>
+                  <label class="form-label" style="margin-bottom:0;">App Permissions & Functional Overrides</label>
                   <div style="display:flex; gap:6px;">
                     <button type="button" class="btn-preset-pill" id="btnPresetDefault">Default (4 Apps)</button>
                     <button type="button" class="btn-preset-pill" id="btnSelectAllApps">Select All</button>
                     <button type="button" class="btn-preset-pill" id="btnClearAllApps">Clear</button>
                   </div>
                 </div>
-                <p style="font-size:11.5px; opacity:0.65; margin-bottom:10px;">Select which applications will render on this worker's home desktop, dock, and launchpad.</p>
+                <p style="font-size:11.5px; opacity:0.65; margin-bottom:10px;">Select which applications will render on this worker's home desktop, and click ➔ on any app to configure granular functional rules or shared contacts.</p>
                 <div class="apps-toggle-grid" id="modalAppsToggleGrid"></div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Shared Customers (Contact IDs)</label>
-                <input type="text" id="modalContactIds" class="form-input" placeholder="e.g. 1, 5, 12 (Leave blank for default private)">
-                <p style="font-size:11px; opacity:0.6; margin-top:6px;">Comma-separated Contact IDs shared with this worker (e.g., Dacca). These customers will serve as the primary calculations for this worker and will be excluded from your master books by default.</p>
               </div>
             </div>
             <div class="modal-footer">
@@ -118,6 +200,57 @@ export class AdminComponent {
             </div>
           </div>
         </div>
+
+        <!-- UI Contact Picker Sub-Modal -->
+        <div id="contactPickerModal" class="admin-modal-overlay" style="z-index: 110;">
+          <div class="admin-modal" style="max-width: 580px; max-height: 85vh;">
+            <div class="modal-header">
+              <div>
+                <h3 class="modal-title">Shared Contacts</h3>
+                <p style="font-size: 11px; opacity: 0.6; margin: 2px 0 0 0;" id="contactPickerSubtitle">Select customers shared with this worker</p>
+              </div>
+              <button class="modal-close" id="closeContactPickerBtn">×</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+              <div style="margin-bottom: 12px;">
+                <input class="form-input contact-picker-search" id="contactPickerSearch" placeholder="🔍 Search customers by name, phone, email, GSTIN...">
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 11.5px;">
+                <div style="font-weight: 600; color: #007aff;" id="contactSelectionSummary">0 Selected</div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn-preset-pill" id="btnSelectAllContacts">Select All</button>
+                  <button type="button" class="btn-preset-pill" id="btnClearAllContacts">Clear All</button>
+                </div>
+              </div>
+              <div class="contact-picker-list" id="contactPickerList">
+                <div style="text-align: center; padding: 24px; color: rgba(255,255,255,0.5);">Loading contacts...</div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary" id="btnApplyContacts">Done</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-App Functional Settings Sub-Modal -->
+        <div id="appFunctionalSettingsModal" class="admin-modal-overlay" style="z-index: 110;">
+          <div class="admin-modal" style="max-width: 520px;">
+            <div class="modal-header">
+              <div>
+                <h3 class="modal-title" id="appFunctionalTitle">App Permissions</h3>
+                <p style="font-size: 11px; opacity: 0.6; margin: 2px 0 0 0;">Configure granular business rules for this worker</p>
+              </div>
+              <button class="modal-close" id="closeFunctionalModalBtn">×</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+              <div id="appFunctionalOptionsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary" id="btnApplyFunctionalSettings">Done</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -175,6 +308,47 @@ export class AdminComponent {
       if (!this.editingUserId) return;
       await this.changeWorkerStatus(this.editingUserId, e.target.value);
     });
+
+    // 5-Digit Manual Approve code input & button
+    const approveCodeInput = this.container.querySelector('#adminApprovalCode');
+    const approveBtn = this.container.querySelector('#btnManualApprove');
+
+    if (approveCodeInput && approveBtn) {
+      const handleVerifyCode = () => {
+        const code = approveCodeInput.value.trim().toUpperCase();
+        if (!code || code.length !== 5) {
+          alert('Please enter a valid 5-digit verification code.');
+          return;
+        }
+
+        const pending = this.users.find(u => u.status === 'pending' && String(u.invite_code).toUpperCase() === code);
+        if (pending) {
+          this.openWorkerEditModal(pending.id, true);
+        } else {
+          alert(`No pending access request found with code: ${code}`);
+        }
+      };
+
+      approveBtn.addEventListener('click', handleVerifyCode);
+      approveCodeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleVerifyCode();
+      });
+    }
+
+    // Sub-modal listeners: Contact Picker
+    const closeContactPicker = () => {
+      this.container.querySelector('#contactPickerModal').classList.remove('show');
+      this.updateContactsBadge();
+    };
+    this.container.querySelector('#closeContactPickerBtn').addEventListener('click', closeContactPicker);
+    this.container.querySelector('#btnApplyContacts').addEventListener('click', closeContactPicker);
+
+    // Sub-modal listeners: Functional Settings
+    const closeFunctionalModal = () => {
+      this.container.querySelector('#appFunctionalSettingsModal').classList.remove('show');
+    };
+    this.container.querySelector('#closeFunctionalModalBtn').addEventListener('click', closeFunctionalModal);
+    this.container.querySelector('#btnApplyFunctionalSettings').addEventListener('click', closeFunctionalModal);
   }
 
   async refresh(full = true) {
@@ -188,12 +362,9 @@ export class AdminComponent {
         return;
       }
 
-      const data = await usersRes.json();
-      this.users = data.users || [];
-      
+      this.users = await usersRes.json();
       this.renderUsers();
-      
-      if (full && this.currentTab === 'audit') {
+      if (this.currentTab === 'audit' && full) {
         await this.loadAuditLogs();
       }
     } catch (err) {
@@ -243,7 +414,7 @@ export class AdminComponent {
         const isDeleted = user.status === 'deleted';
         const isPendingDeletion = user.status === 'pending_deletion';
         const deletedDate = user.deleted_at ? new Date(user.deleted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        const requestedDate = user.deletion_requested_at ? new Date(user.deletion_requested_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+        const requestedDate = user.deletion_requested_at ? new Date(user.deletion_requested_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
         return `
         <div class="worker-card ${isDeleted ? 'deleted-card' : ''} ${isPendingDeletion ? 'pending-deletion-card' : ''}" data-id="${user.id}">
@@ -328,125 +499,47 @@ export class AdminComponent {
     } else {
       list.innerHTML = pendingRequests.map(user => `
         <div class="request-item">
-          <div style="display:flex; align-items:center; gap:16px;">
-            <img src="${user.google_picture || '/assets/Images/DefaultUser.png'}" style="width:48px;height:48px;border-radius:24px;background:rgba(255,255,255,0.1); object-fit:cover;">
+          <div class="request-info">
+            <img src="${user.google_picture || '/assets/Images/DefaultUser.png'}" class="worker-avatar" alt="Avatar">
             <div>
-              <div style="font-weight:600; font-size:15px;">${this.escape(user.full_name || user.google_email)}</div>
-              <div style="font-size:13px; color:rgba(255,255,255,0.6);">${this.escape(user.google_email || user.email)}</div>
-              <div style="font-size:12px; color:#0a84ff; font-weight:700; font-family:monospace; margin-top:4px;">5-Digit Code: <span style="background:rgba(10,132,255,0.15); border:1px solid rgba(10,132,255,0.3); padding:2px 8px; border-radius:6px;">${user.invite_code}</span></div>
+              <div style="font-weight: 600;">${this.escape(user.full_name || user.google_email)}</div>
+              <div style="font-size: 11px; opacity: 0.6;">${this.escape(user.google_email)}</div>
+              <div style="font-size: 11px; margin-top: 4px;">
+                <span style="font-family:monospace; background:rgba(0,122,255,0.2); border: 1px solid rgba(0,122,255,0.4); color:#007aff; padding:2px 6px; border-radius:4px; font-weight:700; letter-spacing:1px;">Code: ${user.invite_code || 'N/A'}</span>
+                <span style="opacity: 0.5; margin-left: 6px;">Requested: ${new Date(user.created_at).toLocaleDateString()}</span>
+              </div>
             </div>
           </div>
-          <div class="request-actions">
-            <button class="btn-danger btn-deny" data-id="${user.id}">Deny</button>
-            <button class="btn-primary btn-approve" data-id="${user.id}">Review & Approve</button>
-          </div>
+          <button class="btn-primary btn-review" data-id="${user.id}">Review & Approve</button>
         </div>
       `).join('');
 
-      list.querySelectorAll('.btn-approve').forEach(btn => {
+      list.querySelectorAll('.btn-review').forEach(btn => {
         btn.addEventListener('click', () => {
-          const user = pendingRequests.find(u => u.id === btn.dataset.id);
-          this.container.querySelector('#adminApprovalCode').value = user.invite_code;
-          this.openWorkerEditModal(user.id, true);
+          this.openWorkerEditModal(btn.dataset.id, true);
         });
       });
-      list.querySelectorAll('.btn-deny').forEach(btn => {
-        btn.addEventListener('click', () => this.deleteWorker(btn.dataset.id));
-      });
-    }
-  }
-
-  async approveWorkerDeletion(userId) {
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/approve-deletion`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message || 'Worker account deletion approved.');
-        this.refresh();
-      } else {
-        alert(data.error || 'Failed to approve deletion.');
-      }
-    } catch (e) {
-      alert('Network error while approving deletion.');
-    }
-  }
-
-  async rejectWorkerDeletion(userId) {
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/reject-deletion`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message || 'Deletion request rejected.');
-        this.refresh();
-      } else {
-        alert(data.error || 'Failed to reject deletion.');
-      }
-    } catch (e) {
-      alert('Network error while rejecting deletion.');
-    }
-  }
-
-  async openWorkerHistoryModal(userId) {
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/history`);
-      const data = await res.json();
-      const history = data.history || [];
-
-      let content = `
-        <div style="font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.85);">
-          ${history.length === 0 ? '<p>No historical lifecycle entries recorded for this worker.</p>' : history.map((item, idx) => `
-            <div style="border-left: 2px solid #007aff; padding-left: 12px; margin-bottom: 16px;">
-              <div style="font-weight: 600; color: #fff;">Lifecycle Cycle #${history.length - idx}</div>
-              <div>Joined: ${item.joined_at ? new Date(item.joined_at).toLocaleString() : 'N/A'}</div>
-              ${item.deleted_at ? `<div style="color:#ff3b30;">Deleted: ${new Date(item.deleted_at).toLocaleString()}</div>` : '<div style="color:#34c759;">Status: Active</div>'}
-              ${item.deletion_reason ? `<div style="font-size: 11px; color: rgba(255,255,255,0.6);">Reason: ${this.escape(item.deletion_reason)}</div>` : ''}
-            </div>
-          `).join('')}
-        </div>
-      `;
-
-      const historyModal = document.createElement('div');
-      historyModal.className = 'admin-modal-overlay show';
-      historyModal.innerHTML = `
-        <div class="admin-modal" style="max-width: 480px;">
-          <div class="modal-header">
-            <h3 class="modal-title">Worker Lifecycle History</h3>
-            <button class="modal-close">×</button>
-          </div>
-          <div class="modal-body">${content}</div>
-          <div class="modal-footer">
-            <button class="btn-primary modal-close-btn">Close</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(historyModal);
-      const close = () => historyModal.remove();
-      historyModal.querySelector('.modal-close').onclick = close;
-      historyModal.querySelector('.modal-close-btn').onclick = close;
-    } catch (e) {
-      alert('Unable to load history.');
     }
   }
 
   async loadAuditLogs() {
     try {
       const res = await fetch('/api/admin/audit');
-      const data = await res.json();
+      if (!res.ok) return;
+      const logs = await res.json();
       
       const tbody = this.container.querySelector('#auditTableBody');
-      if (!data.logs || data.logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 24px; color:rgba(255,255,255,0.5)">No activity found.</td></tr>';
+      if (logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 24px;">No audit events recorded yet.</td></tr>';
         return;
       }
 
-      tbody.innerHTML = data.logs.map(log => {
-        const user = this.users.find(u => u.id === log.user_id) || { full_name: 'Unknown User' };
-        const date = new Date(log.created_at).toLocaleString();
-        
+      tbody.innerHTML = logs.map(log => {
+        const time = new Date(log.created_at).toLocaleString();
         return `
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:12px;">${date}</td>
-            <td style="font-weight:500;">${this.escape(user.full_name)}</td>
+            <td style="font-size: 11px; white-space: nowrap;">${time}</td>
+            <td>${this.escape(log.username || log.user_id || 'System')}</td>
             <td><span class="audit-action-badge">${this.escape(log.action)}</span></td>
             <td style="text-transform:capitalize;">${this.escape(log.module)}</td>
             <td>${this.escape(log.resource_name || log.resource_id || '-')}</td>
@@ -458,6 +551,158 @@ export class AdminComponent {
     }
   }
 
+  async fetchAllContacts() {
+    try {
+      const res = await fetch('/api/contacts');
+      if (res.ok) {
+        this.allContacts = await res.json();
+      }
+    } catch (err) {
+      console.error('Failed to fetch contacts for picker:', err);
+    }
+  }
+
+  updateContactsBadge() {
+    const badge = this.container.querySelector('#contactsCountBadge');
+    if (badge) {
+      const count = this.selectedContactIds.length;
+      badge.textContent = count > 0 ? `${count} shared` : 'Private';
+      badge.style.background = count > 0 ? 'rgba(0, 122, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)';
+      badge.style.color = count > 0 ? '#007aff' : 'rgba(255, 255, 255, 0.6)';
+    }
+  }
+
+  async openContactPickerModal() {
+    if (!this.allContacts || this.allContacts.length === 0) {
+      await this.fetchAllContacts();
+    }
+
+    const modal = this.container.querySelector('#contactPickerModal');
+    const searchInput = this.container.querySelector('#contactPickerSearch');
+    const list = this.container.querySelector('#contactPickerList');
+    const summary = this.container.querySelector('#contactSelectionSummary');
+
+    searchInput.value = '';
+
+    const renderList = (filtered) => {
+      summary.textContent = `${this.selectedContactIds.length} of ${this.allContacts.length} Selected`;
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding: 24px; color:rgba(255,255,255,0.5);">No contacts found matching filter.</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(c => {
+        const isSelected = this.selectedContactIds.includes(c.id);
+        const initial = (c.name || 'C').charAt(0).toUpperCase();
+        return `
+          <div class="contact-picker-item ${isSelected ? 'selected' : ''}" data-id="${c.id}">
+            <input type="checkbox" class="contact-checkbox" ${isSelected ? 'checked' : ''}>
+            <div class="contact-avatar">${initial}</div>
+            <div class="contact-picker-details">
+              <div class="contact-picker-name">
+                ${this.escape(c.name)}
+                <span class="contact-type-tag">${this.escape(c.type || 'Customer')}</span>
+                ${c.exclude_from_stats ? '<span class="badge-excluded" title="Excluded from Master Stats">🚫 Excluded</span>' : ''}
+              </div>
+              <div class="contact-picker-sub">${this.escape(c.phone || c.email || c.address || 'No phone/email')}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Row click toggles selection
+      list.querySelectorAll('.contact-picker-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const contactId = Number(item.dataset.id);
+          const checkbox = item.querySelector('.contact-checkbox');
+          
+          if (this.selectedContactIds.includes(contactId)) {
+            this.selectedContactIds = this.selectedContactIds.filter(id => id !== contactId);
+            item.classList.remove('selected');
+            if (checkbox) checkbox.checked = false;
+          } else {
+            this.selectedContactIds.push(contactId);
+            item.classList.add('selected');
+            if (checkbox) checkbox.checked = true;
+          }
+          summary.textContent = `${this.selectedContactIds.length} of ${this.allContacts.length} Selected`;
+        });
+      });
+    };
+
+    // Live search
+    searchInput.oninput = () => {
+      const q = searchInput.value.toLowerCase().trim();
+      const filtered = this.allContacts.filter(c => 
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        (c.gstin && c.gstin.toLowerCase().includes(q))
+      );
+      renderList(filtered);
+    };
+
+    // Preset select/clear all
+    this.container.querySelector('#btnSelectAllContacts').onclick = () => {
+      this.selectedContactIds = this.allContacts.map(c => c.id);
+      renderList(this.allContacts);
+    };
+
+    this.container.querySelector('#btnClearAllContacts').onclick = () => {
+      this.selectedContactIds = [];
+      renderList(this.allContacts);
+    };
+
+    renderList(this.allContacts);
+    modal.classList.add('show');
+  }
+
+  openAppFunctionalSettingsModal(appId) {
+    const app = this.APP_LIST.find(a => a.id === appId);
+    if (!app || !app.options || app.options.length === 0) return;
+
+    const modal = this.container.querySelector('#appFunctionalSettingsModal');
+    this.container.querySelector('#appFunctionalTitle').textContent = `${app.name} Functional Overrides`;
+    const list = this.container.querySelector('#appFunctionalOptionsList');
+
+    if (!this.functionalOverrides[appId]) {
+      this.functionalOverrides[appId] = {};
+    }
+
+    list.innerHTML = app.options.map(opt => {
+      const isEnabled = this.functionalOverrides[appId][opt.key] !== undefined
+        ? Boolean(this.functionalOverrides[appId][opt.key])
+        : Boolean(opt.default);
+
+      return `
+        <div class="functional-option-row" data-opt-key="${opt.key}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:12px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); cursor:pointer;">
+          <div style="flex:1; margin-right:12px;">
+            <div style="font-weight:600; font-size:13px; margin-bottom:2px;">${this.escape(opt.label)}</div>
+            <div style="font-size:11px; opacity:0.6;">${this.escape(opt.desc)}</div>
+          </div>
+          <div class="app-toggle-switch ${isEnabled ? 'active' : ''}" style="pointer-events:none;"></div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.functional-option-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const key = row.dataset.optKey;
+        const sw = row.querySelector('.app-toggle-switch');
+        const nowActive = !sw.classList.contains('active');
+        if (nowActive) {
+          sw.classList.add('active');
+        } else {
+          sw.classList.remove('active');
+        }
+        this.functionalOverrides[appId][key] = nowActive;
+      });
+    });
+
+    modal.classList.add('show');
+  }
+
   async openWorkerEditModal(userId, isPending = false) {
     this.editingUserId = userId;
     this.isApproving = isPending;
@@ -465,7 +710,7 @@ export class AdminComponent {
     if (!user) return;
     
     const modal = this.container.querySelector('#workerEditModal');
-    this.container.querySelector('#modalWorkerName').textContent = isPending ? `Approve ${user.full_name}` : `Edit ${user.full_name}`;
+    this.container.querySelector('#modalWorkerName').textContent = isPending ? `Approve ${user.full_name || user.google_email}` : `Edit ${user.full_name || user.google_email}`;
     
     const statusSelect = this.container.querySelector('#modalWorkerStatus');
     if (isPending) {
@@ -481,13 +726,15 @@ export class AdminComponent {
 
     // Load current permissions & contact IDs
     let allowedApps = isPending ? [...this.DEFAULT_APPS] : [];
-    let contactIds = [];
+    this.selectedContactIds = [];
+    this.functionalOverrides = {};
     
     try {
       const res = await fetch(`/api/admin/users/${userId}/permissions`);
       if (res.ok) {
         const data = await res.json();
-        contactIds = data.contactIds || [];
+        this.selectedContactIds = data.contactIds || [];
+        this.functionalOverrides = data.functionalOverrides || {};
         if (data.allowedApps && data.allowedApps.length > 0) {
           allowedApps = data.allowedApps;
         } else if (isPending) {
@@ -498,28 +745,50 @@ export class AdminComponent {
       console.error('Failed to load permissions:', err);
     }
 
-    this.container.querySelector('#modalContactIds').value = contactIds.join(', ');
-
-    // Render modern App Permissions Grid
+    // Render modern App Permissions Grid with drill-down configure button
     const grid = this.container.querySelector('#modalAppsToggleGrid');
     grid.innerHTML = this.APP_LIST.map(app => {
       const isActive = allowedApps.includes(app.id);
+      const isContacts = app.id === 'contacts';
+      const contactsBadgeText = isContacts ? (this.selectedContactIds.length > 0 ? `${this.selectedContactIds.length} shared` : 'Private') : '';
+
       return `
         <div class="app-toggle-card ${isActive ? 'active' : ''}" data-app-id="${app.id}">
           <div class="app-toggle-icon">${app.icon}</div>
           <div class="app-toggle-info">
-            <div class="app-toggle-title">${this.escape(app.name)}</div>
+            <div class="app-toggle-title">
+              ${this.escape(app.name)}
+              ${isContacts ? `<span class="app-card-badge" id="contactsCountBadge">${contactsBadgeText}</span>` : ''}
+            </div>
             <div class="app-toggle-desc">${this.escape(app.desc)}</div>
           </div>
-          <div class="app-toggle-switch"></div>
+          <div class="app-card-actions">
+            <button type="button" class="app-configure-btn" data-app-id="${app.id}" title="${isContacts ? 'Select Shared Contacts' : 'Configure App Overrides'}">➔</button>
+            <div class="app-toggle-switch"></div>
+          </div>
         </div>
       `;
     }).join('');
 
     // Toggle card click
     grid.querySelectorAll('.app-toggle-card').forEach(card => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        // If clicking configure button, don't toggle app active state
+        if (e.target.closest('.app-configure-btn')) return;
         card.classList.toggle('active');
+      });
+    });
+
+    // Configure button click (Drilldown)
+    grid.querySelectorAll('.app-configure-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const appId = btn.dataset.appId;
+        if (appId === 'contacts') {
+          this.openContactPickerModal();
+        } else {
+          this.openAppFunctionalSettingsModal(appId);
+        }
       });
     });
 
@@ -546,14 +815,15 @@ export class AdminComponent {
   }
 
   async saveWorkerPermissions(userId) {
-    const contactIdsStr = this.container.querySelector('#modalContactIds').value;
-    const contactIds = contactIdsStr.split(',').map(v => Number(v.trim())).filter(n => !isNaN(n) && n > 0);
-    
     // Collect active apps from grid
     const grid = this.container.querySelector('#modalAppsToggleGrid');
     const allowedApps = Array.from(grid.querySelectorAll('.app-toggle-card.active')).map(c => c.dataset.appId);
 
-    const payload = { allowedApps, contactIds };
+    const payload = { 
+      allowedApps, 
+      contactIds: this.selectedContactIds,
+      functionalOverrides: this.functionalOverrides
+    };
     
     let endpoint = `/api/admin/users/${userId}/permissions`;
     let method = 'PUT';
@@ -564,7 +834,7 @@ export class AdminComponent {
       // Verify 5-digit code
       const code = this.container.querySelector('#adminApprovalCode').value.trim();
       const user = this.users.find(u => u.id === userId);
-      if (code.toUpperCase() !== String(user.invite_code).toUpperCase()) {
+      if (code && user.invite_code && code.toUpperCase() !== String(user.invite_code).toUpperCase()) {
         alert('Invalid 5-digit approval code.');
         return;
       }

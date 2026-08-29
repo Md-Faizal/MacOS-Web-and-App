@@ -283,6 +283,21 @@ function getAnnualSerialNumber(db, invoiceId) {
 }
 
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
+
   return {
     // ============= INVOICES (BILLS) =============
     
@@ -320,17 +335,29 @@ module.exports = function(db) {
               finalCustomerId = customer.id;
             } else {
               // Auto-create customer if doesn't exist
+              const isWorker = req.user && req.user.role === 'worker';
+              const creatorId = req.user ? (req.user.id || req.user.userId) : null;
               const createStmt = db.prepare(`
-                INSERT INTO contacts (name, type, active, created_at, updated_at)
-                VALUES (?, 'customer', 'INACTIVE', datetime('now'), datetime('now'))
+                INSERT INTO contacts (name, type, active, exclude_from_stats, created_by_user_id, created_at, updated_at)
+                VALUES (?, 'customer', 'INACTIVE', ?, ?, datetime('now'), datetime('now'))
               `);
-              const customerResult = createStmt.run(customer_name);
+              const customerResult = createStmt.run(customer_name, isWorker ? 1 : 0, creatorId);
               finalCustomerId = customerResult.lastInsertRowid;
+              if (isWorker && creatorId) {
+                try {
+                  db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(creatorId, finalCustomerId);
+                } catch (_) {}
+              }
             }
           } catch (err) {
-            console.error('Error looking up/creating customer:', err);
-            return res.status(500).json({ error: 'Error handling customer information' });
+            console.error('Error finding/creating customer:', err);
+            return res.status(500).json({ error: 'Failed to process customer' });
           }
+        }
+
+        // Check if customer is accessible to worker
+        if (!isCustomerAccessible(req, finalCustomerId)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to bill this customer.' });
         }
 
         if (!finalCustomerId) {
@@ -626,6 +653,11 @@ module.exports = function(db) {
           params.push(customer_id);
         }
 
+        const workerScope = getWorkerContactScope(req, 'c');
+        if (workerScope) {
+          sql += ` AND ${workerScope}`;
+        }
+
         sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
         params.push(parseInt(limit), parseInt(offset));
 
@@ -711,6 +743,10 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Invoice not found' });
         }
 
+        if (invoice.customer_id && !isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this invoice' });
+        }
+
         // Get invoice items - JOIN with products to get product name
         const itemsStmt = db.prepare(`
           SELECT ii.*,
@@ -758,6 +794,18 @@ module.exports = function(db) {
             ...invoice,
             customer_name: invoice.customer_name || 'Unknown',
             reference_no: invoice.invoice_no,
+            invoice_date: invoice.invoice_date || invoice.created_at,
+            bill_date: invoice.invoice_date || invoice.created_at,
+            created_at: invoice.created_at,
+            due_date: invoice.due_date,
+            subtotal: invoice.total_amount || 0,
+            total_amount: invoice.total_amount || 0,
+            total_discount: invoice.total_discount || 0,
+            total_gst: invoice.total_gst || 0,
+            round_off: invoice.round_off || 0,
+            grand_total: invoice.grand_total || 0,
+            previous_due: invoice.previous_due || 0,
+            status: 'completed',
             items: items
           }
         });
@@ -767,175 +815,111 @@ module.exports = function(db) {
       }
     },
 
-    // Update invoice
+    // Update invoice (supports updating products array)
     updateBill: (req, res) => {
       try {
         const { id } = req.params;
-        const { due_date, total_discount, total_gst, round_off, grand_total, products, invoice_date } = req.body;
+        const { 
+          customer_id, 
+          due_date, 
+          subtotal, 
+          total_discount, 
+          total_gst, 
+          round_off, 
+          grand_total,
+          products,
+          invoice_date 
+        } = req.body;
 
-        // Update invoice header
-        const sql = `
-          UPDATE invoices 
-          SET due_date = ?, total_discount = ?, total_gst = ?, 
-              round_off = ?, grand_total = ?, invoice_date = ?, updated_at = datetime('now')
-          WHERE id = ?
-        `;
-
-        const stmt = db.prepare(sql);
-        const result = stmt.run(due_date, total_discount || 0, total_gst || 0, round_off || 0, grand_total || 0, invoice_date || null, id);
-
-
-        if (result.changes === 0) {
+        // Check if invoice exists
+        const existingStmt = db.prepare('SELECT id, customer_id FROM invoices WHERE id = ?');
+        const existing = existingStmt.get(id);
+        if (!existing) {
           return res.status(404).json({ error: 'Invoice not found' });
         }
 
-        // Get customer_id from invoice for ledger update
-        const invoice = db.prepare('SELECT customer_id, created_at FROM invoices WHERE id = ?').get(id);
-        if (invoice && invoice.customer_id) {
-          const customerId = invoice.customer_id;
-          const editedBillCreatedAt = invoice.created_at;
-
-          // Calculate ledger totals for this customer
-          const ledgerTotals = db.prepare(`
-            SELECT 
-              COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = ?), 0) as total_debit,
-              COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = ? AND type = 'PAYMENT'), 0) as total_payments,
-              COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = ? AND type = 'CREDIT_NOTE'), 0) as total_credits,
-              (SELECT COUNT(*) FROM invoices WHERE customer_id = ?) as total_bills,
-              (SELECT COUNT(*) FROM payments WHERE customer_id = ?) as total_payments_count
-          `).get(customerId, customerId, customerId, customerId, customerId);
-
-          const total_credit = ledgerTotals.total_payments + ledgerTotals.total_credits;
-          const current_due = ledgerTotals.total_debit - total_credit;
-          
-          // Determine current status based on current_due
-          let current_status = 'PENDING';
-          if (current_due < 0) {
-            current_status = 'CREDIT';
-          } else if (current_due === 0) {
-            current_status = 'SETTLED';
-          }
-
-          // Get customer's opening balance for recalculation
-          const updatedCustomer = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(customerId);
-          const customerOpeningBalance = updatedCustomer ? (updatedCustomer.opening_balance || 0) : 0;
-
-          // Update previous_due for all bills created after this one using chronological ordering
-          // Using effective date (invoice_date or created_at) for sorting and comparison
-          const subsequentBills = db.prepare(`
-            SELECT id, invoice_no, invoice_date, created_at
-            FROM invoices
-            WHERE customer_id = ?
-            ORDER BY COALESCE(invoice_date, created_at) ASC, id ASC
-          `).all(customerId);
-
-          // Get all invoices and payments for this customer
-          const allCustomerInvoices = db.prepare(`
-            SELECT id, invoice_no, grand_total, invoice_date, created_at FROM invoices
-            WHERE customer_id = ?
-            ORDER BY COALESCE(invoice_date, created_at) ASC, id ASC
-          `).all(customerId);
-          
-          const allCustomerPayments = db.prepare(`
-            SELECT id, reference_number, amount, payment_date, created_at FROM payments
-            WHERE customer_id = ? AND type = 'PAYMENT'
-          `).all(customerId);
-          
-          const allCustomerCredits = db.prepare(`
-            SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
-            WHERE customer_id = ? AND type = 'CREDIT_NOTE'
-          `).all(customerId);
-
-          // Recalculate previous_due for each bill based on true business chronology
-          // Formula: previous_due = opening_balance + (sum of prior invoices - payments - credits)
-          subsequentBills.forEach(bill => {
-            
-            // Sum invoices chronologically before this bill
-            const totalDebit = allCustomerInvoices
-              .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, bill.invoice_date, bill.created_at, bill.id))
-              .reduce((sum, inv) => sum + inv.grand_total, 0);
-            
-            // Sum payments chronologically before this bill
-            const totalPayments = allCustomerPayments
-              .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, bill.invoice_date, bill.created_at, undefined))
-              .reduce((sum, p) => sum + p.amount, 0);
-            
-            // Sum credits chronologically before this bill
-            const totalCredits = allCustomerCredits
-              .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, bill.invoice_date, bill.created_at, undefined))
-              .reduce((sum, c) => sum + c.credit_amount, 0);
-            
-            const calculatedPreviousDue = customerOpeningBalance + totalDebit - (totalPayments + totalCredits);
-            db.prepare('UPDATE invoices SET previous_due = ? WHERE id = ?').run(calculatedPreviousDue, bill.id);
-          });
+        if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to update this invoice' });
         }
 
-        // Delete old items and insert new ones if products provided
-        if (products && Array.isArray(products)) {
-          const deleteStmt = db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?');
-          deleteStmt.run(id);
+        const customerId = customer_id || existing.customer_id;
 
+        // Update main invoice table
+        const updateStmt = db.prepare(`
+          UPDATE invoices 
+          SET customer_id = COALESCE(?, customer_id),
+              due_date = COALESCE(?, due_date),
+              total_amount = COALESCE(?, total_amount),
+              total_discount = COALESCE(?, total_discount),
+              total_gst = COALESCE(?, total_gst),
+              round_off = COALESCE(?, round_off),
+              grand_total = COALESCE(?, grand_total),
+              invoice_date = COALESCE(?, invoice_date),
+              updated_at = datetime('now')
+          WHERE id = ?
+        `);
+
+        updateStmt.run(
+          customerId,
+          due_date,
+          subtotal,
+          total_discount,
+          total_gst,
+          round_off,
+          grand_total,
+          invoice_date,
+          id
+        );
+
+        // If products are provided, replace all invoice items
+        if (products && Array.isArray(products) && products.length > 0) {
+          // Delete existing items
+          const deleteItemsStmt = db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?');
+          deleteItemsStmt.run(id);
+
+          // Insert new items using shared BillCalculator
           const itemStmt = db.prepare(`
             INSERT INTO invoice_items
             (invoice_id, product_id, variant_id, batch_id, pack_value, pack_type, batch_no, 
              exp_date, qty, scheme, free, mrp, rate, amount, discount_1_percent, discount_1_amount,
-             discount_2_percent, discount_2_amount, gst_percent, gst_amount, sgst_amount, cgst_amount, final_amount, gst_reverse, created_at, updated_at)
+             discount_2_percent, discount_2_amount, gst_percent, gst_amount, sgst_amount, cgst_amount,
+             final_amount, gst_reverse, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           `);
 
           products.forEach(product => {
             try {
-              // Look up product_id from product_name if not provided
               let productId = product.product_id || null;
               if (!productId && product.product_name) {
                 const prod = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(product.product_name);
-                if (prod) {
-                  productId = prod.id;
-                }
+                if (prod) productId = prod.id;
               }
 
-              // Look up variant_id from pack info if needed
               let variantId = product.variant_id || null;
               if (!variantId && productId && product.pack_value && product.pack_type) {
                 const variant = db.prepare(`
                   SELECT id FROM variants 
                   WHERE product_id = ? AND pack_size_value = ? AND pack_size_type = ?
                 `).get(productId, product.pack_value, product.pack_type);
-                if (variant) {
-                  variantId = variant.id;
-                }
+                if (variant) variantId = variant.id;
               }
 
-              // Look up batch_id from batch_no if needed
               let batchId = product.batch_id || null;
-              if (!batchId && product.batch_no) {
-                if (variantId) {
-                  const batch = db.prepare(`
-                    SELECT id FROM batches 
-                    WHERE variant_id = ? AND batch_no = ?
-                  `).get(variantId, product.batch_no);
-                  if (batch) {
-                    batchId = batch.id;
-                  }
-                } else if (productId) {
-                  const batch = db.prepare(`
-                    SELECT b.id, b.variant_id FROM batches b
-                    JOIN variants v ON b.variant_id = v.id
-                    WHERE v.product_id = ? AND b.batch_no = ?
-                  `).get(productId, product.batch_no);
-                  if (batch) {
-                    batchId = batch.id;
-                    if (!variantId) variantId = batch.variant_id;
-                  }
-                }
+              if (!batchId && variantId && product.batch_no) {
+                const batch = db.prepare(`
+                  SELECT id FROM batches 
+                  WHERE variant_id = ? AND batch_no = ?
+                `).get(variantId, product.batch_no);
+                if (batch) batchId = batch.id;
               }
 
               const lineCalc = BillCalculator.calculateLineItem({
-                rate: product.rate || product.price || 0,
                 mrp: product.mrp || 0,
-                qty: product.qty || 1,
-                disc1: product.discount_1_percent || product.discount_1 || 0,
-                disc2: product.discount_2_percent || product.discount_2 || 0,
+                rate: product.rate || product.price || 0,
+                qty: product.qty || product.quantity || 1,
+                free: product.free || 0,
+                disc1: product.discount_1_percent || product.disc1 || 0,
+                disc2: product.discount_2_percent || product.disc2 || 0,
                 sgst: product.sgst_percent || product.sgst || 0,
                 cgst: product.cgst_percent || product.cgst || 0,
                 gstTotal: product.gst_percent || product.gstTotal || 0,
@@ -952,7 +936,7 @@ module.exports = function(db) {
                 product.pack_type || null,
                 product.batch_no || product.batch || null,
                 product.exp_date || product.exp || null,
-                product.qty || 1,
+                product.qty || product.quantity || 1,
                 product.scheme || null,
                 product.free || 0,
                 product.mrp || 0,
@@ -971,7 +955,6 @@ module.exports = function(db) {
               );
             } catch (err) {
               console.error('Error updating line item:', err);
-              // Continue even if one item fails
             }
           });
         }
@@ -1004,6 +987,10 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Invoice not found' });
         }
 
+        if (invoice.customer_id && !isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to delete this invoice' });
+        }
+
         const customer_id = invoice.customer_id;
 
         // Delete invoice items
@@ -1018,28 +1005,26 @@ module.exports = function(db) {
         const totals = db.prepare(`
           SELECT 
             COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = ?), 0) as total_debit,
-            COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = ? AND type = 'PAYMENT'), 0) as total_payments,
-            COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = ? AND type = 'CREDIT_NOTE'), 0) as total_credits,
-            (SELECT COUNT(*) FROM invoices WHERE customer_id = ?) as total_bills,
-            (SELECT COUNT(*) FROM payments WHERE customer_id = ?) as total_payments_count
-        `).get(customer_id, customer_id, customer_id, customer_id, customer_id);
+            COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = ? AND type = 'PAYMENT'), 0) +
+            COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = ? AND type = 'CREDIT_NOTE'), 0) as total_credit
+        `).get(customer_id, customer_id, customer_id);
 
-        const total_credit = totals.total_payments + totals.total_credits;
-        const current_due = totals.total_debit - total_credit;
-        
-        // Determine current status based on current_due
-        let current_status = 'PENDING';
-        if (current_due < 0) {
-          current_status = 'CREDIT';
-        } else if (current_due === 0) {
-          current_status = 'SETTLED';
-        }
+        const current_due = totals.total_debit - totals.total_credit;
+
+        // Update ledger record for this customer
+        const updateLedgerStmt = db.prepare(`
+          UPDATE ledger 
+          SET current_due = ?,
+              updated_at = datetime('now')
+          WHERE customer_id = ?
+        `);
+        updateLedgerStmt.run(current_due, customer_id);
 
         res.json({
           success: true,
           message: 'Invoice deleted successfully',
           deleted: {
-            id: id,
+            id: invoice.id,
             invoice_no: invoice.invoice_no,
             amount: invoice.grand_total
           },
@@ -1055,6 +1040,7 @@ module.exports = function(db) {
     getBillingSummary: (req, res) => {
       try {
         const { customer_id, start_date, end_date } = req.query;
+        const workerScope = getWorkerContactScope(req, 'c');
 
         let sql = `
           SELECT 
@@ -1074,6 +1060,8 @@ module.exports = function(db) {
         if (customer_id) {
           sql += ' AND i.customer_id = ?';
           params.push(customer_id);
+        } else if (workerScope) {
+          sql += ` AND ${workerScope}`;
         } else {
           sql += ' AND c.exclude_from_stats = 0';
         }
@@ -1110,6 +1098,9 @@ module.exports = function(db) {
     // Get all customers with their ledger balances and financial metrics
     getLedgerCustomers: (req, res) => {
       try {
+        const workerScope = getWorkerContactScope(req, 'c');
+        const scopeClause = workerScope ? ` AND ${workerScope}` : '';
+
         // Get all customers with ledger entries only (those with actual invoices/payments)
         const customers = db.prepare(`
           SELECT 
@@ -1133,6 +1124,7 @@ module.exports = function(db) {
           LEFT JOIN ledger l ON c.id = l.customer_id
           WHERE (c.type IS NULL OR LOWER(c.type) = 'customer')
             AND (l.id IS NOT NULL OR COALESCE(c.opening_balance, 0) != 0)
+            ${scopeClause}
           ORDER BY c.name ASC
         `).all();
 

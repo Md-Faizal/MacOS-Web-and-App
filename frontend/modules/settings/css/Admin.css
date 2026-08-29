@@ -535,6 +535,47 @@
   margin-top: 1px;
 }
 
+.app-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.app-configure-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-configure-btn:hover {
+  background: rgba(0, 122, 255, 0.25);
+  border-color: rgba(0, 122, 255, 0.5);
+  color: #fff;
+  transform: translateX(2px);
+}
+
+.app-card-badge {
+  font-size: 9.5px;
+  background: rgba(0, 122, 255, 0.2);
+  color: #007aff;
+  border: 1px solid rgba(0, 122, 255, 0.35);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
 .app-toggle-switch {
   width: 36px;
   height: 20px;
@@ -563,6 +604,110 @@
 
 .app-toggle-card.active .app-toggle-switch::after {
   transform: translateX(16px);
+}
+
+/* Contact Picker Styles */
+.contact-picker-search {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.contact-picker-list {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.contact-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.contact-picker-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.contact-picker-item.selected {
+  background: rgba(0, 122, 255, 0.15);
+  border-color: rgba(0, 122, 255, 0.4);
+}
+
+.contact-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #007aff;
+  cursor: pointer;
+}
+
+.contact-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 122, 255, 0.2);
+  color: #007aff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.contact-picker-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-picker-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contact-type-tag {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.badge-excluded {
+  font-size: 10px;
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.contact-picker-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Light Mode Overrides for Settings Window */
@@ -666,4 +811,50 @@
 [data-theme="light"] .btn-preset-pill:hover {
   background: rgba(0, 0, 0, 0.12);
   color: #000;
+}
+
+[data-theme="light"] .app-configure-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] .app-configure-btn:hover {
+  background: rgba(0, 122, 255, 0.15);
+  border-color: rgba(0, 122, 255, 0.4);
+  color: #007aff;
+}
+
+[data-theme="light"] .contact-picker-item {
+  background: #f5f5f7;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .contact-picker-item:hover {
+  background: #ededf0;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .contact-picker-item.selected {
+  background: rgba(0, 122, 255, 0.08);
+  border-color: rgba(0, 122, 255, 0.35);
+}
+
+[data-theme="light"] .contact-picker-name {
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .contact-picker-sub {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .contact-type-tag {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.65);
+}
+
+[data-theme="light"] .functional-option-row {
+  background: #f5f5f7 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #1d1d1f !important;
 }

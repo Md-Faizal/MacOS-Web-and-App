@@ -1,4 +1,12 @@
 module.exports = function(db) {
+  function getContactScopeFilter(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return `${tableAlias}.exclude_from_stats = 0`;
+  }
+
   return {
     getAnalytics: (req, res) => {
       try {
@@ -95,6 +103,7 @@ module.exports = function(db) {
 
     getTopProducts: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         const stmt = db.prepare(`
           SELECT 
             p.name, 
@@ -107,7 +116,7 @@ module.exports = function(db) {
           LEFT JOIN variants v ON ii.variant_id = v.id
           JOIN invoices i ON ii.invoice_id = i.id
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY ii.product_id, ii.variant_id
           ORDER BY total_revenue DESC
           LIMIT 10
@@ -121,6 +130,7 @@ module.exports = function(db) {
 
     getTopCustomers: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         const stmt = db.prepare(`
           SELECT 
             c.id, 
@@ -129,7 +139,7 @@ module.exports = function(db) {
             COUNT(i.id) as order_count
           FROM invoices i
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY i.customer_id
           ORDER BY total_spent DESC
           LIMIT 10
@@ -194,6 +204,7 @@ module.exports = function(db) {
 
     getSalesTrend: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         const stmt = db.prepare(`
           SELECT 
             strftime('%Y-%m', i.created_at) as month,
@@ -201,7 +212,7 @@ module.exports = function(db) {
             COUNT(i.id) as count
           FROM invoices i
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY month
           ORDER BY month DESC
           LIMIT 12
@@ -215,6 +226,7 @@ module.exports = function(db) {
 
     getProductCategoryPerformance: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         const stmt = db.prepare(`
           SELECT 
             COALESCE(cat.name, 'Uncategorized') as category,
@@ -225,7 +237,7 @@ module.exports = function(db) {
           JOIN invoices i ON ii.invoice_id = i.id
           JOIN contacts c ON i.customer_id = c.id
           LEFT JOIN categories cat ON p.category_id = cat.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY category
           ORDER BY total_revenue DESC
         `);
@@ -250,6 +262,7 @@ module.exports = function(db) {
     getExecutiveKPI: (req, res) => {
       try {
         const { startDate, endDate } = req.query;
+        const scope = getContactScopeFilter(req, 'c');
         let dateWhereClause = '';
         const params = [];
 
@@ -267,7 +280,7 @@ module.exports = function(db) {
             COALESCE(SUM(i.total_discount), 0) as total_discount
           FROM invoices i
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0 ${dateWhereClause}
+          WHERE ${scope} ${dateWhereClause}
         `);
         const billedData = billedStmt.get(...params);
 
@@ -286,7 +299,7 @@ module.exports = function(db) {
             COUNT(p.id) as total_transactions
           FROM payments p
           JOIN contacts c ON p.customer_id = c.id
-          WHERE c.exclude_from_stats = 0 ${payDateClause}
+          WHERE ${scope} ${payDateClause}
         `);
         const payData = payStmt.get(...payParams);
 
@@ -295,15 +308,15 @@ module.exports = function(db) {
           SELECT COALESCE(SUM(l.current_due), 0) as total_receivables
           FROM ledger l
           JOIN contacts c ON l.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
         `);
         const dueData = dueStmt.get();
 
         // Customer count
         const custStmt = db.prepare(`
-          SELECT COUNT(id) as total_customers 
-          FROM contacts 
-          WHERE type = 'Customer' AND exclude_from_stats = 0
+          SELECT COUNT(c.id) as total_customers 
+          FROM contacts c
+          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
         `);
         const custData = custStmt.get();
 
@@ -330,6 +343,7 @@ module.exports = function(db) {
     getSalesDeepDive: (req, res) => {
       try {
         const { period = 'monthly' } = req.query; // 'daily', 'monthly', 'quarterly'
+        const scope = getContactScopeFilter(req, 'c');
         
         let groupByFormat = "%Y-%m";
         if (period === 'daily') groupByFormat = "%Y-%m-%d";
@@ -344,7 +358,7 @@ module.exports = function(db) {
             COUNT(i.id) as invoice_count
           FROM invoices i
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0 AND i.invoice_date IS NOT NULL
+          WHERE ${scope} AND i.invoice_date IS NOT NULL
           GROUP BY period
           ORDER BY period ASC
           LIMIT 24
@@ -360,7 +374,7 @@ module.exports = function(db) {
           FROM invoice_items ii
           JOIN invoices i ON ii.invoice_id = i.id
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
         `);
         const taxData = taxDetailsStmt.get();
 
@@ -375,6 +389,7 @@ module.exports = function(db) {
 
     getOrderFunnel: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         // Stage breakdown
         const stagesStmt = db.prepare(`
           SELECT 
@@ -383,7 +398,7 @@ module.exports = function(db) {
             COALESCE(SUM(o.total_amount), 0) as total_value
           FROM orders o
           JOIN contacts c ON o.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY o.current_stage
         `);
         const stageData = stagesStmt.all();
@@ -396,7 +411,7 @@ module.exports = function(db) {
             COALESCE(SUM(o.total_amount), 0) as total_value
           FROM orders o
           JOIN contacts c ON o.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY o.status
         `);
         const statusData = statusStmt.all();
@@ -413,7 +428,7 @@ module.exports = function(db) {
             o.order_date
           FROM orders o
           JOIN contacts c ON o.customer_id = c.id
-          WHERE c.exclude_from_stats = 0 AND o.current_stage IN ('stage1', 'stage2')
+          WHERE ${scope} AND o.current_stage IN ('stage1', 'stage2')
           ORDER BY o.order_date DESC
           LIMIT 10
         `);
@@ -431,6 +446,7 @@ module.exports = function(db) {
 
     getARAging: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         // Calculate aging brackets based on invoices and payments
         const invoicesStmt = db.prepare(`
           SELECT 
@@ -444,7 +460,7 @@ module.exports = function(db) {
             CAST(julianday('now') - julianday(COALESCE(i.due_date, i.invoice_date)) AS INTEGER) as days_overdue
           FROM invoices i
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
         `);
         const invoices = invoicesStmt.all();
 
@@ -456,7 +472,7 @@ module.exports = function(db) {
             l.current_status
           FROM ledger l
           JOIN contacts c ON l.customer_id = c.id
-          WHERE c.exclude_from_stats = 0 AND l.current_due > 0
+          WHERE ${scope} AND l.current_due > 0
           ORDER BY l.current_due DESC
         `);
         const customerDues = ledgerStmt.all();
@@ -489,6 +505,7 @@ module.exports = function(db) {
 
     getRFMSegmentation: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         const stmt = db.prepare(`
           SELECT 
             c.id,
@@ -499,7 +516,7 @@ module.exports = function(db) {
             CAST(julianday('now') - julianday(MAX(i.invoice_date)) AS INTEGER) as recency_days
           FROM contacts c
           LEFT JOIN invoices i ON c.id = i.customer_id
-          WHERE c.type = 'Customer' AND c.exclude_from_stats = 0
+          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
           GROUP BY c.id
           HAVING order_frequency > 0
           ORDER BY monetary_value DESC
@@ -527,6 +544,7 @@ module.exports = function(db) {
 
     getProductVelocity: (req, res) => {
       try {
+        const scope = getContactScopeFilter(req, 'c');
         // Product velocity (sales quantity & revenue)
         const velocityStmt = db.prepare(`
           SELECT 
@@ -540,7 +558,7 @@ module.exports = function(db) {
           LEFT JOIN categories cat ON p.category_id = cat.id
           JOIN invoices i ON ii.invoice_id = i.id
           JOIN contacts c ON i.customer_id = c.id
-          WHERE c.exclude_from_stats = 0
+          WHERE ${scope}
           GROUP BY p.id
           ORDER BY total_revenue DESC
           LIMIT 20
@@ -578,6 +596,7 @@ module.exports = function(db) {
     getComparativeAnalysis: (req, res) => {
       try {
         const { type = 'yoy', startDateA, endDateA, startDateB, endDateB } = req.query;
+        const scope = getContactScopeFilter(req, 'c');
 
         if (type === 'yoy') {
           // Year on Year: Group by Year and Month
@@ -589,7 +608,7 @@ module.exports = function(db) {
               COUNT(i.id) as invoice_count
             FROM invoices i
             JOIN contacts c ON i.customer_id = c.id
-            WHERE c.exclude_from_stats = 0 AND i.invoice_date IS NOT NULL
+            WHERE ${scope} AND i.invoice_date IS NOT NULL
             GROUP BY year, month
             ORDER BY year DESC, month ASC
           `);
@@ -617,7 +636,7 @@ module.exports = function(db) {
               COUNT(i.id) as invoice_count
             FROM invoices i
             JOIN contacts c ON i.customer_id = c.id
-            WHERE c.exclude_from_stats = 0 AND i.invoice_date IS NOT NULL
+            WHERE ${scope} AND i.invoice_date IS NOT NULL
             GROUP BY month
             ORDER BY month ASC
             LIMIT 24
@@ -655,7 +674,7 @@ module.exports = function(db) {
               COUNT(i.id) as invoice_count
             FROM invoices i
             JOIN contacts c ON i.customer_id = c.id
-            WHERE c.exclude_from_stats = 0 AND i.invoice_date IS NOT NULL
+            WHERE ${scope} AND i.invoice_date IS NOT NULL
             GROUP BY year, quarter
             ORDER BY year DESC, quarter ASC
           `);
@@ -678,14 +697,14 @@ module.exports = function(db) {
                 COUNT(i.id) as invoice_count
               FROM invoices i
               JOIN contacts c ON i.customer_id = c.id
-              WHERE c.exclude_from_stats = 0 AND i.invoice_date BETWEEN ? AND ?
+              WHERE ${scope} AND i.invoice_date BETWEEN ? AND ?
             `).get(sDate, eDate);
 
             const collected = db.prepare(`
               SELECT COALESCE(SUM(p.amount), 0) as total_collected
               FROM payments p
               JOIN contacts c ON p.customer_id = c.id
-              WHERE c.exclude_from_stats = 0 AND p.type = 'PAYMENT' AND p.payment_date BETWEEN ? AND ?
+              WHERE ${scope} AND p.type = 'PAYMENT' AND p.payment_date BETWEEN ? AND ?
             `).get(sDate, eDate);
 
             const rev = billed.revenue || 0;

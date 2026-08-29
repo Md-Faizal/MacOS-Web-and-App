@@ -558,8 +558,10 @@ class LedgerView {
         console.log('First customer:', ledgerData[0], 'total_bills:', ledgerData[0].total_bills, 'total_payments:', ledgerData[0].total_payments);
       }
       
-      // Update header stats with totals - FILTER OUT EXCLUDED CUSTOMERS
+      // Update header stats with totals - FILTER OUT EXCLUDED CUSTOMERS (except for workers)
+      const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
       const statsCustomers = ledgerData.filter(c => {
+        if (isWorker) return true;
         return c.exclude_from_stats !== 1 && c.exclude_from_stats !== '1' && c.exclude_from_stats !== true;
       });
       
@@ -754,7 +756,7 @@ class LedgerView {
         return;
       }
 
-      const statsFiltered = filtered.filter(c => !c.exclude_from_stats);
+      const statsFiltered = filtered.filter(c => isWorker || !c.exclude_from_stats);
       totalCustomersSpan.textContent = statsFiltered.length;
       const totalDue = statsFiltered.reduce((sum, c) => sum + (c.amountDue || 0), 0);
       // Show positive value if there's overall credit (negative balance)
@@ -1018,8 +1020,10 @@ class LedgerView {
         document.getElementById('ledgerCustomerMetrics').textContent = metrics;
       }
     } else {
-      // Filter out excluded customers for "All Customers" view
+      // Filter out excluded customers for "All Customers" view (except for workers)
+      const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
       const statsLedgerData = ledgerData.filter(c => {
+        if (isWorker) return true;
         return c.exclude_from_stats !== 1 && c.exclude_from_stats !== '1' && c.exclude_from_stats !== true;
       });
       

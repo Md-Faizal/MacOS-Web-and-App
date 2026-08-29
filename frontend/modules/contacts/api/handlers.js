@@ -1,12 +1,24 @@
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isContactAccessible(req, contactId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(contactId);
+    return Boolean(row);
+  }
+
   return {
     getContacts: (req, res) => {
       try {
-        let whereClause = '';
-        if (req.user && req.user.role === 'worker') {
-          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
-          whereClause = ` WHERE c.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') `;
-        }
+        const workerScope = getWorkerContactScope(req, 'c');
+        const whereClause = workerScope ? ` WHERE ${workerScope} ` : '';
 
         const stmt = db.prepare(`
           SELECT 
@@ -50,27 +62,27 @@ module.exports = function(db) {
         if (!name) return res.status(400).json({ error: 'name required' });
 
         const isWorker = req.user && req.user.role === 'worker';
-        // For workers: default to exclude_from_stats = 1 (excluded from Admin's master books by default)
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
+        // For workers: force exclude_from_stats = 1 (excluded from Admin's master books by default)
         const excludeFlag = isWorker ? 1 : (req.body.exclude_from_stats !== undefined ? Number(req.body.exclude_from_stats) : 0);
 
         const stmt = db.prepare(`
           INSERT INTO contacts (
             name, email, phone, address, gstin, licence_no, pan,
-            total_sales, avg_sales, favorite_product_id, opening_balance, exclude_from_stats, notes, transport_preference, disable_duplex_export
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_sales, avg_sales, favorite_product_id, opening_balance, exclude_from_stats, notes, transport_preference, disable_duplex_export, created_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const info = stmt.run(
           name, email || null, phone || null, address || null,
           gstin || null, licence_no || null, pan || null,
           total_sales || 0, avg_sales || 0, favorite_product_id || null,
-          opening_balance || 0, excludeFlag, notes || null, transport_preference || null, disable_duplex_export || 0
+          opening_balance || 0, excludeFlag, notes || null, transport_preference || null, disable_duplex_export || 0, creatorId
         );
 
         // If created by a worker, automatically associate with that worker in user_contact_access
-        if (isWorker) {
+        if (isWorker && creatorId) {
           try {
-            const workerId = req.user.id || req.user.userId;
-            db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(workerId, info.lastInsertRowid);
+            db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(creatorId, info.lastInsertRowid);
           } catch (accessErr) {
             console.warn('Failed to associate contact with worker:', accessErr.message);
           }
@@ -85,6 +97,10 @@ module.exports = function(db) {
     getContact: (req, res) => {
       try {
         const { id } = req.params;
+        if (!isContactAccessible(req, id)) {
+          return res.status(403).json({ error: 'Access denied to this contact' });
+        }
+
         const stmt = db.prepare(`
           SELECT 
             c.*, 
@@ -116,6 +132,10 @@ module.exports = function(db) {
     updateContact: (req, res) => {
       try {
         const { id } = req.params;
+        if (!isContactAccessible(req, id)) {
+          return res.status(403).json({ error: 'Access denied to update this contact' });
+        }
+
         const updates = [];
         const params = [];
         
@@ -155,6 +175,10 @@ module.exports = function(db) {
     deleteContact: (req, res) => {
       try {
         const { id } = req.params;
+        if (!isContactAccessible(req, id)) {
+          return res.status(403).json({ error: 'Access denied to delete this contact' });
+        }
+
         const contactStmt = db.prepare('SELECT name FROM contacts WHERE id = ?');
         const contact = contactStmt.get(id);
         
@@ -166,6 +190,7 @@ module.exports = function(db) {
         
         // Execute deletion in a transaction to clean up dependent records and avoid FK constraint errors
         const deleteTransaction = db.transaction(() => {
+          try { db.prepare('DELETE FROM user_contact_access WHERE contact_id = ?').run(id); } catch (_) {}
           try { db.prepare('DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE customer_id = ?)').run(id); } catch (_) {}
           try { db.prepare('DELETE FROM invoices WHERE customer_id = ?').run(id); } catch (_) {}
           try { db.prepare('DELETE FROM payments WHERE customer_id = ?').run(id); } catch (_) {}
@@ -252,8 +277,6 @@ module.exports = function(db) {
         `);
         updateStmt.run(isActive, lastActivityDate, customerId);
         
-        console.log(`✓ Activity Status Updated: Customer ${customerId} - Status: ${isActive} (Bills: ${bills?.count || 0}, Payments: ${payments?.count || 0}, Credit Notes: ${creditNotes?.count || 0}, Orders: ${orders?.count || 0})`);
-        
         res.json({
           success: true,
           customerId,
@@ -274,8 +297,10 @@ module.exports = function(db) {
 
     updateAllActivityStatuses: (req, res) => {
       try {
-        // Get all customers that are type 'Customer'
-        const contactsStmt = db.prepare("SELECT id, name FROM contacts WHERE type IS NULL OR LOWER(type) = 'customer'");
+        const workerScope = getWorkerContactScope(req, 'contacts');
+        const whereClause = workerScope ? ` WHERE (type IS NULL OR LOWER(type) = 'customer') AND ${workerScope}` : " WHERE type IS NULL OR LOWER(type) = 'customer'";
+        
+        const contactsStmt = db.prepare(`SELECT id, name FROM contacts ${whereClause}`);
         const customers = contactsStmt.all();
         
         // Calculate date from 30 days ago using SQLite datetime
@@ -317,7 +342,6 @@ module.exports = function(db) {
           const totalActivity = (bills?.count || 0) + (payments?.count || 0) + (creditNotes?.count || 0) + (orders?.count || 0);
           const isActive = totalActivity > 0 ? 'ACTIVE' : 'INACTIVE';
           
-          // Find the most recent transaction date for this customer
           const mostRecentActivityStmt = db.prepare(`
             SELECT MAX(recent_date) as most_recent FROM (
               SELECT MAX(COALESCE(invoice_date, created_at)) as recent_date FROM invoices WHERE customer_id = ?
@@ -330,7 +354,6 @@ module.exports = function(db) {
           const { most_recent: mostRecentDate } = mostRecentActivityStmt.get(customer.id, customer.id, customer.id);
           const lastActivityDate = mostRecentDate || null;
           
-          // Update contact's activity status and last_activity
           const updateStmt = db.prepare(`
             UPDATE contacts SET 
               active = ?,
@@ -348,8 +371,6 @@ module.exports = function(db) {
           };
           updated++;
         });
-        
-        console.log(`✓ Activity Statuses Updated: ${updated}/${customers.length} customers processed`);
         
         res.json({
           success: true,

@@ -569,6 +569,10 @@ class BillingDashboard {
     return `From ${start} to ${end}`;
   }
 
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
   formatINR(value) {
     return '₹' + Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 });
   }
@@ -580,8 +584,9 @@ class BillingDashboard {
     const tickerEl = document.getElementById('topbarTicker');
     if (!tickerEl) return;
     // Build enhanced items: totals, counts, top performer, avg, overdue payment reminders
-    // Filter data to exclude customers marked for exclusion
-    const excludedContactIds = new Set(
+    // Filter data to exclude customers marked for exclusion (unless worker)
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       (this.billingData.contacts || [])
         .filter(c => c.exclude_from_stats === 1)
         .map(c => c.id)
@@ -1135,8 +1140,9 @@ class BillingDashboard {
     const container = document.getElementById('dashboardStats');
     if (!container) return;
 
-    // Filter data to exclude customers marked for exclusion
-    const excludedContactIds = new Set(
+    // Filter data to exclude customers marked for exclusion (unless worker)
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       (this.billingData.contacts || [])
         .filter(c => c.exclude_from_stats === 1)
         .map(c => c.id)
@@ -1144,7 +1150,7 @@ class BillingDashboard {
 
     const bills = (this.billingData.bills || []).filter(b => !excludedContactIds.has(b.customer_id));
     const payments = (this.billingData.payments || []).filter(p => !excludedContactIds.has(p.customer_id));
-    const contacts = (this.billingData.contacts || []).filter(c => c.exclude_from_stats !== 1);
+    const contacts = (this.billingData.contacts || []).filter(c => isWorker || c.exclude_from_stats !== 1);
 
     // Calculate dynamic range
     const { startDate, endDate } = this.getMetricsDateRange();
@@ -1262,8 +1268,9 @@ class BillingDashboard {
     const container = document.getElementById('dashboardCharts');
     if (!container) return;
 
-    // Filter data to exclude customers marked for exclusion
-    const excludedContactIds = new Set(
+    // Filter data to exclude customers marked for exclusion (unless worker)
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       (this.billingData.contacts || [])
         .filter(c => c.exclude_from_stats === 1)
         .map(c => c.id)
@@ -1271,7 +1278,7 @@ class BillingDashboard {
 
     const bills = (this.billingData.bills || []).filter(b => !excludedContactIds.has(b.customer_id));
     const payments = (this.billingData.payments || []).filter(p => !excludedContactIds.has(p.customer_id));
-    const contacts = (this.billingData.contacts || []).filter(c => c.exclude_from_stats !== 1);
+    const contacts = (this.billingData.contacts || []).filter(c => isWorker || c.exclude_from_stats !== 1);
 
     const metrics = this.calculateSalesMetrics(bills, payments, contacts);
 
@@ -1738,13 +1745,14 @@ class BillingDashboard {
   }
 
   updateAverageBillSection() {
-    const excludedContactIds = new Set(
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       (this.billingData.contacts || [])
         .filter(c => c.exclude_from_stats === 1)
         .map(c => c.id)
     );
     const bills = (this.billingData.bills || []).filter(b => !excludedContactIds.has(b.customer_id));
-    const contacts = (this.billingData.contacts || []).filter(c => c.exclude_from_stats !== 1);
+    const contacts = (this.billingData.contacts || []).filter(c => isWorker || c.exclude_from_stats !== 1);
     const totalOpeningBalance = contacts.reduce((sum, c) => sum + (c.opening_balance || 0), 0);
 
     const { startDate, endDate } = this.getAvgDateRange();
@@ -1975,15 +1983,16 @@ class BillingDashboard {
     const payments = this.billingData.payments || [];
     const orders = this.billingData.orders || [];
 
-    // Filter contacts marked for exclusion
-    const excludedContactIds = new Set(
+    // Filter contacts marked for exclusion (unless worker)
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       contacts.filter(c => c.exclude_from_stats === 1).map(c => c.id)
     );
 
     const filteredBills = bills.filter(b => !excludedContactIds.has(b.customer_id));
     const filteredPayments = payments.filter(p => !excludedContactIds.has(p.customer_id));
     const filteredOrders = orders.filter(o => !excludedContactIds.has(o.customer_id));
-    const filteredContacts = contacts.filter(c => c.exclude_from_stats !== 1);
+    const filteredContacts = contacts.filter(c => isWorker || c.exclude_from_stats !== 1);
 
     // Get date range
     const { startDate, endDate } = this.getMetricsDateRange();
@@ -2775,7 +2784,8 @@ class BillingDashboard {
    * Get overdue bills for reminders
    */
   getOverdueBills() {
-    const excludedContactIds = new Set(
+    const isWorker = this.isWorkerUser();
+    const excludedContactIds = isWorker ? new Set() : new Set(
       (this.billingData.contacts || [])
         .filter(c => c.exclude_from_stats === 1)
         .map(c => c.id)
@@ -2783,7 +2793,7 @@ class BillingDashboard {
 
     const bills = (this.billingData.bills || []).filter(b => !excludedContactIds.has(b.customer_id));
     const payments = (this.billingData.payments || []).filter(p => !excludedContactIds.has(p.customer_id));
-    const contacts = (this.billingData.contacts || []).filter(c => c.exclude_from_stats !== 1);
+    const contacts = (this.billingData.contacts || []).filter(c => isWorker || c.exclude_from_stats !== 1);
     const now = new Date();
 
     // Map contacts by ID for easy opening balance lookup
