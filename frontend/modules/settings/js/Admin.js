@@ -362,7 +362,8 @@ export class AdminComponent {
         return;
       }
 
-      this.users = await usersRes.json();
+      const usersData = await usersRes.json();
+      this.users = Array.isArray(usersData) ? usersData : (usersData.users || []);
       this.renderUsers();
       if (this.currentTab === 'audit' && full) {
         await this.loadAuditLogs();
@@ -526,7 +527,8 @@ export class AdminComponent {
     try {
       const res = await fetch('/api/admin/audit');
       if (!res.ok) return;
-      const logs = await res.json();
+      const auditData = await res.json();
+      const logs = Array.isArray(auditData) ? auditData : (auditData.logs || []);
       
       const tbody = this.container.querySelector('#auditTableBody');
       if (logs.length === 0) {
@@ -555,7 +557,8 @@ export class AdminComponent {
     try {
       const res = await fetch('/api/contacts');
       if (res.ok) {
-        this.allContacts = await res.json();
+        const data = await res.json();
+        this.allContacts = Array.isArray(data) ? data : (data.contacts || data.data || []);
       }
     } catch (err) {
       console.error('Failed to fetch contacts for picker:', err);
