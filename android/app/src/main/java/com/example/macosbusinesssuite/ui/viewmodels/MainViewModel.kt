@@ -262,7 +262,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _errorMessage.value = null
             try {
                 val service = NetworkClient.getService(sessionManager)
-                val response = service.login(LoginRequest(username = username, password = password))
+                val response = service.login(
+                    LoginRequest(
+                        identifier = username,
+                        password = password,
+                        deviceName = android.os.Build.MODEL,
+                        deviceType = "Android"
+                    )
+                )
                 if (response.isSuccessful && response.body()?.success == true) {
                     _isLoggedIn.value = true
                     sessionManager.isLoggedIn = true
@@ -270,8 +277,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     response.body()?.token?.let { token ->
                         sessionManager.authToken = token
                     }
+                    response.body()?.refreshToken?.let { refreshToken ->
+                        sessionManager.refreshToken = refreshToken
+                    }
                     response.body()?.user?.let {
-                        sessionManager.userId = it.id ?: "admin_auth"
+                        sessionManager.userId = it.id
                         sessionManager.userName = it.username ?: username
                         sessionManager.userEmail = it.email ?: ""
                         sessionManager.userRole = it.role ?: "owner"
@@ -312,12 +322,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val status = body["status"] as? String ?: "pending"
                     if (status == "active") {
                         val token = body["token"] as? String
+                        val refreshToken = body["refreshToken"] as? String
                         val role = body["role"] as? String ?: "worker"
                         val updateChannel = body["updateChannel"] as? String ?: "production"
                         val userObj = body["user"] as? Map<*, *>
                         
                         sessionManager.isLoggedIn = true
                         sessionManager.authToken = token
+                        sessionManager.refreshToken = refreshToken
                         sessionManager.userRole = role
                         sessionManager.userStatus = status
                         sessionManager.updateChannel = updateChannel
@@ -352,18 +364,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val service = NetworkClient.getService(sessionManager)
-                val response = service.checkWorkerStatus(inviteCode = inviteCode, email = email)
+                val response = service.checkWorkerStatus(
+                    inviteCode = inviteCode,
+                    email = email,
+                    platform = "Android",
+                    deviceName = android.os.Build.MODEL
+                )
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     val isApproved = body["approved"] == true || body["status"] == "active"
                     if (isApproved) {
                         val token = body["token"] as? String
+                        val refreshToken = body["refreshToken"] as? String
                         val role = body["role"] as? String ?: "worker"
                         val updateChannel = body["updateChannel"] as? String ?: "production"
                         val userObj = body["user"] as? Map<*, *>
 
                         sessionManager.isLoggedIn = true
                         sessionManager.authToken = token
+                        sessionManager.refreshToken = refreshToken
                         sessionManager.userRole = role
                         sessionManager.userStatus = "active"
                         sessionManager.updateChannel = updateChannel
@@ -390,7 +409,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val service = NetworkClient.getService(sessionManager)
-                service.logout()
+                sessionManager.refreshToken?.let { refreshToken ->
+                    service.logoutMobileSession(MobileRefreshRequest(refreshToken))
+                }
             } catch (_: Exception) {}
             sessionManager.clearSession()
             _isLoggedIn.value = false

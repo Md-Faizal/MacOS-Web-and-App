@@ -2,6 +2,12 @@ module.exports = function(db) {
   return {
     getContacts: (req, res) => {
       try {
+        let whereClause = '';
+        if (req.user && req.user.role === 'worker') {
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          whereClause = ` WHERE c.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') `;
+        }
+
         const stmt = db.prepare(`
           SELECT 
             c.*, 
@@ -27,6 +33,7 @@ module.exports = function(db) {
             (SELECT MAX(COALESCE(payment_date, created_at)) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT') as last_payment_date
           FROM contacts c
           LEFT JOIN invoices i ON c.id = i.customer_id
+          ${whereClause}
           GROUP BY c.id
           ORDER BY c.name ASC
         `);
@@ -39,8 +46,12 @@ module.exports = function(db) {
 
     createContact: (req, res) => {
       try {
-        const { name, email, phone, address, gstin, licence_no, pan, total_sales, avg_sales, favorite_product_id, opening_balance, exclude_from_stats, notes, transport_preference, disable_duplex_export } = req.body;
+        const { name, email, phone, address, gstin, licence_no, pan, total_sales, avg_sales, favorite_product_id, opening_balance, notes, transport_preference, disable_duplex_export } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
+
+        const isWorker = req.user && req.user.role === 'worker';
+        // For workers: default to exclude_from_stats = 1 (excluded from Admin's master books by default)
+        const excludeFlag = isWorker ? 1 : (req.body.exclude_from_stats !== undefined ? Number(req.body.exclude_from_stats) : 0);
 
         const stmt = db.prepare(`
           INSERT INTO contacts (
@@ -52,8 +63,19 @@ module.exports = function(db) {
           name, email || null, phone || null, address || null,
           gstin || null, licence_no || null, pan || null,
           total_sales || 0, avg_sales || 0, favorite_product_id || null,
-          opening_balance || 0, exclude_from_stats || 0, notes || null, transport_preference || null, disable_duplex_export || 0
+          opening_balance || 0, excludeFlag, notes || null, transport_preference || null, disable_duplex_export || 0
         );
+
+        // If created by a worker, automatically associate with that worker in user_contact_access
+        if (isWorker) {
+          try {
+            const workerId = req.user.id || req.user.userId;
+            db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(workerId, info.lastInsertRowid);
+          } catch (accessErr) {
+            console.warn('Failed to associate contact with worker:', accessErr.message);
+          }
+        }
+
         res.status(201).json({ success: true, id: info.lastInsertRowid });
       } catch (error) {
         res.status(500).json({ error: error.message });

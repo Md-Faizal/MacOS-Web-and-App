@@ -46,16 +46,20 @@ class DatabaseManager {
       // 4. Enable foreign key constraints (after repair)
       this.db.pragma('foreign_keys = ON');
       
-      // 5. Run migrations FIRST (before schema creation) to ensure columns exist
-      this.runMigrations();  // Auto-migration at startup
-      
-      // 6. Clean up unknown tables and extra columns
+      // 5. Create missing tables before migrations so legacy databases can be
+      // promoted into the new schema without losing their existing credentials.
+      this.createTables();
+
+      // 6. Run idempotent data migrations after the tables exist.
+      this.runMigrations();
+
+      // 7. Clean up unknown tables and extra columns
       this.cleanupUnknownSchema();
       
-      // 7. Create all tables from master schema (or update if needed)
+      // 8. Re-apply CREATE IF NOT EXISTS after migrations and schema checks.
       this.createTables();
       
-      // 8. Verify database integrity
+      // 9. Verify database integrity
       this.verifyIntegrity();
       
       console.log('✓ Database initialization completed successfully\n');
@@ -227,7 +231,11 @@ class DatabaseManager {
       const unknownTables = existingTables.filter(t => !expectedSchema[t]);
       if (unknownTables.length > 0) {
         console.log(`⚠️  Found ${unknownTables.length} unknown table(s): ${unknownTables.join(', ')}`);
-        this.dropUnknownTables(unknownTables);
+        if (['production', 'oraclevm'].includes(process.env.NODE_ENV)) {
+          console.warn('⚠️  Production safety: preserving unknown tables; review them manually before removal.');
+        } else {
+          this.dropUnknownTables(unknownTables);
+        }
       }
 
       // 2. Sync known tables (detect mismatches and rebuild if needed)
@@ -247,6 +255,10 @@ class DatabaseManager {
         const missingColumns = expectedColumns.filter(col => !actualColumns.includes(col));
 
         if (extraColumns.length > 0 || missingColumns.length > 0) {
+          if (['production', 'oraclevm'].includes(process.env.NODE_ENV)) {
+            console.warn(`  ⚠️  Production safety: preserving schema mismatch on '${tableName}'; use a reviewed migration.`);
+            continue;
+          }
           if (extraColumns.length > 0) console.log(`  ⚠️  Table '${tableName}' has ${extraColumns.length} extra column(s): ${extraColumns.join(', ')}`);
           if (missingColumns.length > 0) console.log(`  ⚠️  Table '${tableName}' is missing ${missingColumns.length} column(s): ${missingColumns.join(', ')}`);
           

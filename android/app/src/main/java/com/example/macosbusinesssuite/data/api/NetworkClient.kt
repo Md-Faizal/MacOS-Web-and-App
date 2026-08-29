@@ -4,7 +4,11 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -27,6 +31,8 @@ object NetworkClient {
         }
     }
 
+    private val refreshLock = Any()
+
     val customGson: com.google.gson.Gson = com.google.gson.GsonBuilder()
         .registerTypeAdapter(Double::class.java, com.example.macosbusinesssuite.util.FlexibleDoubleAdapter())
         .registerTypeAdapter(Double::class.javaObjectType, com.example.macosbusinesssuite.util.FlexibleDoubleAdapter())
@@ -42,7 +48,7 @@ object NetworkClient {
             currentBaseUrl = baseUrl
 
             val logging = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                level = HttpLoggingInterceptor.Level.NONE
             }
 
             val okHttpClient = OkHttpClient.Builder()
@@ -74,6 +80,50 @@ object NetworkClient {
 
                     response
                 }
+                .authenticator { _, response ->
+                    if (response.request.url.encodedPath.endsWith("/auth/mobile/refresh")) {
+                        return@authenticator null
+                    }
+
+                    val refreshToken = sessionManager.refreshToken ?: return@authenticator null
+                    synchronized(refreshLock) {
+                        val currentToken = sessionManager.authToken
+                        val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
+                        if (!currentToken.isNullOrEmpty() && requestToken != currentToken) {
+                            return@synchronized response.request.newBuilder()
+                                .header("Authorization", "Bearer $currentToken")
+                                .build()
+                        }
+
+                        val refreshBody = JSONObject().put("refreshToken", refreshToken)
+                            .toString()
+                            .toRequestBody("application/json".toMediaType())
+                        val refreshRequest = Request.Builder()
+                            .url(baseUrl + "auth/mobile/refresh")
+                            .post(refreshBody)
+                            .header("Content-Type", "application/json")
+                            .build()
+                        val refreshResponse = okHttpClientForRefresh(baseUrl).newCall(refreshRequest).execute()
+                        refreshResponse.use { refreshed ->
+                            if (!refreshed.isSuccessful) {
+                                sessionManager.clearSession()
+                                return@synchronized null
+                            }
+                            val payload = JSONObject(refreshed.body?.string() ?: return@synchronized null)
+                            val accessToken = payload.optString("token").takeIf { it.isNotEmpty() }
+                            val replacementRefresh = payload.optString("refreshToken").takeIf { it.isNotEmpty() }
+                            if (accessToken == null || replacementRefresh == null) {
+                                sessionManager.clearSession()
+                                return@synchronized null
+                            }
+                            sessionManager.authToken = accessToken
+                            sessionManager.refreshToken = replacementRefresh
+                            response.request.newBuilder()
+                                .header("Authorization", "Bearer $accessToken")
+                                .build()
+                        }
+                    }
+                }
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(20, TimeUnit.SECONDS)
@@ -95,4 +145,10 @@ object NetworkClient {
         apiService = null
         currentBaseUrl = null
     }
+
+    private fun okHttpClientForRefresh(baseUrl: String): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .build()
 }

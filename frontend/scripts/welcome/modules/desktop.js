@@ -1090,6 +1090,14 @@ export class DesktopManager {
       }
     }
 
+    if (!Array.isArray(this.shortcuts)) {
+      if (this.shortcuts && Array.isArray(this.shortcuts.shortcuts)) {
+        this.shortcuts = this.shortcuts.shortcuts;
+      } else {
+        this.shortcuts = [];
+      }
+    }
+
     this.renderShortcuts();
     this.scrollToCenter();
     this.isLoadingShortcuts = false;
@@ -1100,6 +1108,10 @@ export class DesktopManager {
     if (this.desktopArea) {
       const existingShortcuts = this.desktopArea.querySelectorAll('.desktop-shortcut');
       existingShortcuts.forEach(el => el.remove());
+    }
+
+    if (!Array.isArray(this.shortcuts)) {
+      this.shortcuts = [];
     }
 
     this.shortcuts.forEach(shortcut => {

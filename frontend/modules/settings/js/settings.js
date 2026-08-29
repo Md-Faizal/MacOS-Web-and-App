@@ -7,6 +7,7 @@ import { ProfileComponent } from './Profile.js';
 import { AppearanceComponent } from './Appearance.js';
 import { StorageComponent } from './Storage.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
+import { AdminComponent } from './Admin.js';
 
 export class SettingsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
@@ -28,7 +29,7 @@ export class SettingsApp extends AppWindow {
     
     // Sidebar-based Navigation Order
     this.sectionsOrder = [
-      'profile', 'wifi', 'bluetooth', 'network', 'energy', 
+      'profile', 'admin', 'wifi', 'bluetooth', 'network', 'energy', 
       'general', 'billing', 'accessibility', 'appearance', 'menubar', 
       'siri', 'dock', 'displays', 'spotlight', 'wallpaper', 'systemhealth', 'android-update'
     ];
@@ -40,6 +41,7 @@ export class SettingsApp extends AppWindow {
     this.wallpaperSectionVisible = false;
     
     this.setupSettingsUI();
+    this.applyRoleScoping();
     
     // Initial fetch from backend
     this.fetchSettings();
@@ -70,6 +72,53 @@ export class SettingsApp extends AppWindow {
       });
       
       observer.observe(appWindow.parentElement, { childList: true });
+    }
+  }
+
+  async applyRoleScoping() {
+    try {
+      const response = await fetch('/api/auth/verify');
+      const data = await response.json();
+      this.userRole = (response.ok && data.user?.role) ? data.user.role : 'owner';
+      
+      if (this.userRole === 'worker') {
+        // Workers only see Profile, Wallpapers, Android App
+        const allowedSections = ['profile', 'wallpaper', 'android-update'];
+        this.sectionsOrder = allowedSections;
+        
+        // Hide non-permitted sidebar items
+        document.querySelectorAll('.settings-sidebar-item, .sidebar-profile-item').forEach(item => {
+          const section = item.getAttribute('data-section');
+          if (!allowedSections.includes(section)) {
+            item.style.display = 'none';
+          } else {
+            item.style.display = '';
+          }
+        });
+        
+        // Hide extra sidebar dividers
+        const dividers = document.querySelectorAll('.settings-sidebar-divider');
+        dividers.forEach((div, idx) => {
+          if (idx > 0) div.style.display = 'none';
+        });
+
+        // If currently on a forbidden section (like appearance or admin), switch to profile
+        if (!allowedSections.includes(this.currentSection)) {
+          this.switchSection('profile');
+        }
+
+        // Lock to Light mode for worker
+        this.settings.theme = 'light';
+        this.applyTheme();
+      } else {
+        this.userRole = 'owner';
+        // Ensure all sidebar items are visible for owner
+        document.querySelectorAll('.settings-sidebar-item, .sidebar-profile-item, .settings-sidebar-divider').forEach(item => {
+          item.style.display = '';
+        });
+      }
+    } catch {
+      // Fallback safe state
     }
   }
 
@@ -266,6 +315,11 @@ export class SettingsApp extends AppWindow {
           </div>
         </div>
 
+        <button class="settings-sidebar-item" data-section="admin">
+          <span class="settings-sidebar-icon">🛡️</span>
+          <span>Worker Access</span>
+        </button>
+
         <div class="settings-sidebar-divider"></div>
 
         <button class="settings-sidebar-item" data-section="wifi">
@@ -357,6 +411,8 @@ export class SettingsApp extends AppWindow {
       <div class="settings-panel" id="appearance-panel">
         <div class="appearance-placeholder">Loading Appearance...</div>
       </div>
+
+      <div class="settings-panel hidden" id="admin-panel"></div>
 
       <div class="settings-panel hidden" id="general-panel">
         <!-- Main General View -->
@@ -1438,6 +1494,7 @@ export class SettingsApp extends AppWindow {
     // Update header title to show current page
     const sectionNames = {
       'profile': 'Apple Account',
+      'admin': 'Worker Access',
       'wifi': 'Wi-Fi',
       'bluetooth': 'Bluetooth',
       'network': 'Network',
@@ -1491,6 +1548,11 @@ export class SettingsApp extends AppWindow {
           this.profileModule = new ProfileComponent(panel);
         }
         this.profileModule.render();
+      } else if (section === 'admin') {
+        if (!this.adminModule) {
+          this.adminModule = new AdminComponent(panel);
+        }
+        this.adminModule.render();
       } else if (section === 'appearance') {
         if (!this.appearanceModule) {
           this.appearanceModule = new AppearanceComponent(panel, this.settings, this.saveSettings.bind(this));
@@ -1546,7 +1608,9 @@ export class SettingsApp extends AppWindow {
 
     let theme = this.settings.theme || 'auto';
     
-    if (theme === 'auto') {
+    if (this.userRole === 'worker') {
+      theme = 'light';
+    } else if (theme === 'auto') {
       theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       this.setupThemeAutoListener();
     }

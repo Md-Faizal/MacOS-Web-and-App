@@ -50,7 +50,7 @@ fun LoginScreen(
                 viewModel.checkWorkerStatus(pendingInviteCode, null) { approved, _ ->
                     if (approved) {
                         isPendingApproval = false
-                        onLoginSuccess()
+                        pendingInviteCode = ""
                     }
                 }
             }

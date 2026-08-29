@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS auth_credentials (
 -- Users: Multi-user accounts (owner hybrid & worker Google accounts)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  username TEXT,
   google_id TEXT UNIQUE,
   google_email TEXT,
   google_name TEXT,
@@ -101,6 +102,10 @@ CREATE TABLE IF NOT EXISTS users (
   invite_qr_base64 TEXT,
   approved_by TEXT,
   approved_at DATETIME,
+  deletion_requested_at DATETIME,
+  deletion_reason TEXT,
+  deleted_at DATETIME,
+  deleted_by TEXT,
   update_channel TEXT DEFAULT 'production',
   token_version INTEGER DEFAULT 0,
   last_login DATETIME,
@@ -123,6 +128,26 @@ CREATE TABLE IF NOT EXISTS user_permissions (
   UNIQUE(user_id, module)
 );
 
+-- Worker Lifecycle History: Audit records for worker join/approval/deletion cycles
+CREATE TABLE IF NOT EXISTS worker_lifecycle_history (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  role TEXT DEFAULT 'worker',
+  status TEXT DEFAULT 'active',
+  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  approved_by TEXT,
+  approved_at DATETIME,
+  deletion_reason TEXT,
+  deleted_at DATETIME,
+  deleted_by TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_worker_lifecycle_user ON worker_lifecycle_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_worker_lifecycle_email ON worker_lifecycle_history(email);
+
 -- User Identities: Multi-auth support (local, google, webauthn)
 CREATE TABLE IF NOT EXISTS user_identities (
   id TEXT PRIMARY KEY,
@@ -131,12 +156,128 @@ CREATE TABLE IF NOT EXISTS user_identities (
   provider_user_id TEXT,
   provider_email TEXT,
   password_hash TEXT,
+  credential_public_key BLOB,
+  credential_counter INTEGER DEFAULT 0,
+  credential_transports TEXT,
   is_verified BOOLEAN DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   UNIQUE(provider, provider_user_id)
 );
+
+-- WebAuthn challenges: Short-lived registration/authentication challenges
+CREATE TABLE IF NOT EXISTS webauthn_challenges (
+  challenge_key TEXT PRIMARY KEY,
+  challenge TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+-- One-time, server-bound OAuth linking state
+CREATE TABLE IF NOT EXISTS oauth_states (
+  state TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Server-side sessions. Only a hash of the browser secret is persisted.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  secret_hash TEXT NOT NULL UNIQUE,
+  user_id TEXT NOT NULL,
+  device_id INTEGER,
+  platform TEXT NOT NULL DEFAULT 'web',
+  provider TEXT,
+  ip_address TEXT,
+  ip_hash TEXT,
+  location_country TEXT,
+  location_region TEXT,
+  user_agent TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  idle_expires_at DATETIME NOT NULL,
+  absolute_expires_at DATETIME NOT NULL,
+  elevated_until DATETIME,
+  revoked_at DATETIME,
+  revoked_reason TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (device_id) REFERENCES user_devices(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions (user_id, revoked_at, absolute_expires_at);
+
+-- Rotating mobile refresh tokens. Raw refresh secrets are never persisted.
+CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  device_id INTEGER,
+  platform TEXT NOT NULL DEFAULT 'android',
+  provider TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME,
+  revoked_reason TEXT,
+  replaced_by TEXT,
+  ip_address TEXT,
+  ip_hash TEXT,
+  user_agent TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (device_id) REFERENCES user_devices(id) ON DELETE SET NULL,
+  FOREIGN KEY (replaced_by) REFERENCES auth_refresh_tokens(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_family_id ON auth_refresh_tokens (family_id);
+
+-- Authentication security events kept separate from application activity logs.
+CREATE TABLE IF NOT EXISTS auth_audit_events (
+  id TEXT PRIMARY KEY,
+  request_id TEXT,
+  event_type TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  user_id TEXT,
+  session_id TEXT,
+  device_id INTEGER,
+  platform TEXT,
+  provider TEXT,
+  ip_address TEXT,
+  ip_hash TEXT,
+  location_country TEXT,
+  location_region TEXT,
+  user_agent TEXT,
+  details TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (device_id) REFERENCES user_devices(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_audit_user ON auth_audit_events (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_audit_request ON auth_audit_events (request_id);
+CREATE INDEX IF NOT EXISTS idx_auth_audit_event ON auth_audit_events (event_type, outcome, created_at);
+
+-- Non-destructive quarantine for conflicting legacy identity mappings.
+CREATE TABLE IF NOT EXISTS auth_identity_conflicts (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  identity_key TEXT NOT NULL,
+  provider_email TEXT,
+  user_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'unresolved',
+  details TEXT,
+  detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  resolved_at DATETIME,
+  UNIQUE(provider, identity_key, user_id, source),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_identity_conflicts_status ON auth_identity_conflicts (status, detected_at);
 
 -- User Contact Access: Granular party/customer permissions for workers
 CREATE TABLE IF NOT EXISTS user_contact_access (
@@ -190,12 +331,14 @@ CREATE TABLE IF NOT EXISTS android_update_channels (
 -- User Devices: Track all devices logged into the account
 CREATE TABLE IF NOT EXISTS user_devices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  device_name TEXT NOT NULL UNIQUE,
+  user_id TEXT,
+  device_name TEXT NOT NULL,
   device_type TEXT,
   last_login DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_current INTEGER DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, device_name)
 );
 
 -- Login History: Track every login instance

@@ -90,27 +90,25 @@ async function runTests() {
   await auth.login({ body: { username: '', password: 'somepassword' } }, mockEmptyUserRes);
   assert(mockEmptyUserRes.statusCode === 400, "Empty username correctly rejected with 400 Bad Request");
 
-  // Test Remember Me unlock flow
-  let rememberUnlockToken = null;
-  const mockRememberRes = {
-    cookie: (name, val) => { if (name === 'auth_token') rememberUnlockToken = val; },
+  // Test invalid login rejection
+  const mockInvalidRes = {
+    cookie: () => {},
     json: (data) => data,
     status: function(code) { this.statusCode = code; return this; }
   };
-  await auth.login({ body: { rememberMeUnlock: true, token: loginToken, deviceName: 'TestMac' } }, mockRememberRes);
-  assert(!!rememberUnlockToken, "Remember Me unlock succeeded and returned fresh token");
-  const decodedRemember = jwt.verify(rememberUnlockToken, JWT_SECRET);
-  assert(decodedRemember.role === 'owner', "Remember Me token role is owner");
+  await auth.login({ body: { identifier: 'NonExistentUser', password: 'badpassword' } }, mockInvalidRes);
+  assert(mockInvalidRes.statusCode === 401, "Invalid user correctly rejected with 401 Unauthorized");
 
   // ── TEST 2: Owner Permissions Snapshot ─────────────────────────────────────
   console.log('\n[2] Testing Owner Permissions Snapshot...');
   const ownerPerms = permissionsHelper.getUserPermissionsSnapshot(owner.id, 'owner');
   assert(ownerPerms.isOwner === true, 'isOwner is true');
   assert(ownerPerms.allowedAllContacts === true, 'allowedAllContacts is true');
+  assert(ownerPerms.allowedApps?.includes('billing'), 'Owner has billing in allowedApps');
   assert(ownerPerms.modules.billing?.can_create === 1, 'Owner has billing create permission');
 
-  // ── TEST 3: Worker Google Registration (Pending State) ─────────────────────
-  console.log('\n[3] Testing Worker Google Sign-In Registration...');
+  // ── TEST 3: Worker Google Registration (5-Digit Code & Pending State) ──────
+  console.log('\n[3] Testing Worker Google Sign-In Registration (5-Digit Code)...');
   const testWorkerGoogleId = 'google_worker_test_' + Date.now();
   const testWorkerEmail = `worker_${Date.now()}@example.com`;
 
@@ -127,11 +125,13 @@ async function runTests() {
     }
   };
 
-  // Manually simulate Google user registration flow through workerAuth logic
+  // Generate 5-digit numeric code
   const newUserId = require('crypto').randomUUID();
-  const inviteCode = require('crypto').randomBytes(3).toString('hex').toUpperCase();
+  const inviteCode = require('crypto').randomInt(10000, 100000).toString();
   const QRCode = require('qrcode');
   const inviteQr = await QRCode.toDataURL(inviteCode);
+
+  assert(/^\d{5}$/.test(inviteCode), `Invite code is exactly 5 numeric digits: ${inviteCode}`);
 
   db.prepare(`
     INSERT INTO users (
@@ -186,8 +186,10 @@ async function runTests() {
   db.prepare(`
     INSERT INTO user_permissions (user_id, module, can_view, can_create, can_edit, can_delete)
     VALUES (?, 'billing', 1, 1, 0, 0),
-           (?, 'contacts', 1, 0, 0, 0)
-  `).run(newUserId, newUserId);
+           (?, 'contacts', 1, 0, 0, 0),
+           (?, 'products', 1, 1, 0, 0),
+           (?, 'analytics', 1, 0, 0, 0)
+  `).run(newUserId, newUserId, newUserId, newUserId);
 
   // Assign access to contact id 2 only
   db.prepare(`
@@ -196,6 +198,8 @@ async function runTests() {
 
   const approvedPerms = permissionsHelper.getUserPermissionsSnapshot(newUserId, 'worker');
   assert(approvedPerms.isOwner === false, 'Worker isOwner is false');
+  assert(approvedPerms.allowedApps?.includes('billing'), 'Worker allowedApps includes billing');
+  assert(approvedPerms.allowedApps?.includes('products'), 'Worker allowedApps includes products');
   assert(approvedPerms.modules.billing?.can_view === 1, 'Worker can_view billing');
   assert(approvedPerms.modules.billing?.can_create === 1, 'Worker can_create billing');
   assert(approvedPerms.modules.billing?.can_delete === 0, 'Worker can_delete billing is 0');

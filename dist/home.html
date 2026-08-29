@@ -13,6 +13,8 @@
   <meta name="apple-mobile-web-app-title" content="MacOS">
   <link rel="apple-touch-icon" href="/assets/Favicon-CjgEC6R8.png">
   <link rel="manifest" href="/assets/manifest-B2zw_Mip.json">
+
+  <script src="/scripts/shared/csrf.js"></script>
   
   <style id="auth-guard-style">
     body { display: none !important; }
@@ -26,10 +28,9 @@
 
       try {
         const isSessionActive = sessionStorage.getItem('macos_session_active') === 'true';
-        const isRemembered = localStorage.getItem('macos_remember_me_active') === 'true';
 
-        // 1. If not remembered and no active session flag, immediately reject
-        if (!isSessionActive && !isRemembered) {
+        // 1. Session in this tab/browser window must be active
+        if (!isSessionActive) {
           console.warn('Unauthorized: No active session. Redirecting to login...');
           redirectToLogin();
           return;
@@ -51,12 +52,17 @@
           return;
         }
 
-        // 3. Mark session active and reveal page content
+        // 3. Mark session active, store role & permissions snapshot, reveal page content
+        window.currentUserData = verifyData.user;
+        window.currentUserPermissions = verifyData.permissions;
         sessionStorage.setItem('macos_session_active', 'true');
+        sessionStorage.setItem('macos_user_role', verifyData.user?.role || 'owner');
+        sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions?.allowedApps || []));
+        
         const guardStyle = document.getElementById('auth-guard-style');
         if (guardStyle) guardStyle.remove();
 
-        // 4. Start periodic background session validation (every 2 minutes)
+        // 4. Start periodic background session validation & device heartbeat (every 30s)
         setInterval(async () => {
           try {
             const checkRes = await fetch('/api/auth/verify');
@@ -64,11 +70,12 @@
             const data = await checkRes.json();
             if (!data.authenticated) throw new Error('Not authenticated');
           } catch (e) {
-            console.warn('Background session validation failed, locking screen...');
+            console.warn('Background session validation failed (terminated remotely or expired), locking screen...');
             sessionStorage.removeItem('macos_session_active');
-            window.location.href = './index.html';
+            alert('Your session has ended or was terminated from another device.');
+            window.location.replace('index.html');
           }
-        }, 120000); // 2 minutes
+        }, 30000); // 30 seconds
       } catch (err) {
         console.error('Session verification error:', err);
         redirectToLogin();
@@ -92,7 +99,7 @@
   <link rel="icon" href="/assets/Favicon-CjgEC6R8.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 
   <style>
     /* ===== BASE RESET ===== */
@@ -100,6 +107,10 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+    }
+
+    html {
+      background-color: #000;
     }
 
     body {
@@ -111,7 +122,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      background: #000;
+      background: transparent;
     }
 
 
@@ -122,11 +133,12 @@
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: -1;
+      z-index: 0;
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
       background-attachment: fixed;
+      pointer-events: none;
     }
 
 
@@ -643,11 +655,11 @@
       transition: all 0.2s ease;
     }
   </style>
-  <script type="module" crossorigin src="/assets/home-DLClfD86.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/desktop-y9lyFXz3.js">
+  <script type="module" crossorigin src="/assets/home-ACTSEbdm.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/wallpaper-engine-ROgZ3p2B.js">
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
-  <link rel="stylesheet" crossorigin href="/assets/desktop-CYWaaGZd.css">
-  <link rel="stylesheet" crossorigin href="/assets/home-DKjIZxH3.css">
+  <link rel="stylesheet" crossorigin href="/assets/wallpaper-engine-CYWaaGZd.css">
+  <link rel="stylesheet" crossorigin href="/assets/home-DKB8G-1m.css">
 </head>
 <body>
   <!-- ========================================

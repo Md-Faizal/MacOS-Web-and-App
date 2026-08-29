@@ -111,8 +111,29 @@ FULL DEPLOY (build + sync + nginx reload + restart services):
   cd "C:\Users\HP\Desktop\MacOS Project\MacOS-Development"
   bash "Deploy Scripts/deploy-ubuntu.sh"
 
+  Incremental behavior:
+    - rsync compares file contents and transfers only changed files when available
+    - without rsync, the script compares SHA-256 hashes and uses scp only for changed files
+    - Vite builds only when frontend inputs changed (use --force-build to override)
+    - npm/pip setup runs only when dependency manifests or the remote marker changed
+    - only the affected PM2 service is restarted; backend startup still runs DB migrations
+    - backend/uploads (including latest.apk and archive/) is owned by the Android publisher
+
 SKIP WALLPAPERS (faster, ~5GB saved):
   bash "Deploy Scripts/deploy-ubuntu.sh" --skip-assets
+
+TRADITIONAL FULL-FILE BACKUP MODE (uploads all eligible files with scp):
+  bash "Deploy Scripts/deploy-ubuntu.sh" --skip-assets -t
+
+  Compatibility spelling that combines both options:
+  bash "Deploy Scripts/deploy-ubuntu.sh" --skip-assetst
+
+  Use traditional mode only as a backup. It is slower than the normal
+  checksum-based deployment and still protects database, uploads, backups,
+  logs, and CloudStorage.
+
+FORCE A FRONTEND BUILD (even when no frontend files changed):
+  bash "Deploy Scripts/deploy-ubuntu.sh" --force-build
 
 DRY RUN (see what would happen):
   bash "Deploy Scripts/deploy-ubuntu.sh" --dry-run

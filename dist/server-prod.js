@@ -35,6 +35,8 @@ proxy.on('error', (err, req, res) => {
 
 // Combined IPv4/IPv6 listener
 const serverAll = http.createServer((req, res) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
   // Trust proxy headers to prevent redirect loops
   const proto = req.headers['x-forwarded-proto'] || 'http';
   const host = req.headers['x-forwarded-host'] || req.headers.host;

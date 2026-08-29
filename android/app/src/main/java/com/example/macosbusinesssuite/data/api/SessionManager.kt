@@ -5,11 +5,13 @@ import android.content.SharedPreferences
 
 class SessionManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    private val secureTokens = SecureTokenStore(context.applicationContext)
 
     companion object {
         private const val PREF_NAME = "macos_business_suite_prefs"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_AUTH_TOKEN = "auth_token"
+        private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_AUTH_COOKIE = "auth_cookie"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
         private const val KEY_USER_ID = "user_id"
@@ -37,8 +39,24 @@ class SessionManager(context: Context) {
     }
 
     var authToken: String?
-        get() = prefs.getString(KEY_AUTH_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_AUTH_TOKEN, value).apply()
+        get() = secureTokens.get(KEY_AUTH_TOKEN) ?: prefs.getString(KEY_AUTH_TOKEN, null)?.also {
+            secureTokens.migratePlaintext(KEY_AUTH_TOKEN, it)
+            prefs.edit().remove(KEY_AUTH_TOKEN).apply()
+        }
+        set(value) {
+            secureTokens.put(KEY_AUTH_TOKEN, value)
+            prefs.edit().remove(KEY_AUTH_TOKEN).apply()
+        }
+
+    var refreshToken: String?
+        get() = secureTokens.get(KEY_REFRESH_TOKEN) ?: prefs.getString(KEY_REFRESH_TOKEN, null)?.also {
+            secureTokens.migratePlaintext(KEY_REFRESH_TOKEN, it)
+            prefs.edit().remove(KEY_REFRESH_TOKEN).apply()
+        }
+        set(value) {
+            secureTokens.put(KEY_REFRESH_TOKEN, value)
+            prefs.edit().remove(KEY_REFRESH_TOKEN).apply()
+        }
 
     var serverUrl: String
         get() {
@@ -58,8 +76,14 @@ class SessionManager(context: Context) {
         }
 
     var authCookie: String?
-        get() = prefs.getString(KEY_AUTH_COOKIE, null)
-        set(value) = prefs.edit().putString(KEY_AUTH_COOKIE, value).apply()
+        get() = secureTokens.get(KEY_AUTH_COOKIE) ?: prefs.getString(KEY_AUTH_COOKIE, null)?.also {
+            secureTokens.migratePlaintext(KEY_AUTH_COOKIE, it)
+            prefs.edit().remove(KEY_AUTH_COOKIE).apply()
+        }
+        set(value) {
+            secureTokens.put(KEY_AUTH_COOKIE, value)
+            prefs.edit().remove(KEY_AUTH_COOKIE).apply()
+        }
 
     var isLoggedIn: Boolean
         get() = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
@@ -179,8 +203,11 @@ class SessionManager(context: Context) {
     }
 
     fun clearSession() {
+        secureTokens.clear()
         prefs.edit().apply {
             remove(KEY_AUTH_TOKEN)
+            remove(KEY_REFRESH_TOKEN)
+            remove(KEY_AUTH_COOKIE)
             remove(KEY_AUTH_COOKIE)
             putBoolean(KEY_IS_LOGGED_IN, false)
             remove(KEY_USER_ID)

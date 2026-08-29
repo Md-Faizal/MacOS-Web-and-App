@@ -3,8 +3,8 @@
 .profile-container {
     display: flex;
     flex-direction: column;
-    gap: 24px;
-    padding: 0;
+    gap: 14px;
+    padding: 4px 2px 20px;
     animation: fadeIn 0.3s ease-out;
     position: relative; /* Contain absolute children like modals and popovers */
 }
@@ -19,22 +19,40 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 20px 0;
+    padding: 22px 20px 20px;
+    border: 1px solid var(--settings-border);
+    border-radius: 14px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
     text-align: center;
+}
+
+.profile-header-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
 }
 
 .profile-avatar-large {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
     margin-bottom: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 32px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border: 3px solid white;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+}
+
+.profile-eyebrow {
+    color: var(--settings-text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
 }
 
 .profile-name {
@@ -49,11 +67,61 @@
     color: var(--settings-text-secondary);
 }
 
+.profile-security-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 14px;
+    border: 1px solid var(--settings-border);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(10, 132, 255, 0.08), rgba(255, 255, 255, 0.3));
+}
+
+.profile-security-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 8px;
+    background: var(--settings-primary);
+    color: white;
+    font-size: 16px;
+}
+
+.profile-security-title {
+    color: var(--settings-text);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.profile-security-copy {
+    margin-top: 2px;
+    color: var(--settings-text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.profile-security-summary .profile-status-badge {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.profile-section-label {
+    margin: 10px 4px 4px;
+    color: var(--settings-text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+}
+
 /* Grouped List Style */
 .settings-group {
     background: var(--settings-card-bg);
     border: 1px solid var(--settings-border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     margin-bottom: 8px;
 }
@@ -62,11 +130,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    min-height: 48px;
+    padding: 11px 14px;
     gap: 12px;
     cursor: pointer;
     transition: background 0.15s;
     border-bottom: 1px solid var(--settings-row-border);
+}
+
+.profile-status-badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(52, 199, 89, 0.14);
+    color: #248a43;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.profile-status-badge.off {
+    background: rgba(142, 142, 147, 0.14);
+    color: var(--settings-text-secondary);
 }
 
 .settings-row:last-child {
@@ -93,6 +176,26 @@
     font-size: 13px;
     color: var(--settings-text);
     font-weight: 500;
+}
+
+.settings-row-title,
+.settings-row-subtitle {
+    display: block;
+}
+
+.settings-row-subtitle {
+    margin-top: 2px;
+    color: var(--settings-text-secondary);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.account-identity-row {
+    cursor: default;
+}
+
+.account-identity-row:hover {
+    background: transparent;
 }
 
 .settings-row-value {
@@ -164,6 +267,7 @@ input:checked + .slider:before {
 .icon-family { background: #ff2d55; }
 .icon-media { background: #007aff; }
 .icon-signin { background: #000000; }
+.icon-google { background: #4285f4; font-weight: 700; }
 
 /* Devices Section */
 .devices-title {
@@ -408,6 +512,12 @@ input:checked + .slider:before {
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.primary-btn:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
 }
 
 .challenge-form {
@@ -504,6 +614,10 @@ input:checked + .slider:before {
     padding: 2px 0;
     outline: none;
     width: 100%;
+}
+
+.form-row-stacked input:focus {
+    border-bottom: 1px solid var(--settings-primary);
 }
 
 .form-row-stacked input::placeholder {

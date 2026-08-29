@@ -97,7 +97,7 @@ module.exports = function(db) {
    */
   const getUserPermissionsSnapshot = (userId, role) => {
     if (role === 'owner') {
-      const allModules = ['billing', 'contacts', 'analytics', 'cloud', 'products', 'orders', 'notes', 'calendar', 'admin', 'ai-vision', 'settings'];
+      const allModules = ['billing', 'products', 'contacts', 'analytics', 'notes', 'calendar', 'cloud', 'calculator', 'ai-vision', 'settings', 'launchpad'];
       const modules = {};
       allModules.forEach(m => {
         modules[m] = { can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 };
@@ -105,6 +105,7 @@ module.exports = function(db) {
       return {
         role: 'owner',
         isOwner: true,
+        allowedApps: allModules,
         modules,
         allowedAllContacts: true,
         allowedContactIds: null
@@ -123,19 +124,24 @@ module.exports = function(db) {
         };
       });
 
+      const allowedApps = rows.length > 0
+        ? rows.filter(r => r.can_view === 1).map(r => r.module)
+        : ['billing', 'products', 'contacts', 'analytics'];
+
       const contactRows = db.prepare('SELECT contact_id FROM user_contact_access WHERE user_id = ?').all(userId);
       const allowedContactIds = contactRows.map(c => c.contact_id);
 
       return {
         role: 'worker',
         isOwner: false,
+        allowedApps,
         modules,
         allowedAllContacts: false,
         allowedContactIds
       };
     } catch (err) {
       console.error('Failed to get user permissions snapshot:', err.message);
-      return { role: 'worker', isOwner: false, modules: {}, allowedAllContacts: false, allowedContactIds: [] };
+      return { role: 'worker', isOwner: false, allowedApps: ['billing', 'products', 'contacts', 'analytics'], modules: {}, allowedAllContacts: false, allowedContactIds: [] };
     }
   };
 

@@ -21,10 +21,12 @@
     "pm2:stop": "pm2 stop ecosystem.config.js || true",
     "check:dev": "node tools/healthcheck.mjs dev",
     "check:prod": "node tools/healthcheck.mjs prod",
+    "test:account-flow": "node backend/scripts/test-account-flow-contracts.js",
     "android:update:publish": "powershell -ExecutionPolicy Bypass -File ./scripts/publish-android-update.ps1"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@simplewebauthn/server": "^13.3.3",
     "archiver": "^7.0.1",
     "axios": "^1.13.4",
     "bcryptjs": "^3.0.3",
@@ -41,6 +43,7 @@
     "multer": "^2.0.1",
     "pdfkit": "^0.17.2",
     "puppeteer": "^25.4.0",
+    "qrcode": "^1.5.4",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

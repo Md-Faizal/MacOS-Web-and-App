@@ -113,7 +113,20 @@ function initializeDock() {
     }
   ];
 
-  const availableApps = apps;
+  let allowedAppsList = null;
+  try {
+    const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role');
+    if (role === 'worker') {
+      const storedAllowed = sessionStorage.getItem('macos_allowed_apps');
+      allowedAppsList = window.currentUserPermissions?.allowedApps || (storedAllowed ? JSON.parse(storedAllowed) : ['billing', 'products', 'contacts', 'analytics']);
+    }
+  } catch (e) {
+    console.warn('Error reading worker permissions in dock:', e);
+  }
+
+  const availableApps = allowedAppsList 
+    ? apps.filter(a => allowedAppsList.includes(a.id) || a.id === 'launchpad' || a.id === 'settings')
+    : apps;
   window.availableAppsForLaunchpad = availableApps;
   
   if (typeof initializeDesktop === 'function') {

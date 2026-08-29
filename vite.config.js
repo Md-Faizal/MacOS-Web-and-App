@@ -13,12 +13,14 @@ const postBuildPlugin = {
     const distFrontendPath = join(cwd, 'dist', 'frontend');
     const distBackendPath = join(cwd, 'dist', 'backend');
     const distScriptsPyPath = join(cwd, 'dist', 'scripts_py');
+    const distSharedScriptsPath = join(cwd, 'dist', 'scripts', 'shared');
     const dbPath = join(cwd, 'dist', 'database');
     
     // Copy necessary folders to dist
     try {
       cpSync(backendPath, distBackendPath, { recursive: true, force: true });
       cpSync(scriptsPyPath, distScriptsPyPath, { recursive: true, force: true });
+      cpSync(join(frontendPath, 'scripts', 'shared', 'csrf.js'), join(distSharedScriptsPath, 'csrf.js'), { force: true });
       console.log('✓ Copied backend/ and scripts_py/ to dist/');
       
       // Copy root files needed for production

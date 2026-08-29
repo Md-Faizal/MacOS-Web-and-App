@@ -159,18 +159,35 @@ class WeatherDisplay {
       return;
     }
 
-    // Priority 3: Geolocation fallback
+    // Priority 3: Geolocation fallback with fast timeout
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        position => {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
-          this.saveLocationCache(lat, lon);
-          this.fetchWeather(lat, lon);
-        },
-        error => {
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
           this.fetchWeather(this.options.fallbackLocation.lat, this.options.fallbackLocation.lon);
         }
+      }, 2500);
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            this.saveLocationCache(lat, lon);
+            this.fetchWeather(lat, lon);
+          }
+        },
+        error => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            this.fetchWeather(this.options.fallbackLocation.lat, this.options.fallbackLocation.lon);
+          }
+        },
+        { timeout: 3000, maximumAge: 600000 }
       );
     } else {
       this.fetchWeather(this.options.fallbackLocation.lat, this.options.fallbackLocation.lon);

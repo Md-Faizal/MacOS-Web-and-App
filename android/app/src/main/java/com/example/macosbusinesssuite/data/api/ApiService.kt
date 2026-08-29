@@ -14,13 +14,21 @@ interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
+    @POST("auth/mobile/refresh")
+    suspend fun refreshMobileSession(@Body request: MobileRefreshRequest): Response<LoginResponse>
+
+    @POST("auth/mobile/logout")
+    suspend fun logoutMobileSession(@Body request: MobileRefreshRequest): Response<ApiResponse<Unit>>
+
     @POST("auth/google/worker-login")
     suspend fun googleWorkerLogin(@Body request: Map<String, Any?>): Response<Map<String, Any?>>
 
     @GET("auth/worker/status")
     suspend fun checkWorkerStatus(
         @Query("inviteCode") inviteCode: String? = null,
-        @Query("email") email: String? = null
+        @Query("email") email: String? = null,
+        @Query("platform") platform: String? = null,
+        @Query("deviceName") deviceName: String? = null
     ): Response<Map<String, Any?>>
 
     @POST("auth/logout")

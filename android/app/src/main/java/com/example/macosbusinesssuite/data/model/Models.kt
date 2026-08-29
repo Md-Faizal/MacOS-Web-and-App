@@ -13,16 +13,23 @@ data class AuthStatusResponse(
 )
 
 data class LoginRequest(
-    val username: String? = null,
-    val email: String? = null,
-    val password: String
+    val identifier: String,
+    val password: String,
+    val deviceName: String? = null,
+    val deviceType: String? = null
 )
 
 data class LoginResponse(
     val success: Boolean = false,
     val message: String? = null,
     val user: UserProfile? = null,
-    val token: String? = null
+    val token: String? = null,
+    val refreshToken: String? = null,
+    val expiresIn: Long? = null
+)
+
+data class MobileRefreshRequest(
+    val refreshToken: String
 )
 
 data class UserProfile(
@@ -37,6 +44,7 @@ data class UserProfile(
 // Profile API responses
 data class ProfileData(
     val id: String? = null,
+    val username: String? = null,
     @SerializedName("full_name") val fullName: String? = null,
     @SerializedName("email_id") val emailId: String? = null,
     @SerializedName("profile_picture") val profilePicture: String? = null,
@@ -56,6 +64,7 @@ data class ProfileResponse(
 data class UpdateProfileRequest(
     val full_name: String? = null,
     val email_id: String? = null,
+    val username: String? = null,
     val profile_picture: String? = null
 )
 

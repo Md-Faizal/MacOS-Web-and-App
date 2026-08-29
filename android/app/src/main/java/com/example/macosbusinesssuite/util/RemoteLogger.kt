@@ -8,6 +8,7 @@ import com.example.macosbusinesssuite.data.model.AppLogRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 object RemoteLogger {
     private var sessionManager: SessionManager? = null
@@ -23,8 +24,14 @@ object RemoteLogger {
             val sm = sessionManager ?: return
             enabled = sm.remoteLoggingEnabled
             val stack = throwable?.let { Log.getStackTraceString(it) }
+            val sessionFingerprint = sm.authToken?.let { token ->
+                MessageDigest.getInstance("SHA-256")
+                    .digest(token.toByteArray())
+                    .joinToString("") { byte -> "%02x".format(byte) }
+                    .take(16)
+            } ?: ""
             val req = AppLogRequest(
-                sessionId = sm.authToken ?: "",
+                sessionId = sessionFingerprint,
                 deviceId = sm.serverUrl,
                 userId = sm.userEmail ?: "",
                 userName = sm.userName ?: "",

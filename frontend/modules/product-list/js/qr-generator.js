@@ -13,7 +13,7 @@ export class QRGenerator {
       }
       
       const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js';
+      script.src = '/modules/product-list/js/qrcode.min.js';
       script.onload = () => {
         this.scriptLoaded = true;
         resolve();

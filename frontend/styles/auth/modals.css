@@ -1,0 +1,482 @@
+/* ==========================================================================
+   MACOS DIALOGS & MODAL SYSTEM STYLES
+   ========================================================================== */
+
+/* MODAL WRAPPER (Centered layer) */
+.login-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100vw - 32px);
+  max-height: 92vh;
+  z-index: 25;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0.35s ease;
+  overflow: visible !important;
+}
+
+.login-modal.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.account-preference-modal {
+  z-index: 30;
+}
+
+/* DIALOG CARD (Frosted Glass Container for child dialogs) */
+.login-modal-content {
+  position: relative;
+  width: min(390px, calc(100vw - 32px)) !important;
+  max-width: 390px;
+  padding: 26px 30px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  background: rgba(30, 30, 36, 0.78);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55),
+              0 4px 16px rgba(0, 0, 0, 0.25),
+              inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* AVATAR & HEADER (Floating for main login, or inside dialogs) */
+.modal-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 48px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  margin-bottom: 8px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.modal-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-avatar-large {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.modal-username {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  margin-bottom: 8px;
+}
+
+.profile-name {
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.2px;
+}
+
+/* FORM LAYOUT & INPUT FIELDS */
+.password-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.password-field-container {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+}
+
+.password-label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 6px;
+  display: block;
+  text-align: left;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input {
+  width: 100%;
+  padding: 10px 76px 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  outline: none;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+}
+
+.password-text-input {
+  padding-right: 14px;
+}
+
+.password-input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.password-input:focus {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(0, 113, 227, 0.9);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.35), 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.password-input[readonly] {
+  opacity: 0.8;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* PASSWORD VISIBILITY & ACTION TOGGLES */
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 1.15rem;
+  padding: 4px;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover {
+  color: #ffffff;
+}
+
+.password-input-wrapper > .password-toggle:not(.password-action-toggle) {
+  right: 38px;
+}
+
+.password-input-wrapper.password-no-action > .password-toggle:not(.password-action-toggle) {
+  right: 10px;
+}
+
+.password-input-wrapper.password-no-action .password-input {
+  padding-right: 40px;
+}
+
+.password-action-toggle {
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 22px;
+  color: rgba(18, 35, 52, 0.86);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.8), 0 3px 10px rgba(20, 50, 80, 0.16);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.password-action-toggle:hover {
+  color: #ffffff;
+  background: #0071E3;
+  border-color: rgba(165, 215, 255, 0.8);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.28), 0 4px 12px rgba(24, 72, 120, 0.3);
+}
+
+/* LOGIN LINKS & BUTTONS */
+.login-links-row {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.touchid-text {
+  font-size: 0.85rem;
+  color: #ffffff;
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: opacity 0.2s ease;
+}
+
+.touchid-text:hover {
+  opacity: 0.8;
+}
+
+.forgot-password-link {
+  position: absolute;
+  right: 0;
+}
+
+.login-button {
+  min-height: 38px;
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-button:hover {
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.3), 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.login-button:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: #0071E3 !important;
+  border-color: #0071E3 !important;
+  color: #ffffff !important;
+}
+
+.btn-primary:hover {
+  background: #005BB5 !important;
+  border-color: #005BB5 !important;
+}
+
+#googleSignInButton {
+  display: flex;
+  justify-content: center;
+  width: min(360px, calc(100vw - 64px));
+}
+
+/* SUB-POPUPS & DISMISSAL CONFIRMATIONS */
+.preference-popup {
+  position: relative;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 0;
+  z-index: 10;
+  padding: 8px 0 4px;
+  box-sizing: border-box;
+}
+
+.preference-popup .profile-avatar-large {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 40px;
+  text-align: center;
+}
+
+.preference-popup .profile-name {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-align: center;
+}
+
+.preference-popup .preference-warning-icon {
+  display: block;
+  margin: 0 auto 10px;
+  font-size: 38px;
+  line-height: 1;
+  text-align: center;
+}
+
+.preference-popup p {
+  margin: 0 0 18px;
+  color: rgba(255, 255, 255, 0.82) !important;
+  font-size: 0.85rem !important;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.preference-popup > div[style*="display: flex"] {
+  gap: 10px !important;
+}
+
+.preference-popup .login-button {
+  min-height: 34px;
+  margin-top: 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 0.82rem;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preference-popup .login-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.preference-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.1rem;
+  line-height: 22px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preference-popup-close:hover {
+  background: rgba(255, 60, 60, 0.7);
+  color: #ffffff;
+}
+
+.preference-dismiss-option {
+  appearance: none;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 100, 100, 0.35);
+  border-radius: 10px;
+  background: rgba(180, 40, 50, 0.35);
+  color: rgba(255, 240, 240, 0.95);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preference-dismiss-option:hover {
+  background: rgba(200, 45, 55, 0.55);
+  border-color: rgba(255, 140, 140, 0.6);
+}
+
+/* STEP TRANSITIONS */
+#accountPreferenceModal .account-preference-content > div:not(.preference-popup)[style*="display: block"],
+#accountPreferenceModal .account-preference-content > div:not(.preference-popup):not([style*="display: none"]) {
+  animation: preferenceStepIn 280ms ease-out both;
+}
+
+.preference-popup[style*="display: block"] {
+  animation: preferencePopupIn 280ms ease-out both;
+}
+
+@keyframes preferenceStepIn {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: scale(0.98) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes preferencePopupIn {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: scale(0.98) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* RESPONSIVE BREAKPOINTS FOR DIALOGS */
+@media (max-width: 1024px) {
+  .password-field-container,
+  .login-links-row {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 768px) {
+  .password-field-container,
+  .login-links-row {
+    max-width: 290px;
+  }
+}
+
+@media (max-width: 480px) {
+  .password-field-container,
+  .login-links-row {
+    max-width: 260px;
+  }
+  .login-modal-content {
+    padding: 22px 18px;
+  }
+}

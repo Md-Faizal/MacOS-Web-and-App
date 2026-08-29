@@ -9,7 +9,7 @@ const dotenv = require('dotenv');
 dotenv.config({ path: '.env' });
 dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
 const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 
 // Detect environment
 const ENV = process.env.NODE_ENV || 'dev';
@@ -21,6 +21,17 @@ console.log(`Running in environment: ${ENV}`);
 if (isProd) console.log('✓ Production environment detected');
 if (isDev) console.log('✓ Development environment detected');
 if (isVM) console.log('✓ Oracle VM environment detected');
+
+if (isProd || isVM) {
+  const requiredSecrets = ['JWT_SECRET', 'RECOVERY_KEY'];
+  const missingSecrets = requiredSecrets.filter(name => !process.env[name] || process.env[name].length < 32);
+  if (missingSecrets.length > 0) {
+    throw new Error(`Missing or weak production authentication secrets: ${missingSecrets.join(', ')}`);
+  }
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_ANDROID_CLIENT_ID) {
+    throw new Error('Missing production Google OAuth credentials: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_ANDROID_CLIENT_ID are required');
+  }
+}
 
 // Initialize centralized database FIRST (before any modules)
 const DatabaseManager = require('../core/db/database-manager');
@@ -51,18 +62,50 @@ const { router: aiRouter, initializeDatabase: initAI } = require('../core/ai');
 const { router: logsRouter, initializeDatabase: initLogs } = require('../core/logs');
 const qrRouter = require('../core/qr-routing')(globalDb);
 
-// Auth & RBAC Module
-const permissionsModule = require('../core/auth/permissions')(globalDb);
+// Auth Module
 const authModule = require('../core/auth/auth')(globalDb);
 const profileModule = require('../core/auth/profile')(globalDb);
 const oauthModule = require('../core/auth/oauth')(globalDb);
-const workerGoogleAuthModule = require('../core/auth/worker-google-auth')(globalDb, permissionsModule);
+const permissionsHelper = require('../core/auth/permissions')(globalDb);
+const workerGoogleAuth = require('../core/auth/worker-google-auth')(globalDb, permissionsHelper);
+const adminAuth = require('../core/auth/admin')(globalDb);
+const createAuditService = require('../core/auth/audit-service');
 
 const app = express();
+const auditService = createAuditService(globalDb);
+try {
+  auditService.purgeExpired();
+} catch (error) {
+  console.warn('Initial authentication retention cleanup failed:', error.message);
+}
+const auditRetentionTimer = setInterval(() => {
+  try {
+    auditService.purgeExpired();
+  } catch (error) {
+    console.warn('Authentication retention cleanup failed:', error.message);
+  }
+}, 60 * 60 * 1000);
+auditRetentionTimer.unref?.();
+
+app.use((req, res, next) => {
+  req.requestId = req.get('x-request-id') || crypto.randomUUID();
+  res.setHeader('X-Request-ID', req.requestId);
+  next();
+});
 
 // Trust proxy headers (X-Forwarded-Proto, etc.) for production environments
 // This ensures req.protocol is 'https' when running behind Nginx/Proxy
 app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (isProd || isVM) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
 
 // Import wallpaper router (moved to src/api/core/wallpaper)
 let wallpaperRouter;
@@ -77,11 +120,29 @@ try {
   });
 }
 
-// Middleware - Unlimited payload size for API-based storage
-// All data stored on server, no client-side limits
-app.use(express.json({ limit: '50gb' }));  // Support large payloads (50GB+)
-app.use(express.urlencoded({ limit: '50gb', extended: true }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
 app.use(cookieParser());
+
+app.use((req, res, next) => {
+  const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
+  if (!req.cookies?.csrf_token) {
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: isProd || isVM || req.protocol === 'https',
+      sameSite: 'Strict',
+      maxAge: 12 * 60 * 60 * 1000,
+      path: '/'
+    });
+  }
+
+  const hasBrowserSession = !!req.cookies?.auth_session;
+  const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
+    return res.status(403).json({ error: 'CSRF validation failed' });
+  }
+  next();
+});
 
 // MIME type map for common file types
 const mimeTypes = {
@@ -151,12 +212,18 @@ const defaultDevOrigins = new Set([
   'http://127.0.0.1:5173'
 ]);
 
+const defaultProductionOrigins = new Set([
+  'https://mac.faizal.uk',
+  'http://mac.faizal.uk'
+]);
+
 function isOriginAllowed(origin) {
   if (!origin) return true; // same-origin / curl / server-to-server
   if (corsOrigins.length > 0) return corsOrigins.includes(origin);
   // In dev, Vite may pick the next available port (5174+). Allow localhost/127.0.0.1 on any port.
   if (isDev && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
-  return defaultDevOrigins.has(origin);
+  if (isDev) return defaultDevOrigins.has(origin);
+  return defaultProductionOrigins.has(origin);
 }
 
 app.use((req, res, next) => {
@@ -167,7 +234,7 @@ app.use((req, res, next) => {
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   res.header('Access-Control-Max-Age', '86400');
@@ -175,6 +242,47 @@ app.use((req, res, next) => {
 
 
   if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+const rateLimitBuckets = new Map();
+const rateLimitedPaths = new Set([
+  '/api/auth/login',
+  '/api/auth/google/worker-login',
+  '/api/auth/mobile/refresh',
+  '/api/auth/verify-answer',
+  '/api/auth/webauthn/authentication-options',
+  '/api/auth/webauthn/authentication-verify'
+]);
+
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+
+  const origin = req.headers.origin || (() => {
+    try { return new URL(req.headers.referer || '').origin; } catch { return null; }
+  })();
+  if (!isOriginAllowed(origin)) {
+    return res.status(403).json({ error: 'Request origin is not allowed' });
+  }
+
+  if (!rateLimitedPaths.has(req.path)) return next();
+
+  const identifier = typeof req.body?.identifier === 'string'
+    ? req.body.identifier.trim().toLowerCase()
+    : '';
+  const key = `${req.ip}:${req.path}:${identifier}`;
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key) || { count: 0, startedAt: now };
+  if (now - bucket.startedAt >= 60_000) {
+    bucket.count = 0;
+    bucket.startedAt = now;
+  }
+  bucket.count += 1;
+  rateLimitBuckets.set(key, bucket);
+  if (bucket.count > 10) {
+    return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+  }
+
   next();
 });
 
@@ -241,50 +349,83 @@ const routes = [
 app.use('/q', qrRouter);
 app.use('/api/android/update', androidUpdateRouter);
 
-// Auth Rate Limiter
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per `window` (here, per 15 minutes)
-  message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 // Auth Routes
-app.get('/api/auth/google-client-id', authModule.getGoogleClientId);
-app.post('/api/auth/login', authLimiter, authModule.login);
-app.post('/api/auth/google/worker-login', authLimiter, workerGoogleAuthModule.loginWithGoogle);
-app.get('/api/auth/worker/status', workerGoogleAuthModule.checkWorkerStatus);
-app.get('/api/auth/devices', authModule.getDevices);
+app.post('/api/auth/login', authModule.login);
+app.post('/api/auth/mobile/refresh', authModule.refreshMobileSession);
+app.post('/api/auth/mobile/logout', authModule.logoutMobileSession);
+app.get('/api/auth/google/config', workerGoogleAuth.getClientConfig);
+app.post('/api/auth/google/worker-login', workerGoogleAuth.loginWithGoogle);
+app.get('/api/auth/worker/status', workerGoogleAuth.checkWorkerStatus);
+app.get('/api/auth/devices', authModule.authMiddleware, authModule.getDevices);
 app.delete('/api/auth/devices/:id', authModule.authMiddleware, authModule.logoutDevice);
 app.delete('/api/auth/devices', authModule.authMiddleware, authModule.logoutAllDevices);
 app.get('/api/auth/devices/:id/history', authModule.authMiddleware, authModule.getDeviceHistory);
-app.get('/api/auth/verify', authModule.authMiddleware, authModule.verify);
+app.get('/api/auth/verify', authModule.authMiddleware, (req, res) => {
+  const permissions = permissionsHelper && req.user.role === 'worker' ? permissionsHelper.getUserPermissionsSnapshot(req.user.id, 'worker') : null;
+  res.json({ success: true, authenticated: true, user: req.user, permissions });
+});
 app.post('/api/auth/logout', authModule.logout);
 app.get('/api/auth/status', authModule.getStatus);
+app.get('/api/auth/questions', authModule.getSecurityQuestions);
 app.get('/api/auth/challenge', authModule.getChallengeQuestion);
-app.post('/api/auth/challenge', authModule.getChallengeQuestion);
-app.get('/api/auth/challenge-question', authModule.getChallengeQuestion);
-app.post('/api/auth/challenge-question', authModule.getChallengeQuestion);
-app.post('/api/auth/verify-answer', authLimiter, authModule.verifyAnswer);
+app.post('/api/auth/verify-answer', authModule.verifyAnswer);
+app.get('/api/auth/verify-answer', (req, res) => {
+  res.setHeader('Allow', 'POST');
+  res.status(405).json({ error: 'Security-answer verification requires a POST request.' });
+});
+app.get('/api/auth/webauthn/registration-options', authModule.authMiddleware, authModule.getWebAuthnRegistrationOptions);
+app.post('/api/auth/webauthn/registration-verify', authModule.authMiddleware, authModule.verifyWebAuthnRegistration);
+app.get('/api/auth/webauthn/authentication-options', authModule.getWebAuthnAuthenticationOptions);
+app.post('/api/auth/webauthn/authentication-verify', authModule.verifyWebAuthnAuthentication);
 app.post('/api/auth/update-security', authModule.authMiddleware, authModule.updateSecurity);
-app.post('/api/auth/disable-security', authModule.authMiddleware, authModule.disableSecurity);
 
-// Permissions Route
-app.get('/api/profile/permissions', authModule.authMiddleware, (req, res) => {
-  const perms = permissionsModule.getUserPermissionsSnapshot(req.user.id, req.user.role);
-  res.json({ success: true, permissions: perms });
+// Owner administration routes
+app.get('/api/admin/users', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.listUsers);
+app.get('/api/admin/notifications', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getNotifications);
+app.get('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getPermissions);
+app.post('/api/admin/users/:userId/approve', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveUser);
+app.post('/api/admin/users/:userId/approve-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveDeletion);
+app.post('/api/admin/users/:userId/reject-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.rejectDeletion);
+app.get('/api/admin/users/:userId/history', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getWorkerLifecycleHistory);
+app.post('/api/admin/users/:userId/status', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.setStatus);
+app.put('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.updateUserPermissions);
+app.delete('/api/admin/users/:userId', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.deleteUser);
+app.get('/api/admin/users/:userId/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
+app.get('/api/admin/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
+app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  let lastId = Number(req.query.after || 0);
+  const sendUpdates = () => {
+    const notifications = globalDb.prepare(
+      'SELECT id, type, title, body, data, created_at FROM owner_notifications WHERE id > ? ORDER BY id ASC'
+    ).all(lastId);
+    for (const notification of notifications) {
+      lastId = notification.id;
+      res.write(`data: ${JSON.stringify(notification)}\n\n`);
+    }
+    res.write(': keep-alive\n\n');
+  };
+  sendUpdates();
+  const timer = setInterval(sendUpdates, 3000);
+  req.on('close', () => clearInterval(timer));
 });
 
 // Profile Routes
 app.get('/api/profile', authModule.authMiddleware, profileModule.getProfile);
 app.post('/api/profile', authModule.authMiddleware, profileModule.updateProfile);
 app.post('/api/profile/disconnect-google', authModule.authMiddleware, profileModule.disconnectGoogle);
+app.post('/api/profile/deletion-request', authModule.authMiddleware, profileModule.requestAccountDeletion);
+app.post('/api/profile/cancel-deletion-request', authModule.authMiddleware, profileModule.cancelAccountDeletion);
+app.get('/api/profile/export', authModule.authMiddleware, profileModule.exportData);
 
 // Desktop State Routes
 app.get('/api/desktop/state', authModule.authMiddleware, (req, res) => {
   try {
-    const userId = req.user.id || 'admin_auth';
+    const userId = req.user.userId;
     const row = globalDb.prepare('SELECT state FROM desktop_state WHERE user_id = ?').get(userId);
     res.json({ success: true, state: row ? JSON.parse(row.state) : null });
   } catch (err) {
@@ -295,7 +436,7 @@ app.get('/api/desktop/state', authModule.authMiddleware, (req, res) => {
 
 app.post('/api/desktop/state', authModule.authMiddleware, (req, res) => {
   try {
-    const userId = req.user.id || 'admin_auth';
+    const userId = req.user.userId;
     const { state } = req.body;
     if (!state) return res.status(400).json({ error: 'State is required' });
     
@@ -316,9 +457,9 @@ app.post('/api/desktop/state', authModule.authMiddleware, (req, res) => {
 });
 
 // Google OAuth Routes
-app.get('/api/auth/google', oauthModule.getAuthUrlLogin);
-app.get('/api/auth/google/link', authModule.authMiddleware, oauthModule.getAuthUrlLink);
-app.get('/api/auth/google/callback', oauthModule.handleCallback);
+app.get('/api/auth/google', authModule.authMiddleware, oauthModule.getAuthUrl);
+app.get('/api/auth/google/link', authModule.authMiddleware, oauthModule.getAuthUrl);
+app.get('/api/auth/google/callback', authModule.authMiddleware, oauthModule.handleCallback);
 
 console.log('📡 Mounting API routes...');
 for (const route of routes) {
@@ -368,7 +509,7 @@ console.log(`✓ All ${routes.length} API routes mounted and secured\n`);
 app.use((err, req, res, next) => {
   if (err.status === 413) {
     console.warn('[Server] PayloadTooLarge:', err.message);
-    return res.status(413).json({ error: 'Payload too large. Maximum size: 50GB' });
+    return res.status(413).json({ error: 'Payload too large. Maximum JSON size is 25MB.' });
   }
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     console.warn('[Server] Malformed JSON:', err.message);

@@ -2,10 +2,17 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const createSessionService = require('./session-service');
+const createIdentityService = require('./identity-service');
+const createMobileSessionService = require('./mobile-session-service');
+const createAuditService = require('./audit-service');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'macos_super_secret_session_key_123';
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_WORKER_CLIENT_ID || '';
+const ANDROID_CLIENT_ID = process.env.GOOGLE_ANDROID_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const PUBLIC_CLIENT_ID = process.env.GOOGLE_WORKER_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '';
+const ACCEPTED_CLIENT_IDS = new Set([CLIENT_ID, ANDROID_CLIENT_ID, PUBLIC_CLIENT_ID].filter(Boolean));
 
 // Fallback QR code generator using SVG if qrcode module is still loading
 async function generateQrDataUrl(text) {
@@ -20,14 +27,37 @@ async function generateQrDataUrl(text) {
 }
 
 module.exports = function(db, permissionsHelper) {
+  const sessionService = createSessionService(db);
+  const mobileSessionService = createMobileSessionService(db);
+  const auditService = createAuditService(db);
+  const identityService = createIdentityService(db);
+
+  const issueWebSession = (req, res, userId, deviceId, provider = 'google') => {
+    const session = sessionService.create({
+      userId,
+      deviceId,
+      platform: 'web',
+      provider,
+      req
+    });
+    sessionService.setCookie(req, res, session.secret);
+    return session;
+  };
+
   return {
+    getClientConfig: (req, res) => {
+      if (!PUBLIC_CLIENT_ID) return res.status(503).json({ error: 'Google sign-in is not configured' });
+      res.json({ clientId: PUBLIC_CLIENT_ID });
+    },
+
     /**
      * Authenticate or register using Google (Workers and Owner Hybrid)
      * Handles both id_token (from Android or Web Google Identity Services) and OAuth code exchange
      */
     loginWithGoogle: async (req, res) => {
       try {
-        const { idToken, code, redirectUri, deviceName, deviceType } = req.body;
+        const { idToken, code, redirectUri, deviceName, deviceType, linkPassword } = req.body;
+        const isWebLogin = typeof req?.get === 'function' && (deviceType || 'Web').toLowerCase() !== 'android';
 
         let googleUser = null;
 
@@ -40,7 +70,17 @@ module.exports = function(db, permissionsHelper) {
             );
             const tokenData = tokenVerifyRes.data;
 
-            if (!tokenData.sub || !tokenData.email) {
+            const tokenAudience = (Array.isArray(tokenData.aud) ? tokenData.aud : [tokenData.aud])
+              .filter(audience => typeof audience === 'string');
+            const emailVerified = tokenData.email_verified === true || tokenData.email_verified === 'true';
+            if (!tokenData.sub || !tokenData.email || !emailVerified ||
+              !tokenAudience.some(audience => ACCEPTED_CLIENT_IDS.has(audience))) {
+              console.warn('Google ID token rejected:', JSON.stringify({
+                hasSubject: Boolean(tokenData.sub),
+                hasEmail: Boolean(tokenData.email),
+                emailVerified,
+                audienceAccepted: tokenAudience.some(audience => ACCEPTED_CLIENT_IDS.has(audience))
+              }));
               return res.status(400).json({ error: 'Invalid Google ID token payload' });
             }
 
@@ -96,20 +136,68 @@ module.exports = function(db, permissionsHelper) {
 
         // 1. Unified Identity Lookup
         let targetUser = null;
-        const googleIdentity = db.prepare("SELECT * FROM user_identities WHERE provider = 'google' AND provider_user_id = ?").get(googleUser.sub);
+        const identityResolution = identityService.resolveProviderIdentity('google', googleUser.sub, googleUser.email);
+        const googleIdentity = identityResolution.canonical;
         
         if (googleIdentity) {
           // Returning user via Google
           targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(googleIdentity.user_id);
+          if (!targetUser) {
+            db.prepare("DELETE FROM user_identities WHERE id = ?").run(googleIdentity.id);
+            return res.status(409).json({
+              error: 'OrphanedGoogleIdentity',
+              message: 'This Google identity is no longer attached to an account. Contact the owner.'
+            });
+          }
           db.prepare("UPDATE user_identities SET provider_email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(googleUser.email, googleIdentity.id);
         } else {
-          // Google Identity not found. Check if email exists in users table
-          targetUser = db.prepare("SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(google_email) = ?").get(googleUser.email, googleUser.email);
+          // Google identity not found. Resolve all canonical and legacy matches centrally.
+          if (identityResolution.userIds.length > 1) {
+            return res.status(409).json({
+              error: 'AmbiguousGoogleAccount',
+              message: 'This Google email matches more than one account. The owner must resolve the account links before sign-in can continue.',
+              requiresOwnerAction: true
+            });
+          }
+          targetUser = identityResolution.targetUser;
+          const profileLink = targetUser
+            ? db.prepare("SELECT id FROM user_profile WHERE id = ? AND google_id = ?").get(targetUser.id, googleUser.sub)
+            : null;
+          const existingGoogleLink = targetUser && (targetUser.google_id === googleUser.sub || profileLink?.id === targetUser.id);
+          const existingOwnerGoogleLink = targetUser?.role === 'owner' && existingGoogleLink;
           
           if (targetUser) {
             // Account exists but is not linked to this Google ID
-            if (targetUser.is_verified) {
-              // Safe to auto-link
+            if (targetUser.role === 'owner' && !existingOwnerGoogleLink) {
+              if (!linkPassword || !targetUser.password_hash || !bcrypt.compareSync(linkPassword, targetUser.password_hash)) {
+                return res.status(409).json({
+                  error: 'OwnerLinkRequired',
+                  message: 'Enter your existing local password once to link this Google account.',
+                  requiresLinking: true,
+                  email: googleUser.email
+                });
+              }
+              db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+              db.prepare("UPDATE users SET google_id = ?, google_email = ?, google_name = ?, google_picture = ? WHERE id = ?").run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+            } else if (targetUser.role === 'owner' && existingOwnerGoogleLink) {
+              db.prepare(`
+                INSERT OR IGNORE INTO user_identities
+                  (id, user_id, provider, provider_user_id, provider_email, is_verified)
+                VALUES (?, ?, 'google', ?, ?, 1)
+              `).run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+              db.prepare(`
+                UPDATE users SET google_id = ?, google_email = ?, google_name = ?, google_picture = ?
+                WHERE id = ?
+              `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+            } else if (targetUser.role === 'worker' && !existingGoogleLink) {
+              return res.status(409).json({
+                error: 'WorkerGoogleIdentityConflict',
+                message: 'This email belongs to an existing worker, but the Google identity is different. The owner must review the account link.',
+                requiresOwnerAction: true
+              });
+            } else if (targetUser.role === 'worker' && existingGoogleLink) {
+              db.prepare("INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+            } else if (targetUser.is_verified) {
               db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
             } else {
               // Unverified! Potential pre-hijacking. Do NOT auto-link without password challenge.
@@ -138,7 +226,7 @@ module.exports = function(db, permissionsHelper) {
           } else {
             // 3. New Worker Registration (First time login)
             const newUserId = crypto.randomUUID();
-            const inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase(); // 6-char code e.g. E9A4B2
+            const inviteCode = crypto.randomInt(10000, 100000).toString();
             const inviteQr = await generateQrDataUrl(inviteCode);
 
             db.prepare(`
@@ -216,25 +304,54 @@ module.exports = function(db, permissionsHelper) {
 
         let deviceId = null;
         if (deviceName) {
-          db.prepare('UPDATE user_devices SET is_current = 0').run();
+          db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(targetUser.id);
           db.prepare(`
-            INSERT INTO user_devices (device_name, device_type, is_current, last_login, last_seen) 
-            VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ON CONFLICT(device_name) DO UPDATE SET 
+            INSERT INTO user_devices (user_id, device_name, device_type, is_current, last_login, last_seen)
+            VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            ON CONFLICT(user_id, device_name) DO UPDATE SET
               last_login = excluded.last_login,
               last_seen = excluded.last_seen,
               is_current = 1,
               device_type = excluded.device_type
-          `).run(deviceName, deviceType || 'Web', 1);
+          `).run(targetUser.id, deviceName, deviceType || 'Web', 1);
 
-          const dev = db.prepare('SELECT id FROM user_devices WHERE device_name = ?').get(deviceName);
+          const dev = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
+            .get(targetUser.id, deviceName);
           deviceId = dev?.id;
           if (dev) {
             db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(dev.id, 'success');
           }
         }
 
-        const token = jwt.sign({
+        if (isWebLogin) {
+          const session = issueWebSession(req, res, targetUser.id, deviceId);
+          auditService.record({ req, eventType: 'login', outcome: 'success', userId: targetUser.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: 'google' });
+          const permissions = permissionsHelper && targetUser.role === 'worker' ? permissionsHelper.getUserPermissionsSnapshot(targetUser.id, 'worker') : null;
+          return res.json({
+            success: true,
+            sessionId: session.sessionId,
+            isOwner: targetUser.role === 'owner',
+            role: targetUser.role,
+            status: 'active',
+            updateChannel: targetUser.update_channel || 'production',
+            user: {
+              id: targetUser.id,
+              name: targetUser.full_name || googleUser.name,
+              email: targetUser.email || googleUser.email,
+              picture: googleUser.picture || targetUser.google_picture,
+              hasLocalPassword: !!targetUser.password_hash
+            },
+            permissions
+          });
+        }
+
+        const mobileSession = typeof req?.get === 'function'
+          ? mobileSessionService.create({ user: targetUser, deviceId, provider: 'google', req })
+          : null;
+        if (mobileSession) {
+          auditService.record({ req, eventType: 'login', outcome: 'success', userId: targetUser.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'google' });
+        }
+        const token = mobileSession?.accessToken || jwt.sign({
           userId: targetUser.id,
           role: targetUser.role,
           tokenVersion: targetUser.token_version || 0,
@@ -256,12 +373,15 @@ module.exports = function(db, permissionsHelper) {
           role: targetUser.role,
           status: 'active',
           token,
+          refreshToken: mobileSession?.refreshToken,
+          expiresIn: mobileSession?.expiresIn,
           updateChannel: targetUser.update_channel || 'production',
           user: {
             id: targetUser.id,
             name: targetUser.full_name || googleUser.name,
             email: targetUser.email || googleUser.email,
-            picture: googleUser.picture || targetUser.google_picture
+            picture: googleUser.picture || targetUser.google_picture,
+            hasLocalPassword: !!targetUser.password_hash
           },
           permissions
         });
@@ -277,13 +397,13 @@ module.exports = function(db, permissionsHelper) {
      */
     checkWorkerStatus: (req, res) => {
       try {
-        const { inviteCode, email } = req.query;
+        const { inviteCode, email, platform, deviceName } = req.query;
         if (!inviteCode && !email) {
           return res.status(400).json({ error: 'inviteCode or email required' });
         }
 
         const user = db.prepare(`
-          SELECT id, full_name, email, role, status, token_version, update_channel, google_picture 
+          SELECT id, full_name, email, password_hash, role, status, token_version, update_channel, google_picture 
           FROM users 
           WHERE invite_code = ? OR LOWER(email) = ? OR LOWER(google_email) = ?
         `).get(inviteCode || '', (email || '').toLowerCase().trim(), (email || '').toLowerCase().trim());
@@ -293,34 +413,10 @@ module.exports = function(db, permissionsHelper) {
         }
 
         if (user.status === 'active') {
-          const token = jwt.sign({
-            userId: user.id,
-            role: user.role,
-            tokenVersion: user.token_version || 0
-          }, JWT_SECRET, { expiresIn: '7d' });
-
-          res.cookie('auth_token', token, {
-            httpOnly: true,
-            secure: ['production', 'oraclevm'].includes(process.env.NODE_ENV) || req.protocol === 'https',
-            sameSite: 'Lax',
-            path: '/'
-          });
-
-          const permissions = permissionsHelper ? permissionsHelper.getUserPermissionsSnapshot(user.id, user.role) : null;
-
           return res.json({
             status: 'active',
             approved: true,
-            token,
-            role: user.role,
-            updateChannel: user.update_channel || 'production',
-            user: {
-              id: user.id,
-              name: user.full_name,
-              email: user.email,
-              picture: user.google_picture
-            },
-            permissions
+            requiresReauthentication: true
           });
         }
 

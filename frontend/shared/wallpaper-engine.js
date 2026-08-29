@@ -75,7 +75,14 @@ class WallpaperEngine {
     const bg = document.getElementById('wallpaperBackground') || this._createBackgroundElement();
     if (!bg) return;
 
-    // Start transition
+    // On initial page boot, apply immediately without black fade-out/fade-in
+    if (options.immediate || !this.initialized) {
+      this._performSwap(bg, wallpaper);
+      bg.style.opacity = '1';
+      return;
+    }
+
+    // Start transition for manual user wallpaper switches
     bg.style.opacity = '0';
     
     // Wait for fade out
@@ -112,15 +119,10 @@ class WallpaperEngine {
     if (!clean.startsWith('/')) clean = '/' + clean;
 
     const lower = clean.toLowerCase();
-    const apiRoot = (this.API_BASE + this.ASSET_ROOT).toLowerCase();
-    const assetRoot = this.ASSET_ROOT.toLowerCase();
-
-    if (lower.startsWith(apiRoot)) return clean;
-    if (lower.startsWith(assetRoot)) return this.API_BASE + clean;
-    
-    // Legacy mapping support
-    if (lower.startsWith('/assets/')) return this.API_BASE + this.ASSET_ROOT + clean.substring(8);
-    if (lower.startsWith('/static/') || lower.startsWith('/dynamic/')) return this.API_BASE + this.ASSET_ROOT + clean;
+    if (lower.startsWith('/api/assets/wallpaper/')) return clean.substring(4);
+    if (lower.startsWith('/assets/wallpaper/')) return clean;
+    if (lower.startsWith('/static/') || lower.startsWith('/dynamic/')) return '/assets/Wallpaper' + clean;
+    if (lower.startsWith('/assets/')) return clean;
 
     return clean;
   }
@@ -184,11 +186,10 @@ class WallpaperEngine {
       #wallpaperBackground {
         position: fixed;
         top: 0; left: 0; width: 100%; height: 100%;
-        z-index: -1;
+        z-index: 0;
         background-size: cover;
         background-position: center;
         transition: opacity 0.4s ease-in-out;
-        background-color: #000;
         pointer-events: none;
       }
     `;
