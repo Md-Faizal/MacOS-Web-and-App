@@ -824,6 +824,12 @@ function initializeDock() {
   renderApps();
 }
 
+// Listen for session verification to dynamically re-filter for workers
+window.addEventListener('macos-auth-verified', () => {
+  console.log('[Dock] Auth verified, re-initializing dock permissions');
+  initializeDock();
+});
+
 // Initialize the dock when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeDock);

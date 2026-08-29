@@ -58,6 +58,10 @@
         sessionStorage.setItem('macos_session_active', 'true');
         sessionStorage.setItem('macos_user_role', verifyData.user?.role || 'owner');
         sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions?.allowedApps || []));
+        window.dispatchEvent(new CustomEvent('macos-auth-verified', { detail: verifyData }));
+        if (typeof window.initializeDock === 'function') {
+          window.initializeDock();
+        }
         
         const guardStyle = document.getElementById('auth-guard-style');
         if (guardStyle) guardStyle.remove();

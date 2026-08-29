@@ -58,6 +58,10 @@
         sessionStorage.setItem('macos_session_active', 'true');
         sessionStorage.setItem('macos_user_role', verifyData.user?.role || 'owner');
         sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions?.allowedApps || []));
+        window.dispatchEvent(new CustomEvent('macos-auth-verified', { detail: verifyData }));
+        if (typeof window.initializeDock === 'function') {
+          window.initializeDock();
+        }
         
         const guardStyle = document.getElementById('auth-guard-style');
         if (guardStyle) guardStyle.remove();
@@ -655,7 +659,7 @@
       transition: all 0.2s ease;
     }
   </style>
-  <script type="module" crossorigin src="/assets/home-ACTSEbdm.js"></script>
+  <script type="module" crossorigin src="/assets/home-udt26vam.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/wallpaper-engine-ROgZ3p2B.js">
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="stylesheet" crossorigin href="/assets/wallpaper-engine-CYWaaGZd.css">
