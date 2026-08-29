@@ -741,6 +741,71 @@ module.exports = function(db) {
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
+    },
+
+    getCustomerStats: (req, res) => {
+      try {
+        const { id } = req.params;
+        const scope = getContactScopeFilter(req, 'c');
+        
+        const customer = db.prepare(`
+          SELECT c.*, l.current_due as ledger_due, l.total_outstanding
+          FROM contacts c
+          LEFT JOIN ledger l ON c.id = l.customer_id
+          WHERE c.id = ? AND ${scope}
+        `).get(id);
+
+        if (!customer) {
+          return res.status(404).json({ error: 'Customer not found or not accessible' });
+        }
+
+        // Total sales and average order value
+        const salesStats = db.prepare(`
+          SELECT 
+            COALESCE(SUM(grand_total), 0) as total_sales,
+            COALESCE(AVG(grand_total), 0) as avg_order_value,
+            COUNT(id) as invoice_count
+          FROM invoices
+          WHERE customer_id = ?
+        `).get(id);
+
+        // Favorite products
+        const favoriteProducts = db.prepare(`
+          SELECT 
+            p.name,
+            COUNT(ii.id) as frequency,
+            SUM(ii.qty) as total_qty
+          FROM invoice_items ii
+          JOIN products p ON ii.product_id = p.id
+          JOIN invoices i ON ii.invoice_id = i.id
+          WHERE i.customer_id = ?
+          GROUP BY p.id
+          ORDER BY frequency DESC, total_qty DESC
+          LIMIT 8
+        `).all(id);
+
+        // Average settlement days
+        const settlementStmt = db.prepare(`
+          SELECT 
+            AVG(CAST(julianday(p.payment_date) - julianday(i.invoice_date) AS REAL)) as avg_days
+          FROM payments p
+          JOIN invoices i ON p.invoice_id = i.id
+          WHERE p.customer_id = ? AND p.payment_date >= i.invoice_date
+        `).get(id);
+
+        const avgSettlementDays = settlementStmt && settlementStmt.avg_days ? Math.max(0, settlementStmt.avg_days) : 0;
+
+        res.json({
+          total_sales: salesStats.total_sales || 0,
+          avg_order_value: salesStats.avg_order_value || 0,
+          invoice_count: salesStats.invoice_count || 0,
+          avg_settlement_days: avgSettlementDays,
+          current_due: customer.ledger_due !== null && customer.ledger_due !== undefined ? customer.ledger_due : (customer.opening_balance || 0),
+          favorite_products: favoriteProducts || []
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
     }
   };
 };

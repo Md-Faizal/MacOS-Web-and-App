@@ -4,6 +4,21 @@
  */
 
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
+
   return {
     /**
      * GET NEXT PAYMENT REFERENCE (Preview - does not create record)
@@ -72,6 +87,10 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'customer_id and amount are required' });
         }
 
+        if (!isCustomerAccessible(req, customer_id)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to record payments for this customer.' });
+        }
+
         // Validate invoice if provided (optional for general payments)
         if (invoice_id) {
           const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoice_id);
@@ -133,6 +152,10 @@ module.exports = function(db) {
 
         if (!customer_id || !amount || !reason) {
           return res.status(400).json({ error: 'customer_id, amount, and reason are required' });
+        }
+
+        if (!isCustomerAccessible(req, customer_id)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to issue credit notes for this customer.' });
         }
 
         // Get invoice if provided
@@ -260,6 +283,11 @@ module.exports = function(db) {
           params.push(type);
         }
 
+        const workerScope = getWorkerContactScope(req, 'c');
+        if (workerScope) {
+          sql += ` AND ${workerScope}`;
+        }
+
         sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
         params.push(parseInt(limit), parseInt(offset));
 
@@ -293,6 +321,10 @@ module.exports = function(db) {
         const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
         if (!payment) {
           return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        if (!isCustomerAccessible(req, payment.customer_id)) {
+          return res.status(403).json({ error: 'Access denied' });
         }
 
         const customer_id = payment.customer_id;
@@ -394,6 +426,10 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Payment not found' });
         }
 
+        if (!isCustomerAccessible(req, payment.customer_id)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+
         const customer_id = payment.customer_id;
 
         // Delete payment record
@@ -421,8 +457,16 @@ module.exports = function(db) {
         const params = [];
 
         if (customer_id) {
-          whereClause = 'customer_id = ?';
+          whereClause += ' AND p.customer_id = ?';
           params.push(customer_id);
+        }
+
+        const workerScope = getWorkerContactScope(req, 'c');
+        let filterClause = '';
+        if (workerScope) {
+          filterClause = ` AND ${workerScope}`;
+        } else {
+          filterClause = ` AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
         }
 
         const result = {
@@ -436,9 +480,10 @@ module.exports = function(db) {
         const paymentRecord = db.prepare(`
           SELECT 
             COUNT(*) as count,
-            COALESCE(SUM(amount), 0) as total
-          FROM payments 
-          WHERE ${whereClause} AND type = 'PAYMENT'
+            COALESCE(SUM(p.amount), 0) as total
+          FROM payments p
+          JOIN contacts c ON p.customer_id = c.id
+          WHERE ${whereClause} AND p.type = 'PAYMENT' ${filterClause}
         `).get(...params);
 
         if (paymentRecord && paymentRecord.count > 0) {
@@ -450,9 +495,10 @@ module.exports = function(db) {
         const creditRecord = db.prepare(`
           SELECT 
             COUNT(*) as count,
-            COALESCE(SUM(credit_amount), 0) as total
-          FROM payments 
-          WHERE ${whereClause} AND type = 'CREDIT_NOTE'
+            COALESCE(SUM(p.credit_amount), 0) as total
+          FROM payments p
+          JOIN contacts c ON p.customer_id = c.id
+          WHERE ${whereClause} AND p.type = 'CREDIT_NOTE' ${filterClause}
         `).get(...params);
 
         if (creditRecord && creditRecord.count > 0) {
@@ -472,6 +518,14 @@ module.exports = function(db) {
      */
     getTotalCollected: (req, res) => {
       try {
+        const workerScope = getWorkerContactScope(req, 'c');
+        let filterClause = '';
+        if (workerScope) {
+          filterClause = `AND ${workerScope}`;
+        } else {
+          filterClause = `AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
+        }
+
         const result = db.prepare(`
           SELECT 
             COALESCE(SUM(p.amount), 0) as payments_total,
@@ -479,7 +533,7 @@ module.exports = function(db) {
           FROM payments p
           JOIN contacts c ON p.customer_id = c.id
           WHERE (p.type = 'PAYMENT' OR p.type = 'CREDIT_NOTE')
-            AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)
+            ${filterClause}
         `).get();
 
         const total_payments = parseFloat((result.payments_total || 0).toFixed(2));
@@ -534,6 +588,10 @@ module.exports = function(db) {
           if (customer) {
             opening_balance = customer.opening_balance || 0;
           }
+        }
+
+        if (cust_id && !isCustomerAccessible(req, cust_id)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to view this customer.' });
         }
 
         // Get total invoiced for customer

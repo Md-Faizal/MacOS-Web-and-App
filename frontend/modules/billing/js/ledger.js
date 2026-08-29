@@ -16,6 +16,16 @@ class LedgerView {
     this.oldLedgerSnapshot = null;
   }
 
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
+  isExcluded(contact) {
+    if (!contact) return false;
+    if (this.isWorkerUser()) return false;
+    return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
+  }
+
   startPolling(interval = 8000) {
     this.stopPolling();
     this.pollingInterval = setInterval(() => this.syncWithServer(), interval);
@@ -559,11 +569,7 @@ class LedgerView {
       }
       
       // Update header stats with totals - FILTER OUT EXCLUDED CUSTOMERS (except for workers)
-      const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
-      const statsCustomers = ledgerData.filter(c => {
-        if (isWorker) return true;
-        return c.exclude_from_stats !== 1 && c.exclude_from_stats !== '1' && c.exclude_from_stats !== true;
-      });
+      const statsCustomers = ledgerData.filter(c => !this.isExcluded(c));
       
       const totalBills = statsCustomers.reduce((sum, c) => sum + (c.total_bills || 0), 0);
       const totalPayments = statsCustomers.reduce((sum, c) => sum + (c.total_payments || 0), 0);
@@ -756,7 +762,7 @@ class LedgerView {
         return;
       }
 
-      const statsFiltered = filtered.filter(c => isWorker || !c.exclude_from_stats);
+      const statsFiltered = filtered.filter(c => !this.isExcluded(c));
       totalCustomersSpan.textContent = statsFiltered.length;
       const totalDue = statsFiltered.reduce((sum, c) => sum + (c.amountDue || 0), 0);
       // Show positive value if there's overall credit (negative balance)
@@ -1021,11 +1027,7 @@ class LedgerView {
       }
     } else {
       // Filter out excluded customers for "All Customers" view (except for workers)
-      const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
-      const statsLedgerData = ledgerData.filter(c => {
-        if (isWorker) return true;
-        return c.exclude_from_stats !== 1 && c.exclude_from_stats !== '1' && c.exclude_from_stats !== true;
-      });
+      const statsLedgerData = ledgerData.filter(c => !this.isExcluded(c));
       
       billsToShow = statsLedgerData.flatMap(c => c.bills || []);
       paymentsToShow = statsLedgerData.flatMap(c => c.payments || []);

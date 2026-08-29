@@ -847,9 +847,9 @@ class ContactsApp extends AppWindow {
   }
 
   showContactModal(contactData) {
+    const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
     // Generate random color if new contact
-    const colors = ['#d4516b', '#ff9500', '#af52de', '#34c759', '#0a84ff', '#ff3b30', '#ffcc00', '#ff2d55'];
-    const defaultColor = colors[Math.floor(Math.random() * colors.length)];
+    const contactColor = contactData.color || this.generateColorForContact(contactData.name || 'New');
 
     const modalHTML = `
       <div class="contact-modal-overlay" id="contactModalOverlay">
@@ -864,7 +864,7 @@ class ContactsApp extends AppWindow {
             <div class="contact-form-section">
               <div class="contact-form-row">
                 <div class="contact-form-avatar-section">
-                  <div class="contact-modal-avatar" style="background: ${contactData.color || defaultColor}; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white; font-weight: 600; margin-bottom: 8px;">
+                  <div class="contact-modal-avatar" style="background: ${contactColor}; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: white; font-weight: 600; margin-bottom: 8px;">
                     ${contactData.name ? this.getInitials(contactData.name) : '?'}
                   </div>
                 </div>
@@ -953,6 +953,7 @@ class ContactsApp extends AppWindow {
                 </div>
               </div>
 
+              ${!isWorker ? `
               <div class="contact-form-row">
                 <div class="contact-form-group full-width" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px; margin-top: 8px; width: 100%;">
                   <div style="flex: 1;">
@@ -965,19 +966,7 @@ class ContactsApp extends AppWindow {
                   </label>
                 </div>
               </div>
-
-              <div class="contact-form-row">
-                <div class="contact-form-group full-width" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px; margin-top: 8px; width: 100%;">
-                  <div style="flex: 1;">
-                    <label style="margin: 0; font-weight: 600;">Disable Duplex in Export PDF</label>
-                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">Turn off the second page (Duplex payment instructions) when exporting invoice PDFs for this customer.</p>
-                  </div>
-                  <label class="macos-switch">
-                    <input type="checkbox" name="disableDuplexExport" ${contactData.disableDuplexExport ? 'checked' : ''}>
-                    <span class="macos-slider"></span>
-                  </label>
-                </div>
-              </div>
+              ` : ''}
             </div>
 
             <!-- Additional Information Section -->
@@ -1040,6 +1029,7 @@ class ContactsApp extends AppWindow {
       return;
     }
     
+    const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
     const contactData = {
       name,
       phone: formData.get('phone') || '',
@@ -1052,8 +1042,7 @@ class ContactsApp extends AppWindow {
       avg_sales: parseFloat(formData.get('avgSales')) || 0,
       favourite_products: formData.get('favouriteProducts') || '',
       opening_balance: parseFloat(formData.get('openingBalance')) || 0,
-      exclude_from_stats: formData.get('excludeFromStats') === 'on' ? 1 : 0,
-      disable_duplex_export: formData.get('disableDuplexExport') === 'on' ? 1 : 0,
+      exclude_from_stats: isWorker ? 1 : (formData.get('excludeFromStats') === 'on' ? 1 : 0),
       notes: formData.get('notes') || '',
       transport_preference: formData.get('transportPreference') || ''
     };

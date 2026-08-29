@@ -8,6 +8,21 @@ const BillCalculator = require('../../../frontend/shared/bill-calculator');
 const { helpers } = require('./payments');
 
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
+
   return {
     /**
      * CREATE INVOICE (with multiple line items)
@@ -25,6 +40,10 @@ module.exports = function(db) {
 
         if (!customer_id) {
           return res.status(400).json({ error: 'customer_id is required' });
+        }
+
+        if (!isCustomerAccessible(req, customer_id)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permission to invoice this customer.' });
         }
 
         if (!items || !Array.isArray(items) || items.length === 0) {
@@ -236,6 +255,11 @@ module.exports = function(db) {
           params.push(customer_id);
         }
 
+        const workerScope = getWorkerContactScope(req, 'c');
+        if (workerScope) {
+          sql += ` AND ${workerScope}`;
+        }
+
         sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
         params.push(parseInt(limit), parseInt(offset));
 
@@ -311,11 +335,39 @@ module.exports = function(db) {
     getInvoice: (req, res) => {
       try {
         const { id } = req.params;
-                const invoice = db.prepare('SELECT *, invoice_no as invoice_number FROM invoices WHERE id = ?').get(id);
+        // Get invoice header
+        const invoice = db.prepare(`
+          SELECT 
+            i.id,
+            i.customer_id,
+            i.invoice_no as invoice_number,
+            i.due_date,
+            i.total_amount,
+            i.total_discount,
+            i.total_gst,
+            i.round_off,
+            i.grand_total,
+            i.previous_due,
+            i.invoice_date,
+            i.created_at,
+            i.updated_at,
+            c.name as customer_name,
+            c.address as customer_address,
+            c.phone as customer_phone,
+            c.email as customer_email,
+            c.gstin as customer_gstin
+          FROM invoices i
+          LEFT JOIN contacts c ON i.customer_id = c.id
+          WHERE i.id = ?
+        `).get(id);
 
 
         if (!invoice) {
           return res.status(404).json({ error: 'Invoice not found' });
+        }
+
+        if (!isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied' });
         }
 
         const dbItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(id);
@@ -417,6 +469,10 @@ module.exports = function(db) {
         const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
         if (!invoice) {
           return res.status(404).json({ error: 'Invoice not found' });
+        }
+
+        if (!isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied' });
         }
 
         if (!items || !Array.isArray(items) || items.length === 0) {
@@ -713,6 +769,10 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Invoice not found' });
         }
 
+        if (!isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+
         const customer_id = invoice.customer_id;
 
         // Delete items first (due to foreign key)
@@ -755,33 +815,42 @@ module.exports = function(db) {
         const params = [];
 
         if (customer_id) {
-          whereClause = 'customer_id = ?';
+          whereClause += ' AND i.customer_id = ?';
           params.push(customer_id);
+        }
+
+        const workerScope = getWorkerContactScope(req, 'c');
+        let filterClause = '';
+        if (workerScope) {
+          filterClause = ` AND ${workerScope}`;
+        } else {
+          filterClause = ` AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
         }
 
         const sql = `
           SELECT 
-            COUNT(*) as total_invoices,
-            SUM(grand_total) as total_amount,
-            SUM(total_gst) as total_gst,
-            SUM(total_discount) as total_discount,
-            SUM(payment_received) as total_paid,
-            SUM(grand_total - COALESCE(payment_received, 0)) as total_due,
-            SUM(CASE WHEN status = 'overdue' THEN grand_total - COALESCE(payment_received, 0) ELSE 0 END) as overdue_amount
-          FROM invoices 
-          WHERE ${whereClause}
+            COUNT(i.id) as total_invoices,
+            COALESCE(SUM(i.grand_total), 0) as total_amount,
+            COALESCE(SUM(i.total_gst), 0) as total_gst,
+            COALESCE(SUM(i.total_discount), 0) as total_discount,
+            COALESCE(SUM(i.payment_received), 0) as total_paid,
+            COALESCE(SUM(i.grand_total - COALESCE(i.payment_received, 0)), 0) as total_due,
+            COALESCE(SUM(CASE WHEN i.status = 'overdue' THEN i.grand_total - COALESCE(i.payment_received, 0) ELSE 0 END), 0) as overdue_amount
+          FROM invoices i
+          JOIN contacts c ON i.customer_id = c.id
+          WHERE ${whereClause} ${filterClause}
         `;
 
         const summary = db.prepare(sql).get(...params);
 
         res.json({
-          total_invoices: summary.total_invoices || 0,
-          total_amount: parseFloat((summary.total_amount || 0).toFixed(2)),
-          total_gst: parseFloat((summary.total_gst || 0).toFixed(2)),
-          total_discount: parseFloat((summary.total_discount || 0).toFixed(2)),
-          total_paid: parseFloat((summary.total_paid || 0).toFixed(2)),
-          total_due: parseFloat((summary.total_due || 0).toFixed(2)),
-          overdue_amount: parseFloat((summary.overdue_amount || 0).toFixed(2))
+          total_invoices: summary?.total_invoices || 0,
+          total_amount: parseFloat((summary?.total_amount || 0).toFixed(2)),
+          total_gst: parseFloat((summary?.total_gst || 0).toFixed(2)),
+          total_discount: parseFloat((summary?.total_discount || 0).toFixed(2)),
+          total_paid: parseFloat((summary?.total_paid || 0).toFixed(2)),
+          total_due: parseFloat((summary?.total_due || 0).toFixed(2)),
+          overdue_amount: parseFloat((summary?.overdue_amount || 0).toFixed(2))
         });
 
       } catch (error) {

@@ -1511,9 +1511,16 @@ module.exports = function(db) {
         // Get database path
         const dbPath = getDatabasePath();
         
-        // Check customer duplex preference for export/preview
-        const contact = db.prepare('SELECT disable_duplex_export FROM contacts WHERE id = ?').get(invoice.customer_id);
-        const finalDuplex = (contact && contact.disable_duplex_export === 1) ? 'no' : (duplex || 'yes');
+        // Check account duplex preference for export/preview (decoupled from customer)
+        let finalDuplex = duplex;
+        if (!finalDuplex) {
+          try {
+            const setting = db.prepare("SELECT value FROM Settings WHERE key = 'invoice_duplex_print'").get();
+            finalDuplex = (setting && setting.value === 'false') ? 'no' : 'yes';
+          } catch (_) {
+            finalDuplex = 'yes';
+          }
+        }
         
         // Generate PDF using Python script
         const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'print');
@@ -1583,9 +1590,16 @@ module.exports = function(db) {
         // Get database path
         const dbPath = getDatabasePath();
         
-        // Check customer duplex preference for export
-        const contact = db.prepare('SELECT disable_duplex_export FROM contacts WHERE id = ?').get(invoice.customer_id);
-        const finalDuplex = (contact && contact.disable_duplex_export === 1) ? 'no' : (duplex || 'yes');
+        // Check account duplex preference for export (decoupled from customer)
+        let finalDuplex = duplex;
+        if (!finalDuplex) {
+          try {
+            const setting = db.prepare("SELECT value FROM Settings WHERE key = 'invoice_duplex_print'").get();
+            finalDuplex = (setting && setting.value === 'false') ? 'no' : 'yes';
+          } catch (_) {
+            finalDuplex = 'yes';
+          }
+        }
         
         // Generate PDF using Python script in export mode
         const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'export');
