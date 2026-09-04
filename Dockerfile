@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy package manifests first for optimal Docker layer caching
 COPY package*.json ./
 
+# Skip Puppeteer browser binary download to keep image slim and avoid extraction errors
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 # Install all dependencies (including devDependencies for Vite build)
 RUN npm ci
 
