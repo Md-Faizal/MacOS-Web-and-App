@@ -41,31 +41,39 @@ jobs:
 
   deploy-production:
     name: 🚀 Deploy to Production VM
-    needs: pre-flight-check
     runs-on: ubuntu-latest
     steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install & Build Frontend
+        run: |
+          npm ci
+          npm run build
+          node --check backend/main/macos-api-server.js
+          node --check server-prod.js
+
       - name: 🔍 Check Secrets Configuration
         run: |
           echo "Verifying deployment secrets..."
           ERRORS=0
           if [ -z "$SSH_HOST" ]; then
-            echo "❌ ERROR: 'SSH_HOST' is missing or empty in GitHub Secrets!"
+            echo "❌ ERROR: 'SSH_HOST' is missing in GitHub Secrets!"
             ERRORS=$((ERRORS + 1))
-          else
-            echo "✅ SSH_HOST is configured"
           fi
           if [ -z "$SSH_USER" ]; then
-            echo "❌ ERROR: 'SSH_USER' is missing or empty in GitHub Secrets!"
+            echo "❌ ERROR: 'SSH_USER' is missing in GitHub Secrets!"
             ERRORS=$((ERRORS + 1))
-          else
-            echo "✅ SSH_USER is configured ($SSH_USER)"
           fi
           if [ -z "$SSH_KEY" ]; then
-            echo "❌ ERROR: 'SSH_KEY' is missing or empty in GitHub Secrets!"
-            echo "👉 Ensure you added a secret named exactly 'SSH_KEY' under Settings -> Secrets and variables -> Actions."
+            echo "❌ ERROR: 'SSH_KEY' is missing in GitHub Secrets!"
             ERRORS=$((ERRORS + 1))
-          else
-            echo "✅ SSH_KEY is configured (Length: ${#SSH_KEY} characters)"
           fi
           if [ $ERRORS -gt 0 ]; then
             exit 1
@@ -75,7 +83,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
 
-      - name: 🔌 Setup SSH & Deploy via Native OpenSSH
+      - name: 🔌 Setup SSH & Deploy to Ubuntu
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -83,11 +91,11 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           SKIP_NPM: ${{ github.event.inputs.skip_npm_install }}
         run: |
-          # Create .ssh directory
+          # 1. Setup SSH
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Decode key (handles Base64 encoded key or raw PEM)
+          # Decode Base64 or raw key
           if echo "$SSH_KEY" | grep -q "^LS0t"; then
             echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
           elif echo "$SSH_KEY" | grep -q "BEGIN"; then
@@ -97,18 +105,6 @@ jobs:
           fi
           chmod 600 ~/.ssh/deploy_key
 
-          # Verify key with ssh-keygen
-          ssh-keygen -y -f ~/.ssh/deploy_key > ~/.ssh/deploy_key.pub || {
-            echo "❌ ERROR: Key failed local ssh-keygen parsing check!"
-            exit 1
-          }
-          echo "✅ SSH Key successfully validated and public key generated."
-
-          # Start ssh-agent and load key
-          eval "$(ssh-agent -s)"
-          ssh-add ~/.ssh/deploy_key
-
-          # Configure SSH client with full RSA compatibility
           cat << 'EOF' > ~/.ssh/config
           Host production
             HostName ${{ secrets.SSH_HOST }}
@@ -124,77 +120,68 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-          echo "Connecting to $SSH_USER@$SSH_HOST..."
-
-          # Run remote deployment script via native SSH
-          ssh production bash -s << 'REMOTESCRIPT'
-          set -e
           TARGET_DIR="/home/ubuntu/MacOS-Production"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
           echo "======================================================"
           echo "🚀 1-Click Deployment Triggered"
+          echo "Target: $SSH_USER@$SSH_HOST:$TARGET_DIR"
           echo "Timestamp: $TIMESTAMP"
           echo "======================================================"
 
-          if [ ! -d "$TARGET_DIR" ]; then
-            echo "❌ Error: Production directory $TARGET_DIR does not exist!"
-            exit 1
-          fi
+          # 2. Automated Remote Database Snapshot
+          echo "🛡️ Step 1: Taking remote SQLite safety snapshot..."
+          ssh production "mkdir -p $TARGET_DIR/database/backups && if [ -f $TARGET_DIR/database/MacOS.db ]; then cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db && echo '✅ Database safely backed up to database/backups/MacOS_backup_${TIMESTAMP}.db'; else echo '⚠️ No existing database file found to backup.'; fi"
 
-          cd "$TARGET_DIR"
-
-          # ─── 1. Automated Pre-Deploy SQLite Safety Snapshot ───
-          echo "🛡️ Step 1: Creating database safety snapshot..."
-          mkdir -p "$TARGET_DIR/database/backups"
-          if [ -f "$TARGET_DIR/database/MacOS.db" ]; then
-            cp "$TARGET_DIR/database/MacOS.db" "$TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db"
-            echo "✅ Database safely backed up to: database/backups/MacOS_backup_${TIMESTAMP}.db"
-          else
-            echo "⚠️ Warning: database/MacOS.db not found, skipping backup."
-          fi
-
-          # ─── 2. Handle Dry Run Option ───
+          # 3. Check Dry Run
           if [ "$DRY_RUN" = "true" ]; then
-            echo "🔍 DRY RUN: Pre-flight checks & backup succeeded. No live files modified."
+            echo "🔍 DRY RUN: Pre-flight checks, build, and remote backup verified successfully."
+            echo "No production files were modified."
             exit 0
           fi
 
-          # ─── 3. Sync Latest Code from Git ───
-          echo "📦 Step 2: Pulling latest code from main branch..."
-          git fetch origin main
-          git reset --hard origin/main
+          # 4. Sync files via rsync (safe sync: excludes database, uploads, wallpapers, logs, .env)
+          echo "📦 Step 2: Syncing build & source files to VM via rsync..."
+          rsync -avz --delete \
+            --exclude='database/*.db*' \
+            --exclude='database/backups' \
+            --exclude='backend/uploads' \
+            --exclude='CloudStorage' \
+            --exclude='Wallpapers' \
+            --exclude='logs' \
+            --exclude='tmp' \
+            --exclude='.env*' \
+            --exclude='.git' \
+            --exclude='android' \
+            --exclude='node_modules' \
+            ./ production:"$TARGET_DIR/"
 
-          # ─── 4. Install Dependencies if needed ───
+          # 5. Remote post-sync actions (npm install, PM2 reload, health check)
+          echo "🔄 Step 3: Executing remote reload..."
+          ssh production bash -s << 'REMOTESCRIPT'
+          set -e
+          TARGET_DIR="/home/ubuntu/MacOS-Production"
+          cd "$TARGET_DIR"
+
           if [ "$SKIP_NPM" != "true" ]; then
-            echo "📦 Step 3: Installing production dependencies..."
-            npm ci --omit=dev
-          else
-            echo "⏩ Step 3: Skipping npm install as requested."
+            echo "📦 Checking production dependencies..."
+            npm ci --omit=dev || npm install --omit=dev
           fi
 
-          # ─── 5. Build Lean Frontend Bundle ───
-          echo "🔨 Step 4: Building frontend bundle..."
-          npm run build
-
-          # ─── 6. Reload PM2 with Zero Downtime ───
-          echo "🔄 Step 5: Reloading PM2 services..."
+          echo "🔄 Reloading PM2 services with zero downtime..."
           pm2 reload ecosystem.config.js --env oraclevm --update-env || pm2 restart ecosystem.config.js --env oraclevm --update-env
 
-          # ─── 7. Post-Deploy Health Check ───
-          echo "🏥 Step 6: Verifying server health..."
+          echo "🏥 Verifying server health..."
           sleep 4
-          
           HEALTH_URL="http://127.0.0.1:3001/api/health"
           ALT_HEALTH_URL="http://127.0.0.1:3000/api/health"
-          
+
           if curl -s -f -m 5 "$HEALTH_URL" > /dev/null 2>&1; then
             echo "✅ Health check passed on :3001"
           elif curl -s -f -m 5 "$ALT_HEALTH_URL" > /dev/null 2>&1; then
             echo "✅ Health check passed on :3000"
           else
-            echo "⚠️ Health check warning: Unable to verify /api/health directly via curl."
-            echo "Checking PM2 process status..."
+            echo "⚠️ Health check warning: PM2 process status:"
             pm2 status
           fi
 
