@@ -602,7 +602,7 @@ export class AuthController {
     ) {
       await this.showWorkerCredentialPrompt(data, profile);
     }
-    this.showRememberAccountPrompt(identifier, profile);
+    this.showRememberAccountPrompt(identifier, profile, data?.user || null);
   }
 
   /* --------------------------------------------------------------------------
@@ -943,18 +943,25 @@ export class AuthController {
     });
   }
 
-  showRememberAccountPrompt(identifier, profile) {
-    const normIdentifier = (identifier || profile?.email || profile?.username || '').trim();
-    const userId = profile?.id || null;
+  showRememberAccountPrompt(identifier, profile, authUser = null) {
+    const normIdentifier = (identifier || authUser?.email || authUser?.username || profile?.email || profile?.username || '').trim();
+    const userId = authUser?.id || profile?.id || null;
     const isThisAccountRemembered = this.profileManager.isUserRemembered(normIdentifier, userId);
+
+    const displayName = authUser?.name || authUser?.displayName || authUser?.username || 
+                        profile?.display_name || profile?.full_name || profile?.name || 
+                        (normIdentifier ? normIdentifier.split('@')[0] : 'User');
+    const displayPicture = authUser?.picture || authUser?.displayPicture || 
+                           profile?.display_picture || profile?.profile_picture || null;
+    const role = authUser?.role || profile?.role || 'user';
 
     const saveRememberedProfile = () => {
       this.profileManager.saveUser({
         id: userId,
         identifier: normIdentifier,
-        displayName: profile?.display_name || profile?.full_name || profile?.name || (normIdentifier ? normIdentifier.split('@')[0] : 'User'),
-        displayPicture: profile?.display_picture || profile?.profile_picture || null,
-        role: profile?.role || 'user',
+        displayName,
+        displayPicture,
+        role,
         isTouchIdEnabled: localStorage.getItem('touchIdEnabled') === 'true'
       });
       this.syncProfile();
@@ -1229,12 +1236,12 @@ export class AuthController {
           })
         });
 
+        const resData = await response.json();
         if (response.ok) {
           const profile = await this.loadAuthenticatedProfile();
-          this.showRememberAccountPrompt(identifier, profile);
+          this.showRememberAccountPrompt(identifier, profile, resData?.user || null);
         } else {
-          const data = await response.json();
-          alert(data.error || 'Biometric login failed');
+          alert(resData.error || 'Biometric login failed');
         }
       }
     } catch (err) {

@@ -179,40 +179,17 @@ jobs:
             --exclude='node_modules' \
             ./ production:"$TARGET_DIR/"
 
-          # 5. Remote post-sync actions (npm install, PM2 reload, health check)
-          echo "🔄 Step 3: Executing remote reload..."
+          # 5. Remote post-sync actions (Docker Blue-Green deployment with verification)
+          echo "🔄 Step 3: Executing Blue-Green zero-downtime Docker deployment..."
           ssh production bash -s << 'REMOTESCRIPT'
           set -e
           TARGET_DIR="/home/ubuntu/MacOS-Production"
           cd "$TARGET_DIR"
 
-          if [ "$SKIP_NPM" != "true" ]; then
-            echo "📦 Checking production dependencies..."
-            npm ci --omit=dev || npm install --omit=dev
-          fi
-
-          echo "🔄 Reloading PM2 services with zero downtime..."
-          # Cleanly transition from old separate processes to unified macos-server
-          pm2 stop backend frontend 2>/dev/null || true
-          pm2 delete backend frontend 2>/dev/null || true
-          pm2 start ecosystem.config.js --env oraclevm --only macos-server --update-env || pm2 reload ecosystem.config.js --env oraclevm --only macos-server --update-env
-          pm2 save
-
-          echo "🏥 Verifying server health..."
-          sleep 4
-          HEALTH_URL="http://127.0.0.1:3001/api/health"
-          ALT_HEALTH_URL="http://127.0.0.1:3000/api/health"
-
-          if curl -s -f -m 5 "$HEALTH_URL" > /dev/null 2>&1; then
-            echo "✅ Health check passed on :3001"
-          elif curl -s -f -m 5 "$ALT_HEALTH_URL" > /dev/null 2>&1; then
-            echo "✅ Health check passed on :3000"
-          else
-            echo "⚠️ Health check warning: PM2 process status:"
-            pm2 status
-          fi
+          chmod +x deploy/ubuntu/deploy-docker.sh
+          ./deploy/ubuntu/deploy-docker.sh
 
           echo "======================================================"
-          echo "🎉 1-Click Deployment Complete & Production Live!"
+          echo "🎉 1-Click Docker Deployment Complete & Production Live!"
           echo "======================================================"
           REMOTESCRIPT

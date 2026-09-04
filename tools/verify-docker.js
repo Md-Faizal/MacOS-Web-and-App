@@ -1,10 +1,12 @@
 const http = require('http');
 
+const targetPort = parseInt(process.argv[2] || process.env.TARGET_PORT || '3001', 10);
+
 async function test(name, path, options = {}) {
   return new Promise((resolve) => {
     const req = http.request({
       hostname: '127.0.0.1',
-      port: 3008,
+      port: targetPort,
       path: path,
       method: options.method || 'GET',
       headers: options.headers || {}
@@ -30,7 +32,7 @@ async function test(name, path, options = {}) {
 
 (async () => {
   console.log('═══════════════════════════════════════════════════════════════════════');
-  console.log('🧪 DOCKER CONTAINER VERIFICATION SUITE (Target: http://127.0.0.1:3008)');
+  console.log(`🧪 DOCKER CONTAINER VERIFICATION SUITE (Target: http://127.0.0.1:${targetPort})`);
   console.log('═══════════════════════════════════════════════════════════════════════\n');
 
   const tests = [
@@ -43,7 +45,7 @@ async function test(name, path, options = {}) {
     { name: 'Database Query (Products API)', path: '/api/products', expected: [200, 401] },
     { name: 'Database Query (Notes API)', path: '/api/notes', expected: [200, 401] },
     { name: 'Database Query (Wallpapers API)', path: '/api/wallpapers', expected: [200, 401] },
-    { name: 'Static Manifest JSON Asset', path: '/assets/manifest-N0mu_H-c.json', expected: [200] },
+    { name: 'Static Manifest JSON Asset', path: '/assets/manifest-B2zw_Mip.json', expected: [200] },
     { name: 'Static CSS Bundle Asset', path: '/assets/home-KmFKKS1z.css', expected: [200] },
     { name: 'Security Guard (Missing API Endpoint)', path: '/api/nonexistent-route', expected: [404] },
     { name: 'Security Guard (Missing Asset Extension)', path: '/assets/nonexistent.js', expected: [404] }
@@ -64,4 +66,8 @@ async function test(name, path, options = {}) {
   console.log('\n═══════════════════════════════════════════════════════════════════════');
   console.log(`📊 SUMMARY: ${passed}/${tests.length} tests passed (${Math.round((passed / tests.length) * 100)}% Ready)`);
   console.log('═══════════════════════════════════════════════════════════════════════');
+
+  if (passed !== tests.length) {
+    process.exit(1);
+  }
 })();

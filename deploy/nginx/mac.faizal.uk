@@ -1,0 +1,107 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mac.faizal.uk;
+    root /home/ubuntu/MacOS-Production;
+    index index.html;
+
+    # -------------------------------------------------------
+    # 1. Vite-hashed bundles: /assets/*.js, /assets/*.css etc.
+    #    Served DIRECTLY from disk — never proxied to Node.
+    # -------------------------------------------------------
+    location ~* ^/assets/ {
+        try_files $uri @node_upstream;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header X-Content-Type-Options "nosniff";
+
+        # Ensure correct MIME types
+        types {
+            application/javascript  js mjs;
+            text/css                css;
+            image/svg+xml           svg svgz;
+            image/webp              webp;
+            image/png               png;
+            image/jpeg              jpg jpeg;
+        }
+    }
+
+    # -------------------------------------------------------
+    # 2. Static frontend module files (/frontend/...)
+    #    Served DIRECTLY from disk.
+    # -------------------------------------------------------
+    location ~* ^/frontend/ {
+        try_files $uri @node_upstream;
+        add_header X-Content-Type-Options "nosniff";
+    }
+
+    # -------------------------------------------------------
+    # 3. Wallpapers (/Assets/Wallpaper/...) → Wallpapers/ dir
+    # -------------------------------------------------------
+    # Use ^~ to ensure this prefix match takes precedence over regex
+    location ^~ /Assets/Wallpaper/ {
+        alias /home/ubuntu/MacOS-Production/Wallpapers/;
+        try_files $uri @node_upstream;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+    location ^~ /assets/Wallpaper/ {
+        alias /home/ubuntu/MacOS-Production/Wallpapers/;
+        try_files $uri @node_upstream;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # -------------------------------------------------------
+    # 4. manifest.json + other root static files
+    # -------------------------------------------------------
+    location = /manifest.json {
+        try_files $uri @node_upstream;
+    }
+
+    # -------------------------------------------------------
+    # 5. Backend API Proxy → Active Blue/Green Docker Upstream
+    # -------------------------------------------------------
+    location /api {
+        proxy_pass http://macos_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # -------------------------------------------------------
+    # 6. Everything else → Active Blue/Green Docker Upstream
+    # -------------------------------------------------------
+    location / {
+        proxy_pass http://macos_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # -------------------------------------------------------
+    # Fallback Proxy for Assets Nginx Cannot Read Directly
+    # -------------------------------------------------------
+    location @node_upstream {
+        proxy_pass http://macos_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Handle large file uploads
+    client_max_body_size 500M;
+}
