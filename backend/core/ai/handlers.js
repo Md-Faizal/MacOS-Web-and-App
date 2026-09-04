@@ -670,7 +670,7 @@ Rules:
         
         const profiles = db.prepare(`
           SELECT pvs.id, pvs.product_id, pvs.variant_id, pvs.image_base64, pvs.metadata, pvs.learned_at,
-                 p.name as product_name, v.name as variant_name
+                 p.name as product_name, (v.pack_size_value || ' ' || v.pack_size_type) as variant_name
           FROM product_visual_signatures pvs
           LEFT JOIN products p ON pvs.product_id = p.id
           LEFT JOIN variants v ON pvs.variant_id = v.id

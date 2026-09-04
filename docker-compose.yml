@@ -30,6 +30,7 @@ services:
       - ./backend/uploads:/app/backend/uploads
       # Application code and assets
       - ./backend:/app/backend
+      - ./frontend:/app/frontend
       - ./dist:/app/dist
       # Application logs
       - ./logs:/app/logs

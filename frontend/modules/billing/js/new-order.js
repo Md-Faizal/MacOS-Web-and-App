@@ -865,8 +865,10 @@ class OrdersView {
     const completedCount = statsOrders.filter(o => o.status === 'complete').length;
 
     // Update header
-    document.getElementById('ordersMainTitle').textContent = 'All Customers';
-    document.getElementById('ordersMainMetrics').textContent = `Total Orders: ${totalOrders} | Pending: ${pendingCount} | Completed: ${completedCount} | Items: ${totalItems}`;
+    const titleEl = document.getElementById('ordersMainTitle');
+    if (titleEl) titleEl.textContent = 'All Customers';
+    const metricsEl = document.getElementById('ordersMainMetrics');
+    if (metricsEl) metricsEl.textContent = `Total Orders: ${totalOrders} | Pending: ${pendingCount} | Completed: ${completedCount} | Items: ${totalItems}`;
 
     // Update all columns (pending, completed, and mobile unified stream)
     this.updateAllOrdersContainers(pendingOrders, completedOrders, false);
@@ -1242,6 +1244,7 @@ class OrdersView {
 
   renderCustomersList() {
     const list = document.getElementById('customersList');
+    if (!list) return;
     const searchTerm = document.getElementById('customerSearch')?.value.toLowerCase() || '';
     const sortOption = document.getElementById('customerSort')?.value || 'name-asc';
     

@@ -130,19 +130,21 @@ class Calculator extends AppWindow {
     const display = document.getElementById('calcDisplay');
     const buttons = document.getElementById('calcButtons');
     
-    // Wait for header buttons to be available
+    // Wait for header buttons and DOM elements to be available
     const waitForHeaderButtons = () => {
       const menuBtn = document.getElementById('menuBtn');
       const expandBtn = document.getElementById('expandBtn');
       const calcMenu = document.getElementById('calcMenu');
+      const curDisplay = document.getElementById('calcDisplay');
+      const curButtons = document.getElementById('calcButtons');
 
-      if (!menuBtn || !expandBtn || !calcMenu) {
+      if (!menuBtn || !expandBtn || !calcMenu || !curButtons || !curDisplay) {
         requestAnimationFrame(waitForHeaderButtons);
         return;
       }
 
       // Number buttons
-      buttons.addEventListener('click', (e) => {
+      curButtons.addEventListener('click', (e) => {
         const target = e.target.closest('.calc-btn');
         if (!target) return;
 
