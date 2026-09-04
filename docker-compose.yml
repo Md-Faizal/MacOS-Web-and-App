@@ -9,8 +9,8 @@ services:
     container_name: macos-server-container
     restart: unless-stopped
     ports:
-      # Map host port 3005 to container port 3001 for zero-conflict staging
-      - "127.0.0.1:3005:3001"
+      # Map host port 3008 to container port 3001 for zero-conflict staging
+      - "127.0.0.1:3008:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
