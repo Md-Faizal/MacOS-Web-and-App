@@ -2,11 +2,39 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "▶ Start Local Dev (Frontend & Backend)",
 			"type": "npm",
 			"script": "dev:local",
 			"problemMatcher": [],
-			"label": "npm: dev:local",
 			"detail": "concurrently \"npm run backend\" \"npm run dev\""
+		},
+		{
+			"label": "🏷️ Bump Version (Patch) & Push Tags",
+			"type": "shell",
+			"command": "npm version patch && git push origin main --tags",
+			"problemMatcher": [],
+			"detail": "Bumps patch version (e.g. 1.1.0 -> 1.1.1), creates git tag, and pushes to GitHub"
+		},
+		{
+			"label": "🏷️ Bump Version (Minor) & Push Tags",
+			"type": "shell",
+			"command": "npm version minor && git push origin main --tags",
+			"problemMatcher": [],
+			"detail": "Bumps minor version for new features (e.g. 1.1.0 -> 1.2.0) and pushes tags"
+		},
+		{
+			"label": "🚀 Deploy to Ubuntu (Dry Run via Script)",
+			"type": "shell",
+			"command": "bash deploy/ubuntu/deploy.sh --dry-run",
+			"problemMatcher": [],
+			"detail": "Tests connection and builds without modifying production"
+		},
+		{
+			"label": "🚀 Deploy to Ubuntu (Live via Script)",
+			"type": "shell",
+			"command": "bash deploy/ubuntu/deploy.sh",
+			"problemMatcher": [],
+			"detail": "Builds and syncs files directly from your PC to Ubuntu VM"
 		}
 	]
 }

@@ -3,6 +3,15 @@ name: 🚀 1-Click Deploy to Ubuntu
 on:
   workflow_dispatch:
     inputs:
+      bump_version:
+        description: 'Auto-bump version before deploy?'
+        required: true
+        type: choice
+        options:
+          - 'none'
+          - 'patch'
+          - 'minor'
+        default: 'none'
       dry_run:
         description: 'Dry Run (test connection & backup without changing live server)'
         required: true
@@ -13,6 +22,9 @@ on:
         required: true
         type: boolean
         default: false
+
+permissions:
+  contents: write
 
 jobs:
   pre-flight-check:
@@ -45,6 +57,17 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Auto-Bump Version & Git Tag
+        if: github.event.inputs.bump_version != 'none' && github.event.inputs.dry_run != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version ${{ github.event.inputs.bump_version }} -m "chore(release): %s"
+          git push origin main --follow-tags
+          echo "✅ Version bumped to $(node -p "require('./package.json').version") and tag pushed!"
 
       - name: ⚙️ Setup Node.js 20
         uses: actions/setup-node@v4
