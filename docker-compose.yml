@@ -1,0 +1,42 @@
+name: macos-stack
+
+services:
+  macos-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: macos-server:latest
+    container_name: macos-server-container
+    restart: unless-stopped
+    ports:
+      # Map host port 3005 to container port 3001 for zero-conflict staging
+      - "127.0.0.1:3005:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - NODE_OPTIONS=--max-old-space-size=512
+    env_file:
+      - .env
+    volumes:
+      # Persistent SQLite database and backups
+      - ./database:/app/database
+      # Persistent user uploads
+      - ./CloudStorage:/app/CloudStorage
+      # Wallpapers directory
+      - ./Wallpapers:/app/Wallpapers
+      # APK distribution directory
+      - ./backend/uploads:/app/backend/uploads
+      # Application logs
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 600M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

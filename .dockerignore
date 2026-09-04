@@ -1,0 +1,39 @@
+# Git & CI/CD
+.git
+.github
+.agents
+.gemini
+
+# Dependencies & Build Artifacts
+node_modules
+dist
+build
+.cache
+
+# Mobile & Android Projects
+android
+
+# Persistent Data & Backups (Mounted via Volumes)
+database/MacOS.db*
+database/backups/
+CloudStorage/*
+!CloudStorage/.gitkeep
+Wallpapers/*
+!Wallpapers/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+logs
+
+# Environments & Sensitive Files
+.env*
+*.pem
+*.key
+*.tar.gz
+*.zip
+*.apk
+
+# Temp & Docs
+docs
+tools/python
+scratch
+*.tmp
