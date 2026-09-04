@@ -126,6 +126,19 @@ export class AdminComponent {
         <div class="admin-content">
           <!-- Active Workers Tab -->
           <div id="tab-workers" class="admin-view active">
+            <!-- Global Admin Worker Badge Preference -->
+            <div class="admin-badge-pref-card" style="margin-bottom: 18px; padding: 14px 18px; border-radius: 12px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: space-between;">
+              <div style="padding-right: 16px;">
+                <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                  <span>👷</span> <span>Show Worker Activity Badges</span>
+                </div>
+                <div style="font-size: 12px; opacity: 0.7; margin-top: 2px;">Display visual indicators on contacts, products, bills, payments, and orders created or edited by workers (Admin view only).</div>
+              </div>
+              <label class="macos-admin-switch" style="position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; cursor: pointer;">
+                <input type="checkbox" id="adminToggleWorkerBadges" style="opacity: 0; width: 0; height: 0;">
+                <span class="macos-admin-slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #e5e5ea; transition: .25s; border-radius: 24px;"></span>
+              </label>
+            </div>
             <div id="workersGrid" class="worker-grid">Loading workers...</div>
           </div>
 
@@ -145,19 +158,28 @@ export class AdminComponent {
 
           <!-- Audit Logs Tab -->
           <div id="tab-audit" class="admin-view">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; gap: 8px;" id="auditPlatformFilters">
+                <button class="worker-filter-pill active" data-platform="all">All Platforms</button>
+                <button class="worker-filter-pill" data-platform="pwa">📱 PWA</button>
+                <button class="worker-filter-pill" data-platform="android">🤖 Android App</button>
+                <button class="worker-filter-pill" data-platform="web">💻 Web</button>
+              </div>
+            </div>
             <div class="audit-table-wrapper">
               <table class="audit-table">
                 <thead>
                   <tr>
                     <th>Time</th>
                     <th>User</th>
+                    <th>Platform</th>
                     <th>Action</th>
                     <th>Module</th>
                     <th>Resource</th>
                   </tr>
                 </thead>
                 <tbody id="auditTableBody">
-                  <tr><td colspan="5" style="text-align:center; padding: 24px;">Loading audit logs...</td></tr>
+                  <tr><td colspan="6" style="text-align:center; padding: 24px;">Loading audit logs...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -251,6 +273,27 @@ export class AdminComponent {
           </div>
         </div>
 
+        <!-- Worker Lifecycle History Modal -->
+        <div id="workerHistoryModal" class="admin-modal-overlay" style="z-index: 120;">
+          <div class="admin-modal" style="max-width: 560px; max-height: 85vh;">
+            <div class="modal-header">
+              <div>
+                <h3 class="modal-title" id="workerHistoryModalTitle">Lifecycle History</h3>
+                <p style="font-size: 11px; opacity: 0.6; margin: 2px 0 0 0;" id="workerHistoryModalSubtitle">Audit events and timeline</p>
+              </div>
+              <button class="modal-close" id="closeWorkerHistoryBtn">×</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+              <div id="workerHistoryTimeline" class="lifecycle-timeline" style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
+                <div style="text-align: center; padding: 24px; color: rgba(255,255,255,0.5);">Loading history...</div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-primary" id="btnCloseWorkerHistory">Close</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -279,6 +322,37 @@ export class AdminComponent {
       });
     });
 
+    // Worker Badge Visibility Toggle
+    const toggleBadges = this.container.querySelector('#adminToggleWorkerBadges');
+    if (toggleBadges) {
+      const isEnabled = localStorage.getItem('macos_show_worker_badges') !== 'false';
+      toggleBadges.checked = isEnabled;
+      this.updateBadgeSliderStyle(toggleBadges);
+
+      toggleBadges.addEventListener('change', async (e) => {
+        const val = e.target.checked;
+        this.updateBadgeSliderStyle(toggleBadges);
+        localStorage.setItem('macos_show_worker_badges', val ? 'true' : 'false');
+        if (val) {
+          document.body.classList.remove('hide-worker-badges');
+          document.documentElement.removeAttribute('data-hide-worker-badges');
+        } else {
+          document.body.classList.add('hide-worker-badges');
+          document.documentElement.setAttribute('data-hide-worker-badges', 'true');
+        }
+
+        try {
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ setting_key: 'showWorkerBadges', setting_value: val })
+          });
+        } catch (_) {}
+
+        window.dispatchEvent(new CustomEvent('worker-badges-toggle-changed', { detail: { enabled: val } }));
+      });
+    }
+
     // Modal close
     const closeModal = () => {
       this.container.querySelector('#workerEditModal').classList.remove('show');
@@ -294,12 +368,19 @@ export class AdminComponent {
       closeModal();
     });
 
-    // Delete
+    // Delete / Deny
     this.container.querySelector('#modalDeleteBtn').addEventListener('click', async () => {
       if (!this.editingUserId) return;
-      if (confirm('Are you sure you want to permanently delete and archive this worker? This will revoke all credentials.')) {
-        await this.approveWorkerDeletion(this.editingUserId);
-        closeModal();
+      if (this.isApproving) {
+        if (confirm('Are you sure you want to deny this access request?')) {
+          await this.denyWorkerRequest(this.editingUserId);
+          closeModal();
+        }
+      } else {
+        if (confirm('Are you sure you want to permanently delete and archive this worker? This will revoke all credentials.')) {
+          await this.approveWorkerDeletion(this.editingUserId);
+          closeModal();
+        }
       }
     });
 
@@ -349,6 +430,28 @@ export class AdminComponent {
     };
     this.container.querySelector('#closeFunctionalModalBtn').addEventListener('click', closeFunctionalModal);
     this.container.querySelector('#btnApplyFunctionalSettings').addEventListener('click', closeFunctionalModal);
+
+    // Sub-modal listeners: Worker Lifecycle History
+    const closeHistoryModal = () => {
+      const modal = this.container.querySelector('#workerHistoryModal');
+      if (modal) modal.classList.remove('show');
+    };
+    const btnCloseH = this.container.querySelector('#closeWorkerHistoryBtn');
+    if (btnCloseH) btnCloseH.addEventListener('click', closeHistoryModal);
+    const btnCloseHBot = this.container.querySelector('#btnCloseWorkerHistory');
+    if (btnCloseHBot) btnCloseHBot.addEventListener('click', closeHistoryModal);
+  }
+
+  updateBadgeSliderStyle(input) {
+    const slider = input?.parentElement?.querySelector('.macos-admin-slider');
+    if (!slider) return;
+    if (input.checked) {
+      slider.style.backgroundColor = '#007aff';
+      slider.innerHTML = '<span style="position: absolute; content: \'\'; height: 20px; width: 20px; left: 22px; bottom: 2px; background-color: white; transition: .25s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></span>';
+    } else {
+      slider.style.backgroundColor = 'rgba(120, 120, 128, 0.32)';
+      slider.innerHTML = '<span style="position: absolute; content: \'\'; height: 20px; width: 20px; left: 2px; bottom: 2px; background-color: white; transition: .25s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></span>';
+    }
   }
 
   async refresh(full = true) {
@@ -417,6 +520,15 @@ export class AdminComponent {
         const deletedDate = user.deleted_at ? new Date(user.deleted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
         const requestedDate = user.deletion_requested_at ? new Date(user.deletion_requested_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
+        const platform = (user.last_client_type || (user.last_device_type?.includes('PWA') ? 'pwa' : (user.last_device_type?.includes('Android') ? 'android' : (user.last_platform || '')))).toLowerCase();
+        const platformBadge = platform === 'pwa' 
+          ? '<span class="worker-platform-badge pwa" style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: rgba(255, 149, 0, 0.15); color: #ff9500; border: 1px solid rgba(255, 149, 0, 0.3);">📱 PWA</span>'
+          : (platform === 'android' || platform === 'native_android')
+          ? '<span class="worker-platform-badge android" style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: rgba(52, 199, 89, 0.15); color: #34c759; border: 1px solid rgba(52, 199, 89, 0.3);">🤖 Android</span>'
+          : platform === 'web'
+          ? '<span class="worker-platform-badge web" style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: rgba(0, 113, 227, 0.15); color: #2997ff; border: 1px solid rgba(0, 113, 227, 0.3);">💻 Web</span>'
+          : '';
+
         return `
         <div class="worker-card ${isDeleted ? 'deleted-card' : ''} ${isPendingDeletion ? 'pending-deletion-card' : ''}" data-id="${user.id}">
           <div class="worker-card-header">
@@ -438,12 +550,18 @@ export class AdminComponent {
             </div>
           ` : isDeleted ? `
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span class="worker-status deleted" style="background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6);">Deleted ${deletedDate}</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <span class="worker-status deleted" style="background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6);">Deleted ${deletedDate}</span>
+                ${platformBadge}
+              </div>
               <button class="btn-view-history" data-id="${user.id}" style="background: transparent; border: none; color: #007aff; font-size: 11px; cursor: pointer; text-decoration: underline;">Lifecycle History</button>
             </div>
           ` : `
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span class="worker-status ${user.status}">${user.status}</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <span class="worker-status ${user.status}">${user.status}</span>
+                ${platformBadge}
+              </div>
               <span style="font-size:11px; color:rgba(255,255,255,0.4)">${user.role}</span>
             </div>
           `}
@@ -464,7 +582,12 @@ export class AdminComponent {
       grid.querySelectorAll('.worker-card').forEach(card => {
         card.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
-          this.openWorkerEditModal(card.dataset.id);
+          const user = this.users.find(u => u.id === card.dataset.id);
+          if (user && user.status === 'deleted') {
+            this.openWorkerHistoryModal(card.dataset.id);
+          } else {
+            this.openWorkerEditModal(card.dataset.id);
+          }
         });
       });
 
@@ -511,9 +634,19 @@ export class AdminComponent {
               </div>
             </div>
           </div>
-          <button class="btn-primary btn-review" data-id="${user.id}">Review & Approve</button>
+          <div class="request-actions" style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn-danger-ghost btn-deny" data-id="${user.id}" style="padding: 6px 12px; font-size: 12px; border-radius: 6px; background: rgba(255, 69, 58, 0.15); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.3); cursor: pointer; font-weight: 500;">Deny</button>
+            <button class="btn-primary btn-review" data-id="${user.id}">Review & Approve</button>
+          </div>
         </div>
       `).join('');
+
+      list.querySelectorAll('.btn-deny').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await this.denyWorkerRequest(btn.dataset.id);
+        });
+      });
 
       list.querySelectorAll('.btn-review').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -528,26 +661,61 @@ export class AdminComponent {
       const res = await fetch('/api/admin/audit');
       if (!res.ok) return;
       const auditData = await res.json();
-      const logs = Array.isArray(auditData) ? auditData : (auditData.logs || []);
+      this.allAuditLogs = Array.isArray(auditData) ? auditData : (auditData.logs || []);
       
       const tbody = this.container.querySelector('#auditTableBody');
-      if (logs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 24px;">No audit events recorded yet.</td></tr>';
+      if (!this.allAuditLogs || this.allAuditLogs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 24px;">No audit events recorded yet.</td></tr>';
         return;
       }
 
-      tbody.innerHTML = logs.map(log => {
-        const time = new Date(log.created_at).toLocaleString();
-        return `
-          <tr>
-            <td style="font-size: 11px; white-space: nowrap;">${time}</td>
-            <td>${this.escape(log.username || log.user_id || 'System')}</td>
-            <td><span class="audit-action-badge">${this.escape(log.action)}</span></td>
-            <td style="text-transform:capitalize;">${this.escape(log.module)}</td>
-            <td>${this.escape(log.resource_name || log.resource_id || '-')}</td>
-          </tr>
-        `;
-      }).join('');
+      const renderTable = () => {
+        const filter = this.auditPlatformFilter || 'all';
+        const filtered = filter === 'all' 
+          ? this.allAuditLogs 
+          : this.allAuditLogs.filter(l => (l.platform || 'web').toLowerCase() === filter);
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 24px;">No audit events recorded for this platform.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = filtered.map(log => {
+          const time = new Date(log.created_at).toLocaleString();
+          const userLabel = log.display_name || log.username || log.email || (log.user_id === 'admin' ? 'Admin' : log.user_id) || 'System';
+          const p = (log.platform || 'web').toLowerCase();
+          const pBadge = p === 'pwa'
+            ? '<span class="audit-platform-badge" style="background: rgba(255, 149, 0, 0.15); color: #ff9500; border: 1px solid rgba(255, 149, 0, 0.3); padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 600;">📱 PWA</span>'
+            : (p === 'android' || p === 'native_android')
+            ? '<span class="audit-platform-badge" style="background: rgba(52, 199, 89, 0.15); color: #34c759; border: 1px solid rgba(52, 199, 89, 0.3); padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 600;">🤖 Android</span>'
+            : '<span class="audit-platform-badge" style="background: rgba(0, 113, 227, 0.15); color: #2997ff; border: 1px solid rgba(0, 113, 227, 0.3); padding: 2px 6px; border-radius: 6px; font-size: 10px; font-weight: 600;">💻 Web</span>';
+
+          return `
+            <tr>
+              <td style="font-size: 11px; white-space: nowrap;">${time}</td>
+              <td style="font-weight: 500;">${this.escape(userLabel)}</td>
+              <td>${pBadge}</td>
+              <td><span class="audit-action-badge">${this.escape(log.action)}</span></td>
+              <td style="text-transform:capitalize;">${this.escape(log.module)}</td>
+              <td>${this.escape(log.resource_name || log.resource_id || '-')}</td>
+            </tr>
+          `;
+        }).join('');
+      };
+
+      renderTable();
+
+      const filterContainer = this.container.querySelector('#auditPlatformFilters');
+      if (filterContainer) {
+        filterContainer.querySelectorAll('.worker-filter-pill').forEach(btn => {
+          btn.onclick = () => {
+            filterContainer.querySelectorAll('.worker-filter-pill').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            this.auditPlatformFilter = btn.dataset.platform;
+            renderTable();
+          };
+        });
+      }
     } catch (err) {
       console.error('Failed to load audit logs:', err);
     }
@@ -716,15 +884,22 @@ export class AdminComponent {
     this.container.querySelector('#modalWorkerName').textContent = isPending ? `Approve ${user.full_name || user.google_email}` : `Edit ${user.full_name || user.google_email}`;
     
     const statusSelect = this.container.querySelector('#modalWorkerStatus');
+    const deleteBtn = this.container.querySelector('#modalDeleteBtn');
     if (isPending) {
       statusSelect.parentElement.style.display = 'none';
       this.container.querySelector('#modalSaveBtn').textContent = 'Approve Worker';
-      this.container.querySelector('#modalDeleteBtn').style.display = 'none';
+      if (deleteBtn) {
+        deleteBtn.style.display = 'block';
+        deleteBtn.textContent = 'Deny Request';
+      }
     } else {
       statusSelect.parentElement.style.display = 'block';
       statusSelect.value = user.status;
       this.container.querySelector('#modalSaveBtn').textContent = 'Save Changes';
-      this.container.querySelector('#modalDeleteBtn').style.display = 'block';
+      if (deleteBtn) {
+        deleteBtn.style.display = 'block';
+        deleteBtn.textContent = 'Delete Worker';
+      }
     }
 
     // Load current permissions & contact IDs
@@ -879,14 +1054,246 @@ export class AdminComponent {
     }
   }
 
-  async deleteWorker(userId) {
+  async approveWorkerDeletion(userId) {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete worker');
+      const res = await fetch(`/api/admin/users/${userId}/approve-deletion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        // Fallback to direct DELETE endpoint
+        const delRes = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        if (!delRes.ok) {
+          const data = await delRes.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to delete worker');
+        }
+      }
       await this.refresh();
     } catch (err) {
-      alert(err.message);
+      console.error('Approve worker deletion error:', err);
+      alert(err.message || 'Failed to delete worker');
     }
+  }
+
+  async rejectWorkerDeletion(userId) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/reject-deletion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to reject deletion request');
+      }
+      await this.refresh();
+    } catch (err) {
+      console.error('Reject worker deletion error:', err);
+      alert(err.message || 'Failed to reject deletion');
+    }
+  }
+
+  async denyWorkerRequest(userId) {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to deny access request');
+      }
+      await this.refresh();
+    } catch (err) {
+      console.error('Deny request error:', err);
+      alert(err.message || 'Failed to deny request');
+    }
+  }
+
+  async openWorkerHistoryModal(userId) {
+    const modal = this.container.querySelector('#workerHistoryModal');
+    if (!modal) return;
+
+    let user = this.users.find(u => u.id === userId) || {};
+    const titleEl = this.container.querySelector('#workerHistoryModalTitle');
+    const subtitleEl = this.container.querySelector('#workerHistoryModalSubtitle');
+    const timelineEl = this.container.querySelector('#workerHistoryTimeline');
+
+    if (titleEl) titleEl.textContent = `Lifecycle: ${user.full_name || user.google_email || user.username || 'Worker'}`;
+    if (subtitleEl) subtitleEl.textContent = user.google_email || user.email || 'Timeline & Audit Records';
+    if (timelineEl) timelineEl.innerHTML = '<div style="text-align: center; padding: 24px; color: rgba(255,255,255,0.5);">Loading lifecycle events...</div>';
+
+    modal.classList.add('show');
+
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/history`);
+      const data = res.ok ? await res.json() : { user: null, history: [], auditLogs: [] };
+      if (data.user) {
+        user = { ...user, ...data.user };
+      }
+      const historyList = data.history || [];
+      const auditLogs = data.auditLogs || [];
+
+      // Format helper
+      const formatDate = (d) => {
+        if (!d) return 'N/A';
+        try {
+          return new Date(d).toLocaleString(undefined, { 
+            month: 'short', day: 'numeric', year: 'numeric', 
+            hour: '2-digit', minute: '2-digit' 
+          });
+        } catch (e) {
+          return d;
+        }
+      };
+
+      // 1. Build Metadata Overview Grid
+      const overviewHtml = `
+        <div class="lifecycle-overview-card">
+          <div class="lifecycle-overview-header">
+            <div>
+              <div class="lifecycle-user-name">${this.escape(user.full_name || user.google_email || user.username || 'Worker')}</div>
+              <div class="lifecycle-user-email">${this.escape(user.google_email || user.email || '')}</div>
+            </div>
+            <span class="worker-status ${user.status || 'deleted'}" style="text-transform: capitalize; font-size: 11px; padding: 3px 8px; border-radius: 6px;">${this.escape(user.status || 'deleted')}</span>
+          </div>
+
+          <div class="lifecycle-meta-grid">
+            <div>
+              <span class="lifecycle-meta-label">Joined / Applied</span>
+              <span class="lifecycle-meta-value">${formatDate(user.created_at || (historyList[0]?.joined_at))}</span>
+            </div>
+            <div>
+              <span class="lifecycle-meta-label">Approval Date</span>
+              <span class="lifecycle-meta-value">${user.approved_at ? formatDate(user.approved_at) : (user.status === 'pending' ? 'Pending Approval' : 'N/A')}</span>
+            </div>
+            ${user.deletion_requested_at ? `
+              <div style="grid-column: 1/-1;">
+                <span class="lifecycle-meta-label">Deletion Requested</span>
+                <span class="lifecycle-meta-value" style="color: #ff9500;">${formatDate(user.deletion_requested_at)}</span>
+              </div>
+            ` : ''}
+            ${user.deleted_at || user.status === 'deleted' ? `
+              <div>
+                <span class="lifecycle-meta-label">Deleted / Denied Date</span>
+                <span class="lifecycle-meta-value" style="color: #ff3b30;">${formatDate(user.deleted_at || historyList.find(h => h.deleted_at)?.deleted_at)}</span>
+              </div>
+              <div style="grid-column: 1/-1;">
+                <span class="lifecycle-meta-label">Deletion Reason / Type</span>
+                <span class="lifecycle-meta-value" style="line-height: 1.4;">${this.escape(user.deletion_reason || historyList.find(h => h.deletion_reason)?.deletion_reason || 'Worker account deleted by owner')}</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      // 2. Build Timeline Events
+      const timelineEvents = [];
+
+      // Join / Request event
+      if (user.created_at || historyList.find(h => h.joined_at)) {
+        timelineEvents.push({
+          time: user.created_at || historyList.find(h => h.joined_at)?.joined_at,
+          title: 'Account Registered & Access Requested',
+          desc: `Worker registered with Google and submitted access application.`,
+          icon: '📥',
+          badge: 'Applied'
+        });
+      }
+
+      // Approved event
+      if (user.approved_at || historyList.find(h => h.approved_at)) {
+        timelineEvents.push({
+          time: user.approved_at || historyList.find(h => h.approved_at)?.approved_at,
+          title: 'Access Request Approved',
+          desc: 'Owner approved access request and assigned app permissions.',
+          icon: '✅',
+          badge: 'Approved'
+        });
+      }
+
+      // Deletion Requested event
+      if (user.deletion_requested_at) {
+        timelineEvents.push({
+          time: user.deletion_requested_at,
+          title: 'Worker Requested Deletion',
+          desc: `Worker submitted account deletion request: "${user.deletion_reason || 'Not specified'}"`,
+          icon: '⚠️',
+          badge: 'Requested'
+        });
+      }
+
+      // Deletion history records
+      historyList.forEach(h => {
+        if (h.status === 'deleted' || h.deleted_at) {
+          const reasonText = h.deletion_reason || user.deletion_reason || 'Worker account deleted by owner';
+          timelineEvents.push({
+            time: h.deleted_at || h.created_at,
+            title: 'Account Deleted & Archived',
+            desc: reasonText,
+            icon: '🗑️',
+            badge: 'Archived'
+          });
+        }
+      });
+
+      // If user is deleted but history table didn't have duplicate entry
+      if (user.status === 'deleted' && (user.deleted_at || !historyList.some(h => h.deleted_at))) {
+        const reasonText = user.deletion_reason || 'Worker account deleted by owner';
+        const alreadyExists = timelineEvents.some(e => e.title.includes('Deleted') && e.desc === reasonText);
+        if (!alreadyExists) {
+          timelineEvents.push({
+            time: user.deleted_at || new Date().toISOString(),
+            title: 'Account Deleted & Archived',
+            desc: reasonText,
+            icon: '🗑️',
+            badge: 'Archived'
+          });
+        }
+      }
+
+      // Sort chronological descending
+      timelineEvents.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+      const timelineHtml = `
+        <div class="lifecycle-section-title">Lifecycle Timeline</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${timelineEvents.map(ev => `
+            <div class="lifecycle-event-card">
+              <div style="font-size: 18px; line-height: 1;">${ev.icon}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                  <span class="lifecycle-event-title">${this.escape(ev.title)}</span>
+                  <span class="lifecycle-event-time">${formatDate(ev.time)}</span>
+                </div>
+                <div class="lifecycle-event-desc">${this.escape(ev.desc)}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // 3. Audit actions (if available)
+      let auditHtml = '';
+      if (auditLogs.length > 0) {
+        auditHtml = `
+          <div class="lifecycle-section-title" style="margin-top: 16px;">Recent Audit Activity (${auditLogs.length})</div>
+          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto;">
+            ${auditLogs.map(log => `
+              <div class="lifecycle-audit-item">
+                <span style="color: #007aff; font-weight: 500;">${this.escape(log.action)} (${this.escape(log.module || 'app')})</span>
+                <span style="opacity: 0.5;">${formatDate(log.created_at)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      timelineEl.innerHTML = overviewHtml + timelineHtml + auditHtml;
+    } catch (err) {
+      console.error('Error fetching worker history:', err);
+      timelineEl.innerHTML = `<div style="text-align: center; padding: 24px; color: #ff453a;">Failed to load lifecycle history: ${this.escape(err.message)}</div>`;
+    }
+  }
+
+  async deleteWorker(userId) {
+    return this.approveWorkerDeletion(userId);
   }
 
   escape(value) {

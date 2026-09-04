@@ -1,7 +1,21 @@
+const createActivityLogger = require('../audit/activity-logger');
+
 module.exports = function(db) {
+  const activityLogger = createActivityLogger(db);
+
   // Helper to fetch full order with items and details
   const getFullOrderById = (id) => {
-    const orderStmt = db.prepare('SELECT * FROM orders WHERE id = ?');
+    const orderStmt = db.prepare(`
+      SELECT o.*,
+             COALESCE(u_creator.role, 'owner') as created_by_role,
+             COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+             u_editor.role as last_edited_by_role,
+             COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+      FROM orders o
+      LEFT JOIN users u_creator ON o.created_by_user_id = u_creator.id
+      LEFT JOIN users u_editor ON o.last_edited_by_user_id = u_editor.id
+      WHERE o.id = ?
+    `);
     const order = orderStmt.get(id);
     
     if (!order) return null;
@@ -22,6 +36,21 @@ module.exports = function(db) {
       items: items
     };
   };
+
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
 
   return {
     createOrder: async (req, res) => {
@@ -44,11 +73,15 @@ module.exports = function(db) {
       if (!customer_id) {
         return res.status(400).json({ error: 'customer_id is required' });
       }
+      if (!isCustomerAccessible(req, customer_id)) {
+        return res.status(403).json({ error: 'Access denied to this customer' });
+      }
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: 'Order must have at least one item.' });
       }
 
       try {
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
         // Use order_number from frontend if provided, otherwise generate a standardized global one
         const finalOrderNumber = order_number || generateOrderNumber(db, new Date(order_date || Date.now()));
         // Calculate total_amount if not provided
@@ -82,9 +115,9 @@ module.exports = function(db) {
           INSERT INTO orders (
             order_number, customer_id, current_stage, order_date,
             order_notes, qc_date, qc_notes, checklist_items, delivery_date,
-            bill_reference, total_amount, status, created_at, updated_at
+            bill_reference, total_amount, status, created_by_user_id, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const stmtOrder = db.prepare(insertOrderSQL);
         const orderResult = stmtOrder.run(
@@ -100,6 +133,7 @@ module.exports = function(db) {
           bill_reference || '',
           orderTotal,
           status,
+          creatorId,
           now,
           now
         );
@@ -141,6 +175,16 @@ module.exports = function(db) {
           });
         });
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'orders',
+          action: 'create',
+          resourceType: 'order',
+          resourceId: orderId,
+          resourceName: finalOrderNumber,
+          metadata: { total_amount: orderTotal, customer_id, items_count: items.length }
+        });
+
         const fullOrder = getFullOrderById(orderId);
         res.status(201).json(fullOrder);
       } catch (err) {
@@ -152,26 +196,36 @@ module.exports = function(db) {
     getOrders: (req, res) => {
       const { customer_id, current_stage, limit = 100, offset = 0 } = req.query;
       
-      let sql = 'SELECT * FROM orders WHERE 1=1';
+      let sql = `
+        SELECT o.*,
+               COALESCE(u_creator.role, 'owner') as created_by_role,
+               COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+               u_editor.role as last_edited_by_role,
+               COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+        FROM orders o
+        LEFT JOIN users u_creator ON o.created_by_user_id = u_creator.id
+        LEFT JOIN users u_editor ON o.last_edited_by_user_id = u_editor.id
+        WHERE 1=1
+      `;
       const params = [];
 
       if (customer_id) {
-        sql += ' AND customer_id = ?';
+        sql += ' AND o.customer_id = ?';
         params.push(customer_id);
       }
 
       if (current_stage) {
-        sql += ' AND current_stage = ?';
+        sql += ' AND o.current_stage = ?';
         params.push(current_stage);
       }
 
       if (req.user && req.user.role === 'worker') {
         const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
-        sql += ` AND (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
+        sql += ` AND (o.customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR o.customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
       }
 
-      sql += ' ORDER BY order_date DESC LIMIT ? OFFSET ?';
-      params.push(parseInt(limit), parseInt(offset));
+      sql += ' ORDER BY o.order_date DESC LIMIT ? OFFSET ?';
+      params.push(parseInt(limit) || 100, parseInt(offset) || 0);
 
       try {
         console.log('📋 GET /api/orders - Query:', { sql, params: params.slice(0, -2) });
@@ -215,6 +269,9 @@ module.exports = function(db) {
         if (!order) {
           return res.status(404).json({ error: 'Order not found' });
         }
+        if (order.customer_id && !isCustomerAccessible(req, order.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this order' });
+        }
         res.json(order);
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -237,6 +294,14 @@ module.exports = function(db) {
         status,
         items
       } = req.body;
+
+      const existing = db.prepare('SELECT customer_id FROM orders WHERE id = ?').get(id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
+        return res.status(403).json({ error: 'Access denied to this order' });
+      }
 
       const updates = [];
       const values = [];
@@ -283,6 +348,12 @@ module.exports = function(db) {
       if (total_amount !== undefined) {
         updates.push('total_amount = ?');
         values.push(total_amount);
+      }
+
+      const editorId = req.user ? (req.user.id || req.user.userId) : null;
+      if (editorId) {
+        updates.push('last_edited_by_user_id = ?');
+        values.push(editorId);
       }
 
       if (updates.length === 0) {
@@ -332,6 +403,17 @@ module.exports = function(db) {
         }
         
         const fullOrder = getFullOrderById(id);
+
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'orders',
+          action: current_stage !== undefined ? 'stage_change' : 'update',
+          resourceType: 'order',
+          resourceId: id,
+          resourceName: fullOrder?.order_number || null,
+          metadata: { current_stage: fullOrder?.current_stage, status: fullOrder?.status, total_amount: fullOrder?.total_amount }
+        });
+
         res.json(fullOrder);
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -342,6 +424,14 @@ module.exports = function(db) {
       const { id } = req.params;
 
       try {
+        const existing = db.prepare('SELECT customer_id, order_number FROM orders WHERE id = ?').get(id);
+        if (!existing) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+        if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this order' });
+        }
+
         const deleteItemsStmt = db.prepare('DELETE FROM order_items WHERE order_id = ?');
         deleteItemsStmt.run(id);
 
@@ -352,6 +442,16 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Order not found' });
         }
         
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'orders',
+          action: 'delete',
+          resourceType: 'order',
+          resourceId: id,
+          resourceName: existing.order_number || null,
+          metadata: { customer_id: existing.customer_id }
+        });
+
         res.json({ message: 'Order deleted successfully', id });
       } catch (err) {
         res.status(500).json({ error: err.message });

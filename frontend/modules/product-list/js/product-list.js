@@ -62,10 +62,32 @@ class Product {
     // Check if variant already exists
     if (!this.variants.find(v => v.packSize === variant.packSize)) {
       this.variants.push(variant);
+      this.sortVariants();
       this.lastUpdated = new Date();
       return true;
     }
     return false;
+  }
+
+  sortVariants() {
+    this.variants.sort((a, b) => {
+      let valA = a.pack_size_value !== undefined && a.pack_size_value !== null ? parseFloat(a.pack_size_value) : NaN;
+      let valB = b.pack_size_value !== undefined && b.pack_size_value !== null ? parseFloat(b.pack_size_value) : NaN;
+      
+      if (isNaN(valA)) {
+        const matchA = (a.packSize || '').toString().match(/^([\d.]+)/);
+        valA = matchA ? parseFloat(matchA[1]) : NaN;
+      }
+      if (isNaN(valB)) {
+        const matchB = (b.packSize || '').toString().match(/^([\d.]+)/);
+        valB = matchB ? parseFloat(matchB[1]) : NaN;
+      }
+      
+      if (!isNaN(valA) && !isNaN(valB) && valA !== valB) {
+        return valA - valB;
+      }
+      return (a.packSize || '').toString().localeCompare((b.packSize || '').toString(), undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   removeVariant(packSize) {
@@ -97,6 +119,79 @@ function safeGetMonthValue(dateValue) {
   } catch (e) {
     return '';
   }
+}
+
+/**
+ * Detects the most common mfg→expiry year gap across all batches of a product.
+ * Returns the gap as an integer (1–15) if found, or null if no data.
+ */
+function getProductExpiryGap(product) {
+  if (!product || !product.variants) return null;
+  const gapCounts = {};
+  for (const variant of product.variants) {
+    for (const batch of (variant.batches || [])) {
+      if (!batch.mfgDate || !batch.expiryDate) continue;
+      const mfg = batch.mfgDate instanceof Date ? batch.mfgDate : new Date(batch.mfgDate);
+      const exp = batch.expiryDate instanceof Date ? batch.expiryDate : new Date(batch.expiryDate);
+      if (isNaN(mfg) || isNaN(exp)) continue;
+      const gap = Math.round((exp.getFullYear() - mfg.getFullYear()) +
+        (exp.getMonth() - mfg.getMonth()) / 12);
+      if (gap >= 1 && gap <= 15) {
+        gapCounts[gap] = (gapCounts[gap] || 0) + 1;
+      }
+    }
+  }
+  const entries = Object.entries(gapCounts);
+  if (!entries.length) return null;
+  // Return the most frequent gap (mode)
+  return parseInt(entries.sort((a, b) => b[1] - a[1])[0][0]);
+}
+
+/**
+ * Computes the mfg->expiry year gap for a single batch (for pre-selecting the picker).
+ * Returns a string '1'-'15' or empty string.
+ */
+function getBatchYearGap(mfgDate, expiryDate) {
+  if (!mfgDate || !expiryDate) return '';
+  const mfg = mfgDate instanceof Date ? mfgDate : new Date(mfgDate);
+  const exp = expiryDate instanceof Date ? expiryDate : new Date(expiryDate);
+  if (isNaN(mfg) || isNaN(exp)) return '';
+  const gap = Math.round((exp.getFullYear() - mfg.getFullYear()) + (exp.getMonth() - mfg.getMonth()) / 12);
+  return (gap >= 1 && gap <= 15) ? String(gap) : '';
+}
+
+/**
+ * Returns <option> HTML for the expiry year picker (1-15 yrs).
+ * Pass selected value as string '1'-'15' to pre-select.
+ */
+function expiryYearOptions(selected = '') {
+  let opts = `<option value="">+yrs</option>`;
+  for (let i = 1; i <= 15; i++) {
+    opts += `<option value="${i}"${String(selected) === String(i) ? ' selected' : ''}>${i} yr${i > 1 ? 's' : ''}</option>`;
+  }
+  return opts;
+}
+
+/**
+ * Detects the most common pack size unit (TAB, ML, GMS, etc.) across
+ * all existing variants of a product.
+ * Returns the unit string (e.g. 'TAB') or '' if none found.
+ */
+function getProductPackUnit(product) {
+  if (!product || !product.variants || !product.variants.length) return '';
+  const counts = {};
+  for (const v of product.variants) {
+    // Try pack_size_type first, then parse from packSize string (e.g. "200.0ML" → "ML")
+    let unit = (v.pack_size_type || '').toUpperCase().trim();
+    if (!unit && v.packSize) {
+      const m = v.packSize.toString().match(/^[\d.]+(.+)$/);
+      if (m) unit = m[1].toUpperCase().trim();
+    }
+    if (unit) counts[unit] = (counts[unit] || 0) + 1;
+  }
+  const entries = Object.entries(counts);
+  if (!entries.length) return '';
+  return entries.sort((a, b) => b[1] - a[1])[0][0];
 }
 
 /**
@@ -272,6 +367,11 @@ export class ProductListApp extends AppWindow {
     product.category_id = apiProduct.category_id;
     product.category_name = apiProduct.category_name;
     product.classification = apiProduct.classification;
+    product.odia_name = apiProduct.odia_name || '';
+    product.created_by_role = apiProduct.created_by_role;
+    product.created_by_name = apiProduct.created_by_name;
+    product.last_edited_by_role = apiProduct.last_edited_by_role;
+    product.last_edited_by_name = apiProduct.last_edited_by_name;
     product.createdAt = new Date(apiProduct.created_at);
     product.lastUpdated = apiProduct.updated_at ? new Date(apiProduct.updated_at) : new Date(apiProduct.created_at);
     
@@ -324,6 +424,13 @@ export class ProductListApp extends AppWindow {
 
     // Store reference for app management
     window.currentProductApp = this;
+
+    // Listen for worker badge visibility toggle
+    window.addEventListener('worker-badges-toggle-changed', () => {
+      if (this.currentView === 'all') {
+        this.renderAllProducts();
+      }
+    });
   }
 
   buildProductLayout() {
@@ -419,7 +526,7 @@ export class ProductListApp extends AppWindow {
     searchInput.type = 'text';
     searchInput.className = 'product-header-search';
     searchInput.id = 'productHeaderSearch';
-    searchInput.placeholder = 'Search products';
+    searchInput.placeholder = 'Search products...';
     
     rightControls.appendChild(buttonsContainer);
     rightControls.appendChild(searchInput);
@@ -435,14 +542,265 @@ export class ProductListApp extends AppWindow {
     this.expandBtn.addEventListener('click', () => this.toggleSidebar());
     document.getElementById('productAddBtn')?.addEventListener('click', () => this.switchView('create'));
     
-    // Setup search functionality
+    // Setup search functionality matching billing app
+    if (this.searchInput) {
+      this.setupSearchFunctionality();
+    }
+  }
+
+  setupSearchFunctionality() {
+    if (!this.searchInput) return;
+
+    this.searchInput.placeholder = 'Search products, variants, batches...';
+
+    // Create dropdown for search results using EXACT billing app style
+    this.searchDropdown = document.createElement('div');
+    this.searchDropdown.id = 'productSearchDropdown';
+    this.searchDropdown.className = 'search-dropdown';
+    this.searchDropdown.style.cssText = `
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      max-height: 400px;
+      overflow-y: auto;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    `;
+    this.searchInput.parentElement.style.position = 'relative';
+    this.searchInput.parentElement.appendChild(this.searchDropdown);
+
+    // Debounce search input
+    let searchTimeout;
     this.searchInput.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value.toLowerCase().trim();
-      // Trigger re-render of the current view with search applied
+      clearTimeout(searchTimeout);
+      const query = e.target.value.trim().toLowerCase();
+      this.searchQuery = query;
+      
+      searchTimeout = setTimeout(() => {
+        if (query) {
+          this.performGlobalSearchWithDropdown(query);
+        } else {
+          this.searchDropdown.style.display = 'none';
+        }
+      }, 200);
+
       if (this.currentView === 'all') {
         this.renderAllProducts();
       }
     });
+
+    this.searchInput.addEventListener('focus', (e) => {
+      const query = e.target.value.trim().toLowerCase();
+      if (query) {
+        this.performGlobalSearchWithDropdown(query);
+      }
+    });
+
+    this.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        clearTimeout(searchTimeout);
+        const query = e.target.value.trim().toLowerCase();
+        this.performGlobalSearchWithDropdown(query);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#productHeaderSearch') && !e.target.closest('#productSearchDropdown')) {
+        if (this.searchDropdown) this.searchDropdown.style.display = 'none';
+      }
+    });
+  }
+
+  async performGlobalSearchWithDropdown(query) {
+    if (!query || !this.searchDropdown) {
+      if (this.searchDropdown) {
+        this.searchDropdown.style.display = 'none';
+      }
+      return;
+    }
+
+    try {
+      if (!this.products || this.products.length === 0) {
+        try {
+          const apiProds = await this.api.getProducts();
+          if (Array.isArray(apiProds)) {
+            this.products = apiProds.map(p => this.deserializeProductFromAPI(p));
+          }
+        } catch (e) {
+          console.warn('Could not fetch products on demand:', e.message);
+        }
+      }
+
+      const results = this.searchAllProductsData(query);
+      this.populateSearchDropdown(results);
+      
+      if (results.length === 0) {
+        this.searchDropdown.innerHTML = `<div style="padding: 12px 16px; color: #999; text-align: center;">No results found</div>`;
+        this.searchDropdown.style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Product search dropdown error:', error);
+      if (this.searchDropdown) {
+        this.searchDropdown.innerHTML = `<div style="padding: 12px 16px; color: #d9534f; text-align: center;">Search error</div>`;
+        this.searchDropdown.style.display = 'block';
+      }
+    }
+  }
+
+  searchAllProductsData(query) {
+    const results = [];
+    const q = query.toLowerCase().trim();
+
+    if (!this.products || !Array.isArray(this.products)) return results;
+
+    this.products.forEach(product => {
+      const name = (product.name || '').toLowerCase();
+      const odia = (product.odia_name || '').toLowerCase();
+      const cat = (product.category_name || product.category || '').toLowerCase();
+      const cls = (product.classification || '').toLowerCase();
+
+      let matchedReason = '';
+      let matchedDetails = '';
+
+      if (name.includes(q) || odia.includes(q)) {
+        matchedReason = 'product';
+      } else if (cat.includes(q)) {
+        matchedReason = 'category';
+        matchedDetails = `Category: ${product.category}`;
+      } else if (cls.includes(q)) {
+        matchedReason = 'classification';
+        matchedDetails = `Type: ${product.classification || 'Non-Gold'}`;
+      }
+
+      if (product.variants && Array.isArray(product.variants)) {
+        for (const v of product.variants) {
+          const pack = (v.packSize || `${v.pack_size_value || ''} ${v.pack_size_type || ''}`).toLowerCase();
+          if (pack.includes(q)) {
+            matchedReason = 'variant';
+            matchedDetails = `Pack Size: ${v.packSize}`;
+            break;
+          }
+          if (v.batches && Array.isArray(v.batches)) {
+            for (const b of v.batches) {
+              const bNo = (b.batchNo || b.batch_no || '').toLowerCase();
+              const mrp = (b.mrp !== undefined && b.mrp !== null) ? b.mrp.toString() : '';
+              if (bNo.includes(q)) {
+                matchedReason = 'batch';
+                matchedDetails = `Batch: ${b.batchNo} | ₹${b.mrp}`;
+                break;
+              }
+              if (mrp.includes(q)) {
+                matchedReason = 'mrp';
+                matchedDetails = `MRP: ₹${b.mrp} (${v.packSize})`;
+                break;
+              }
+            }
+          }
+          if (matchedReason) break;
+        }
+      }
+
+      if (matchedReason) {
+        results.push({
+          type: product.classification === 'Gold' ? 'gold_product' : 'product',
+          data: product,
+          matchedDetails: matchedDetails
+        });
+      }
+    });
+
+    return results;
+  }
+
+  populateSearchDropdown(results) {
+    if (!this.searchDropdown) return;
+    this.searchDropdown.innerHTML = '';
+
+    if (results.length === 0) return;
+
+    const header = document.createElement('div');
+    header.style.cssText = 'padding: 8px 16px; background: rgb(245, 245, 245); font-weight: bold; font-size: 11px; color: rgb(102, 102, 102); text-transform: uppercase;';
+    header.textContent = `Products (${results.length})`;
+    this.searchDropdown.appendChild(header);
+
+    results.forEach(result => {
+      const item = this.createDropdownItem(result);
+      if (item) this.searchDropdown.appendChild(item);
+    });
+
+    this.searchDropdown.style.display = 'block';
+  }
+
+  createDropdownItem(result) {
+    if (!result || !result.data) return null;
+    const product = result.data;
+
+    const item = document.createElement('div');
+    item.style.cssText = `
+      padding: 12px 16px;
+      border-bottom: 1px solid rgb(240, 240, 240);
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 13px;
+    `;
+    item.onmouseover = () => item.style.backgroundColor = '#f9f9f9';
+    item.onmouseout = () => item.style.backgroundColor = 'transparent';
+
+    const priceDisplay = this.calculateProductPriceRange(product);
+    const variantCount = product.variants ? product.variants.length : 0;
+    const variantsText = product.variants ? product.variants.map(v => v.packSize).join(', ') : '';
+
+    item.innerHTML = `
+      <div style="font-weight: 500; color: #222; display: flex; justify-content: space-between; align-items: center;">
+        <span>
+          ${product.name}
+          ${product.odia_name ? `<span style="font-family: 'Noto Sans Oriya', 'Lohit Odia', sans-serif; font-size: 12px; color: #666; font-weight: normal; margin-left: 4px;">(${product.odia_name})</span>` : ''}
+        </span>
+        <span style="font-size: 10px; font-weight: 700; background: ${product.classification === 'Gold' ? '#ffd700' : '#eee'}; color: ${product.classification === 'Gold' ? '#333' : '#666'}; padding: 2px 6px; border-radius: 3px;">
+          ${product.classification === 'Gold' ? '✨ GOLD' : 'NON-GOLD'}
+        </span>
+      </div>
+      <div style="font-size: 12px; color: #999; margin-top: 2px; display: flex; justify-content: space-between;">
+        <span>📂 ${product.category} | ${variantCount} variant(s)${variantsText ? `: ${variantsText}` : ''}</span>
+        ${priceDisplay ? `<span style="color: #059669; font-weight: 600;">${priceDisplay}</span>` : ''}
+      </div>
+      ${result.matchedDetails ? `<div style="font-size: 11px; color: #0066cc; margin-top: 2px;">🔍 Matched: ${result.matchedDetails}</div>` : ''}
+    `;
+
+    item.addEventListener('click', () => {
+      this.handleDropdownItemClick(product);
+    });
+
+    return item;
+  }
+
+  handleDropdownItemClick(product) {
+    if (this.searchDropdown) {
+      this.searchDropdown.style.display = 'none';
+    }
+
+    if (this.currentView !== 'all') {
+      this.switchView('all');
+    }
+
+    setTimeout(() => {
+      const card = this.viewContainer.querySelector(`[data-product-id="${product.id}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.style.transition = 'all 0.3s ease';
+        card.style.borderColor = '#0071e3';
+        card.style.boxShadow = '0 0 0 3px rgba(0, 113, 227, 0.3)';
+        setTimeout(() => {
+          card.style.borderColor = '';
+          card.style.boxShadow = '';
+        }, 3000);
+      }
+    }, 150);
   }
 
   toggleSidebar() {
@@ -450,23 +808,208 @@ export class ProductListApp extends AppWindow {
   }
 
   filterProducts() {
-    // If no search query, return all products
     if (!this.searchQuery) {
       return this.products;
     }
 
-    // Filter products by name, category, or classification
+    const q = this.searchQuery.toLowerCase().trim();
     return this.products.filter(product => {
-      const name = product.name.toLowerCase();
+      const name = (product.name || '').toLowerCase();
+      const odiaName = (product.odia_name || '').toLowerCase();
       const category = (product.category_name || product.category || '').toLowerCase();
       const classification = (product.classification || '').toLowerCase();
       
-      return (
-        name.includes(this.searchQuery) ||
-        category.includes(this.searchQuery) ||
-        classification.includes(this.searchQuery)
-      );
+      if (name.includes(q) || odiaName.includes(q) || category.includes(q) || classification.includes(q)) {
+        return true;
+      }
+
+      if (product.variants && Array.isArray(product.variants)) {
+        for (const variant of product.variants) {
+          const packSize = (variant.packSize || `${variant.pack_size_value || ''} ${variant.pack_size_type || ''}`).toLowerCase();
+          if (packSize.includes(q)) return true;
+
+          if (variant.batches && Array.isArray(variant.batches)) {
+            for (const batch of variant.batches) {
+              const batchNo = (batch.batchNo || batch.batch_no || '').toLowerCase();
+              const mrp = (batch.mrp !== undefined && batch.mrp !== null) ? batch.mrp.toString() : '';
+              if (batchNo.includes(q) || mrp.includes(q)) return true;
+            }
+          }
+        }
+      }
+      return false;
     });
+  }
+
+  calculateProductPriceRange(product) {
+    let min = Infinity;
+    let max = -Infinity;
+    let found = false;
+
+    if (product.variants && Array.isArray(product.variants)) {
+      product.variants.forEach(variant => {
+        if (variant.batches && Array.isArray(variant.batches)) {
+          variant.batches.forEach(batch => {
+            const mrp = parseFloat(batch.mrp || 0);
+            if (mrp > 0) {
+              if (mrp < min) min = mrp;
+              if (mrp > max) max = mrp;
+              found = true;
+            }
+          });
+        }
+      });
+    }
+
+    if (!found) return '';
+    if (min === max) return `₹${min.toFixed(2)}`;
+    return `₹${min.toFixed(2)} - ₹${max.toFixed(2)}`;
+  }
+
+  handleSmartSearch(query) {
+    if (!this.searchDropdown) return;
+    const q = (query || '').toLowerCase().trim();
+    if (!q) {
+      this.hideSearchDropdown();
+      return;
+    }
+
+    const matches = this.products.filter(product => {
+      const name = (product.name || '').toLowerCase();
+      const odia = (product.odia_name || '').toLowerCase();
+      const cat = (product.category_name || product.category || '').toLowerCase();
+      const cls = (product.classification || '').toLowerCase();
+
+      if (name.includes(q) || odia.includes(q) || cat.includes(q) || cls.includes(q)) return true;
+
+      if (product.variants && Array.isArray(product.variants)) {
+        for (const v of product.variants) {
+          const pack = (v.packSize || `${v.pack_size_value || ''} ${v.pack_size_type || ''}`).toLowerCase();
+          if (pack.includes(q)) return true;
+          if (v.batches && Array.isArray(v.batches)) {
+            for (const b of v.batches) {
+              const bNo = (b.batchNo || b.batch_no || '').toLowerCase();
+              const mrp = (b.mrp !== undefined && b.mrp !== null) ? b.mrp.toString() : '';
+              if (bNo.includes(q) || mrp.includes(q)) return true;
+            }
+          }
+        }
+      }
+      return false;
+    });
+
+    this.renderSearchDropdown(matches, q);
+  }
+
+  renderSearchDropdown(matches, query) {
+    if (!this.searchDropdown) return;
+    if (matches.length === 0) {
+      this.searchDropdown.innerHTML = `<div style="padding: 14px; text-align: center; color: #94a3b8; font-size: 12px;">No matching products found</div>`;
+      this.searchDropdown.style.display = 'block';
+      this.isDropdownOpen = true;
+      this.selectedIndex = -1;
+      return;
+    }
+
+    this.dropdownMatches = matches;
+    this.selectedIndex = -1;
+    this.isDropdownOpen = true;
+
+    this.searchDropdown.innerHTML = matches.map((product, idx) => {
+      const priceRange = this.calculateProductPriceRange(product);
+      const varCount = product.variants ? product.variants.length : 0;
+      const packs = product.variants ? product.variants.map(v => v.packSize).join(', ') : '';
+      return `
+        <div class="product-search-item" data-index="${idx}" data-product-id="${product.id}">
+          <div class="product-search-item-header">
+            <div class="product-search-item-title">
+              <span>${product.name}</span>
+              ${product.odia_name ? `<span style="font-family: 'Noto Sans Oriya', 'Lohit Odia', sans-serif; font-size: 12px; font-weight: normal; color: #64748b;">(${product.odia_name})</span>` : ''}
+            </div>
+            <span class="product-badge ${product.classification === 'Gold' ? 'gold' : 'non-gold'}" style="font-size: 10px; padding: 2px 6px;">
+              ${product.classification === 'Gold' ? '✨ Gold' : 'Non-Gold'}
+            </span>
+          </div>
+          <div class="product-search-item-meta">
+            <span>📂 ${product.category}</span>
+            ${priceRange ? `<span class="product-search-item-mrp">💰 ${priceRange}</span>` : ''}
+            <span>📦 ${varCount} variant${varCount !== 1 ? 's' : ''}${packs ? ` (${packs})` : ''}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    this.searchDropdown.querySelectorAll('.product-search-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const idx = parseInt(item.dataset.index);
+        const prod = this.dropdownMatches[idx];
+        this.selectSmartSearchResult(prod);
+      });
+    });
+
+    this.searchDropdown.style.display = 'block';
+  }
+
+  handleSearchKeydown(e) {
+    if (!this.isDropdownOpen || !this.searchDropdown) return;
+    const items = this.searchDropdown.querySelectorAll('.product-search-item');
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
+      this.updateDropdownSelection(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this.updateDropdownSelection(items);
+    } else if (e.key === 'Enter') {
+      if (this.selectedIndex >= 0 && this.dropdownMatches && this.dropdownMatches[this.selectedIndex]) {
+        e.preventDefault();
+        this.selectSmartSearchResult(this.dropdownMatches[this.selectedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      this.hideSearchDropdown();
+    }
+  }
+
+  updateDropdownSelection(items) {
+    items.forEach((item, idx) => {
+      if (idx === this.selectedIndex) {
+        item.classList.add('selected');
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('selected');
+      }
+    });
+  }
+
+  selectSmartSearchResult(product) {
+    if (!product) return;
+    this.hideSearchDropdown();
+    
+    // Switch to all products view if not already there
+    if (this.currentView !== 'all') {
+      this.switchView('all');
+    }
+
+    setTimeout(() => {
+      const card = this.viewContainer.querySelector(`[data-product-id="${product.id}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.remove('product-card-highlight');
+        void card.offsetWidth; // trigger reflow
+        card.classList.add('product-card-highlight');
+      }
+    }, 150);
+  }
+
+  hideSearchDropdown() {
+    if (this.searchDropdown) {
+      this.searchDropdown.style.display = 'none';
+      this.isDropdownOpen = false;
+      this.selectedIndex = -1;
+    }
   }
 
   setupProductEventListeners() {
@@ -874,6 +1417,10 @@ export class ProductListApp extends AppWindow {
     const product = new Product(data.name, data.category, false);
     product.id = data.id;
     product.classification = data.classification || 'Non-Gold';
+    product.created_by_role = data.created_by_role;
+    product.created_by_name = data.created_by_name;
+    product.last_edited_by_role = data.last_edited_by_role;
+    product.last_edited_by_name = data.last_edited_by_name;
     product.createdAt = new Date(data.createdAt);
     product.lastUpdated = data.lastUpdated ? new Date(data.lastUpdated) : new Date(data.createdAt);
     
@@ -951,14 +1498,31 @@ export class ProductListApp extends AppWindow {
               <span class="divider-chevron">▼</span>
               <span class="divider-letter">${letter}</span>
             </div>
-            ${groupedProducts[letter].map(product => `
-          <div class="product-card" data-product-id="${product.id}">
+            ${groupedProducts[letter].map(product => {
+              const auditInfo = JSON.stringify({
+                type: 'Product',
+                id: product.id,
+                name: product.name,
+                created_by_role: product.created_by_role,
+                created_by_name: product.created_by_name,
+                last_edited_by_role: product.last_edited_by_role,
+                last_edited_by_name: product.last_edited_by_name,
+                date: product.createdAt,
+                created_at: product.createdAt,
+                updated_at: product.lastUpdated
+              });
+              return `
+          <div class="product-card" data-product-id="${product.id}" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
             <div class="product-card-header">
               <div class="product-card-title">
-                <h3>${product.name}</h3>
-                <span class="product-badge ${product.classification === 'Gold' ? 'gold' : 'non-gold'}">
-                  ${product.classification === 'Gold' ? '✨ Gold' : 'Non-Gold'}
-                </span>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <h3>${product.name}</h3>
+                  ${product.odia_name ? `<span class="product-odia-title" style="font-size: 13px; color: #64748b; font-weight: normal; margin-left: 2px;">(${product.odia_name})</span>` : ''}
+                  <span class="product-badge ${product.classification === 'Gold' ? 'gold' : 'non-gold'}">
+                    ${product.classification === 'Gold' ? '✨ Gold' : 'Non-Gold'}
+                  </span>
+                  ${window.renderWorkerBadge ? window.renderWorkerBadge(product) : ''}
+                </div>
               </div>
               <div class="product-card-actions">
                 <button class="product-card-btn print-product-qr" data-product-id="${product.id}" title="Print QR">🖨️ QR</button>
@@ -1020,7 +1584,8 @@ export class ProductListApp extends AppWindow {
               <button class="add-variant-btn add-variant-margin" data-product-id="${product.id}">+ Add Variant</button>
             </div>
           </div>
-        `).join('')}
+              `;
+            }).join('')}
           </div>
         `).join('')}
       </div>
@@ -1156,7 +1721,7 @@ export class ProductListApp extends AppWindow {
                 <input type="month" id="batchMfgDate">
               </div>
               <div>
-                <label>Expiry Date</label>
+                <label style="display:flex;justify-content:space-between;align-items:center;gap:6px;">Expiry Date<select id="batchExpiryYears" class="expiry-years-picker" title="Auto-fill from Mfg Date">${expiryYearOptions()}</select></label>
                 <input type="month" id="batchExpiryDate">
               </div>
               <div>
@@ -1181,6 +1746,10 @@ export class ProductListApp extends AppWindow {
     const overlay = document.getElementById('batchDialogOverlay');
     const form = document.getElementById('batchForm');
     const cancelBtn = document.querySelector('.dialog-cancel-btn');
+
+    // Pre-select the remembered expiry year gap for this product
+    const rememberedGap = getProductExpiryGap(product);
+    if (rememberedGap) document.getElementById('batchExpiryYears').value = String(rememberedGap);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1219,6 +1788,21 @@ export class ProductListApp extends AppWindow {
     cancelBtn.addEventListener('click', () => {
       overlay.parentElement.remove();
     });
+
+    // Auto-fill expiry date from Mfg Date + selected years
+    const batchMfgInput = document.getElementById('batchMfgDate');
+    const batchExpInput = document.getElementById('batchExpiryDate');
+    const batchExpYears = document.getElementById('batchExpiryYears');
+    const autoFillExpiry = () => {
+      const mfg = batchMfgInput.value;
+      const yrs = parseInt(batchExpYears.value);
+      if (mfg && yrs) {
+        const [yr, mo] = mfg.split('-').map(Number);
+        batchExpInput.value = `${yr + yrs}-${String(mo).padStart(2, '0')}`;
+      }
+    };
+    batchMfgInput.addEventListener('change', autoFillExpiry);
+    batchExpYears.addEventListener('change', autoFillExpiry);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
@@ -1365,6 +1949,13 @@ export class ProductListApp extends AppWindow {
     const container = document.getElementById('variantsContainer');
     if (!container) return;
 
+    // Detect unit from already-added variant fields
+    let defaultUnit = '';
+    const existingUnitSelects = container.querySelectorAll('.variant-pack-unit');
+    for (let i = existingUnitSelects.length - 1; i >= 0; i--) {
+      if (existingUnitSelects[i].value) { defaultUnit = existingUnitSelects[i].value; break; }
+    }
+
     const variantEl = document.createElement('div');
     variantEl.className = 'variant-section';
 
@@ -1397,6 +1988,9 @@ export class ProductListApp extends AppWindow {
     `;
 
     container.appendChild(variantEl);
+
+    // Pre-select detected unit
+    if (defaultUnit) variantEl.querySelector('.variant-pack-unit').value = defaultUnit;
 
     // Remove variant button
     variantEl.querySelector('.remove-variant-btn').addEventListener('click', () => {
@@ -1432,7 +2026,7 @@ export class ProductListApp extends AppWindow {
           <input type="month" class="batch-mfg-date batch-field-input">
         </div>
         <div class="batch-field">
-          <label class="batch-field-label">Expiry Date</label>
+          <label class="batch-field-label" style="display:flex;justify-content:space-between;align-items:center;gap:4px;">Expiry Date<select class="batch-expiry-years expiry-years-picker">${expiryYearOptions()}</select></label>
           <input type="month" class="batch-expiry-date batch-field-input">
         </div>
         <div class="batch-field">
@@ -1450,6 +2044,21 @@ export class ProductListApp extends AppWindow {
     batchEl.querySelector('.remove-batch-btn').addEventListener('click', () => {
       batchEl.remove();
     });
+
+    // Expiry auto-fill for create product batch
+    const _mfgIn = batchEl.querySelector('.batch-mfg-date');
+    const _expIn = batchEl.querySelector('.batch-expiry-date');
+    const _yrsIn = batchEl.querySelector('.batch-expiry-years');
+    const _autoFill = () => {
+      const mfg = _mfgIn.value;
+      const yrs = parseInt(_yrsIn.value);
+      if (mfg && yrs) {
+        const [yr, mo] = mfg.split('-').map(Number);
+        _expIn.value = `${yr + yrs}-${String(mo).padStart(2, '0')}`;
+      }
+    };
+    _mfgIn.addEventListener('change', _autoFill);
+    _yrsIn.addEventListener('change', _autoFill);
   }
 
   renderEditProductView(productId) {
@@ -1524,7 +2133,7 @@ export class ProductListApp extends AppWindow {
                           <input type="month" value="${safeGetMonthValue(batch.mfgDate)}" class="edit-batch-mfg edit-batch-input" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">
                         </div>
                         <div class="edit-batch-field">
-                          <label class="edit-batch-label">Expiry Date *</label>
+                          <label class="edit-batch-label" style="display:flex;justify-content:space-between;align-items:center;gap:4px;">Expiry Date *<select class="edit-batch-exp-years expiry-years-picker" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">${expiryYearOptions(getBatchYearGap(batch.mfgDate, batch.expiryDate))}</select></label>
                           <input type="month" value="${safeGetMonthValue(batch.expiryDate)}" class="edit-batch-exp edit-batch-input" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">
                         </div>
                         <div class="edit-batch-field">
@@ -1558,6 +2167,30 @@ export class ProductListApp extends AppWindow {
     if (this._editFormClickHandler) {
       this.viewContainer.removeEventListener('click', this._editFormClickHandler);
     }
+    if (this._editFormChangeHandler) {
+      this.viewContainer.removeEventListener('change', this._editFormChangeHandler);
+    }
+
+    // Auto-fill expiry from mfg + year picker in edit product inline batch rows
+    this._editFormChangeHandler = (e) => {
+      if (e.target.classList.contains('edit-batch-mfg') || e.target.classList.contains('edit-batch-exp-years')) {
+        const card = e.target.closest('.edit-batch-card');
+        if (card) {
+          const mfgIn = card.querySelector('.edit-batch-mfg');
+          const expIn = card.querySelector('.edit-batch-exp');
+          const yrsIn = card.querySelector('.edit-batch-exp-years');
+          if (mfgIn && expIn && yrsIn && yrsIn.value) {
+            const mfg = mfgIn.value;
+            const yrs = parseInt(yrsIn.value);
+            if (mfg && yrs) {
+              const [yr, mo] = mfg.split('-').map(Number);
+              expIn.value = `${yr + yrs}-${String(mo).padStart(2, '0')}`;
+            }
+          }
+        }
+      }
+    };
+    this.viewContainer.addEventListener('change', this._editFormChangeHandler);
 
     this._editFormSubmitHandler = async (e) => {
       if (e.target.id !== 'editProductForm') return;
@@ -1729,7 +2362,7 @@ export class ProductListApp extends AppWindow {
                 <input type="month" id="batchMfgDate">
               </div>
               <div>
-                <label>Expiry Date</label>
+                <label style="display:flex;justify-content:space-between;align-items:center;gap:6px;">Expiry Date<select id="batchExpiryYears" class="expiry-years-picker" title="Auto-fill from Mfg Date">${expiryYearOptions()}</select></label>
                 <input type="month" id="batchExpiryDate">
               </div>
               <div>
@@ -1753,6 +2386,10 @@ export class ProductListApp extends AppWindow {
     const overlay = document.getElementById('batchDialogOverlay');
     const form = document.getElementById('batchForm');
     const cancelBtn = document.querySelector('.dialog-cancel-btn');
+
+    // Pre-select the remembered expiry year gap for this product
+    const rememberedGap = getProductExpiryGap(product);
+    if (rememberedGap) document.getElementById('batchExpiryYears').value = String(rememberedGap);
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -1786,6 +2423,21 @@ export class ProductListApp extends AppWindow {
     cancelBtn.addEventListener('click', () => {
       overlay.parentElement.remove();
     });
+
+    // Auto-fill expiry date from Mfg Date + selected years
+    const batchMfgInput = document.getElementById('batchMfgDate');
+    const batchExpInput = document.getElementById('batchExpiryDate');
+    const batchExpYears = document.getElementById('batchExpiryYears');
+    const autoFillExpiry = () => {
+      const mfg = batchMfgInput.value;
+      const yrs = parseInt(batchExpYears.value);
+      if (mfg && yrs) {
+        const [yr, mo] = mfg.split('-').map(Number);
+        batchExpInput.value = `${yr + yrs}-${String(mo).padStart(2, '0')}`;
+      }
+    };
+    batchMfgInput.addEventListener('change', autoFillExpiry);
+    batchExpYears.addEventListener('change', autoFillExpiry);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
@@ -1838,6 +2490,11 @@ export class ProductListApp extends AppWindow {
     const overlay = document.getElementById('variantDialogOverlay');
     const form = document.getElementById('variantForm');
     const cancelBtn = document.querySelector('.dialog-cancel-btn');
+
+    // Pre-select the remembered pack unit and focus the number field
+    const rememberedUnit = getProductPackUnit(product);
+    if (rememberedUnit) document.getElementById('variantUnit').value = rememberedUnit;
+    document.getElementById('variantNumber').focus();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1937,11 +2594,14 @@ export class ProductListApp extends AppWindow {
         <div id="categoriesList" class="categories-list">
           ${this.categories.map(cat => {
             const catName = cat.name || cat;
+            const catMeaning = cat.english_meaning || '';
+            const prodCount = categoryStats[catName] || 0;
             return `
-            <div class="category-list-item">
-              <div class="category-list-item-info">
-                <div class="category-list-item-name">📂 ${catName}</div>
-                <div class="category-list-item-count">${categoryStats[catName]} product${categoryStats[catName] !== 1 ? 's' : ''}</div>
+            <div class="category-list-item" style="padding: 14px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 8px; background: #fff;">
+              <div class="category-list-item-info" style="flex: 1;">
+                <div class="category-list-item-name" style="font-size: 14.5px; font-weight: 600; color: #1e293b;">📂 ${catName}</div>
+                ${catMeaning ? `<div style="font-size: 12px; color: #64748b; margin-top: 2px;">ℹ️ ${catMeaning}</div>` : ''}
+                <div class="category-list-item-count" style="font-size: 12px; color: #0284c7; font-weight: 500; margin-top: 4px;">${prodCount} product${prodCount !== 1 ? 's' : ''}</div>
               </div>
               <div class="category-list-item-actions">
                 <button class="view-category-btn category-action-btn" data-category="${catName}">View</button>
@@ -1950,6 +2610,145 @@ export class ProductListApp extends AppWindow {
               </div>
             </div>
           `;}).join('')}
+        </div>
+
+        <!-- 🌿 Ayurvedic Product Descriptions, Indications & Company Info -->
+        <div class="therapeutic-guide-container" style="margin-top: 24px; padding: 22px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); font-family: 'Plus Jakarta Sans', 'Noto Sans Oriya', 'Lohit Odia', -apple-system, BlinkMacSystemFont, sans-serif;">
+          
+          <!-- 1. Product Descriptions & Therapeutic Indications -->
+          <div style="border-bottom: 2px solid #059669; padding-bottom: 12px; margin-bottom: 18px;">
+            <h3 style="margin: 0; font-size: 17px; color: #065f46; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              🌿 1. Product Descriptions &amp; Therapeutic Indications
+            </h3>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Data explicitly appended in the source document detailing usages of specific key medicines.</p>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px;">
+            <!-- Medicine 1 -->
+            <div style="background: #f8fafc; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #f59e0b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 6px;">
+                ✨ ବୃହତ ଚନ୍ଦ୍ରୋଦୟ ମକରଧ୍ବଜ (Br. Chandraodaya Makar Dhawaja):
+              </div>
+              <div style="font-size: 12.5px; color: #334155; line-height: 1.6;">
+                This is a blood, strength, and immunity-enhancing rasayana. It cures weakness caused by indigestion, loss of appetite, and tissue depletion. It is an effective medicine for abdominal diseases like diarrhea, dysentery, and amoebiasis.<br>
+                <span style="color: #059669; font-weight: 600;">🔹 Adjuvant / Anupana:</span> Consumption is more effective when taken with roasted cumin powder, fennel-soaked water, sandalwood-infused water, or mixed powder.
+              </div>
+            </div>
+
+            <!-- Medicine 2 -->
+            <div style="background: #f8fafc; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #f59e0b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 6px;">
+                ✨ ସୁବର୍ଣ ପୂଷ୍ପଶୁଗ (Subarna Puspasuga):
+              </div>
+              <div style="font-size: 12.5px; color: #334155; line-height: 1.6;">
+                An excellent rasayana medicine of the Utkal Ayurvedic tradition. It is highly effective for chronic cough, asthma, and loss of appetite.<br>
+                <span style="color: #059669; font-weight: 600;">🔹 Adjuvant / Anupana:</span> When consumed with long pepper (pippali) powder and honey, it completely eradicates chronic fevers and chronic cough.
+              </div>
+            </div>
+
+            <!-- Medicine 3 -->
+            <div style="background: #f8fafc; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #f59e0b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 6px;">
+                ✨ ମହରାଜ ନୃପତି ବଲ୍ଲଭ ରସ (Maharaja Nrupati Ballav Rasa):
+              </div>
+              <div style="font-size: 12.5px; color: #334155; line-height: 1.6;">
+                Effective for symptoms like chronic sprue, amoebiasis, chronic dysentery, constipation, abdominal colic, and chronic rheumatism.<br>
+                <span style="color: #059669; font-weight: 600;">🔹 Adjuvant / Anupana:</span> Excellent results are obtained when consumed on an empty stomach in the morning, ground with honey, followed by drinking fennel decoction.
+              </div>
+            </div>
+
+            <!-- Medicine 4: Panchabana Rasa -->
+            <div style="background: #f8fafc; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #0284c7; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #0369a1; font-size: 14px; margin-bottom: 6px;">
+                ✨ ପଞ୍ଚବାଣ ରସ (Panchabana Rasa):
+              </div>
+              <div style="font-size: 12.5px; color: #334155; line-height: 1.6; margin-bottom: 10px;">
+                Widely used in South India, just as Basanta Kusumakar is in North India. It has cold potency and is the best medicine for treating 20 types of prameha (urinary disorders) and leucorrhea.
+              </div>
+
+              <div style="font-weight: 600; font-size: 12.5px; color: #0f172a; margin-bottom: 6px;">Specific Usage Formulations:</div>
+              <div style="background: #fff; border-radius: 6px; border: 1px solid #cbd5e1; overflow: hidden;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                  <thead>
+                    <tr style="background: #f1f5f9; color: #1e293b; border-bottom: 1px solid #cbd5e1;">
+                      <th style="padding: 9px 12px; width: 40%; font-weight: 600;">Indication</th>
+                      <th style="padding: 9px 12px; font-weight: 600;">Preparation / Adjuvant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                      <td style="padding: 8px 12px; font-weight: 500; color: #0f172a;">ଧାତୁକ୍ଷୟରେ (For tissue depletion)</td>
+                      <td style="padding: 8px 12px; color: #334155;">ବାବୁଲ ଅଠା ବତୁରା ଜଳ ଓ ମିଶ୍ରିଗୁଣ୍ଡ (Soaked babool gum water and misri powder)</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9; background: #fafafa;">
+                      <td style="padding: 8px 12px; font-weight: 500; color: #0f172a;">ଧୂଳଭଙ୍ଗ ରୋଗରେ (For erectile dysfunction)</td>
+                      <td style="padding: 8px 12px; color: #334155;">ନାଗେଶ୍ବର ଚୁର୍ୟ ଓ ମିଶ୍ରିଗୁଣ୍ଡ (Nageswar powder and misri powder)</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                      <td style="padding: 8px 12px; font-weight: 500; color: #0f172a;">ବହୁମୁତ୍ର ରୋଗରେ (For polyuria/diabetes)</td>
+                      <td style="padding: 8px 12px; color: #334155;">କଦଳୀ ଫୁଲ ରସ ଓ ମହୁ (Banana flower juice and honey)</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #f1f5f9; background: #fafafa;">
+                      <td style="padding: 8px 12px; font-weight: 500; color: #0f172a;">ଶ୍ବେତପ୍ରଦର ରୋଗରେ (For leucorrhea)</td>
+                      <td style="padding: 8px 12px; color: #334155;">ଶତାବରୀ ରସ ଓ ମିଶ୍ରି ଗୁଣ୍ଡ ସହ ଚନ୍ଦନ ଘୋରା ପାଣି (Shatavari juice and misri powder with sandalwood-infused water)</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 12px; font-weight: 500; color: #0f172a;">ଯୋନୀ କଣ୍ଡୁରେ (For vaginal itching)</td>
+                      <td style="padding: 8px 12px; color: #334155;">ଶୀତଳ ମରିଚ ଗୁଣ୍ଡ ଓ ଚନ୍ଦନ ରସ (Cold black pepper powder and sandalwood juice)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Medicine 5 -->
+            <div style="background: #f8fafc; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #f59e0b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+              <div style="font-weight: 700; color: #92400e; font-size: 14px; margin-bottom: 6px;">
+                ✨ ରସାୟନ ବସନ୍ତ କୁସୁମାକର (Rasayana Basanta Kusumakar):
+              </div>
+              <div style="font-size: 12.5px; color: #334155; line-height: 1.6;">
+                Infallible medicine for treating premature loss of vitality and the inability to engage in intercourse (erectile dysfunction) due to illicit sexual practices at a young age.<br>
+                <span style="color: #059669; font-weight: 600;">🔹 Adjuvant / Anupana:</span> Consumption with misri powder, butter, or milk cream in the morning, followed by drinking fresh warm milk, increases vitality and cures the aforementioned condition.
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Company & Document Metadata -->
+          <div style="border-top: 2px solid #0284c7; padding-top: 16px; margin-top: 20px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <h3 style="margin: 0; font-size: 16px; color: #0369a1; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                🏢 2. Company &amp; Document Metadata
+              </h3>
+              <span style="background: #dbeafe; color: #1e40af; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px;">GMP Certified Unit</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; font-size: 12.5px; color: #334155;">
+              <div style="background: #f8fafc; padding: 12px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 3px;">Company &amp; Established</div>
+                <div>Company Name: <strong>Utkal Chemical Aushadhalaya (UCA)</strong></div>
+                <div style="color: #64748b; margin-top: 2px;">Established: 1952 (Odisha's 2nd Oldest AYUSH Unit)</div>
+                <div style="color: #059669; font-weight: 500; margin-top: 2px;">Certifications: GMP Certified Unit</div>
+              </div>
+
+              <div style="background: #f8fafc; padding: 12px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 3px;">🏢 Office Address</div>
+                <div>D1, Basera Complex, Dumduma, Bhubaneswar, Odisha - 751019</div>
+              </div>
+
+              <div style="background: #f8fafc; padding: 12px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 3px;">🏭 Factory Address</div>
+                <div>Binoba Marg, Aska - 761110, Ganjam, Odisha</div>
+              </div>
+
+              <div style="background: #f8fafc; padding: 12px 14px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 3px;">📞 Contact Information</div>
+                <div>Mobile: <strong>+91 9439333304</strong></div>
+                <div>Email: <a href="mailto:utkal_chem@yahoo.co.in" style="color: #0284c7; text-decoration: underline;">utkal_chem@yahoo.co.in</a></div>
+                <div>Web: <a href="https://www.utkalayurveda.com" target="_blank" style="color: #0284c7; text-decoration: underline;">www.utkalayurveda.com</a></div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         ${this.categories.length === 0 ? `
@@ -2487,7 +3286,7 @@ export class ProductListApp extends AppWindow {
   async printMasterCatalog() {
     const generator = new QRGenerator();
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
-    const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
+    const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
     const watermarkHTML = ``;
     
@@ -2651,7 +3450,10 @@ export class ProductListApp extends AppWindow {
             ` : ''}
             <div class="qr-product-header">
               <div class="qr-product-title-group">
-                <h2 class="qr-product-name"><a href="${generator.generateProductURL(product.id)}" target="_blank" style="color: inherit; text-decoration: none;">${product.name}</a></h2>
+                <h2 class="qr-product-name">
+                  <a href="${generator.generateProductURL(product.id)}" target="_blank" style="color: inherit; text-decoration: none;">${product.name}</a>
+                  ${product.odia_name ? `<span class="qr-product-odia-name" style="font-family: 'Noto Sans Oriya', 'Lohit Odia', 'Samyak Oriya', sans-serif; font-size: 13.5px; font-weight: normal; color: #475569; margin-left: 6px;">(${product.odia_name})</span>` : ''}
+                </h2>
                 <span class="qr-category-pill">${product.category}</span>
                 ${goldBadgeHtml}
               </div>
@@ -2727,7 +3529,7 @@ export class ProductListApp extends AppWindow {
     
     const generator = new QRGenerator();
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
-    const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
+    const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
     const watermarkHTML = ``;
     const bgPatternSVG = `<div class="qr-neo-grid"></div>`;
@@ -2749,7 +3551,7 @@ export class ProductListApp extends AppWindow {
           ${cornerOrns}
           <p class="qr-doc-brand">UCA Inventory System</p>
           <h1 class="qr-doc-title">Product Detail</h1>
-          <p class="qr-doc-subtitle">${product.name}</p>
+          <p class="qr-doc-subtitle">${product.name} ${product.odia_name ? `<span style="font-family: 'Noto Sans Oriya', 'Lohit Odia', sans-serif; font-weight: normal; font-size: 14px;">(${product.odia_name})</span>` : ''}</p>
         </div>
         <div class="qr-accent-bar"></div>
         <div class="qr-product-summary">
@@ -2846,7 +3648,7 @@ export class ProductListApp extends AppWindow {
     
     const generator = new QRGenerator();
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
-    const fontsLink = `<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
+    const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
     const watermarkHTML = ``;
     const bgPatternSVG = `<div class="qr-neo-grid"></div>`;

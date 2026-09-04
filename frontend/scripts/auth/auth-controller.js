@@ -5,9 +5,11 @@
 
 import { DialogManager } from './dialog-manager.js';
 import { LockscreenDragController } from './lockscreen-drag.js';
+import { profileManager } from './profiles.js';
 
 export class AuthController {
   constructor() {
+    this.profileManager = profileManager;
     this.initDOMElements();
     this.initDialogManager();
     this.initDragController();
@@ -24,6 +26,7 @@ export class AuthController {
     this.workerPendingModal = document.getElementById('workerPendingModal');
     this.ownerLinkModal = document.getElementById('ownerLinkModal');
     this.workerCredentialModal = document.getElementById('workerCredentialModal');
+    this.removeAccountModal = document.getElementById('removeAccountModal');
 
     this.loginIdentifierInput = document.getElementById('loginIdentifierInput');
     this.loginIdentifierField = document.getElementById('loginIdentifierField');
@@ -32,6 +35,20 @@ export class AuthController {
     this.passwordInput = document.getElementById('loginPasswordInput');
     this.setupPasswordInput = document.getElementById('setupPasswordInput');
     this.googleSignInSection = document.getElementById('googleSignInSection');
+
+    this.multiUserContainer = document.getElementById('multiUserContainer');
+    this.multiUserList = document.getElementById('multiUserList');
+    this.singleUserContainer = document.getElementById('singleUserContainer');
+    this.otherUserBtn = document.getElementById('otherUserBtn');
+    this.switchUserRow = document.getElementById('switchUserRow');
+    this.switchUserBtn = document.getElementById('switchUserBtn');
+
+    this.removeAccountAvatar = document.getElementById('removeAccountAvatar');
+    this.removeAccountTitle = document.getElementById('removeAccountTitle');
+    this.removeAccountMessage = document.getElementById('removeAccountMessage');
+    this.confirmRemoveAccountBtn = document.getElementById('confirmRemoveAccountBtn');
+    this.cancelRemoveAccountBtn = document.getElementById('cancelRemoveAccountBtn');
+    this.pendingAccountRemovalId = null;
 
     this.profileAvatar = document.getElementById('profileAvatar');
     this.profileMenu = document.getElementById('profileMenu');
@@ -195,45 +212,119 @@ export class AuthController {
      PROFILE & STATE SYNC
      -------------------------------------------------------------------------- */
   async syncProfile() {
-    const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
-    const cachedName = localStorage.getItem('macos_user_display_name');
-    const cachedPicture = localStorage.getItem('macos_user_display_picture');
+    const users = this.profileManager.getUsers();
+    const activeUser = this.profileManager.getActiveUser();
 
-    const avatarElements = [
-      document.querySelector('.modal-avatar'),
-      document.getElementById('profileAvatar')
-    ];
-    const usernameElements = [
-      document.getElementById('modalUsername'),
-      document.getElementById('profileUsername')
-    ];
-
-    if (isRemembered && cachedName) {
-      usernameElements.forEach((el) => { if (el) el.textContent = cachedName; });
+    // If 2 or more users are remembered, show multi-user vertical list
+    if (users.length > 1) {
+      if (this.multiUserContainer) this.multiUserContainer.style.display = 'flex';
+      if (this.singleUserContainer) this.singleUserContainer.style.display = 'none';
+      this.renderMultiUserList(users, activeUser);
     } else {
-      usernameElements.forEach((el) => { if (el) el.textContent = 'Sign in'; });
-    }
+      // 0 or 1 user: exact original centered single user layout
+      if (this.multiUserContainer) this.multiUserContainer.style.display = 'none';
+      if (this.singleUserContainer) this.singleUserContainer.style.display = 'flex';
+      
+      const singleUser = users.length === 1 ? users[0] : activeUser;
+      const usernameElements = [
+        document.getElementById('profileUsername'),
+        this.profileUsername
+      ];
 
-    if (this.loginIdentifierInput) {
-      this.loginIdentifierInput.value = isRemembered ? (localStorage.getItem('macos_user_identifier') || '') : '';
-    }
-
-    avatarElements.forEach((el) => {
-      if (el) {
-        if (isRemembered && cachedPicture) {
-          el.innerHTML = `<img src="${cachedPicture}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-          el.style.background = 'transparent';
-        } else {
-          el.innerHTML = `<img src="/assets/Images/DefaultUser.png" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-          el.style.background = 'transparent';
+      if (singleUser) {
+        usernameElements.forEach((el) => { if (el) el.textContent = singleUser.displayName || 'Sign in'; });
+        if (this.profileAvatar) {
+          const pic = singleUser.displayPicture || '/assets/Images/DefaultUser.png';
+          this.profileAvatar.innerHTML = `<img src="${pic}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+          this.profileAvatar.style.background = 'transparent';
+        }
+      } else {
+        usernameElements.forEach((el) => { if (el) el.textContent = 'Sign in'; });
+        if (this.profileAvatar) {
+          this.profileAvatar.innerHTML = `<img src="/assets/Images/DefaultUser.png" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+          this.profileAvatar.style.background = 'transparent';
         }
       }
+    }
+
+    // Modal Identity Update
+    if (activeUser) {
+      if (this.modalUsername) this.modalUsername.textContent = activeUser.displayName || 'Sign in';
+      const modalAvatar = document.querySelector('.modal-avatar');
+      if (modalAvatar) {
+        const pic = activeUser.displayPicture || '/assets/Images/DefaultUser.png';
+        modalAvatar.innerHTML = `<img src="${pic}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        modalAvatar.style.background = 'transparent';
+      }
+      if (this.loginIdentifierInput) {
+        this.loginIdentifierInput.value = activeUser.identifier || '';
+      }
+    } else {
+      if (this.modalUsername) this.modalUsername.textContent = 'Sign in';
+      const modalAvatar = document.querySelector('.modal-avatar');
+      if (modalAvatar) {
+        modalAvatar.innerHTML = `<img src="/assets/Images/DefaultUser.png" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        modalAvatar.style.background = 'transparent';
+      }
+      if (this.loginIdentifierInput) {
+        this.loginIdentifierInput.value = '';
+      }
+    }
+
+    this.updateLoginHint();
+  }
+
+  renderMultiUserList(users, activeUser) {
+    if (!this.multiUserList) return;
+    this.multiUserList.innerHTML = '';
+
+    const activeId = activeUser?.id;
+
+    users.forEach((user) => {
+      const item = document.createElement('div');
+      item.className = 'user-item';
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('aria-label', `Sign in as ${user.displayName}`);
+
+      const pic = user.displayPicture || '/assets/Images/DefaultUser.png';
+      const isActive = user.id === activeId;
+
+      item.innerHTML = `
+        <div class="user-avatar-wrapper">
+          <img src="${pic}" alt="${user.displayName}" class="user-avatar-img">
+          ${isActive ? '<span class="user-badge-active" title="Active Account">✓</span>' : ''}
+        </div>
+        <span class="user-item-name">${user.displayName}</span>
+      `;
+
+      item.addEventListener('click', () => {
+        this.profileManager.setActiveUserId(user.id);
+        this.openLoginModal(user);
+      });
+
+      item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.promptRemoveAccount(user);
+      });
+
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.profileManager.setActiveUserId(user.id);
+          this.openLoginModal(user);
+        }
+      });
+
+      this.multiUserList.appendChild(item);
     });
   }
 
   updateLoginHint() {
-    const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
-    const touchIdEnabled = localStorage.getItem('touchIdEnabled') === 'true';
+    const activeUser = this.profileManager.getActiveUser();
+    const isRemembered = !!activeUser;
+    const touchIdEnabled = activeUser?.isTouchIdEnabled === true || localStorage.getItem('touchIdEnabled') === 'true';
     const touchidText = document.getElementById('touchidText');
 
     if (touchidText) {
@@ -289,13 +380,47 @@ export class AuthController {
   /* --------------------------------------------------------------------------
      MODAL CONTROLS & NAVIGATION
      -------------------------------------------------------------------------- */
-  async openLoginModal() {
+  async openLoginModal(targetUser = null) {
     await this.checkSecurityStatus();
     this.getBackgroundBrightness();
 
-    const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
-    if (this.loginIdentifierField) {
-      this.loginIdentifierField.style.display = isRemembered ? 'none' : 'block';
+    const user = targetUser || this.profileManager.getActiveUser();
+    const isRemembered = !!user;
+
+    if (user) {
+      if (this.modalUsername) this.modalUsername.textContent = user.displayName || 'Sign in';
+      const modalAvatar = document.querySelector('.modal-avatar');
+      if (modalAvatar) {
+        const pic = user.displayPicture || '/assets/Images/DefaultUser.png';
+        modalAvatar.innerHTML = `<img src="${pic}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        modalAvatar.style.background = 'transparent';
+      }
+      if (this.loginIdentifierInput) {
+        this.loginIdentifierInput.value = user.identifier || '';
+      }
+      if (this.loginIdentifierField) {
+        this.loginIdentifierField.style.display = 'none';
+      }
+      if (this.switchUserRow) {
+        this.switchUserRow.style.display = 'flex';
+      }
+    } else {
+      if (this.modalUsername) this.modalUsername.textContent = 'Sign in';
+      const modalAvatar = document.querySelector('.modal-avatar');
+      if (modalAvatar) {
+        modalAvatar.innerHTML = `<img src="/assets/Images/DefaultUser.png" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        modalAvatar.style.background = 'transparent';
+      }
+      if (this.loginIdentifierInput) {
+        this.loginIdentifierInput.value = '';
+      }
+      if (this.loginIdentifierField) {
+        this.loginIdentifierField.style.display = 'block';
+      }
+      if (this.switchUserRow) {
+        const totalUsers = this.profileManager.getUsers().length;
+        this.switchUserRow.style.display = totalUsers > 0 ? 'flex' : 'none';
+      }
     }
 
     const focusTarget = !isRemembered && !this.loginIdentifierInput?.value
@@ -305,8 +430,62 @@ export class AuthController {
     this.dialogManager.openModal(this.loginModal, focusTarget);
   }
 
+  openGenericLoginModal() {
+    if (this.modalUsername) this.modalUsername.textContent = 'Sign in';
+    const modalAvatar = document.querySelector('.modal-avatar');
+    if (modalAvatar) {
+      modalAvatar.innerHTML = `<img src="/assets/Images/DefaultUser.png" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+      modalAvatar.style.background = 'transparent';
+    }
+    if (this.loginIdentifierField) {
+      this.loginIdentifierField.style.display = 'block';
+    }
+    if (this.loginIdentifierInput) {
+      this.loginIdentifierInput.value = '';
+    }
+    if (this.passwordInput) {
+      this.passwordInput.value = '';
+    }
+    if (this.switchUserRow) {
+      this.switchUserRow.style.display = 'none';
+    }
+    this.dialogManager.openModal(this.loginModal, this.loginIdentifierInput);
+    setTimeout(() => {
+      try { this.loginIdentifierInput?.focus(); } catch (e) {}
+    }, 150);
+  }
+
+  promptRemoveAccount(user) {
+    if (!user) return;
+    this.pendingAccountRemovalId = user.id;
+
+    if (this.removeAccountAvatar) {
+      const pic = user.displayPicture || '/assets/Images/DefaultUser.png';
+      this.removeAccountAvatar.innerHTML = `<img src="${pic}" alt="${user.displayName}">`;
+    }
+    if (this.removeAccountTitle) {
+      this.removeAccountTitle.textContent = `Remove "${user.displayName}"?`;
+    }
+    if (this.removeAccountMessage) {
+      this.removeAccountMessage.textContent = `This account shortcut will be removed from the lock screen on this Mac.`;
+    }
+
+    this.dialogManager.openModal(this.removeAccountModal);
+  }
+
+  confirmRemoveAccount() {
+    if (this.pendingAccountRemovalId) {
+      this.profileManager.removeUser(this.pendingAccountRemovalId);
+      this.pendingAccountRemovalId = null;
+      this.dialogManager.closeModal(this.removeAccountModal);
+      this.syncProfile();
+    }
+  }
+
   resetLoginForm() {
-    const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
+    const activeUser = this.profileManager.getActiveUser();
+    const isRemembered = !!activeUser;
+
     if (this.loginIdentifierField) this.loginIdentifierField.style.display = isRemembered ? 'none' : 'block';
     if (this.recoveryIdentityField) this.recoveryIdentityField.style.display = 'none';
 
@@ -349,8 +528,9 @@ export class AuthController {
 
   goHome() {
     sessionStorage.setItem('macos_session_active', 'true');
+    document.body.setAttribute('data-unlock-state', 'finished');
+    document.body.classList.add('login-finished');
     this.dialogManager.closeAllModals();
-    document.body.classList.remove('login-active');
     window.location.replace('./home.html');
   }
 
@@ -383,13 +563,13 @@ export class AuthController {
       return;
     }
 
-    const { deviceName, deviceType } = await this.getDeviceInfo();
+    const { deviceName, deviceType, clientType } = await this.getDeviceInfo();
 
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password, deviceName, deviceType })
+        body: JSON.stringify({ identifier, password, deviceName, deviceType, clientType })
       });
 
       const data = await response.json();
@@ -439,28 +619,151 @@ export class AuthController {
     if (dismissStep) dismissStep.style.display = 'none';
 
     const googleEmail = (data && data.user && data.user.email) || (profile && profile.email) || '';
-    const emailInput = document.getElementById('workerEmailInput');
+    const identifierInput = document.getElementById('workerIdentifierInput') || document.getElementById('workerEmailInput');
+    const identifierLabel = document.getElementById('workerIdentifierLabel');
+    const typeEmailBtn = document.getElementById('workerTypeEmailBtn');
+    const typeUsernameBtn = document.getElementById('workerTypeUsernameBtn');
+    const googleCheckboxContainer = document.getElementById('workerGoogleEmailCheckboxContainer');
     const useGoogleEmailCheckbox = document.getElementById('workerUseGoogleEmailCheckbox');
+    const statusEl = document.getElementById('workerIdentifierStatus');
     const newPasswordInput = document.getElementById('workerNewPassword');
     const confirmPasswordInput = document.getElementById('workerConfirmPassword');
 
-    if (emailInput) {
-      emailInput.value = googleEmail;
-      emailInput.readOnly = true;
+    let currentIdType = 'email';
+    let usernameCheckTimeout = null;
+    let isUsernameAvailable = false;
+
+    const checkRealtimeUsername = (rawVal) => {
+      const val = (rawVal || '').trim();
+      if (!statusEl) return;
+      if (!val) {
+        statusEl.style.display = 'none';
+        isUsernameAvailable = false;
+        return;
+      }
+
+      if (val.length < 3) {
+        statusEl.style.display = 'block';
+        statusEl.style.color = '#FF453A';
+        statusEl.textContent = '✗ Must be at least 3 characters';
+        isUsernameAvailable = false;
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_.-]+$/.test(val)) {
+        statusEl.style.display = 'block';
+        statusEl.style.color = '#FF453A';
+        statusEl.textContent = '✗ Letters, numbers, underscores only';
+        isUsernameAvailable = false;
+        return;
+      }
+
+      statusEl.style.display = 'block';
+      statusEl.style.color = 'rgba(255, 255, 255, 0.7)';
+      statusEl.textContent = '⏳ Checking availability...';
+
+      fetch(`/api/auth/check-username?username=${encodeURIComponent(val)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (identifierInput && identifierInput.value.trim() !== val) return;
+          if (data.available) {
+            statusEl.style.display = 'block';
+            statusEl.style.color = '#30D158';
+            statusEl.textContent = `✓ ${data.message || 'Username available'}`;
+            isUsernameAvailable = true;
+          } else {
+            statusEl.style.display = 'block';
+            statusEl.style.color = '#FF453A';
+            statusEl.textContent = `✗ ${data.message || 'Username taken'}`;
+            isUsernameAvailable = false;
+          }
+        })
+        .catch(() => {
+          statusEl.style.display = 'none';
+        });
+    };
+
+    if (identifierInput) {
+      identifierInput.oninput = () => {
+        if (currentIdType === 'username') {
+          clearTimeout(usernameCheckTimeout);
+          usernameCheckTimeout = setTimeout(() => {
+            checkRealtimeUsername(identifierInput.value);
+          }, 280);
+        }
+      };
     }
+
+    const setIdentifierType = (type) => {
+      currentIdType = type;
+      if (statusEl) statusEl.style.display = 'none';
+      if (type === 'email') {
+        if (identifierLabel) identifierLabel.textContent = 'Email address';
+        if (identifierInput) {
+          identifierInput.placeholder = 'name@example.com';
+          identifierInput.type = 'email';
+          if (useGoogleEmailCheckbox && useGoogleEmailCheckbox.checked) {
+            identifierInput.value = googleEmail;
+            identifierInput.readOnly = true;
+          } else {
+            identifierInput.readOnly = false;
+          }
+        }
+        if (googleCheckboxContainer) googleCheckboxContainer.style.display = 'block';
+        if (typeEmailBtn) {
+          typeEmailBtn.style.background = 'rgba(255, 255, 255, 0.3)';
+          typeEmailBtn.style.color = '#fff';
+        }
+        if (typeUsernameBtn) {
+          typeUsernameBtn.style.background = 'transparent';
+          typeUsernameBtn.style.color = 'rgba(255, 255, 255, 0.65)';
+        }
+      } else {
+        if (identifierLabel) identifierLabel.textContent = 'Username';
+        if (identifierInput) {
+          identifierInput.placeholder = 'e.g. john_doe';
+          identifierInput.type = 'text';
+          identifierInput.readOnly = false;
+          if (identifierInput.value === googleEmail) {
+            identifierInput.value = googleEmail.split('@')[0] || '';
+          }
+          if (identifierInput.value) {
+            checkRealtimeUsername(identifierInput.value);
+          }
+        }
+        if (googleCheckboxContainer) googleCheckboxContainer.style.display = 'none';
+        if (typeUsernameBtn) {
+          typeUsernameBtn.style.background = 'rgba(255, 255, 255, 0.3)';
+          typeUsernameBtn.style.color = '#fff';
+        }
+        if (typeEmailBtn) {
+          typeEmailBtn.style.background = 'transparent';
+          typeEmailBtn.style.color = 'rgba(255, 255, 255, 0.65)';
+        }
+      }
+    };
+
+    if (typeEmailBtn) typeEmailBtn.onclick = () => setIdentifierType('email');
+    if (typeUsernameBtn) typeUsernameBtn.onclick = () => setIdentifierType('username');
 
     if (useGoogleEmailCheckbox) {
       useGoogleEmailCheckbox.checked = true;
       useGoogleEmailCheckbox.onchange = () => {
         if (useGoogleEmailCheckbox.checked) {
-          emailInput.value = googleEmail;
-          emailInput.readOnly = true;
+          if (identifierInput) {
+            identifierInput.value = googleEmail;
+            identifierInput.readOnly = true;
+          }
         } else {
-          emailInput.readOnly = false;
-          emailInput.focus();
+          if (identifierInput) {
+            identifierInput.readOnly = false;
+            identifierInput.focus();
+          }
         }
       };
     }
+
+    setIdentifierType('email');
 
     const setupToggle = (toggleBtnId, targetInput) => {
       const toggleBtn = document.getElementById(toggleBtnId);
@@ -512,24 +815,124 @@ export class AuthController {
         };
       }
 
-      const saveBtn = document.getElementById('saveWorkerPasswordBtn');
-      if (saveBtn) {
-        saveBtn.onclick = async () => {
-          const email = emailInput ? emailInput.value.trim() : '';
+      const inputStep = document.getElementById('workerPasswordInputStep');
+      const securityStep = document.getElementById('workerSecurityQuestionStep');
+      const dismissStep = document.getElementById('workerPasswordDismissStep');
+      const questionSelect = document.getElementById('workerSecurityQuestionSelect');
+      const answerInput = document.getElementById('workerSecurityAnswerInput');
+
+      const continueBtn = document.getElementById('saveWorkerPasswordBtn');
+      const backBtn = document.getElementById('backToWorkerCredentialsBtn');
+      const saveSecurityBtn = document.getElementById('saveWorkerSecurityBtn');
+
+      let validatedCredentials = null;
+
+      if (continueBtn) {
+        continueBtn.onclick = async () => {
+          const identifierVal = identifierInput ? identifierInput.value.trim() : '';
           const password = newPasswordInput ? newPasswordInput.value : '';
           const confirmation = confirmPasswordInput ? confirmPasswordInput.value : '';
-          if (!email) return alert('Please enter an email address.');
+          if (!identifierVal) return alert(`Please enter a ${currentIdType === 'email' ? 'email address' : 'username'}.`);
+          if (currentIdType === 'username' && identifierVal.length < 3) return alert('Username must be at least 3 characters.');
           if (!password) return alert('Please enter a password.');
           if (password !== confirmation) return alert('Passwords do not match.');
 
+          // If username, do a quick availability check if not already confirmed
+          if (currentIdType === 'username' && !isUsernameAvailable) {
+            try {
+              const chk = await fetch(`/api/auth/check-username?username=${encodeURIComponent(identifierVal)}`).then(r => r.json());
+              if (!chk.available) {
+                alert(chk.message || 'This username is already taken. Please choose another.');
+                return;
+              }
+            } catch (e) {
+              // Non-blocking if network check fails
+            }
+          }
+
+          validatedCredentials = {
+            identifierVal,
+            password,
+            currentIdType
+          };
+
+          if (inputStep) inputStep.style.display = 'none';
+          if (securityStep) {
+            securityStep.style.display = 'block';
+            if (questionSelect) {
+              setTimeout(() => {
+                if (!questionSelect.value) questionSelect.focus();
+                else if (answerInput) answerInput.focus();
+              }, 100);
+            }
+          }
+        };
+      }
+
+      if (backBtn) {
+        backBtn.onclick = () => {
+          if (securityStep) securityStep.style.display = 'none';
+          if (inputStep) {
+            inputStep.style.display = 'block';
+            if (newPasswordInput) setTimeout(() => newPasswordInput.focus(), 100);
+          }
+        };
+      }
+
+      if (saveSecurityBtn) {
+        saveSecurityBtn.onclick = async () => {
+          if (!validatedCredentials) {
+            if (securityStep) securityStep.style.display = 'none';
+            if (inputStep) inputStep.style.display = 'block';
+            return;
+          }
+
+          const selectedQuestion = questionSelect ? questionSelect.value : '';
+          const secretAnswer = answerInput ? answerInput.value.trim() : '';
+
+          if (!selectedQuestion) {
+            alert('Please select a security question.');
+            if (questionSelect) questionSelect.focus();
+            return;
+          }
+
+          if (!secretAnswer) {
+            alert('Please enter an answer to your security question.');
+            if (answerInput) answerInput.focus();
+            return;
+          }
+
+          const { identifierVal, password, currentIdType: idType } = validatedCredentials;
+
+          const payload = {
+            newPassword: password,
+            securityQuestion: selectedQuestion,
+            securityAnswer: secretAnswer
+          };
+
+          if (idType === 'username' || !identifierVal.includes('@')) {
+            payload.username = identifierVal;
+            payload.identifier = identifierVal;
+          } else {
+            payload.email = identifierVal;
+            payload.identifier = identifierVal;
+          }
+
           try {
+            const csrfToken = document.cookie.split('; ').find(i => i.startsWith('csrf_token='))?.split('=')[1];
+            const headers = { 'Content-Type': 'application/json' };
+            if (csrfToken) headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+
             const response = await fetch('/api/auth/update-security', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ newPassword: password, email: email })
+              credentials: 'include',
+              headers,
+              body: JSON.stringify(payload)
             });
             const resData = await response.json();
             if (!response.ok) return alert(resData.error || 'Unable to save credentials.');
+            
+            alert('✓ Local account credentials and security question saved successfully!');
             close();
           } catch (err) {
             console.error('Save credentials error:', err);
@@ -541,29 +944,33 @@ export class AuthController {
   }
 
   showRememberAccountPrompt(identifier, profile) {
-    const rememberDismissed = localStorage.getItem('macos_remember_prompt_dismissed') === 'true';
-    const accountIsRemembered = localStorage.getItem('macos_remember_account') === 'true';
+    const normIdentifier = (identifier || profile?.email || profile?.username || '').trim();
+    const userId = profile?.id || null;
+    const isThisAccountRemembered = this.profileManager.isUserRemembered(normIdentifier, userId);
 
     const saveRememberedProfile = () => {
-      localStorage.setItem('macos_remember_account', 'true');
-      localStorage.setItem('macos_user_identifier', identifier);
-      if (profile?.display_name) localStorage.setItem('macos_user_display_name', profile.display_name);
-      if (profile?.display_picture) localStorage.setItem('macos_user_display_picture', profile.display_picture);
+      this.profileManager.saveUser({
+        id: userId,
+        identifier: normIdentifier,
+        displayName: profile?.display_name || profile?.full_name || profile?.name || (normIdentifier ? normIdentifier.split('@')[0] : 'User'),
+        displayPicture: profile?.display_picture || profile?.profile_picture || null,
+        role: profile?.role || 'user',
+        isTouchIdEnabled: localStorage.getItem('touchIdEnabled') === 'true'
+      });
       this.syncProfile();
     };
 
     const discardRememberedProfile = () => {
-      localStorage.removeItem('macos_remember_account');
-      localStorage.removeItem('macos_user_identifier');
-      localStorage.removeItem('macos_user_display_name');
-      localStorage.removeItem('macos_user_display_picture');
+      if (normIdentifier) {
+        this.profileManager.removeUser(normIdentifier);
+      }
       this.syncProfile();
     };
 
     const showTouchIdChoice = () => {
       if (
         localStorage.getItem('touchIdEnabled') === 'true' ||
-        localStorage.getItem('macos_touchid_prompt_dismissed') === 'true'
+        localStorage.getItem(`macos_touchid_prompt_dismissed_${normIdentifier}`) === 'true'
       ) {
         this.goHome();
         return;
@@ -574,11 +981,12 @@ export class AuthController {
       this.dialogManager.openModal(this.accountPreferenceModal);
     };
 
-    if (accountIsRemembered) {
+    if (isThisAccountRemembered) {
+      // Account is already remembered -> refresh stored details and proceed
+      saveRememberedProfile();
       showTouchIdChoice();
-    } else if (rememberDismissed) {
-      this.goHome();
     } else {
+      // Account is NOT remembered yet -> show Remember Account prompt
       if (this.rememberAccountStep) this.rememberAccountStep.style.display = 'block';
       if (this.rememberAccountWarningStep) this.rememberAccountWarningStep.style.display = 'none';
       if (this.rememberAccountDismissStep) this.rememberAccountDismissStep.style.display = 'none';
@@ -588,13 +996,13 @@ export class AuthController {
     }
 
     const continueWithoutRemembering = () => {
-      localStorage.setItem('macos_remember_prompt_dismissed', 'true');
+      localStorage.setItem(`macos_remember_prompt_dismissed_${normIdentifier}`, 'true');
       discardRememberedProfile();
       this.goHome();
     };
 
     const continueWithoutTouchId = () => {
-      localStorage.setItem('macos_touchid_prompt_dismissed', 'true');
+      localStorage.setItem(`macos_touchid_prompt_dismissed_${normIdentifier}`, 'true');
       this.goHome();
     };
 
@@ -808,7 +1216,7 @@ export class AuthController {
       const assertion = await navigator.credentials.get({ publicKey: options });
 
       if (assertion) {
-        const { deviceName, deviceType } = await this.getDeviceInfo();
+        const { deviceName, deviceType, clientType } = await this.getDeviceInfo();
         const response = await fetch('/api/auth/webauthn/authentication-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -816,14 +1224,14 @@ export class AuthController {
             identifier,
             deviceName,
             deviceType,
+            clientType,
             response: this.serializeCredential(assertion)
           })
         });
 
         if (response.ok) {
-          sessionStorage.setItem('macos_session_active', 'true');
-          this.dialogManager.closeAllModals();
-          setTimeout(() => { window.location.href = './home.html'; }, 300);
+          const profile = await this.loadAuthenticatedProfile();
+          this.showRememberAccountPrompt(identifier, profile);
         } else {
           const data = await response.json();
           alert(data.error || 'Biometric login failed');
@@ -885,8 +1293,8 @@ export class AuthController {
   async handleGoogleCredential(response, linkPassword = null) {
     try {
       if (!response?.credential) throw new Error('Google did not return an ID token. Please try again.');
-      const { deviceName, deviceType } = await this.getDeviceInfo();
-      const body = { idToken: response.credential, deviceName, deviceType };
+      const { deviceName, deviceType, clientType } = await this.getDeviceInfo();
+      const body = { idToken: response.credential, deviceName, deviceType, clientType };
       if (linkPassword) body.linkPassword = linkPassword;
 
       const result = await fetch('/api/auth/google/worker-login', {
@@ -1150,13 +1558,38 @@ export class AuthController {
     document.getElementById('forgotPasswordText')?.addEventListener('click', () => this.handleForgotPassword());
     document.getElementById('touchidText')?.addEventListener('click', () => this.handleTouchID());
 
-    // Profile Click / Context Menu
+    // Switch User Handler
+    this.switchUserBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openGenericLoginModal();
+    });
+
+    // Remove Account Confirmation Modal Listeners
+    this.confirmRemoveAccountBtn?.addEventListener('click', () => {
+      this.confirmRemoveAccount();
+    });
+
+    this.cancelRemoveAccountBtn?.addEventListener('click', () => {
+      this.pendingAccountRemovalId = null;
+      this.dialogManager.closeModal(this.removeAccountModal);
+    });
+
+    // Profile updates from Settings or other components
+    window.addEventListener('macos-profiles-updated', () => {
+      this.syncProfile();
+    });
+
+    window.addEventListener('macos-profile-updated', () => {
+      this.syncProfile();
+    });
+
+    // Profile Click / Context Menu (Fallback single-user view)
     if (this.profileAvatar) {
       this.profileAvatar.addEventListener('click', () => this.openLoginModal());
       this.profileAvatar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (localStorage.getItem('macos_remember_account') === 'true') {
+        if (this.profileManager.getUsers().length > 0) {
           this.profileMenu?.classList.add('active');
         }
       });
@@ -1167,13 +1600,12 @@ export class AuthController {
     }
 
     document.getElementById('forgetRememberedAccountBtn')?.addEventListener('click', async () => {
-      localStorage.removeItem('macos_remember_account');
-      localStorage.removeItem('macos_remember_prompt_dismissed');
-      localStorage.removeItem('macos_user_identifier');
-      localStorage.removeItem('macos_user_display_name');
-      localStorage.removeItem('macos_user_display_picture');
-      localStorage.removeItem('touchIdEnabled');
-      localStorage.removeItem('touchIdCredId');
+      const active = this.profileManager.getActiveUser();
+      if (active) {
+        this.profileManager.removeUser(active.id);
+      } else {
+        this.profileManager.clearAllUsers();
+      }
       sessionStorage.removeItem('macos_session_active');
       if (this.profileMenu) this.profileMenu.classList.remove('active');
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
@@ -1310,8 +1742,12 @@ export class AuthController {
      -------------------------------------------------------------------------- */
   async getDeviceInfo() {
     const userAgent = navigator.userAgent;
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                  window.navigator.standalone === true || 
+                  document.referrer.includes('android-app://');
+    let clientType = isPWA ? 'pwa' : 'web';
     let deviceName = 'Generic Device';
-    let deviceType = /Mobi|Android/i.test(userAgent) ? 'Mobile' : 'Desktop';
+    let deviceType = isPWA ? 'Mobile (PWA)' : (/Mobi|Android/i.test(userAgent) ? 'Mobile' : 'Desktop');
 
     try {
       const res = await fetch('/api/system/info');
@@ -1361,11 +1797,6 @@ export class AuthController {
       }
     }
 
-    const firstName = this.profileUsername?.textContent.split(' ')[0] || '';
-    if (firstName && ['Windows PC', 'MacBook Pro', 'iPhone', 'Generic Device'].some((n) => deviceName.includes(n))) {
-      deviceName = `${firstName}'s ${deviceName}`;
-    }
-
-    return { deviceName, deviceType };
+    return { deviceName, deviceType, clientType };
   }
 }

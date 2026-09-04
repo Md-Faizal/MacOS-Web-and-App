@@ -206,6 +206,17 @@
 .btn-danger:hover {
   background: rgba(255, 59, 48, 0.2);
 }
+.btn-danger-ghost {
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff3b30;
+  border: 1px solid rgba(255, 59, 48, 0.25);
+  transition: all 0.2s ease;
+}
+.btn-danger-ghost:hover {
+  background: rgba(255, 59, 48, 0.25);
+  border-color: rgba(255, 59, 48, 0.5);
+  color: #fff;
+}
 
 /* Modal for Editing */
 .admin-modal-overlay {
@@ -857,4 +868,156 @@
   background: #f5f5f7 !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   color: #1d1d1f !important;
+}
+
+/* Lifecycle History Modal */
+.lifecycle-overview-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.lifecycle-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+
+.lifecycle-user-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.lifecycle-user-email {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lifecycle-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  font-size: 11.5px;
+}
+
+.lifecycle-meta-label {
+  color: rgba(255, 255, 255, 0.5);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.lifecycle-meta-value {
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.lifecycle-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lifecycle-event-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.lifecycle-event-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.lifecycle-event-time {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.lifecycle-event-desc {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.lifecycle-audit-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+/* Light Mode Overrides for Lifecycle History Modal */
+[data-theme="light"] .lifecycle-overview-card {
+  background: #f5f5f7;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .lifecycle-overview-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .lifecycle-user-name {
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .lifecycle-user-email {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="light"] .lifecycle-meta-label {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .lifecycle-meta-value {
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .lifecycle-section-title {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] .lifecycle-event-card {
+  background: #f9f9fb;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .lifecycle-event-title {
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .lifecycle-event-time {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] .lifecycle-event-desc {
+  color: rgba(0, 0, 0, 0.8);
+}
+
+[data-theme="light"] .lifecycle-audit-item {
+  background: #f0f0f2;
+}
+
+[data-theme="light"] .modal-title {
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .modal-close {
+  color: rgba(0, 0, 0, 0.6);
 }

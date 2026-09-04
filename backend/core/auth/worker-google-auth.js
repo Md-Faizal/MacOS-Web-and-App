@@ -56,8 +56,14 @@ module.exports = function(db, permissionsHelper) {
      */
     loginWithGoogle: async (req, res) => {
       try {
-        const { idToken, code, redirectUri, deviceName, deviceType, linkPassword } = req.body;
-        const isWebLogin = typeof req?.get === 'function' && (deviceType || 'Web').toLowerCase() !== 'android';
+        const { idToken, code, redirectUri, deviceName, deviceType, clientType, linkPassword } = req.body;
+        const clientPlatformHeader = (req.headers['x-client-platform'] || '').toLowerCase();
+        const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
+        const isAndroidApp = (clientType === 'native_android') || (deviceType && (deviceType.toLowerCase() === 'android' || deviceType.toLowerCase() === 'android app')) || (clientPlatformHeader === 'android' && !isPWA) || (req.headers['x-app-type'] === 'native_android');
+        const isWebLogin = !isAndroidApp;
+
+        const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : 'web');
+        const resolvedDeviceType = isAndroidApp ? 'Android App' : (isPWA ? 'Mobile (PWA)' : (deviceType || (isWebLogin ? 'Desktop' : 'Mobile')));
 
         let googleUser = null;
 
@@ -302,30 +308,46 @@ module.exports = function(db, permissionsHelper) {
           WHERE id = ?
         `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
 
-        let deviceId = null;
-        if (deviceName) {
-          db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(targetUser.id);
-          db.prepare(`
-            INSERT INTO user_devices (user_id, device_name, device_type, is_current, last_login, last_seen)
-            VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ON CONFLICT(user_id, device_name) DO UPDATE SET
-              last_login = excluded.last_login,
-              last_seen = excluded.last_seen,
-              is_current = 1,
-              device_type = excluded.device_type
-          `).run(targetUser.id, deviceName, deviceType || 'Web', 1);
+        let resolvedDeviceName = (deviceName || '').trim();
+        if (!resolvedDeviceName || resolvedDeviceName === 'Generic Device' || resolvedDeviceName.startsWith("Sign's ")) {
+          resolvedDeviceName = isAndroidApp ? 'Android Device' : (isPWA ? 'Mobile Device' : (isWebLogin ? 'Windows PC (x64)' : 'Mobile Device'));
+        }
+        resolvedDeviceName = resolvedDeviceName.replace(/^[A-Za-z0-9_]+'s\s+/, '');
+        resolvedDeviceName = resolvedDeviceName.replace(/\s*\((PWA|Native App|Mobile Web)\)\s*$/i, '').trim();
+        const googleFirstName = (googleUser.name || targetUser.full_name || targetUser.username || '').split(' ')[0].trim();
+        if (googleFirstName && !['sign', 'generic', 'user'].includes(googleFirstName.toLowerCase())) {
+          resolvedDeviceName = `${googleFirstName}'s ${resolvedDeviceName}`;
+        }
 
-          const dev = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
-            .get(targetUser.id, deviceName);
-          deviceId = dev?.id;
-          if (dev) {
-            db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(dev.id, 'success');
-          }
+        if (isAndroidApp) {
+          resolvedDeviceName = `${resolvedDeviceName} (Native App)`;
+        } else if (isPWA) {
+          resolvedDeviceName = `${resolvedDeviceName} (PWA)`;
+        }
+
+        let deviceId = null;
+        db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(targetUser.id);
+        db.prepare(`
+          INSERT INTO user_devices (user_id, device_name, device_type, client_type, is_current, last_login, last_seen)
+          VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+          ON CONFLICT(user_id, device_name) DO UPDATE SET
+            last_login = excluded.last_login,
+            last_seen = excluded.last_seen,
+            is_current = 1,
+            device_type = excluded.device_type,
+            client_type = excluded.client_type
+        `).run(targetUser.id, resolvedDeviceName, resolvedDeviceType, resolvedClientType, 1);
+
+        const dev = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
+          .get(targetUser.id, resolvedDeviceName);
+        deviceId = dev?.id;
+        if (dev) {
+          db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(dev.id, 'success');
         }
 
         if (isWebLogin) {
-          const session = issueWebSession(req, res, targetUser.id, deviceId);
-          auditService.record({ req, eventType: 'login', outcome: 'success', userId: targetUser.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: 'google' });
+          const session = issueWebSession(req, res, targetUser.id, deviceId, 'google', false, resolvedClientType);
+          auditService.record({ req, eventType: 'login', outcome: 'success', userId: targetUser.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'google' });
           const permissions = permissionsHelper && targetUser.role === 'worker' ? permissionsHelper.getUserPermissionsSnapshot(targetUser.id, 'worker') : null;
           return res.json({
             success: true,

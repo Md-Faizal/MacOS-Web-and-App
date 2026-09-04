@@ -16,10 +16,61 @@
 
   <script src="/scripts/shared/csrf.js"></script>
   
+  <script>
+    // Global Theme & Appearance Bootstrapper
+    (function() {
+      const applyResolvedTheme = (rawTheme) => {
+        let resolved = rawTheme;
+        if (rawTheme === 'auto') {
+          resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', resolved);
+        document.documentElement.setAttribute('data-macos-theme', resolved);
+        if (document.body) document.body.setAttribute('data-theme', resolved);
+      };
+
+      const cachedTheme = localStorage.getItem('macos_theme') || 'auto';
+      applyResolvedTheme(cachedTheme);
+
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        const current = localStorage.getItem('macos_theme') || 'auto';
+        if (current === 'auto') applyResolvedTheme('auto');
+      });
+
+      window.addEventListener('macos-theme-changed', (e) => {
+        if (e.detail?.theme) {
+          applyResolvedTheme(e.detail.theme);
+        }
+      });
+
+      // Sync with server DB settings
+      fetch('/api/settings').then(r => r.json()).then(data => {
+        if (data && data.theme) {
+          localStorage.setItem('macos_theme', data.theme);
+          applyResolvedTheme(data.theme);
+        }
+      }).catch(() => {});
+    })();
+  </script>
+
   <style id="auth-guard-style">
     body { display: none !important; }
   </style>
   <script>
+    // Global fetch interceptor to tag platform (PWA vs Web Desktop)
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
+                  window.navigator.standalone === true || 
+                  document.referrer.includes('android-app://');
+    const nativeFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+      const opts = { ...options };
+      opts.headers = new Headers(opts.headers || {});
+      if (!opts.headers.has('X-Client-Platform')) {
+        opts.headers.set('X-Client-Platform', isPWA ? 'pwa' : 'web');
+      }
+      return nativeFetch.call(this, url, opts);
+    };
+
     // Strict Session Guard: Block direct unauthenticated access to home.html
     (async function() {
       const redirectToLogin = () => {
@@ -67,17 +118,37 @@
         if (guardStyle) guardStyle.remove();
 
         // 4. Start periodic background session validation & device heartbeat (every 30s)
+        let consecutiveAuthFailures = 0;
         setInterval(async () => {
+          if (!navigator.onLine) {
+            // Offline - do not terminate session due to temporary disconnect
+            return;
+          }
           try {
             const checkRes = await fetch('/api/auth/verify');
-            if (!checkRes.ok) throw new Error('Session invalid');
-            const data = await checkRes.json();
-            if (!data.authenticated) throw new Error('Not authenticated');
+            if (checkRes.status === 401) {
+              consecutiveAuthFailures++;
+              if (consecutiveAuthFailures >= 2) {
+                console.warn('Background session validation failed (terminated remotely or expired), locking screen...');
+                sessionStorage.removeItem('macos_session_active');
+                alert('Your session has ended or was terminated from another device.');
+                window.location.replace('index.html');
+              }
+              return;
+            }
+            if (checkRes.ok) {
+              consecutiveAuthFailures = 0;
+              const data = await checkRes.json();
+              if (!data.authenticated) {
+                sessionStorage.removeItem('macos_session_active');
+                alert('Your session has ended or was terminated from another device.');
+                window.location.replace('index.html');
+              }
+            }
           } catch (e) {
-            console.warn('Background session validation failed (terminated remotely or expired), locking screen...');
-            sessionStorage.removeItem('macos_session_active');
-            alert('Your session has ended or was terminated from another device.');
-            window.location.replace('index.html');
+            // Transient network error (laptop sleep/wake, Wi-Fi reconnection, packet drop)
+            // Silently log and wait for next interval instead of prematurely logging user out!
+            console.warn('Session verification background check temporarily unreachable:', e.message);
           }
         }, 30000); // 30 seconds
       } catch (err) {
@@ -134,11 +205,12 @@
   <link rel="stylesheet" href="modules/billing/css/edit-bills-payments.css">
   <link rel="stylesheet" href="modules/billing/css/payment-credit-note.css">
   <link rel="stylesheet" href="modules/calculator/css/calculator.css">
-  <link rel="stylesheet" href="modules/product-list/css/product-list.css">
+  <link rel="stylesheet" href="modules/product-list/css/product-list.css?v=20260904_v16">
   <link rel="stylesheet" href="modules/product-list/css/qr-styles.css">
   <link rel="stylesheet" href="modules/ai-vision/css/ai-vision.css">
   <link rel="stylesheet" href="styles/ai-assistant/ai-assistant.css">
   <link rel="stylesheet" href="shared/connectivity.css">
+  <link rel="stylesheet" href="shared/worker-badges.css">
 
   <style>
     /* ===== BASE RESET ===== */
@@ -694,6 +766,7 @@
       transition: all 0.2s ease;
     }
   </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- ========================================
@@ -858,15 +931,14 @@
   <!-- Calculator App -->
   <script type="module" src="/modules/calculator/js/calculator.js"></script>
 
-  <!-- Settings App -->
-  <script type="module" src="/modules/settings/js/settings.js"></script>
-  <script type="module" src="/scripts/shared/connectivity.js"></script>
-  <script type="module" src="/scripts/shared/notifications.js"></script>
+  <!-- Shared Utilities -->
+  <script type="module" src="/shared/worker-badges.js"></script>
+
   <!-- App Launchers -->
   <script type="module" src="/modules/contacts/js/contacts.js"></script>
 
   <!-- Product Manager App -->
-  <script type="module" src="/modules/product-list/js/product-list.js"></script>
+  <script type="module" src="/modules/product-list/js/product-list.js?v=20260904_v16"></script>
 
   <!-- Launchpad App -->
   <script type="module" src="/modules/launchpad/js/launchpad.js"></script>

@@ -1,5 +1,0 @@
-CREATE TABLE migrations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT UNIQUE NOT NULL,
-          run_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )

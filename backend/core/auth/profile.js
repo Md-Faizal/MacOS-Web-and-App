@@ -34,7 +34,16 @@ module.exports = function(db) {
         // Note: name_source is now treated as the master 'identity_source' for Name & Email
         profile.display_name = profile.name_source === 'google' && profile.google_name ? profile.google_name : profile.full_name;
         profile.display_email = profile.name_source === 'google' && profile.google_email ? profile.google_email : profile.email_id;
-        profile.display_picture = profile.picture_source === 'google' && profile.google_picture ? profile.google_picture : profile.profile_picture;
+        
+        // Default to Google picture if no local picture is uploaded
+        if (profile.picture_source === 'google') {
+          profile.display_picture = profile.google_picture || profile.profile_picture || null;
+        } else if (!profile.profile_picture && profile.google_picture) {
+          profile.display_picture = profile.google_picture;
+          profile.picture_source = 'google';
+        } else {
+          profile.display_picture = profile.profile_picture || null;
+        }
         
         res.json({ success: true, profile });
       } catch (error) {
@@ -90,87 +99,88 @@ module.exports = function(db) {
      */
     updateProfile: (req, res) => {
       try {
-        const { full_name, email_id, username, profile_picture, name_source, picture_source } = req.body;
+        const userId = req.user.userId;
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        const { full_name, email_id, email, display_name, username, profile_picture, name_source, picture_source } = req.body;
         
-        if (!full_name || !email_id) {
+        const effectiveName = (full_name || display_name || user.full_name || '').trim();
+        const effectiveEmail = (email_id || email || user.email || '').trim().toLowerCase();
+        const normalizedUsername = username && typeof username === 'string' && username.trim() ? username.trim() : (user.username || null);
+
+        if (!effectiveName || !effectiveEmail) {
           return res.status(400).json({ error: 'Name and Email are required' });
         }
 
-        const userId = req.user.userId;
-        const normalizedEmail = email_id.trim().toLowerCase();
-        const normalizedUsername = username?.trim().toLowerCase() || null;
         const conflict = db.prepare(`
           SELECT id FROM users
           WHERE (
               LOWER(email) = ?
               OR LOWER(google_email) = ?
-              OR (? IS NOT NULL AND LOWER(username) = ?)
-              OR EXISTS (
-                SELECT 1 FROM user_profile legacy_profile
-                WHERE legacy_profile.id = users.id
-                  AND LOWER(legacy_profile.google_email) = ?
-              )
+              OR (? IS NOT NULL AND LOWER(username) = LOWER(?))
             )
             AND id <> ?
           LIMIT 1
         `).get(
-          normalizedEmail,
-          normalizedEmail,
+          effectiveEmail,
+          effectiveEmail,
           normalizedUsername,
           normalizedUsername,
-          normalizedEmail,
           userId
         );
 
         if (conflict) {
-          return res.status(409).json({ error: 'Username or email is already in use' });
+          return res.status(409).json({ error: 'Username or email is already in use by another account' });
         }
 
-        db.prepare(`
-          UPDATE users SET full_name = ?, email = ?, username = COALESCE(?, username), updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(full_name.trim(), normalizedEmail, normalizedUsername, userId);
+        const userUpdates = ['full_name = ?', 'email = ?', 'updated_at = CURRENT_TIMESTAMP'];
+        const userParams = [effectiveName, effectiveEmail];
 
-        const existing = db.prepare('SELECT id FROM user_profile WHERE id = ?').get(userId);
-        
-        if (existing) {
-          const stmt = db.prepare(`
-            UPDATE user_profile SET 
-              full_name = ?,
-              email_id = ?,
-              profile_picture = ?,
-              name_source = ?,
-              picture_source = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `);
-          stmt.run(
-            full_name, 
-            email_id, 
-            profile_picture, 
-            name_source || 'local', 
-            picture_source || 'local',
-            userId
-          );
-        } else {
-          const stmt = db.prepare(`
-            INSERT INTO user_profile (id, full_name, email_id, profile_picture, name_source, picture_source)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `);
-          stmt.run(
-            userId,
-            full_name, 
-            email_id, 
-            profile_picture, 
-            name_source || 'local', 
-            picture_source || 'local'
-          );
+        if (normalizedUsername !== null) {
+          userUpdates.push('username = ?');
+          userParams.push(normalizedUsername);
+        }
+
+        userParams.push(userId);
+        db.prepare(`
+          UPDATE users SET ${userUpdates.join(', ')}
+          WHERE id = ?
+        `).run(...userParams);
+
+        // Sync legacy user_profile only if FK matches auth_credentials
+        try {
+          const inAuthCreds = db.prepare('SELECT id FROM auth_credentials WHERE id = ?').get(userId);
+          if (inAuthCreds) {
+            const existing = db.prepare('SELECT id FROM user_profile WHERE id = ?').get(userId);
+            if (existing) {
+              db.prepare(`
+                UPDATE user_profile SET 
+                  full_name = ?,
+                  email_id = ?,
+                  profile_picture = ?,
+                  name_source = ?,
+                  picture_source = ?,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+              `).run(effectiveName, effectiveEmail, profile_picture || null, name_source || 'local', picture_source || 'local', userId);
+            } else {
+              db.prepare(`
+                INSERT INTO user_profile (id, full_name, email_id, profile_picture, name_source, picture_source)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `).run(userId, effectiveName, effectiveEmail, profile_picture || null, name_source || 'local', picture_source || 'local');
+            }
+          }
+        } catch (profileErr) {
+          console.warn('Optional user_profile sync skipped:', profileErr.message);
         }
         
         res.json({ success: true, message: 'Profile updated successfully' });
       } catch (error) {
         console.error('Update profile error:', error);
-        res.status(500).json({ error: 'Failed to update profile' });
+        res.status(500).json({ error: error.message || 'Failed to update profile' });
       }
     },
 
@@ -190,7 +200,7 @@ module.exports = function(db) {
 
         // Verify password if local password exists
         if (user.password_hash && password) {
-          const bcrypt = require('bcrypt');
+          const bcrypt = require('bcryptjs');
           if (!bcrypt.compareSync(password, user.password_hash)) {
             return res.status(401).json({ error: 'Incorrect password' });
           }
@@ -206,12 +216,10 @@ module.exports = function(db) {
             WHERE id = ?
           `).run(reason || 'Worker requested account deletion', userId);
 
-          const notifId = crypto.randomUUID();
           db.prepare(`
-            INSERT INTO owner_notifications (id, type, title, body, data)
-            VALUES (?, 'worker_deletion_request', 'Worker Deletion Request', ?, ?)
+            INSERT INTO owner_notifications (type, title, body, data)
+            VALUES ('worker_deletion_request', 'Worker Deletion Request', ?, ?)
           `).run(
-            notifId,
             `Worker ${user.full_name || user.email} requested account deletion.`,
             JSON.stringify({ userId, email: user.email, name: user.full_name, reason: reason || 'Not specified' })
           );

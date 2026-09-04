@@ -136,9 +136,18 @@ app.use((req, res, next) => {
     });
   }
 
+  const isAuthEntrypoint = [
+    '/api/auth/login',
+    '/api/auth/google/worker-login',
+    '/api/auth/mobile/refresh',
+    '/api/auth/verify-answer',
+    '/api/auth/challenge',
+    '/api/auth/update-security'
+  ].includes(req.path);
+
   const hasBrowserSession = !!req.cookies?.auth_session;
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
+  if (!isAuthEntrypoint && hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
     return res.status(403).json({ error: 'CSRF validation failed' });
   }
   next();
@@ -366,8 +375,10 @@ app.get('/api/auth/verify', authModule.authMiddleware, (req, res) => {
 });
 app.post('/api/auth/logout', authModule.logout);
 app.get('/api/auth/status', authModule.getStatus);
+app.get('/api/auth/check-username', authModule.checkUsername);
 app.get('/api/auth/questions', authModule.getSecurityQuestions);
 app.get('/api/auth/challenge', authModule.getChallengeQuestion);
+app.post('/api/auth/challenge', authModule.verifyAnswer);
 app.post('/api/auth/verify-answer', authModule.verifyAnswer);
 app.get('/api/auth/verify-answer', (req, res) => {
   res.setHeader('Allow', 'POST');
@@ -377,6 +388,8 @@ app.get('/api/auth/webauthn/registration-options', authModule.authMiddleware, au
 app.post('/api/auth/webauthn/registration-verify', authModule.authMiddleware, authModule.verifyWebAuthnRegistration);
 app.get('/api/auth/webauthn/authentication-options', authModule.getWebAuthnAuthenticationOptions);
 app.post('/api/auth/webauthn/authentication-verify', authModule.verifyWebAuthnAuthentication);
+app.post('/api/auth/mobile/biometric/register', authModule.authMiddleware, authModule.registerMobileBiometric);
+app.delete('/api/auth/mobile/biometric', authModule.authMiddleware, authModule.revokeMobileBiometric);
 app.post('/api/auth/update-security', authModule.authMiddleware, authModule.updateSecurity);
 
 // Owner administration routes

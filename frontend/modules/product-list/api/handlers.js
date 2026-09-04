@@ -1,3 +1,5 @@
+const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+
 function naturalSortBatches(batches) {
   if (!Array.isArray(batches)) return [];
   return batches.sort((a, b) => 
@@ -12,6 +14,8 @@ module.exports = function(db) {
     throw new Error('Database not initialized');
   }
   
+  const activityLogger = createActivityLogger(db);
+  
   return {
     // ============= PRODUCTS =============
     getProducts: (req, res) => {
@@ -25,9 +29,15 @@ module.exports = function(db) {
         if (searchQuery) {
           // Search by product name (case-insensitive)
           stmt = db.prepare(`
-            SELECT p.*, c.name as category_name
+            SELECT p.*, c.name as category_name,
+                   COALESCE(u_creator.role, 'owner') as created_by_role,
+                   COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                   u_editor.role as last_edited_by_role,
+                   COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+            LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
             WHERE LOWER(p.name) LIKE LOWER(?)
             ORDER BY p.created_at DESC
           `);
@@ -35,9 +45,15 @@ module.exports = function(db) {
         } else {
           // Get all products
           stmt = db.prepare(`
-            SELECT p.*, c.name as category_name
+            SELECT p.*, c.name as category_name,
+                   COALESCE(u_creator.role, 'owner') as created_by_role,
+                   COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                   u_editor.role as last_edited_by_role,
+                   COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
             FROM products p
             LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+            LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
             ORDER BY p.created_at DESC
           `);
           products = stmt.all();
@@ -48,7 +64,7 @@ module.exports = function(db) {
             SELECT id, product_id, pack_size_value, pack_size_type, created_at, updated_at
             FROM variants
             WHERE product_id = ?
-            ORDER BY id
+            ORDER BY CAST(pack_size_value AS REAL) ASC, id ASC
           `);
           const variants = variantsStmt.all(product.id);
 
@@ -142,16 +158,17 @@ module.exports = function(db) {
           }
         }
 
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
         // Use a transaction for atomic product creation
         const createTransaction = db.transaction((data) => {
           const { name, finalCategoryId, classification, variants } = data;
           
           // 1. Create product
           const productStmt = db.prepare(`
-            INSERT INTO products (name, category_id, classification, created_at, updated_at)
-            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO products (name, category_id, classification, created_by_user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
           `);
-          const productInfo = productStmt.run(name, finalCategoryId || null, classification || null);
+          const productInfo = productStmt.run(name, finalCategoryId || null, classification || null, creatorId);
           const productId = productInfo.lastInsertRowid;
 
           // 2. Insert variants and their batches
@@ -192,6 +209,16 @@ module.exports = function(db) {
 
         const productId = createTransaction({ name, finalCategoryId, classification, variants });
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'products',
+          action: 'create',
+          resourceType: 'product',
+          resourceId: productId,
+          resourceName: name,
+          metadata: { category_id: finalCategoryId, classification, variants_count: variants ? variants.length : 0 }
+        });
+
         res.status(201).json({ 
           success: true, 
           id: productId,
@@ -213,9 +240,15 @@ module.exports = function(db) {
         if (!id) return res.status(400).json({ error: 'Product ID required' });
 
         const stmt = db.prepare(`
-          SELECT p.*, c.name as category_name
+          SELECT p.*, c.name as category_name,
+                 COALESCE(u_creator.role, 'owner') as created_by_role,
+                 COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                 u_editor.role as last_edited_by_role,
+                 COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
           FROM products p
           LEFT JOIN categories c ON p.category_id = c.id
+          LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
           WHERE p.id = ?
         `);
         const product = stmt.get(id);
@@ -279,6 +312,7 @@ module.exports = function(db) {
           }
         }
 
+        const editorId = req.user ? (req.user.id || req.user.userId) : null;
         // Use a transaction for comprehensive product update
         const updateTransaction = db.transaction((data) => {
           const { productId, name, categoryId, classification, variants } = data;
@@ -289,10 +323,11 @@ module.exports = function(db) {
             SET name = COALESCE(?, name),
                 category_id = COALESCE(?, category_id),
                 classification = COALESCE(?, classification),
+                last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
                 updated_at = datetime('now')
             WHERE id = ?
           `);
-          const productResult = productStmt.run(name || null, categoryId || null, classification || null, productId);
+          const productResult = productStmt.run(name || null, categoryId || null, classification || null, editorId, productId);
           
           if (productResult.changes === 0) {
             // Check if product actually exists
@@ -388,6 +423,16 @@ module.exports = function(db) {
 
         updateTransaction({ productId: id, name, categoryId: finalCategoryId, classification, variants });
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'products',
+          action: 'update',
+          resourceType: 'product',
+          resourceId: id,
+          resourceName: name || null,
+          metadata: { category_id: finalCategoryId, classification }
+        });
+
         res.json({ success: true, id });
       } catch (error) {
         console.error(`[API ERROR] Failed to update product ${req.params.id}:`, error);
@@ -401,6 +446,8 @@ module.exports = function(db) {
 
         const { id } = req.params;
         if (!id) return res.status(400).json({ error: 'Product ID required' });
+
+        const prod = db.prepare('SELECT name FROM products WHERE id = ?').get(id);
 
         // Use a transaction for atomic and safe manual cascade deletion
         const deleteTransaction = db.transaction((productId) => {
@@ -434,6 +481,15 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Product not found' });
         }
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'products',
+          action: 'delete',
+          resourceType: 'product',
+          resourceId: id,
+          resourceName: prod ? prod.name : null
+        });
+
         res.json({ success: true, id });
       } catch (error) {
         console.error(`[API ERROR] Failed to delete product ${req.params.id}:`, error.message);
@@ -447,7 +503,7 @@ module.exports = function(db) {
       try {
         if (!db) throw new Error('Database connection lost');
 
-        const stmt = db.prepare('SELECT id, name, created_at FROM categories ORDER BY name COLLATE NOCASE ASC');
+        const stmt = db.prepare('SELECT id, name, english_meaning, created_at FROM categories ORDER BY id ASC');
         const categories = stmt.all();
         res.json(categories);
       } catch (error) {

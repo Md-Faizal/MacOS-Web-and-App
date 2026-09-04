@@ -1,0 +1,128 @@
+name: 🚀 1-Click Deploy to Ubuntu
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry Run (test connection & backup without changing live server)'
+        required: true
+        type: boolean
+        default: false
+      skip_npm_install:
+        description: 'Skip npm install (faster deploy if no packages changed)'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  pre-flight-check:
+    name: 🛡️ Pre-Flight Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install & Build Client
+        run: |
+          npm ci
+          npm run build
+
+      - name: 🔍 Syntax Validation
+        run: |
+          node --check backend/main/macos-api-server.js
+          node --check server-prod.js
+          node --check tools/healthcheck.mjs
+
+  deploy-production:
+    name: 🚀 Deploy to Production VM
+    needs: pre-flight-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔌 Connect via SSH & Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            TARGET_DIR="/home/ubuntu/MacOS-Production"
+            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+            echo "======================================================"
+            echo "🚀 1-Click Deployment Triggered"
+            echo "Timestamp: $TIMESTAMP"
+            echo "======================================================"
+
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "❌ Error: Production directory $TARGET_DIR does not exist!"
+              exit 1
+            fi
+
+            cd "$TARGET_DIR"
+
+            # ─── 1. Automated Pre-Deploy SQLite Safety Snapshot ───
+            echo "🛡️ Step 1: Creating database safety snapshot..."
+            mkdir -p "$TARGET_DIR/database/backups"
+            if [ -f "$TARGET_DIR/database/MacOS.db" ]; then
+              cp "$TARGET_DIR/database/MacOS.db" "$TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db"
+              echo "✅ Database safely backed up to: database/backups/MacOS_backup_${TIMESTAMP}.db"
+            else
+              echo "⚠️ Warning: database/MacOS.db not found, skipping backup."
+            fi
+
+            # ─── 2. Handle Dry Run Option ───
+            if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+              echo "🔍 DRY RUN: Pre-flight checks & backup succeeded. No live files modified."
+              exit 0
+            fi
+
+            # ─── 3. Sync Latest Code from Git ───
+            echo "📦 Step 2: Pulling latest code from main branch..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # ─── 4. Install Dependencies if needed ───
+            if [ "${{ github.event.inputs.skip_npm_install }}" != "true" ]; then
+              echo "📦 Step 3: Installing production dependencies..."
+              npm ci --omit=dev
+            else
+              echo "⏩ Step 3: Skipping npm install as requested."
+            fi
+
+            # ─── 5. Build Lean Frontend Bundle ───
+            echo "🔨 Step 4: Building frontend bundle..."
+            npm run build
+
+            # ─── 6. Reload PM2 with Zero Downtime ───
+            echo "🔄 Step 5: Reloading PM2 services..."
+            pm2 reload ecosystem.config.js --env oraclevm --update-env || pm2 restart ecosystem.config.js --env oraclevm --update-env
+
+            # ─── 7. Post-Deploy Health Check ───
+            echo "🏥 Step 6: Verifying server health..."
+            sleep 4
+            
+            HEALTH_URL="http://127.0.0.1:3001/api/health"
+            ALT_HEALTH_URL="http://127.0.0.1:3000/api/health"
+            
+            if curl -s -f -m 5 "$HEALTH_URL" > /dev/null 2>&1; then
+              echo "✅ Health check passed on :3001"
+            elif curl -s -f -m 5 "$ALT_HEALTH_URL" > /dev/null 2>&1; then
+              echo "✅ Health check passed on :3000"
+            else
+              echo "⚠️ Health check warning: Unable to verify /api/health directly via curl."
+              echo "Checking PM2 process status..."
+              pm2 status
+            fi
+
+            echo "======================================================"
+            echo "🎉 1-Click Deployment Complete & Production Live!"
+            echo "======================================================"

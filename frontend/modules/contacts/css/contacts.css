@@ -197,11 +197,11 @@
   width: 220px;
   min-width: 220px;
   border-right: 1px solid var(--contacts-border);
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--contacts-sidebar-bg);
   display: flex;
   flex-direction: column;
-  padding: 12px 0;
+  padding: 0;
   margin-left: 0;
   transition: margin-left 0.3s ease;
   flex-shrink: 0;
@@ -211,6 +211,9 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
 }
 
 .contacts-sidebar.hidden {
@@ -1100,3 +1103,89 @@
   cursor: help;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
 }
+
+.worker-share-row:hover {
+  background: rgba(0, 122, 255, 0.06) !important;
+}
+
+.share-worker-btn:hover {
+  background: rgba(0, 122, 255, 0.15) !important;
+  color: #007aff !important;
+}
+
+/* ===== SIDEBAR FOOTER (Exact Match to Notes App) ===== */
+.contacts-sidebar-footer {
+  height: 36px;
+  padding: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f3f4f6;
+  display: flex;
+  justify-content: center;
+  border-radius: 0 0 0 12px;
+}
+
+.contacts-sidebar-footer .refresh-btn,
+.contacts-sidebar-footer #contactsRefreshBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.contacts-sidebar-footer .refresh-btn:hover,
+.contacts-sidebar-footer #contactsRefreshBtn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.contacts-sidebar-footer .refresh-btn:active,
+.contacts-sidebar-footer #contactsRefreshBtn:active {
+  transform: scale(0.95);
+}
+
+/* ===== NOTIFICATIONS ===== */
+.contacts-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  background: #333333;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 100000;
+  display: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slideIn 0.2s ease;
+}
+
+.contacts-notification-success {
+  background: #10b981;
+}
+
+.contacts-notification-error {
+  background: #ef4444;
+}
+
+.contacts-notification-warning {
+  background: #f59e0b;
+}
+
+.contacts-notification-info {
+  background: #3b82f6;
+}
+

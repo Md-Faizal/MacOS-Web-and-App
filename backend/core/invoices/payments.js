@@ -1,9 +1,13 @@
+const createActivityLogger = require('../audit/activity-logger');
+
 /**
  * Payment Handlers
  * Handles both payments and credit notes in a unified payments table
  */
 
 module.exports = function(db) {
+  const activityLogger = createActivityLogger(db);
+
   function getWorkerContactScope(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
@@ -31,15 +35,15 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'customer_id is required' });
         }
 
-        const nextRef = generatePaymentReference(db, parseInt(customer_id), new Date(payment_date));
+        const dateObj = new Date(payment_date);
+        const reference = generatePaymentReference(db, parseInt(customer_id), dateObj);
         
         res.json({
           success: true,
-          reference_number: nextRef,
-          type: 'PAYMENT'
+          reference_number: reference
         });
       } catch (error) {
-        console.error('Error getting next payment reference:', error);
+        console.error('Error generating payment reference:', error);
         res.status(500).json({ error: error.message });
       }
     },
@@ -55,15 +59,15 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'customer_id is required' });
         }
 
-        const nextRef = generateCreditNoteReference(db, parseInt(customer_id), new Date(payment_date));
+        const dateObj = new Date(payment_date);
+        const reference = generateCreditNoteReference(db, parseInt(customer_id), dateObj);
         
         res.json({
           success: true,
-          reference_number: nextRef,
-          type: 'CREDIT_NOTE'
+          reference_number: reference
         });
       } catch (error) {
-        console.error('Error getting next credit note reference:', error);
+        console.error('Error generating credit note reference:', error);
         res.status(500).json({ error: error.message });
       }
     },
@@ -99,6 +103,8 @@ module.exports = function(db) {
           }
         }
 
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
+
         // Generate payment reference if not provided
         const paymentDateObj = payment_date ? new Date(payment_date) : new Date();
         const finalReferenceNumber = reference_number || generatePaymentReference(db, customer_id, paymentDateObj);
@@ -108,12 +114,22 @@ module.exports = function(db) {
         // Insert payment record
         const paymentStmt = db.prepare(`
           INSERT INTO payments 
-          (customer_id, type, amount, payment_medium, reference_number, payment_date, invoice_id, notes, created_at, updated_at)
-          VALUES (?, 'PAYMENT', ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          (customer_id, type, amount, payment_medium, reference_number, payment_date, invoice_id, notes, created_by_user_id, created_at, updated_at)
+          VALUES (?, 'PAYMENT', ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `);
 
-        const paymentResult = paymentStmt.run(customer_id, amount, payment_medium, finalReferenceNumber, finalPaymentDate || null, invoice_id, notes);
+        const paymentResult = paymentStmt.run(customer_id, amount, payment_medium, finalReferenceNumber, finalPaymentDate || null, invoice_id, notes, creatorId);
         const payment_id = paymentResult.lastInsertRowid;
+
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'payments',
+          action: 'create',
+          resourceType: 'payment',
+          resourceId: payment_id,
+          resourceName: finalReferenceNumber,
+          metadata: { amount, customer_id, invoice_id, payment_medium }
+        });
 
         res.status(201).json({
           success: true,
@@ -167,6 +183,8 @@ module.exports = function(db) {
           }
         }
 
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
+
         // Generate credit note reference if not provided
         const creditDateObj = payment_date ? new Date(payment_date) : new Date();
         const finalReferenceNumber = reference_number || generateCreditNoteReference(db, customer_id, creditDateObj);
@@ -176,8 +194,8 @@ module.exports = function(db) {
         // Insert credit note record
         const creditStmt = db.prepare(`
           INSERT INTO payments 
-          (customer_id, type, amount, credit_amount, reason, reference_number, payment_date, invoice_id, notes, attachment_data, created_at, updated_at)
-          VALUES (?, 'CREDIT_NOTE', 0, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          (customer_id, type, amount, credit_amount, reason, reference_number, payment_date, invoice_id, notes, attachment_data, created_by_user_id, created_at, updated_at)
+          VALUES (?, 'CREDIT_NOTE', 0, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `);
 
         const creditResult = creditStmt.run(
@@ -188,10 +206,21 @@ module.exports = function(db) {
           finalPaymentDate || null, 
           invoice_id || null,
           notes || null,
-          attachment_data
+          attachment_data,
+          creatorId
         );
 
         const payment_id = creditResult.lastInsertRowid;
+
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'payments',
+          action: 'create',
+          resourceType: 'credit_note',
+          resourceId: payment_id,
+          resourceName: finalReferenceNumber,
+          metadata: { credit_amount: amount, customer_id, invoice_id, reason }
+        });
 
         res.status(201).json({
           success: true,
@@ -236,14 +265,24 @@ module.exports = function(db) {
               p.payment_date,
               p.created_at,
               p.updated_at,
+              COALESCE(u_creator.role, 'owner') as created_by_role,
+              COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+              u_editor.role as last_edited_by_role,
+              COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
               c.name as customer_name
             FROM payments p
             LEFT JOIN contacts c ON p.customer_id = c.id
+            LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+            LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
             WHERE p.id = ?
           `).get(id);
           
           if (!payment) {
             return res.status(404).json({ error: 'Payment not found' });
+          }
+
+          if (payment.customer_id && !isCustomerAccessible(req, payment.customer_id)) {
+            return res.status(403).json({ error: 'Access denied to this payment' });
           }
           
           return res.json([payment]);
@@ -266,9 +305,15 @@ module.exports = function(db) {
             p.payment_date,
             p.created_at,
             p.updated_at,
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
             c.name as customer_name
           FROM payments p
           LEFT JOIN contacts c ON p.customer_id = c.id
+          LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
           WHERE 1=1
         `;
         const params = [];
@@ -389,6 +434,12 @@ module.exports = function(db) {
           }
         }
 
+        const editorId = req.user ? (req.user.id || req.user.userId) : null;
+        if (editorId) {
+          updateFields.push('last_edited_by_user_id = ?');
+          updateValues.push(editorId);
+        }
+
         // Update payment record
         updateValues.push(id);
         const updateQuery = `UPDATE payments SET ${updateFields.join(', ')} WHERE id = ?`;
@@ -401,6 +452,16 @@ module.exports = function(db) {
 
         // Get updated payment to return
         const updatedPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'payments',
+          action: 'update',
+          resourceType: updatedPayment?.type === 'CREDIT_NOTE' ? 'credit_note' : 'payment',
+          resourceId: id,
+          resourceName: updatedPayment?.reference_number || null,
+          metadata: { amount: updatedPayment?.amount || updatedPayment?.credit_amount, customer_id: updatedPayment?.customer_id }
+        });
 
         res.json({
           success: true,
@@ -435,6 +496,16 @@ module.exports = function(db) {
         // Delete payment record
         db.prepare('DELETE FROM payments WHERE id = ?').run(id);
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'payments',
+          action: 'delete',
+          resourceType: payment.type === 'CREDIT_NOTE' ? 'credit_note' : 'payment',
+          resourceId: id,
+          resourceName: payment.reference_number || null,
+          metadata: { customer_id, amount: payment.amount || payment.credit_amount }
+        });
+
         res.json({ 
           success: true, 
           message: 'Payment deleted successfully',
@@ -464,7 +535,10 @@ module.exports = function(db) {
         const workerScope = getWorkerContactScope(req, 'c');
         let filterClause = '';
         if (workerScope) {
-          filterClause = ` AND ${workerScope}`;
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          filterClause = ` AND ${workerScope} AND (
+            c.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)
+          )`;
         } else {
           filterClause = ` AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
         }
@@ -521,9 +595,12 @@ module.exports = function(db) {
         const workerScope = getWorkerContactScope(req, 'c');
         let filterClause = '';
         if (workerScope) {
-          filterClause = `AND ${workerScope}`;
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          filterClause = ` AND ${workerScope} AND (
+            c.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)
+          )`;
         } else {
-          filterClause = `AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
+          filterClause = ` AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
         }
 
         const result = db.prepare(`

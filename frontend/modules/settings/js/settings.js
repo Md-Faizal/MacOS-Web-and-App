@@ -50,6 +50,10 @@ export class SettingsApp extends AppWindow {
     this.setupCleanupHandlers();
   }
 
+  close() {
+    super.close();
+  }
+
   /**
    * Setup cleanup handlers for when settings closes
    */
@@ -1572,14 +1576,19 @@ export class SettingsApp extends AppWindow {
   }
 
   getDefaultSettings() {
+    let saved = {};
+    try {
+      saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+    } catch (e) {}
+    const cachedTheme = localStorage.getItem('macos_theme');
     return {
-      theme: 'auto',
-      accentColor: 'blue',
-      highlightColor: 'blue',
-      iconStyle: 'default',
-      liquidGlass: 'clear',
-      'sidebar-size': 'medium',
-      'tint-wallpaper': true
+      theme: cachedTheme || saved.theme || 'auto',
+      accentColor: saved.accentColor || 'blue',
+      highlightColor: saved.highlightColor || 'blue',
+      iconStyle: saved.iconStyle || 'default',
+      liquidGlass: saved.liquidGlass || 'clear',
+      'sidebar-size': saved['sidebar-size'] || 'medium',
+      'tint-wallpaper': saved['tint-wallpaper'] !== undefined ? saved['tint-wallpaper'] : true
     };
   }
 
@@ -1589,6 +1598,10 @@ export class SettingsApp extends AppWindow {
       if (res.ok) {
         const data = await res.json();
         this.settings = { ...this.settings, ...data };
+        localStorage.setItem('settingsAppData', JSON.stringify(this.settings));
+        if (this.settings.theme) {
+          localStorage.setItem('macos_theme', this.settings.theme);
+        }
         this.applyTheme();
         
         // Update UI if appearance module is loaded
@@ -1603,33 +1616,42 @@ export class SettingsApp extends AppWindow {
   }
 
   applyTheme() {
-    const container = document.getElementById(this.containerId);
-    if (!container) return;
-
-    let theme = this.settings.theme || 'auto';
+    let rawTheme = this.settings.theme || localStorage.getItem('macos_theme') || 'auto';
+    let resolvedTheme = rawTheme;
     
     if (this.userRole === 'worker') {
-      theme = 'light';
-    } else if (theme === 'auto') {
-      theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      resolvedTheme = 'light';
+    } else if (rawTheme === 'auto') {
+      resolvedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       this.setupThemeAutoListener();
     }
 
-    container.setAttribute('data-theme', theme);
-    
-    // For Tahoe-style glass effects, we might want to set it on the window too
-    const appWindow = container.closest('.app-window') || container;
-    appWindow.setAttribute('data-theme', theme);
+    const container = document.getElementById(this.containerId);
+    if (container) {
+      container.setAttribute('data-theme', resolvedTheme);
+      const appWindow = container.closest('.app-window') || container;
+      appWindow.setAttribute('data-theme', resolvedTheme);
+    }
 
-    // Update global app state if needed
-    document.documentElement.setAttribute('data-macos-theme', theme);
+    // Apply globally to root and body
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    document.documentElement.setAttribute('data-macos-theme', resolvedTheme);
+    document.body.setAttribute('data-theme', resolvedTheme);
+
+    // Save active theme identifier
+    localStorage.setItem('macos_theme', rawTheme);
+
+    // Dispatch global event for widgets and open apps
+    window.dispatchEvent(new CustomEvent('macos-theme-changed', {
+      detail: { theme: rawTheme, resolvedTheme }
+    }));
   }
 
   setupThemeAutoListener() {
     if (this._themeListener) return;
     
     this._themeListener = (e) => {
-      if (this.settings.theme === 'auto') {
+      if (this.settings.theme === 'auto' || localStorage.getItem('macos_theme') === 'auto') {
         this.applyTheme();
       }
     };
@@ -1641,11 +1663,14 @@ export class SettingsApp extends AppWindow {
     try {
       // Save locally as fallback/immediate feedback
       localStorage.setItem('settingsAppData', JSON.stringify(this.settings));
+      if (this.settings.theme) {
+        localStorage.setItem('macos_theme', this.settings.theme);
+      }
       
-      // Update theme immediately
+      // Update theme immediately across document
       this.applyTheme();
 
-      // Save to backend
+      // Save to backend database
       await fetch('/api/settings/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

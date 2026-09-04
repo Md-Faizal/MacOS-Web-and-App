@@ -489,21 +489,30 @@ class BillEditor {
 
   async populateContactsList() {
     const datalist = document.getElementById('contactsList');
-    
-    if (!datalist) {
-      return;
-    }
-    
+    if (!datalist) return;
     datalist.innerHTML = '';
 
-    // Load from API only
+    const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    if (scoped && scoped.contacts && scoped.contacts.length > 0) {
+      this.allContacts = scoped.contacts;
+      this.allContacts.forEach(customer => {
+        if (customer && customer.name) {
+          const option = document.createElement('option');
+          option.value = customer.name;
+          datalist.appendChild(option);
+        }
+      });
+      return;
+    }
+
+    // Load from API
     if (this.apiEnabled) {
       try {
         const response = await fetch('/api/contacts');
         if (response.ok) {
           const result = await response.json();
-          const customers = result.data || result;
-          this.allContacts = Array.isArray(customers) ? customers : [];
+          const customers = Array.isArray(result) ? result : (result.data || []);
+          this.allContacts = customers;
           
           if (this.allContacts.length > 0) {
             this.allContacts.forEach(customer => {
@@ -778,17 +787,43 @@ class BillEditor {
     }
     
     // Clear gold indicator
-    const goldIndicator = document.getElementById('productGoldIndicator');
-    if (goldIndicator) {
-      goldIndicator.style.display = 'none';
-      goldIndicator.textContent = '';
-    }
+    this.updateFormGoldIndicator(null);
     
     this.currentProduct = null;
     console.log('🧹 Product details cleared');
   }
 
+  updateFormGoldIndicator(product) {
+    const goldIndicator = document.getElementById('productGoldIndicator');
+    if (!goldIndicator) return;
+
+    if (!product) {
+      goldIndicator.style.display = 'none';
+      goldIndicator.textContent = '';
+      return;
+    }
+
+    const isGold = (product.isGold === true || product.is_gold === true || product.is_gold === 1 || product.is_gold === '1') ||
+                   (product.classification && String(product.classification).toLowerCase() === 'gold') ||
+                   (product.category && String(product.category).toLowerCase() === 'gold');
+
+    goldIndicator.textContent = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
+    goldIndicator.style.display = 'block';
+    if (isGold) {
+      goldIndicator.style.background = '#fff8e6';
+      goldIndicator.style.color = '#b45309';
+      goldIndicator.style.borderColor = '#fde68a';
+    } else {
+      goldIndicator.style.background = '#f1f5f9';
+      goldIndicator.style.color = '#475569';
+      goldIndicator.style.borderColor = '#cbd5e1';
+    }
+  }
+
   fillProductFormFields(product) {
+    // Show gold/non-gold indicator immediately
+    this.updateFormGoldIndicator(product);
+
     // Check if product has MULTIPLE variants or SINGLE variant with MULTIPLE batches
     // If so, show variant/batch selector modal
     const variantCount = (product.variants && Array.isArray(product.variants)) ? product.variants.length : 0;
@@ -806,14 +841,6 @@ class BillEditor {
       });
       this.showVariantSelector(product.variants, product.name);
       return;  // Don't fill form yet - wait for variant selection
-    }
-
-    // Show gold/non-gold indicator based on classification field
-    const goldIndicator = document.getElementById('productGoldIndicator');
-    if (goldIndicator) {
-      const isGold = product.classification && product.classification.toLowerCase() === 'gold';
-      goldIndicator.textContent = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
-      goldIndicator.style.display = 'block';
     }
 
     // Fill in product details from API response
@@ -1113,12 +1140,7 @@ class BillEditor {
     }
 
     // Show gold indicator for current product if available
-    const goldIndicator = document.getElementById('productGoldIndicator');
-    if (goldIndicator && this.currentProduct) {
-      const isGold = this.currentProduct.classification && this.currentProduct.classification.toLowerCase() === 'gold';
-      goldIndicator.textContent = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
-      goldIndicator.style.display = 'block';
-    }
+    this.updateFormGoldIndicator(this.currentProduct);
 
     // Load customer-product memory (disc1, disc2, scheme, tax)
     this.loadProductMemoryForCustomer();
@@ -1850,7 +1872,10 @@ class BillEditor {
       sgst: parseFloat((gstPct / 2).toFixed(2)),
       cgst: parseFloat((gstPct / 2).toFixed(2)),
       gstTotal: gstPct,
-      isGold: itemData ? (itemData.isGold || false) : (this.currentProduct?.is_gold || this.currentProduct?.isGold || false),
+      gst_percent: gstPct,
+      isGold: (itemData && (itemData.isGold === true || itemData.is_gold === true || itemData.is_gold === 1 || String(itemData.classification).toLowerCase() === 'gold')) ||
+              (this.currentProduct && (this.currentProduct.isGold === true || this.currentProduct.is_gold === true || this.currentProduct.is_gold === 1 || String(this.currentProduct.classification).toLowerCase() === 'gold')) ||
+              false,
       gst_reverse: itemData ? (itemData.gst_reverse || false) : (document.getElementById('gstReverseCheckbox')?.value === 'true'),
       has_multiple_variants: itemData ? true : (this.currentProduct?.variants && Array.isArray(this.currentProduct.variants) && this.currentProduct.variants.length > 1)
     };
@@ -2115,7 +2140,7 @@ class BillEditor {
         sgst: parseFloat((parseFloat(product.sgst || 0)).toFixed(2)),
         cgst: parseFloat((parseFloat(product.cgst || 0)).toFixed(2)),
         gstTotal: parseFloat((parseFloat(product.gstTotal || product.gst_percent || 0)).toFixed(2)),
-        isGold: product.isGold || false,
+        isGold: product.isGold === true || product.is_gold === true || product.is_gold === 1 || String(product.classification).toLowerCase() === 'gold' || String(product.category).toLowerCase() === 'gold',
         gst_reverse: product.gst_reverse || false
       };
 
@@ -2838,6 +2863,26 @@ class BillEditor {
 
     // Recalculate free items if qty or scheme changed
     product.free = this.calculateFreeItems(product.qty, product.scheme);
+
+    // Synchronize tax fields (gstTotal, gst_percent, sgst, cgst)
+    if (product.gstTotal !== undefined && product.gstTotal !== null && !isNaN(product.gstTotal)) {
+      const totalTax = parseFloat(product.gstTotal) || 0;
+      product.gst_percent = totalTax;
+      product.sgst = parseFloat((totalTax / 2).toFixed(2));
+      product.cgst = parseFloat((totalTax / 2).toFixed(2));
+    } else if (product.gst_percent !== undefined && product.gst_percent !== null && !isNaN(product.gst_percent)) {
+      const totalTax = parseFloat(product.gst_percent) || 0;
+      product.gstTotal = totalTax;
+      product.sgst = parseFloat((totalTax / 2).toFixed(2));
+      product.cgst = parseFloat((totalTax / 2).toFixed(2));
+    } else if (product.sgst !== undefined || product.cgst !== undefined) {
+      const s = parseFloat(product.sgst) || 0;
+      const c = parseFloat(product.cgst !== undefined ? product.cgst : s) || 0;
+      product.sgst = s;
+      product.cgst = c;
+      product.gstTotal = parseFloat((s + c).toFixed(2));
+      product.gst_percent = product.gstTotal;
+    }
   }
 
   handleProductDatabaseUpdate(product, field, oldValue, newValue) {

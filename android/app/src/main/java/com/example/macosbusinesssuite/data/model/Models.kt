@@ -16,7 +16,8 @@ data class LoginRequest(
     val identifier: String,
     val password: String,
     val deviceName: String? = null,
-    val deviceType: String? = null
+    val deviceType: String? = null,
+    val clientType: String? = "native_android"
 )
 
 data class LoginResponse(
@@ -35,18 +36,63 @@ data class MobileRefreshRequest(
 data class UserProfile(
     val id: String? = null,
     val username: String? = null,
+    @SerializedName("full_name") val fullName: String? = null,
+    @SerializedName("fullName") val camelFullName: String? = null,
     val email: String? = null,
+    @SerializedName("email_id") val emailId: String? = null,
     val role: String? = null,
     val avatar: String? = null,
+    val picture: String? = null,
+    @SerializedName("profile_picture") val profilePicture: String? = null,
     val deviceId: String? = null
+) {
+    val actualName: String? get() = fullName ?: camelFullName ?: username
+    val actualEmail: String? get() = email ?: emailId
+    val actualPicture: String? get() = avatar ?: picture ?: profilePicture
+}
+
+data class RememberedUser(
+    val id: String,
+    val identifier: String,
+    val displayName: String,
+    val displayPicture: String? = null,
+    val role: String = "user",
+    val isBiometricEnabled: Boolean = false,
+    val lastActive: Long = System.currentTimeMillis(),
+    val savedAuthToken: String? = null,
+    val savedRefreshToken: String? = null
+)
+
+data class AuthChallengeResponse(
+    val success: Boolean? = true,
+    val question: String? = null,
+    val userId: String? = null,
+    val isRecoveryKey: Boolean? = false,
+    val error: String? = null,
+    val message: String? = null
+)
+
+data class VerifyAnswerRequest(
+    val identifier: String,
+    val answer: String
+)
+
+data class CheckUsernameResponse(
+    val available: Boolean = false,
+    val message: String? = null
 )
 
 // Profile API responses
 data class ProfileData(
     val id: String? = null,
     val username: String? = null,
+    val role: String? = null,
     @SerializedName("full_name") val fullName: String? = null,
     @SerializedName("email_id") val emailId: String? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("display_name") val displayName: String? = null,
+    @SerializedName("display_email") val displayEmail: String? = null,
+    @SerializedName("display_picture") val displayPicture: String? = null,
     @SerializedName("profile_picture") val profilePicture: String? = null,
     @SerializedName("google_id") val googleId: String? = null,
     @SerializedName("google_email") val googleEmail: String? = null,
@@ -54,7 +100,12 @@ data class ProfileData(
     @SerializedName("google_picture") val googlePicture: String? = null,
     @SerializedName("name_source") val nameSource: String? = "local",
     @SerializedName("picture_source") val pictureSource: String? = "local"
-)
+) {
+    val googleLinked: Boolean get() = !googleId.isNullOrBlank() || !googleEmail.isNullOrBlank()
+    val actualName: String? get() = displayName ?: fullName ?: googleName ?: username
+    val actualEmail: String? get() = displayEmail ?: emailId ?: email ?: googleEmail
+    val actualPicture: String? get() = displayPicture ?: profilePicture ?: googlePicture
+}
 
 data class ProfileResponse(
     val success: Boolean = true,
@@ -93,6 +144,21 @@ data class UpdateSecurityRequest(
     val newPassword: String? = null,
     val questionId: Int? = null,
     val answer: String? = null
+)
+
+data class ResetPasswordSecurityRequest(
+    val newPassword: String? = null,
+    val identifier: String? = null,
+    val email: String? = null,
+    val username: String? = null,
+    val securityQuestion: String? = null,
+    val securityAnswer: String? = null
+)
+
+data class MobileBiometricRegisterRequest(
+    val deviceId: String? = null,
+    val deviceName: String? = null,
+    val biometricType: String = "biometric"
 )
 
 // ==================== PRODUCTS ====================

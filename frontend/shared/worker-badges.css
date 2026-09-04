@@ -1,0 +1,117 @@
+/* ===== MACOS WORKER AUDIT BADGES ===== */
+
+.macos-worker-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+  user-select: none;
+  cursor: default;
+}
+
+/* Worker Created Badge */
+.macos-worker-badge.worker-created {
+  background: rgba(0, 122, 255, 0.12);
+  color: #0066cc;
+  border: 1px solid rgba(0, 122, 255, 0.28);
+}
+
+/* Worker Edited Badge */
+.macos-worker-badge.worker-edited {
+  background: rgba(255, 149, 0, 0.12);
+  color: #b25000;
+  border: 1px solid rgba(255, 149, 0, 0.28);
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] .macos-worker-badge.worker-created,
+[data-macos-theme="dark"] .macos-worker-badge.worker-created,
+.dark-theme .macos-worker-badge.worker-created {
+  background: rgba(10, 132, 255, 0.22);
+  color: #70b4ff;
+  border-color: rgba(10, 132, 255, 0.4);
+}
+
+[data-theme="dark"] .macos-worker-badge.worker-edited,
+[data-macos-theme="dark"] .macos-worker-badge.worker-edited,
+.dark-theme .macos-worker-badge.worker-edited {
+  background: rgba(255, 159, 10, 0.22);
+  color: #ffb340;
+  border-color: rgba(255, 159, 10, 0.4);
+}
+
+/* Platform indicators */
+.macos-platform-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  font-size: 10px;
+}
+
+.macos-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.macos-platform-badge.android {
+  background: rgba(52, 168, 83, 0.12);
+  color: #248a43;
+  border: 1px solid rgba(52, 168, 83, 0.28);
+}
+
+.macos-platform-badge.pwa {
+  background: rgba(175, 82, 222, 0.12);
+  color: #8933b2;
+  border: 1px solid rgba(175, 82, 222, 0.28);
+}
+
+.macos-platform-badge.web {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+  border: 1px solid rgba(100, 116, 139, 0.28);
+}
+
+[data-theme="dark"] .macos-platform-badge.android,
+[data-macos-theme="dark"] .macos-platform-badge.android,
+.dark-theme .macos-platform-badge.android {
+  background: rgba(52, 168, 83, 0.24);
+  color: #68d391;
+  border-color: rgba(52, 168, 83, 0.4);
+}
+
+[data-theme="dark"] .macos-platform-badge.pwa,
+[data-macos-theme="dark"] .macos-platform-badge.pwa,
+.dark-theme .macos-platform-badge.pwa {
+  background: rgba(191, 90, 242, 0.24);
+  color: #da8fff;
+  border-color: rgba(191, 90, 242, 0.4);
+}
+
+[data-theme="dark"] .macos-platform-badge.web,
+[data-macos-theme="dark"] .macos-platform-badge.web,
+.dark-theme .macos-platform-badge.web {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Global visibility rule when worker badges are disabled in settings */
+body.hide-worker-badges .macos-worker-badge,
+[data-hide-worker-badges="true"] .macos-worker-badge {
+  display: none !important;
+}
+

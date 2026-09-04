@@ -45,16 +45,7 @@ class AIAssistant {
   }
 
   getApiBaseUrl() {
-    // For dev environment (localhost)
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:3002';
-    }
-    
-    // For prod environment - use current domain with standard port
-    const protocol = window.location.protocol; // 'http:' or 'https:'
-    const hostname = window.location.hostname;
-    const port = window.location.port ? `:${window.location.port}` : '';
-    return `${protocol}//${hostname}${port}`;
+    return '';
   }
 
   init() {
@@ -285,6 +276,7 @@ class AIAssistant {
     try {
       const response = await fetch(`${this.apiBase}/query`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },

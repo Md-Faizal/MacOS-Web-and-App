@@ -110,16 +110,24 @@
     <div class="time" id="timeDisplay" data-time="00:00">00:00</div>
   </main>
 
-  <footer class="user-profile draggable-content">
-    <div class="avatar" id="profileAvatar" aria-label="Account options" title="Right-click for account options">
-      <img src="/assets/Images/DefaultUser.png" alt="Profile">
+  <footer class="user-profile draggable-content" id="lockscreenUserProfile">
+    <!-- Multi-User List View (Rendered dynamically when multiple/remembered users exist) -->
+    <div class="multi-user-container" id="multiUserContainer" style="display: none;">
+      <div class="multi-user-list" id="multiUserList" role="list"></div>
     </div>
-    <div class="profile-menu" id="profileMenu" role="menu">
-      <button id="forgetRememberedAccountBtn" type="button" role="menuitem">Log out</button>
-    </div>
-    <div class="username" id="profileUsername">Sign in</div>
-    <div class="hint" id="profileHint">
-      <span id="hintPassword">Enter Password</span>
+
+    <!-- Single User / Default Fallback View -->
+    <div class="single-user-view" id="singleUserContainer">
+      <div class="avatar" id="profileAvatar" aria-label="Account options" title="Right-click for account options">
+        <img src="/assets/Images/DefaultUser.png" alt="Profile">
+      </div>
+      <div class="profile-menu" id="profileMenu" role="menu">
+        <button id="forgetRememberedAccountBtn" type="button" role="menuitem">Forget this account</button>
+      </div>
+      <div class="username" id="profileUsername">Sign in</div>
+      <div class="hint" id="profileHint">
+        <span id="hintPassword">Enter Password</span>
+      </div>
     </div>
   </footer>
 
@@ -222,6 +230,13 @@
       <div id="noPasswordSection" style="display: none; width: 100%; text-align: center;">
         <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 16px;">Password protection is off</div>
         <button class="login-button btn-primary" id="unlockButton">Sign In Without Password</button>
+      </div>
+
+      <!-- Switch User Button (Visible when multiple accounts or an active remembered account is selected) -->
+      <div class="switch-user-row" id="switchUserRow" style="display: none;">
+        <button class="switch-user-btn" id="switchUserBtn" type="button">
+          <span>◀</span> Switch User
+        </button>
       </div>
     </div>
   </div>
@@ -384,16 +399,25 @@
           Set up alternative login credentials linked with your Google account. Google remains your primary sign-in.
         </p>
 
-        <!-- Email Field -->
+        <!-- Smart Identifier Field (Email / Username) -->
         <div class="password-field-container" style="width: 100%; margin-bottom: 12px;">
-          <label class="password-label" for="workerEmailInput">Email address</label>
-          <div class="password-input-wrapper">
-            <input type="email" id="workerEmailInput" class="password-input password-text-input" placeholder="name@example.com" autocomplete="email">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="password-label" id="workerIdentifierLabel" for="workerIdentifierInput" style="margin-bottom: 0;">Email address</label>
+            <div class="identifier-type-switcher" style="display: flex; background: rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 2px; gap: 2px;">
+              <button type="button" id="workerTypeEmailBtn" style="background: rgba(255, 255, 255, 0.3); color: #fff; border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Email</button>
+              <button type="button" id="workerTypeUsernameBtn" style="background: transparent; color: rgba(255, 255, 255, 0.65); border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Username</button>
+            </div>
           </div>
-          <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); cursor: pointer; text-align: left;">
-            <input type="checkbox" id="workerUseGoogleEmailCheckbox" checked style="accent-color: #0071E3; cursor: pointer; width: 15px; height: 15px;">
-            <span>Use same as Google email</span>
-          </label>
+          <div class="password-input-wrapper">
+            <input type="text" id="workerIdentifierInput" class="password-input password-text-input" placeholder="name@example.com" autocomplete="username">
+          </div>
+          <div id="workerIdentifierStatus" style="display: none; font-size: 0.76rem; margin-top: 4px; text-align: left; transition: all 0.2s;"></div>
+          <div id="workerGoogleEmailCheckboxContainer">
+            <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); cursor: pointer; text-align: left;">
+              <input type="checkbox" id="workerUseGoogleEmailCheckbox" checked style="accent-color: #0071E3; cursor: pointer; width: 15px; height: 15px;">
+              <span>Use same as Google email</span>
+            </label>
+          </div>
         </div>
 
         <!-- Password Field -->
@@ -427,7 +451,47 @@
         <!-- Action Buttons -->
         <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
           <button class="login-button" id="skipWorkerPasswordBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="saveWorkerPasswordBtn" type="button" style="flex: 1.4;">Save Account</button>
+          <button class="login-button btn-primary" id="saveWorkerPasswordBtn" type="button" style="flex: 1.4;">Continue</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Security Question Step -->
+      <div id="workerSecurityQuestionStep" style="width: 100%; display: none;">
+        <div class="profile-avatar-large" style="margin-bottom: 8px; font-size: 38px;">🛡️</div>
+        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Security Question</div>
+        <p style="color: rgba(255, 255, 255, 0.78); font-size: 0.84rem; line-height: 1.45; margin-bottom: 16px;">
+          Choose a security question to secure and recover your local account credentials.
+        </p>
+
+        <!-- Question Dropdown -->
+        <div class="password-field-container" style="width: 100%; margin-bottom: 12px; text-align: left;">
+          <label class="password-label" for="workerSecurityQuestionSelect">Select a question</label>
+          <div class="password-input-wrapper">
+            <select id="workerSecurityQuestionSelect" class="password-input password-text-input" style="cursor: pointer; appearance: auto; -webkit-appearance: auto; padding-right: 12px; background: rgba(30, 30, 30, 0.75); color: #ffffff;">
+              <option value="" disabled selected>Choose a security question...</option>
+              <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+              <option value="In what city were you born?">In what city were you born?</option>
+              <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+              <option value="What is the name of your favorite book?">What is the name of your favorite book?</option>
+              <option value="What was the model of your first car?">What was the model of your first car?</option>
+              <option value="What school did you attend for sixth grade?">What school did you attend for sixth grade?</option>
+              <option value="What is the name of your favorite childhood friend?">What is the name of your favorite childhood friend?</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Answer Input -->
+        <div class="password-field-container" style="width: 100%; margin-bottom: 18px; text-align: left;">
+          <label class="password-label" for="workerSecurityAnswerInput">Your Answer</label>
+          <div class="password-input-wrapper">
+            <input type="text" id="workerSecurityAnswerInput" class="password-input password-text-input" placeholder="Secret answer" autocomplete="off">
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
+          <button class="login-button" id="backToWorkerCredentialsBtn" type="button" style="flex: 1;">Back</button>
+          <button class="login-button btn-primary" id="saveWorkerSecurityBtn" type="button" style="flex: 1.4;">Save Account</button>
         </div>
       </div>
 
@@ -445,9 +509,28 @@
     </div>
   </div>
 
+  <!-- 7. Remove Account Confirmation Modal -->
+  <div class="login-modal remove-account-modal" id="removeAccountModal">
+    <div class="login-modal-content">
+      <div class="remove-account-avatar" id="removeAccountAvatar">
+        <img src="/assets/Images/DefaultUser.png" alt="User">
+      </div>
+      <div class="profile-name" id="removeAccountTitle" style="margin-bottom: 8px; font-size: 1.15rem;">Remove Account?</div>
+      <p id="removeAccountMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 18px; line-height: 1.45;">
+        This account shortcut will be removed from the lock screen on this Mac.
+      </p>
+      <div style="display: flex; gap: 10px; width: 100%;">
+        <button class="login-button" id="cancelRemoveAccountBtn" type="button" style="flex: 1;">Cancel</button>
+        <button class="login-button btn-primary" id="confirmRemoveAccountBtn" type="button" style="flex: 1.2; background: #ff453a; border-color: #ff453a;">Remove</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Standardized App Services & Modules -->
   <script type="module">
+    import { profileManager } from '/scripts/auth/profiles.js';
     import { AuthController } from '/scripts/auth/auth-controller.js';
+    window.profileManager = profileManager;
     window.authController = new AuthController();
   </script>
 

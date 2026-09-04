@@ -2,7 +2,10 @@ module.exports = function(db) {
   function getContactScopeFilter(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
-      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+      return `(
+        (${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')
+        AND ${tableAlias}.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)
+      )`;
     }
     return `${tableAlias}.exclude_from_stats = 0`;
   }

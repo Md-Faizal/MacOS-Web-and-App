@@ -47,6 +47,22 @@ class BillingDashboard {
     return this.billingApp.billingData || { bills: [], payments: [], contacts: [], reminders: [] };
   }
 
+  getScopedData() {
+    if (this.billingApp?.getScopedBillingData) {
+      return this.billingApp.getScopedBillingData();
+    }
+    return {
+      contacts: this.billingData.contacts || [],
+      bills: this.billingData.bills || [],
+      payments: this.billingData.payments || [],
+      orders: this.billingData.orders || [],
+      statsContacts: this.billingData.contacts || [],
+      statsBills: this.billingData.bills || [],
+      statsPayments: this.billingData.payments || [],
+      statsOrders: this.billingData.orders || []
+    };
+  }
+
   /**
    * Render the main dashboard view with dynamic widget layout order and Drag & Drop Customisation
    */
@@ -575,7 +591,6 @@ class BillingDashboard {
 
   isExcluded(contact) {
     if (!contact) return false;
-    if (this.isWorkerUser()) return false;
     return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
   }
 
@@ -590,17 +605,23 @@ class BillingDashboard {
     );
 
     const bills = (this.billingData.bills || []).filter(b => {
-      if (isWorker) return accessibleContactIds.has(b.customer_id) || accessibleContactNames.has(b.customer_name);
+      if (isWorker) {
+        return (accessibleContactIds.has(b.customer_id) || accessibleContactNames.has(b.customer_name)) && !excludedContactIds.has(b.customer_id);
+      }
       return !excludedContactIds.has(b.customer_id);
     });
 
     const payments = (this.billingData.payments || []).filter(p => {
-      if (isWorker) return accessibleContactIds.has(p.customer_id) || accessibleContactNames.has(p.customer_name);
+      if (isWorker) {
+        return (accessibleContactIds.has(p.customer_id) || accessibleContactNames.has(p.customer_name)) && !excludedContactIds.has(p.customer_id);
+      }
       return !excludedContactIds.has(p.customer_id);
     });
 
     const orders = (this.billingData.orders || []).filter(o => {
-      if (isWorker) return accessibleContactIds.has(o.customer_id) || accessibleContactNames.has(o.customer_name);
+      if (isWorker) {
+        return (accessibleContactIds.has(o.customer_id) || accessibleContactNames.has(o.customer_name)) && !excludedContactIds.has(o.customer_id);
+      }
       return !excludedContactIds.has(o.customer_id);
     });
 
@@ -865,6 +886,7 @@ class BillingDashboard {
    */
   renderTopbarActions() {
     const container = document.getElementById('topbarActions');
+    if (!container) return;
 
     const actions = [
       {
@@ -912,6 +934,7 @@ class BillingDashboard {
    */
   renderQuickShortcuts() {
     const container = document.getElementById('dashboardShortcuts');
+    if (!container) return;
 
     const shortcuts = [
       {
@@ -1278,7 +1301,7 @@ class BillingDashboard {
     const container = document.getElementById('dashboardCharts');
     if (!container) return;
 
-    const { contacts, bills, payments } = this.getScopedData();
+    const { contacts, bills, payments, orders } = this.getScopedData();
 
     const metrics = this.calculateSalesMetrics(bills, payments, contacts);
 
@@ -1422,7 +1445,6 @@ class BillingDashboard {
 
     // Render charts if Chart.js is available
     if (typeof Chart !== 'undefined') {
-      const orders = (this.billingData.orders || []).filter(o => !excludedContactIds.has(o.customer_id));
       this.renderSalesCharts(bills);
       this.updateAverageBillSection();
       this.renderDoughnutCharts(bills, payments, orders);
@@ -2381,19 +2403,7 @@ class BillingDashboard {
     const container = document.getElementById('dashboardOrderStats');
     if (!container) return;
 
-    const contacts = this.billingData.contacts || [];
-    const bills = this.billingData.bills || [];
-    const payments = this.billingData.payments || [];
-    const orders = this.billingData.orders || [];
-
-    // Filter contacts marked for exclusion
-    const excludedContactIds = new Set(
-      contacts.filter(c => c.exclude_from_stats === 1).map(c => c.id)
-    );
-
-    const filteredBills = bills.filter(b => !excludedContactIds.has(b.customer_id));
-    const filteredPayments = payments.filter(p => !excludedContactIds.has(p.customer_id));
-    const filteredOrders = orders.filter(o => !excludedContactIds.has(o.customer_id));
+    const { contacts, bills: filteredBills, payments: filteredPayments, orders: filteredOrders } = this.getScopedData();
 
     // Get date range
     const { startDate, endDate } = this.getMetricsDateRange();

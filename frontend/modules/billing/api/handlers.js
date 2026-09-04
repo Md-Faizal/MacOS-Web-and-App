@@ -47,15 +47,12 @@ function getDatabasePath() {
   return path.join(baseDir, 'MacOS.db');
 }
 
-// Helper to get correct scripts_py path for dev and production
+// Helper to get correct tools/python path for dev and production
 function getScriptsPath(scriptName) {
   // Handle both dev and production paths:
-  // - Dev: src/modules/billing/api + ../../../../scripts_py = /scripts_py
-  // - Prod: dist/modules/billing/api needs to resolve to /scripts_py in prod root
-  const isProduction = process.env.NODE_ENV === 'production';
-  const baseDir = isProduction
-    ? path.join(__dirname, '../../../../scripts_py')  // Goes from dist/modules/billing/api up 4 levels to prod root
-    : path.join(__dirname, '../../../../scripts_py');     // Goes from src/modules/billing/api up 4 levels to dev root
+  // - Dev: frontend/modules/billing/api + ../../../../tools/python = /tools/python
+  // - Prod: dist/modules/billing/api needs to resolve to /tools/python in prod root
+  const baseDir = path.join(__dirname, '../../../../tools/python');
   
   return path.join(baseDir, scriptName);
 }
@@ -282,7 +279,11 @@ function getAnnualSerialNumber(db, invoiceId) {
   }
 }
 
+const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+
 module.exports = function(db) {
+  const activityLogger = createActivityLogger(db);
+
   function getWorkerContactScope(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
@@ -296,6 +297,27 @@ module.exports = function(db) {
     const workerScope = getWorkerContactScope(req, 'contacts');
     const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
     return Boolean(row);
+  }
+
+  function getCustomerDuplexPreference(req, customerId) {
+    try {
+      if (!customerId) return null;
+      const isWorker = req.user && req.user.role === 'worker';
+      const userId = req.user ? (req.user.id || req.user.userId) : null;
+
+      if (isWorker && userId) {
+        const uca = db.prepare('SELECT disable_duplex_export FROM user_contact_access WHERE user_id = ? AND contact_id = ?').get(userId, customerId);
+        if (uca && uca.disable_duplex_export !== null && uca.disable_duplex_export !== undefined) {
+          return Number(uca.disable_duplex_export) === 1 ? 'no' : 'yes';
+        }
+      }
+
+      const contact = db.prepare('SELECT disable_duplex_export FROM contacts WHERE id = ?').get(customerId);
+      if (contact && contact.disable_duplex_export !== null && contact.disable_duplex_export !== undefined) {
+        return Number(contact.disable_duplex_export) === 1 ? 'no' : 'yes';
+      }
+    } catch (_) {}
+    return null;
   }
 
   return {
@@ -411,12 +433,14 @@ module.exports = function(db) {
         
         const calculatedPreviousDue = opening_balance + priorInvoiceTotal - (totalPayments + totalCredits);
 
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
+
         // Create invoice record
         const invoiceStmt = db.prepare(`
           INSERT INTO invoices 
           (customer_id, invoice_no, due_date, total_amount, total_discount, total_gst, 
-           round_off, grand_total, previous_due, invoice_date, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+           round_off, grand_total, previous_due, invoice_date, created_by_user_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `);
 
         let invoiceId;
@@ -431,7 +455,8 @@ module.exports = function(db) {
             round_off || 0,
             grand_total || 0,
             calculatedPreviousDue,
-            req.body.invoice_date || null
+            req.body.invoice_date || null,
+            creatorId
           );
 
           invoiceId = invoiceResult.lastInsertRowid;
@@ -608,6 +633,16 @@ module.exports = function(db) {
           current_status = 'SETTLED';
         }
 
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'billing',
+          action: 'create',
+          resourceType: 'invoice',
+          resourceId: invoiceId,
+          resourceName: finalInvoiceNo,
+          metadata: { customer_id: finalCustomerId, grand_total: grand_total || 0, items_count: products.length }
+        });
+
         res.status(201).json({
           success: true,
           id: invoiceId,
@@ -638,11 +673,17 @@ module.exports = function(db) {
         let sql = `
           SELECT i.*,
                  i.invoice_date,
+                 COALESCE(u_creator.role, 'owner') as created_by_role,
+                 COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                 u_editor.role as last_edited_by_role,
+                 COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
                  c.name as customer_name,
                  l.current_due as customer_current_due
           FROM invoices i
           LEFT JOIN contacts c ON i.customer_id = c.id
           LEFT JOIN ledger l ON i.customer_id = l.customer_id
+          LEFT JOIN users u_creator ON i.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON i.last_edited_by_user_id = u_editor.id
 
           WHERE 1=1
         `;
@@ -697,6 +738,10 @@ module.exports = function(db) {
             bill_date: inv.invoice_date || inv.created_at,
             invoice_date: inv.invoice_date || inv.created_at,
             created_at: inv.created_at,
+            created_by_role: inv.created_by_role,
+            created_by_name: inv.created_by_name,
+            last_edited_by_role: inv.last_edited_by_role,
+            last_edited_by_name: inv.last_edited_by_name,
 
             due_date: inv.due_date,
             subtotal: inv.total_amount || 0,
@@ -731,9 +776,15 @@ module.exports = function(db) {
         const invoiceStmt = db.prepare(`
           SELECT i.*,
                  i.invoice_date,
+                 COALESCE(u_creator.role, 'owner') as created_by_role,
+                 COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                 u_editor.role as last_edited_by_role,
+                 COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
                  c.name as customer_name
           FROM invoices i
           LEFT JOIN contacts c ON i.customer_id = c.id
+          LEFT JOIN users u_creator ON i.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON i.last_edited_by_user_id = u_editor.id
 
           WHERE i.id = ?
         `);
@@ -843,6 +894,7 @@ module.exports = function(db) {
         }
 
         const customerId = customer_id || existing.customer_id;
+        const editorId = req.user ? (req.user.id || req.user.userId) : null;
 
         // Update main invoice table
         const updateStmt = db.prepare(`
@@ -855,6 +907,7 @@ module.exports = function(db) {
               round_off = COALESCE(?, round_off),
               grand_total = COALESCE(?, grand_total),
               invoice_date = COALESCE(?, invoice_date),
+              last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
               updated_at = datetime('now')
           WHERE id = ?
         `);
@@ -868,6 +921,7 @@ module.exports = function(db) {
           round_off,
           grand_total,
           invoice_date,
+          editorId,
           id
         );
 
@@ -1061,7 +1115,8 @@ module.exports = function(db) {
           sql += ' AND i.customer_id = ?';
           params.push(customer_id);
         } else if (workerScope) {
-          sql += ` AND ${workerScope}`;
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          sql += ` AND ${workerScope} AND c.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)`;
         } else {
           sql += ' AND c.exclude_from_stats = 0';
         }
@@ -1098,8 +1153,18 @@ module.exports = function(db) {
     // Get all customers with their ledger balances and financial metrics
     getLedgerCustomers: (req, res) => {
       try {
+        const isWorker = req.user && req.user.role === 'worker';
+        const safeUserId = isWorker ? String(req.user.id || req.user.userId).replace(/'/g, "''") : null;
         const workerScope = getWorkerContactScope(req, 'c');
         const scopeClause = workerScope ? ` AND ${workerScope}` : '';
+
+        const selectExclude = isWorker
+          ? `COALESCE(uca.exclude_from_stats, 0) as exclude_from_stats`
+          : `c.exclude_from_stats`;
+
+        const joinUca = isWorker
+          ? `LEFT JOIN user_contact_access uca ON uca.contact_id = c.id AND uca.user_id = '${safeUserId}'`
+          : '';
 
         // Get all customers with ledger entries only (those with actual invoices/payments)
         const customers = db.prepare(`
@@ -1107,7 +1172,7 @@ module.exports = function(db) {
             c.id,
             c.name,
             c.opening_balance,
-            c.exclude_from_stats,
+            ${selectExclude},
             c.active,
             c.last_activity,
             COALESCE(l.current_due, 0) as current_due,
@@ -1118,9 +1183,16 @@ module.exports = function(db) {
             COALESCE(l.total_payments, 0) as total_payments,
             l.updated_at as ledger_updated_at,
             (SELECT MAX(COALESCE(invoice_date, created_at)) FROM invoices WHERE customer_id = c.id) as last_bill_date,
-            (SELECT MAX(COALESCE(payment_date, created_at)) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT') as last_payment_date
+            (SELECT MAX(COALESCE(payment_date, created_at)) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT') as last_payment_date,
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
 
           FROM contacts c
+          ${joinUca}
+          LEFT JOIN users u_creator ON c.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON c.last_edited_by_user_id = u_editor.id
           LEFT JOIN ledger l ON c.id = l.customer_id
           WHERE (c.type IS NULL OR LOWER(c.type) = 'customer')
             AND (l.id IS NOT NULL OR COALESCE(c.opening_balance, 0) != 0)
@@ -1157,7 +1229,11 @@ module.exports = function(db) {
             lastBillDate: c.last_bill_date || null,
             lastPaymentDate: c.last_payment_date || null,
             active: c.active || 'ACTIVE',
-            last_activity: c.last_activity
+            last_activity: c.last_activity,
+            created_by_role: c.created_by_role,
+            created_by_name: c.created_by_name,
+            last_edited_by_role: c.last_edited_by_role,
+            last_edited_by_name: c.last_edited_by_name
           };
         });
 
@@ -1291,6 +1367,13 @@ module.exports = function(db) {
           });
         }
 
+        if (!isCustomerAccessible(req, customer.id)) {
+          return res.json({
+            status: 'not_found',
+            data: null
+          });
+        }
+
         // Find product by name
         const product = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(productName.trim());
         if (!product) {
@@ -1341,8 +1424,8 @@ module.exports = function(db) {
       try {
         const { customerName } = req.params;
         
-        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName);
-        if (!customer) {
+        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
+        if (!customer || !isCustomerAccessible(req, customer.id)) {
           return res.json({
             status: 'success',
             data: []
@@ -1379,6 +1462,37 @@ module.exports = function(db) {
       }
     },
 
+    // Get invoice items purchased by customer (for suggestions / order creation)
+    getCustomerBillItems: (req, res) => {
+      try {
+        const { customerName } = req.params;
+        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
+        if (!customer || !isCustomerAccessible(req, customer.id)) {
+          return res.json({
+            success: true,
+            data: []
+          });
+        }
+
+        const items = db.prepare(`
+          SELECT ii.*, p.name as product_name, i.invoice_date, i.created_at
+          FROM invoice_items ii
+          JOIN invoices i ON ii.invoice_id = i.id
+          LEFT JOIN products p ON ii.product_id = p.id
+          WHERE i.customer_id = ?
+          ORDER BY i.created_at DESC
+        `).all(customer.id);
+
+        res.json({
+          success: true,
+          data: items
+        });
+      } catch (error) {
+        console.error('Error fetching customer bill items:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
     // Save/Update preference for a customer/product
     savePreference: (req, res) => {
       try {
@@ -1392,7 +1506,7 @@ module.exports = function(db) {
         }
 
         // Find customer by name
-        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName);
+        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
         if (!customer) {
           return res.status(404).json({
             status: 'error',
@@ -1400,8 +1514,15 @@ module.exports = function(db) {
           });
         }
 
+        if (!isCustomerAccessible(req, customer.id)) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Access denied to this customer'
+          });
+        }
+
         // Find product by name
-        const product = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(productName);
+        const product = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(productName.trim());
         if (!product) {
           return res.status(404).json({
             status: 'error',
@@ -1452,7 +1573,7 @@ module.exports = function(db) {
       try {
         const { customerName, productName } = req.params;
         
-        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName);
+        const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
         if (!customer) {
           return res.status(404).json({
             status: 'error',
@@ -1460,7 +1581,14 @@ module.exports = function(db) {
           });
         }
 
-        const product = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(productName);
+        if (!isCustomerAccessible(req, customer.id)) {
+          return res.status(403).json({
+            status: 'error',
+            message: 'Access denied to this customer'
+          });
+        }
+
+        const product = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(productName.trim());
         if (!product) {
           return res.status(404).json({
             status: 'error',
@@ -1508,11 +1636,18 @@ module.exports = function(db) {
           return res.status(404).json({ error: `Invoice not found: ${invoiceId || invoiceNo}` });
         }
 
+        if (invoice.customer_id && !isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this invoice' });
+        }
+
         // Get database path
         const dbPath = getDatabasePath();
         
-        // Check account duplex preference for export/preview (decoupled from customer)
+        // Check account/customer duplex preference for export/preview (decoupled per user and customer)
         let finalDuplex = duplex;
+        if (!finalDuplex) {
+          finalDuplex = getCustomerDuplexPreference(req, invoice.customer_id);
+        }
         if (!finalDuplex) {
           try {
             const setting = db.prepare("SELECT value FROM Settings WHERE key = 'invoice_duplex_print'").get();
@@ -1587,11 +1722,18 @@ module.exports = function(db) {
           return res.status(404).json({ error: `Invoice not found: ${invoiceId || invoiceNo}` });
         }
 
+        if (invoice.customer_id && !isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this invoice' });
+        }
+
         // Get database path
         const dbPath = getDatabasePath();
         
-        // Check account duplex preference for export (decoupled from customer)
+        // Check account/customer duplex preference for export (decoupled per user and customer)
         let finalDuplex = duplex;
+        if (!finalDuplex) {
+          finalDuplex = getCustomerDuplexPreference(req, invoice.customer_id);
+        }
         if (!finalDuplex) {
           try {
             const setting = db.prepare("SELECT value FROM Settings WHERE key = 'invoice_duplex_print'").get();
@@ -1645,6 +1787,10 @@ module.exports = function(db) {
         }
         if (!invoice) {
           return res.status(404).json({ error: `Invoice not found: ${invoiceId || invoiceNo}` });
+        }
+
+        if (invoice.customer_id && !isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this invoice' });
         }
 
         // Get database path
@@ -1736,13 +1882,21 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'paymentId is required' });
         }
 
+        // Fetch record type, customer_id and date
+        const paymentRecord = db.prepare('SELECT type, customer_id, created_at FROM payments WHERE id = ?').get(paymentId);
+        if (!paymentRecord) {
+          return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        if (paymentRecord.customer_id && !isCustomerAccessible(req, paymentRecord.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this payment' });
+        }
+
         const dbPath = getDatabasePath();
         
         const pdfPath = generatePaymentPDF(dbPath, paymentId);
         const pdfBuffer = fs.readFileSync(pdfPath);
         
-        // Fetch record type and date
-        const paymentRecord = db.prepare('SELECT type, created_at FROM payments WHERE id = ?').get(paymentId);
         const isCreditNote = paymentRecord && paymentRecord.type === 'CREDIT_NOTE';
         const docPrefix = isCreditNote ? 'Credit Note' : 'Payment';
         const dateStr = paymentRecord ? paymentRecord.created_at : null;
@@ -1780,6 +1934,15 @@ module.exports = function(db) {
         
         if (!paymentId) {
           return res.status(400).json({ error: 'paymentId is required' });
+        }
+
+        const paymentRecord = db.prepare('SELECT customer_id FROM payments WHERE id = ?').get(paymentId);
+        if (!paymentRecord) {
+          return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        if (paymentRecord.customer_id && !isCustomerAccessible(req, paymentRecord.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this payment' });
         }
 
         const dbPath = getDatabasePath();
@@ -1821,6 +1984,12 @@ module.exports = function(db) {
         if (!customerName) {
           return res.status(400).json({ error: 'customerName is required' });
         }
+
+        const contact = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
+        if (contact && !isCustomerAccessible(req, contact.id)) {
+          return res.status(403).json({ error: 'Access denied to this customer' });
+        }
+
         const dbPath = getDatabasePath();
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
         const jpgPath = convertPDFToJPG(pdfPath);
@@ -1847,13 +2016,20 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'paymentId query parameter is required' });
         }
 
+        const paymentRecord = db.prepare('SELECT type, customer_id, created_at FROM payments WHERE id = ?').get(paymentId);
+        if (!paymentRecord) {
+          return res.status(404).json({ error: 'Payment not found' });
+        }
+
+        if (paymentRecord.customer_id && !isCustomerAccessible(req, paymentRecord.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this payment' });
+        }
+
         const dbPath = getDatabasePath();
         
         const pdfPath = generatePaymentPDF(dbPath, paymentId);
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
-        // Fetch record type and date
-        const paymentRecord = db.prepare('SELECT type, created_at FROM payments WHERE id = ?').get(paymentId);
         const isCreditNote = paymentRecord && paymentRecord.type === 'CREDIT_NOTE';
         const docPrefix = isCreditNote ? 'Credit Note' : 'Payment';
         const dateStr = paymentRecord ? paymentRecord.created_at : null;
@@ -1906,12 +2082,16 @@ module.exports = function(db) {
         if (!customerName) {
           return res.status(400).json({ error: 'customerName is required' });
         }
+
+        const contactRecord = db.prepare('SELECT id, created_at FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
+        if (contactRecord && !isCustomerAccessible(req, contactRecord.id)) {
+          return res.status(403).json({ error: 'Access denied to this customer' });
+        }
+
         const dbPath = getDatabasePath();
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
         const pdfBuffer = fs.readFileSync(pdfPath);
         
-        // Optional: Get contact creation date or use current
-        const contactRecord = db.prepare('SELECT created_at FROM contacts WHERE name = ?').get(customerName);
         const dateStr = contactRecord ? contactRecord.created_at : null;
         const fileName = `Opening Balance ${formatDateStr(dateStr)}`;
 
@@ -1938,13 +2118,16 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'customerName is required' });
         }
 
+        const contactRecord = db.prepare('SELECT id, created_at FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
+        if (contactRecord && !isCustomerAccessible(req, contactRecord.id)) {
+          return res.status(403).json({ error: 'Access denied to this customer' });
+        }
+
         const dbPath = getDatabasePath();
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
         
-        // Optional: Get contact creation date or use current
-        const contactRecord = db.prepare('SELECT created_at FROM contacts WHERE name = ?').get(customerName);
         const dateStr = contactRecord ? contactRecord.created_at : null;
         const fileName = `Opening Balance ${formatDateStr(dateStr)}`;
         
@@ -1964,6 +2147,7 @@ module.exports = function(db) {
 </html>`;
         
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}.html"`);
         res.send(htmlContent);
         
         // Clean up temp file asynchronously

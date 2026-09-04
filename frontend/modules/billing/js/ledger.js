@@ -22,7 +22,6 @@ class LedgerView {
 
   isExcluded(contact) {
     if (!contact) return false;
-    if (this.isWorkerUser()) return false;
     return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
   }
 
@@ -819,10 +818,25 @@ class LedgerView {
         const lastBillDays = this.getDaysAgo(c.lastBillDate);
         const lastPmtDays = this.getDaysAgo(c.lastPaymentDate);
         
+        const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+          ? window.renderWorkerBadge(c, { compact: true })
+          : '';
+
+        const auditInfo = JSON.stringify({
+          type: 'Ledger Customer',
+          id: c.customer_id,
+          name: c.customerName,
+          created_by_role: c.created_by_role,
+          created_by_name: c.created_by_name,
+          last_edited_by_role: c.last_edited_by_role,
+          last_edited_by_name: c.last_edited_by_name,
+          last_activity: c.last_activity
+        });
+
         return `
-          <div class="ledger-sidebar-item ${isActive ? 'active' : ''}" data-customer="${c.customerName}">
+          <div class="ledger-sidebar-item ${isActive ? 'active' : ''}" data-customer="${c.customerName}" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; gap: 8px;">
-              <div style="font-weight: 700; color: #ffffff; font-size: 13px; flex: 1; font-family: 'Courier New', monospace; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.customerName}${c.exclude_from_stats ? ' <span title="Excluded from Global Stats">🚫</span>' : ''}</div>
+              <div style="font-weight: 700; color: #ffffff; font-size: 13px; flex: 1; font-family: 'Courier New', monospace; letter-spacing: 0.3px; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><span style="overflow: hidden; text-overflow: ellipsis;">${c.customerName}</span>${c.exclude_from_stats ? ' <span title="Excluded from Global Stats">🚫</span>' : ''} ${workerBadgeHtml}</div>
               <div style="font-size: 9px; font-weight: 800; color: ${statusColor}; background: ${statusBg}; border: 1px solid ${statusBorder}; padding: 4px 6px; border-radius: 2px; white-space: nowrap; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${statusText}</div>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 11px; color: #aaaaaa; margin-bottom: 8px; font-family: 'Courier New', monospace;">
@@ -1482,10 +1496,26 @@ class LedgerView {
         </div>`;
     }
 
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(bill, { compact: true })
+      : '';
+
+    const billAuditInfo = JSON.stringify({
+      type: 'Invoice',
+      id: bill.id,
+      name: `Invoice ${displayId} (${bill.customer_name || 'Customer'})`,
+      created_by_role: bill.created_by_role,
+      created_by_name: bill.created_by_name,
+      last_edited_by_role: bill.last_edited_by_role,
+      last_edited_by_name: bill.last_edited_by_name,
+      date: bill.invoice_date || bill.bill_date || bill.created_at,
+      created_at: bill.created_at
+    });
+
     return `
-      <div class="ledger-bill-record" data-bill-id="${billId}" data-invoice-no="${invoiceNo}" style="padding: 12px; background: ${statusBg}; border: 1px solid ${statusBorder}; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace;">
+      <div class="ledger-bill-record" data-bill-id="${billId}" data-invoice-no="${invoiceNo}" data-worker-audit='${billAuditInfo.replace(/'/g, "&#39;")}' style="padding: 12px; background: ${statusBg}; border: 1px solid ${statusBorder}; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
-          <div style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px;">${displayId}</div>
+          <div style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span>${displayId}</span> ${workerBadgeHtml}</div>
           <div style="display: flex; flex-direction: column; align-items: flex-end;">
             <div style="font-size: 10px; font-weight: 800; color: #000000; background: transparent; padding: 2px 4px; border: 1px solid #000000; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.4px;">${statusSym} ${status}</div>
             ${settlementHtml}
@@ -1513,11 +1543,26 @@ class LedgerView {
     const reason = payment.reason || 'N/A';
     const isCredit = payment.type === 'CREDIT_NOTE';
     const displayRef = payment.reference_number || (isCredit ? '📋 CREDIT NOTE' : '✓ PAYMENT');
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(payment, { compact: true })
+      : '';
+
+    const paymentAuditInfo = JSON.stringify({
+      type: isCredit ? 'Credit Note' : 'Payment',
+      id: payment.id,
+      name: `${isCredit ? 'Credit Note' : 'Payment'} (${payment.customer_name || 'Customer'})`,
+      created_by_role: payment.created_by_role,
+      created_by_name: payment.created_by_name,
+      last_edited_by_role: payment.last_edited_by_role,
+      last_edited_by_name: payment.last_edited_by_name,
+      date: payment.payment_date || payment.created_at,
+      created_at: payment.created_at
+    });
 
     return `
-      <div class="ledger-payment-record${isCredit ? ' credit-note-card' : ''}" data-payment-id="${paymentId}" style="padding: 12px; background: #ffffff; border: 2px solid #000000; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace;">
+      <div class="ledger-payment-record${isCredit ? ' credit-note-card' : ''}" data-payment-id="${paymentId}" data-worker-audit='${paymentAuditInfo.replace(/'/g, "&#39;")}' style="padding: 12px; background: #ffffff; border: 2px solid #000000; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
-          <div class="payment-ref-number" style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px;">${displayRef} ${payment.attachment_data ? '<span style="font-size: 11px; margin-left: 4px;" title="Image Attached">📎</span>' : ''}</div>
+          <div class="payment-ref-number" style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span>${displayRef}</span> ${workerBadgeHtml} ${payment.attachment_data ? '<span style="font-size: 11px; margin-left: 4px;" title="Image Attached">📎</span>' : ''}</div>
           <div style="font-size: 10px; font-weight: 800; color: #ffffff; background: ${isCredit ? '#f59e0b' : '#000000'}; padding: 2px 4px; border: 1px solid #000000; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.4px;">${isCredit ? '+ CR' : '✓ DONE'}</div>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333333; margin-bottom: 4px;">
@@ -1902,15 +1947,24 @@ class LedgerView {
 
   async getLedgerData() {
     try {
+      const isWorker = this.isWorkerUser();
+      const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+      const accessibleNames = scoped && isWorker ? new Set(scoped.contacts.map(c => c.name).filter(Boolean)) : null;
+
       // Fetch customers with current_due from new ledger endpoint
       const response = await fetch('/api/billing/ledger/customers');
       if (!response.ok) throw new Error(`Failed to fetch ledger customers: ${response.statusText}`);
       const result = await response.json();
-      const ledgerCustomers = result.data || [];
+      let ledgerCustomers = result.data || [];
 
-      // Get local bills and payments for additional metrics
-      const bills = this.billingApp.billingData.bills || [];
-      const payments = this.billingApp.billingData.payments || [];
+      // Filter ledger customers for workers
+      if (isWorker && accessibleNames) {
+        ledgerCustomers = ledgerCustomers.filter(c => accessibleNames.has(c.customerName));
+      }
+
+      // Get local bills and payments for additional metrics (scoped for worker)
+      const bills = scoped ? scoped.bills : (this.billingApp.billingData.bills || []);
+      const payments = scoped ? scoped.payments : (this.billingApp.billingData.payments || []);
       
       // Create map of customer data from ledger API
       const ledgerMap = {};
@@ -1918,15 +1972,17 @@ class LedgerView {
         ledgerMap[c.customerName] = c;
       });
 
-      // Create map of local bills and payments by customer
+      // Create map of local bills and payments by customer (scoped for worker)
       const localMap = {};
       bills.forEach(b => {
         const c = b.customer_name || b.customer || 'Unknown';
+        if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
         if (!localMap[c]) localMap[c] = { customerName: c, bills: [], payments: [] };
         localMap[c].bills.push(b);
       });
       payments.forEach(p => {
         const c = p.customer_name || p.customer || 'Unknown';
+        if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
         if (!localMap[c]) localMap[c] = { customerName: c, bills: [], payments: [] };
         localMap[c].payments.push(p);
       });
@@ -1944,6 +2000,10 @@ class LedgerView {
           last_activity: ledgerCustomer.last_activity,
           opening_balance: ledgerCustomer.opening_balance || 0,
           exclude_from_stats: ledgerCustomer.exclude_from_stats || 0,
+          created_by_role: ledgerCustomer.created_by_role,
+          created_by_name: ledgerCustomer.created_by_name,
+          last_edited_by_role: ledgerCustomer.last_edited_by_role,
+          last_edited_by_name: ledgerCustomer.last_edited_by_name,
           amountDue: ledgerCustomer.amountDue, // USE DATABASE VALUE AS SINGLE SOURCE OF TRUTH (includes opening balance)
           current_due: ledgerCustomer.current_due || 0, // Current due without opening balance
           total_debit: ledgerCustomer.total_debit || 0,
@@ -2003,24 +2063,36 @@ class LedgerView {
    * Fallback local ledger data calculation (for when API is unavailable)
    */
   getLedgerDataLocal() {
-    const bills = this.billingApp.billingData.bills || [];
-    const payments = this.billingApp.billingData.payments || [];
-    const contacts = this.billingApp.billingData.contacts || [];
+    const isWorker = this.isWorkerUser();
+    const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const bills = scoped ? scoped.bills : (this.billingApp.billingData.bills || []);
+    const payments = scoped ? scoped.payments : (this.billingApp.billingData.payments || []);
+    const contacts = scoped ? scoped.contacts : (this.billingApp.billingData.contacts || []);
+    const accessibleNames = scoped && isWorker ? new Set(contacts.map(c => c.name).filter(Boolean)) : null;
+
     const map = {};
     bills.forEach(b => {
       const c = b.customer_name || b.customer || 'Unknown';
+      if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
       if (!map[c]) map[c] = { customerName: c, bills: [], payments: [] };
       map[c].bills.push(b);
     });
     payments.forEach(p => {
       const c = p.customer_name || p.customer || 'Unknown';
+      if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
       if (!map[c]) map[c] = { customerName: c, bills: [], payments: [] };
       map[c].payments.push(p);
     });
     Object.values(map).forEach(cd => {
-      // Find exclusion flag from contacts data
+      // Find exclusion flag & worker audit from contacts data
       const contact = contacts.find(con => con.name === cd.customerName);
       cd.exclude_from_stats = contact ? (contact.exclude_from_stats || 0) : 0;
+      if (contact) {
+        cd.created_by_role = contact.created_by_role;
+        cd.created_by_name = contact.created_by_name;
+        cd.last_edited_by_role = contact.last_edited_by_role;
+        cd.last_edited_by_name = contact.last_edited_by_name;
+      }
       
       Object.assign(cd, this.calculateCustomerMetrics(cd.bills, cd.payments));
     });

@@ -16,7 +16,19 @@ android {
         versionName = project.findProperty("versionName")?.toString()?.takeIf { it.isNotBlank() } ?: "1.0"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("app-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -51,6 +63,8 @@ dependencies {
 
   // Core Android dependencies
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.fragment.ktx)
+  implementation(libs.androidx.biometric)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)
 
@@ -70,6 +84,11 @@ dependencies {
   implementation(libs.okhttp.core)
   implementation(libs.okhttp.logging)
   implementation(libs.gson)
+
+  // Auth & Credentials
+  implementation("androidx.credentials:credentials:1.3.0-rc01")
+  implementation("androidx.credentials:credentials-play-services-auth:1.3.0-rc01")
+  implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)

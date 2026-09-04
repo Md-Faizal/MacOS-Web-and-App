@@ -75,6 +75,38 @@ class EditBillsPayments {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
+  async fetchCustomersList() {
+    try {
+      const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+      if (scoped && scoped.contacts && scoped.contacts.length > 0) {
+        return scoped.contacts;
+      }
+      const response = await fetch('/api/contacts');
+      if (response.ok) {
+        const result = await response.json();
+        return Array.isArray(result) ? result : (result.data || []);
+      }
+      return [];
+    } catch (e) {
+      console.error('Error fetching customers in EditBillsPayments:', e);
+      return [];
+    }
+  }
+
+  async fetchProductsList() {
+    try {
+      const response = await fetch('/api/products');
+      if (response.ok) {
+        const result = await response.json();
+        return Array.isArray(result) ? result : (result.data || []);
+      }
+      return [];
+    } catch (e) {
+      console.error('Error fetching products in EditBillsPayments:', e);
+      return [];
+    }
+  }
+
   /**
    * Enrich normalized bill data with API metadata (contacts, products, preferences)
    * Makes edit page identical to new bill page by fetching all related data
@@ -241,7 +273,7 @@ class EditBillsPayments {
       // Database fields
       variant_id: item.variant_id,
       batch_id: item.batch_id,
-      isGold: item.is_gold || item.isGold || false,
+      isGold: item.is_gold === true || item.is_gold === 1 || item.is_gold === '1' || item.isGold === true || String(item.classification).toLowerCase() === 'gold' || false,
       
       // GST Reverse flag
       gst_reverse: item.gst_reverse || false
@@ -838,8 +870,20 @@ class EditBillsPayments {
           return;
         }
 
-        billsList.innerHTML = filtered.map(bill => `
-          <div class="bill-item">
+        billsList.innerHTML = filtered.map(bill => {
+          const auditInfo = JSON.stringify({
+            type: 'Invoice',
+            id: bill.id,
+            name: `Invoice ${bill.bill_number || bill.reference_no || bill.id} (${bill.customer_name || bill.customer || 'Customer'})`,
+            created_by_role: bill.created_by_role,
+            created_by_name: bill.created_by_name,
+            last_edited_by_role: bill.last_edited_by_role,
+            last_edited_by_name: bill.last_edited_by_name,
+            date: bill.invoice_date || bill.bill_date || bill.created_at,
+            created_at: bill.created_at
+          });
+          return `
+          <div class="bill-item" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
             <div class="bill-info">
               <div className="bill-number">${bill.bill_number || bill.reference_no || 'N/A'}</div>
               <div class="bill-customer">${bill.customer_name || bill.customer || 'Unknown'}</div>
@@ -850,7 +894,8 @@ class EditBillsPayments {
             </div>
             <button class="btn btn-small btn-edit" data-bill-id="${bill.id}">Edit</button>
           </div>
-        `).join('');
+        `;
+        }).join('');
 
         document.querySelectorAll('.btn-edit').forEach(btn => {
           btn.addEventListener('click', (e) => {
@@ -906,8 +951,21 @@ class EditBillsPayments {
           'other': '📝'
         };
 
-        paymentsList.innerHTML = filtered.map(payment => `
-          <div class="transaction-card" style="position: relative; margin-bottom: 12px; padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; background: white;">
+        paymentsList.innerHTML = filtered.map(payment => {
+          const isCredit = payment.type === 'CREDIT_NOTE';
+          const auditInfo = JSON.stringify({
+            type: isCredit ? 'Credit Note' : 'Payment',
+            id: payment.id,
+            name: `${isCredit ? 'Credit Note' : 'Payment'} (${payment.customer_name || 'Customer'})`,
+            created_by_role: payment.created_by_role,
+            created_by_name: payment.created_by_name,
+            last_edited_by_role: payment.last_edited_by_role,
+            last_edited_by_name: payment.last_edited_by_name,
+            date: payment.payment_date || payment.created_at,
+            created_at: payment.created_at
+          });
+          return `
+          <div class="transaction-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}' style="position: relative; margin-bottom: 12px; padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; background: white;">
             <div style="position: absolute; top: 12px; right: 12px; display: flex; gap: 6px;">
               <button class="action-btn edit" title="Edit transaction" onclick="window.currentEditBillsPaymentsModule && window.currentEditBillsPaymentsModule.handleEditItemSelection(${payment.id}, 'payment')" style="width: 32px; height: 32px; border-radius: 6px; border: 1px solid #e0e0e0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s;">✏️</button>
               <button class="action-btn delete" title="Delete transaction" onclick="if(confirm('Delete this transaction?')) { window.currentEditBillsPaymentsModule && window.currentEditBillsPaymentsModule.deletePaymentItem(${payment.id}); }" style="width: 32px; height: 32px; border-radius: 6px; border: 1px solid #e0e0e0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s;">🗑️</button>
@@ -927,7 +985,8 @@ class EditBillsPayments {
               </div>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       })
       .catch(error => {
         console.error('Error fetching payments:', error);
@@ -1862,7 +1921,8 @@ class EditBillsPayments {
       sgst: parseFloat((gstPct / 2).toFixed(2)),
       cgst: parseFloat((gstPct / 2).toFixed(2)),
       gstTotal: gstPct,
-      isGold: this.currentEditProduct?.isGold || false
+      gst_percent: gstPct,
+      isGold: (this.currentEditProduct && (this.currentEditProduct.isGold === true || this.currentEditProduct.is_gold === true || this.currentEditProduct.is_gold === 1 || String(this.currentEditProduct.classification).toLowerCase() === 'gold')) || false
     };
 
     if (!product.name || product.qty === 0 || product.mrp === 0) {
@@ -1887,64 +1947,65 @@ class EditBillsPayments {
       }
 
       // Compare Batch
-      if (String(product.batch) !== String(masterProduct.batch_no || masterProduct.batch || '')) {
+      if (String(product.batch) !== String(masterProduct.batch_no || '')) {
         changes.push('batch');
       }
 
       if (changes.length > 0) {
+        console.log('🔍 Change detection triggered for:', changes);
         const priorityField = changes[0]; 
         const oldValue = priorityField === 'mrp' ? masterProduct.mrp : 
-                        (priorityField === 'pack' ? masterPackValue : (masterProduct.batch_no || masterProduct.batch));
+                        (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
         const newValue = product[priorityField === 'pack' ? 'pack_value' : priorityField];
-
-        const updateType = await this.showProductMasterUpdateModal(product, priorityField, oldValue, newValue);
         
-        if (updateType === 'cancel') {
-          return; // Skip adding the product
+        // Show change detection modal
+        const result = await this.showProductMasterUpdateModal(product, priorityField, oldValue, newValue);
+        if (result === 'cancel') {
+          return;
         }
-        
-        if (updateType === 'update-db') {
-          // FIX: Pass 'product' (the new one) instead of 'masterProduct' (the old reference)
+        if (result === 'update-db') {
           await this.updateProductDatabase(product, priorityField, newValue);
         }
       }
     }
 
     this.editBillProducts.push(product);
-    this.clearEditProductForm();
+    this.clearEditProductInputFields();
     this.renderEditProductList();
     this.updateEditBillSummary();
   }
 
-  clearEditProductForm() {
+  clearEditProductInputFields() {
     if (document.getElementById('editProductName')) {
       document.getElementById('editProductName').value = '';
       document.getElementById('editProductPack').value = '';
       document.getElementById('editProductPackUnit').value = '';
       document.getElementById('editProductBatch').value = '';
       document.getElementById('editProductMRP').value = '';
-      document.getElementById('editProductQty').value = '';
-      document.getElementById('editProductDisc1').value = '';
-      document.getElementById('editProductDisc2').value = '';
-      document.getElementById('editProductScheme').value = '';
-      document.getElementById('editCustomSchemeValue').value = '';
+      document.getElementById('editProductQty').value = '1';
+      document.getElementById('editProductDisc1').value = '0';
+      document.getElementById('editProductDisc2').value = '0';
       document.getElementById('editProductTax').value = '0';
-      if (document.getElementById('editCustomSchemeContainer')) {
-        document.getElementById('editCustomSchemeContainer').style.display = 'none';
-      }
+      document.getElementById('editProductScheme').value = '';
+      
+      const customScheme = document.getElementById('editCustomSchemeValue');
+      if (customScheme) customScheme.value = '';
+      const customSchemeContainer = document.getElementById('editCustomSchemeContainer');
+      if (customSchemeContainer) customSchemeContainer.style.display = 'none';
+
+      this.currentEditProduct = null;
       document.getElementById('editProductName').focus();
     }
   }
 
   renderEditProductList() {
     const listSection = document.getElementById('editProductListSection');
-    const listTable = document.getElementById('editProductListTable');
-
-    if (!listSection || !listTable) return;
+    const listContainer = document.getElementById('editProductListContainer');
+    
+    if (!listSection || !listContainer) return;
 
     if (this.editBillProducts.length === 0) {
       listSection.style.display = 'none';
-      listTable.innerHTML = '';
       return;
     }
 
@@ -1952,20 +2013,34 @@ class EditBillsPayments {
     let html = '';
 
     this.editBillProducts.forEach((product, index) => {
-      const goldIndicator = product.isGold ? '🔶' : '⚪';
-      const discountedRate = parseFloat((parseFloat(product.rate || product.mrp || 0)).toFixed(2));
-      const rateAfterDisc1 = parseFloat((parseFloat(product.mrp || product.rate || 0) - (parseFloat(product.mrp || product.rate || 0) * parseFloat(product.disc1 || 0) / 100)).toFixed(2));
-      const rateAfterDisc2 = parseFloat((rateAfterDisc1 - (rateAfterDisc1 * parseFloat(product.disc2 || 0) / 100)).toFixed(2));
-      const amount = parseFloat((product.qty * discountedRate).toFixed(2));
-      const sgstValue = parseFloat(((amount * product.sgst) / 100).toFixed(2));
-      const cgstValue = parseFloat(((amount * product.cgst) / 100).toFixed(2));
-      const finalAmount = parseFloat((amount + sgstValue + cgstValue).toFixed(2));
+      const isGold = product.isGold === true || product.is_gold === true || product.is_gold === 1 || String(product.classification).toLowerCase() === 'gold' || String(product.category).toLowerCase() === 'gold';
+      const goldIndicator = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
+      
+      const calc = BillCalculator.calculateLineItem({
+        rate: parseFloat(product.rate || product.mrp || 0),
+        mrp: parseFloat(product.mrp || product.rate || 0),
+        qty: parseInt(product.qty || 1),
+        disc1: parseFloat(product.disc1 || 0),
+        disc2: parseFloat(product.disc2 || 0),
+        sgst: parseFloat(product.sgst || 0),
+        cgst: parseFloat(product.cgst || 0),
+        gstTotal: parseFloat(product.gstTotal !== undefined ? product.gstTotal : (product.gst_percent !== undefined ? product.gst_percent : (parseFloat(product.sgst || 0) + parseFloat(product.cgst || 0)))),
+        gst_reverse: product.gst_reverse || false
+      });
+
+      const baseRateForDisplay = calc.rate;
+      const rateAfterDisc1 = calc.discounted_rate;
+      const qty = calc.qty;
+      const amountAfterDisc1 = calc.amount - calc.discount_1_amount;
+      const amountAfterDisc2 = amountAfterDisc1 - calc.discount_2_amount;
+      const rateAfterDisc2 = amountAfterDisc2 / qty;
+      const taxTotalPercent = parseFloat(product.gstTotal !== undefined ? product.gstTotal : (product.gst_percent !== undefined ? product.gst_percent : (parseFloat(product.sgst || 0) + parseFloat(product.cgst || 0))));
 
       html += `
         <div class="edit-product-card" data-product-id="${product.id}" tabindex="0" role="article">
           <div class="edit-product-card-header">
             <div class="edit-product-card-name">${index + 1}. ${product.name}</div>
-            <div class="edit-product-card-badge">${goldIndicator}</div>
+            <div class="edit-product-card-badge ${isGold ? 'gold' : ''}">${goldIndicator}</div>
           </div>
           
           <div class="edit-product-card-field" data-field="qty" data-editable="true">
@@ -1978,7 +2053,7 @@ class EditBillsPayments {
             <div class="edit-product-card-field-value">${product.pack || product.pack_size_value || ''}</div>
           </div>
           
-          <div class="edit-product-card-field">
+          <div class="edit-product-card-field" data-field="mrp" data-editable="true">
             <label>MRP</label>
             <div class="edit-product-card-field-value">₹${parseFloat(product.mrp || 0).toFixed(2)}</div>
           </div>
@@ -1995,7 +2070,7 @@ class EditBillsPayments {
 
           <div class="edit-product-card-field" data-field="disc1" data-editable="true">
             <label>D1%</label>
-            <div class="edit-product-card-field-value">${parseFloat(product.disc1 || 0).toFixed(2)}%</div>
+            <div class="edit-product-card-field-value">${parseFloat(product.disc1 || 0).toFixed(1)}%</div>
           </div>
 
           <div class="edit-product-card-field">
@@ -2005,7 +2080,7 @@ class EditBillsPayments {
 
           <div class="edit-product-card-field" data-field="disc2" data-editable="true">
             <label>D2%</label>
-            <div class="edit-product-card-field-value">${parseFloat(product.disc2 || 0).toFixed(2)}%</div>
+            <div class="edit-product-card-field-value">${parseFloat(product.disc2 || 0).toFixed(1)}%</div>
           </div>
 
           <div class="edit-product-card-field">
@@ -2013,14 +2088,19 @@ class EditBillsPayments {
             <div class="edit-product-card-field-value">₹${rateAfterDisc2.toFixed(2)}</div>
           </div>
 
-          <div class="edit-product-card-field" data-field="sgst" data-editable="true">
-            <label>SGST%</label>
-            <div class="edit-product-card-field-value">${parseFloat(product.sgst || 0).toFixed(2)}%</div>
+          <div class="edit-product-card-field" data-field="gstTotal" data-editable="true">
+            <label>Tax%</label>
+            <div class="edit-product-card-field-value">${taxTotalPercent.toFixed(1)}%</div>
+          </div>
+
+          <div class="edit-product-card-field">
+            <label>Tax Val</label>
+            <div class="edit-product-card-field-value">₹${calc.gst_amount.toFixed(2)}</div>
           </div>
 
           <div class="edit-product-card-field">
             <label>Final</label>
-            <div class="edit-product-card-field-value" style="font-weight: 700; color: #1db954;">₹${finalAmount.toFixed(2)}</div>
+            <div class="edit-product-card-field-value" style="font-weight: 700; color: #1db954;">₹${calc.final_amount.toFixed(2)}</div>
           </div>
           
           <div class="edit-product-card-actions">
@@ -2307,8 +2387,9 @@ class EditBillsPayments {
       isSaving = true;
       
       let newValue = input.value;
-      if (fieldName === 'qty' || fieldName === 'mrp' || fieldName === 'disc1' || fieldName === 'disc2' || fieldName === 'sgst' || fieldName === 'cgst') {
+      if (fieldName === 'qty' || fieldName === 'mrp' || fieldName === 'disc1' || fieldName === 'disc2' || fieldName === 'sgst' || fieldName === 'cgst' || fieldName === 'gstTotal') {
         newValue = parseFloat(newValue) || 0;
+        if (newValue < 0) newValue = 0;
       }
 
       // Handle fields that can trigger a master database update
@@ -2331,6 +2412,20 @@ class EditBillsPayments {
         const d1 = parseFloat(product.disc1 || 0) || 0;
         product.rate = base - (base * d1 / 100);
       }
+
+      // Synchronize tax fields
+      if (fieldName === 'gstTotal' || fieldName === 'gst_percent' || fieldName === 'tax') {
+        product.gstTotal = newValue;
+        product.gst_percent = newValue;
+        product.sgst = parseFloat((newValue / 2).toFixed(2));
+        product.cgst = parseFloat((newValue / 2).toFixed(2));
+      } else if (fieldName === 'sgst' || fieldName === 'cgst') {
+        product.sgst = newValue;
+        product.cgst = newValue;
+        product.gstTotal = newValue * 2;
+        product.gst_percent = newValue * 2;
+      }
+
       this.renderEditProductList();
       this.updateEditBillSummary();
     };
@@ -2362,14 +2457,15 @@ class EditBillsPayments {
 
       // Calculate using BillCalculator for consistency
       const calculated = BillCalculator.calculateLineItem({
-        rate: parseFloat(product.rate || 0),
-        mrp: parseFloat(product.mrp || 0),
+        rate: parseFloat(product.rate || product.mrp || 0),
+        mrp: parseFloat(product.mrp || product.rate || 0),
         qty: parseInt(product.qty || 1),
         disc1: parseFloat(product.disc1 || 0),      // PERCENTAGE from API
         disc2: parseFloat(product.disc2 || 0),      // PERCENTAGE from API
         sgst: parseFloat(product.sgst || 0),
         cgst: parseFloat(product.cgst || 0),
-        gstTotal: parseFloat(product.gstTotal || 0)
+        gstTotal: parseFloat(product.gstTotal !== undefined ? product.gstTotal : (product.gst_percent !== undefined ? product.gst_percent : 0)),
+        gst_reverse: product.gst_reverse || false
       });
 
       totalAmount += calculated.amount;

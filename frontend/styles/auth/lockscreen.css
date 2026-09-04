@@ -14,7 +14,8 @@ html {
   background: #000 !important;
 }
 
-html, body {
+html,
+body {
   font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   height: 100vh;
   width: 100vw;
@@ -29,7 +30,8 @@ html, body {
   user-select: none;
 }
 
-html::-webkit-scrollbar, body::-webkit-scrollbar {
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -227,7 +229,7 @@ body.login-active .blur-overlay {
   opacity: 0.5;
 }
 
-/* USER PROFILE STYLES */
+/* USER PROFILE & MULTI-USER STYLES */
 .user-profile {
   position: absolute;
   bottom: 60px;
@@ -237,8 +239,101 @@ body.login-active .blur-overlay {
   flex-direction: column;
   align-items: center;
   color: white;
-  animation: fadeInSimple 2s ease-out;
+  animation: fadeInSimple 1.5s ease-out;
   z-index: 10;
+  max-width: 90vw;
+}
+
+/* Multi-User Container (Centered group with aligned avatars) */
+.multi-user-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.multi-user-list {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.user-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  padding: 0;
+  margin: 0;
+}
+
+.user-item:hover {
+  transform: scale(1.06);
+  opacity: 0.95;
+}
+
+.user-avatar-wrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-avatar-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.user-badge-active {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  background: #ff9500;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 8px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.user-item-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* Single User / Fallback View (Exact original centered layout) */
+.single-user-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
 }
 
 .avatar,
@@ -276,14 +371,14 @@ body.login-active .blur-overlay {
   position: absolute;
   top: 0;
   left: calc(100% + 12px);
-  min-width: 130px;
+  min-width: 150px;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  background: rgba(30, 30, 30, 0.75);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(25px) saturate(140%);
+  -webkit-backdrop-filter: blur(25px) saturate(140%);
   opacity: 0;
   visibility: hidden;
   transform: translateY(6px);
@@ -308,10 +403,21 @@ body.login-active .blur-overlay {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .profile-menu button:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.profile-menu button.danger {
+  color: #ff6961;
+}
+
+.profile-menu button.danger:hover {
+  background: rgba(255, 69, 58, 0.25);
 }
 
 .username {
@@ -328,7 +434,6 @@ body.login-active .blur-overlay {
   font-weight: 400;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
 .hint-separator {
@@ -367,18 +472,30 @@ body[data-unlock-state="unlocking"] .draggable-content {
   opacity: 0 !important;
 }
 
-body[data-unlock-state="finished"] .draggable-content {
+body[data-unlock-state="finished"] .draggable-content,
+body[data-unlock-state="finished"] .top-bar,
+body[data-unlock-state="finished"] .login-page-clock,
+body[data-unlock-state="finished"] .weather-display,
+body[data-unlock-state="finished"] .clock-container,
+body[data-unlock-state="finished"] .user-profile,
+body.login-finished .draggable-content,
+body.login-finished .top-bar,
+body.login-finished .login-page-clock,
+body.login-finished .weather-display,
+body.login-finished .clock-container,
+body.login-finished .user-profile {
   opacity: 0 !important;
   visibility: hidden !important;
-  transform: translate(-50%, -100vh) !important;
+  pointer-events: none !important;
   transition: none !important;
 }
 
 body.login-active .clock-container,
-body.login-active .user-profile {
+body.login-active .user-profile,
+body.login-active .homepage-weather-display {
   opacity: 0 !important;
   visibility: hidden !important;
-  transform: translate(-50%, -100vh) !important;
+  pointer-events: none !important;
   transition: none !important;
 }
 
@@ -388,6 +505,7 @@ body.login-active .user-profile {
     opacity: 0;
     transform: scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -395,15 +513,37 @@ body.login-active .user-profile {
 }
 
 @keyframes fadeInSimple {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes shake {
-  10%, 90% { transform: translate3d(-1px, 0, 0); }
-  20%, 80% { transform: translate3d(2px, 0, 0); }
-  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-  40%, 60% { transform: translate3d(4px, 0, 0); }
+
+  10%,
+  90% {
+    transform: translate3d(-1px, 0, 0);
+  }
+
+  20%,
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translate3d(-4px, 0, 0);
+  }
+
+  40%,
+  60% {
+    transform: translate3d(4px, 0, 0);
+  }
 }
 
 .error-shake {
@@ -411,7 +551,12 @@ body.login-active .user-profile {
   border-color: rgba(255, 59, 48, 0.6) !important;
 }
 
-@keyframes onAutofillStart { from {} to {} }
+@keyframes onAutofillStart {
+  from {}
+
+  to {}
+}
+
 input:-webkit-autofill {
   animation-name: onAutofillStart;
 }
@@ -422,6 +567,7 @@ input:-webkit-autofill {
     font-size: 5rem;
     letter-spacing: -2px;
   }
+
   .date {
     font-size: 1.1rem;
   }

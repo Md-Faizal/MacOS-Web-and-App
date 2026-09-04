@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   last_activity DATETIME,
   disable_duplex_export INTEGER DEFAULT 0,
   created_by_user_id TEXT,
+  last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -95,6 +96,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   security_question TEXT,
   security_answer_hash TEXT,
+  security_answer TEXT,
   is_verified BOOLEAN DEFAULT 0,
   role TEXT DEFAULT 'worker',
   status TEXT DEFAULT 'pending',
@@ -284,6 +286,8 @@ CREATE TABLE IF NOT EXISTS user_contact_access (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   contact_id INTEGER NOT NULL,
+  exclude_from_stats INTEGER DEFAULT 0,
+  disable_duplex_export INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -334,6 +338,7 @@ CREATE TABLE IF NOT EXISTS user_devices (
   user_id TEXT,
   device_name TEXT NOT NULL,
   device_type TEXT,
+  client_type TEXT DEFAULT 'web',
   last_login DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_current INTEGER DEFAULT 0,
@@ -384,6 +389,7 @@ CREATE TABLE IF NOT EXISTS Settings (
   liquid_glass TEXT DEFAULT 'clear',
   sidebar_icon_size TEXT DEFAULT 'medium',
   tint_wallpaper INTEGER DEFAULT 1,
+  show_worker_badges INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (device_id) REFERENCES user_devices(id) ON DELETE CASCADE,
@@ -422,6 +428,7 @@ CREATE TABLE IF NOT EXISTS app_logs (
 CREATE TABLE IF NOT EXISTS categories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
+  english_meaning TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -430,8 +437,11 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  odia_name TEXT,
   category_id INTEGER NOT NULL,
   classification TEXT,
+  created_by_user_id TEXT,
+  last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES categories(id)
@@ -480,8 +490,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   round_off REAL DEFAULT 0,
   grand_total REAL DEFAULT 0,
   previous_due REAL DEFAULT 0,
+  notes TEXT,
   created_by_user_id TEXT,
   last_edited_by TEXT,
+  last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES contacts(id),
@@ -556,6 +568,7 @@ CREATE TABLE IF NOT EXISTS payments (
   notes TEXT,
   attachment_data TEXT,
   created_by_user_id TEXT,
+  last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES contacts(id),
@@ -599,6 +612,7 @@ CREATE TABLE IF NOT EXISTS orders (
   total_amount REAL DEFAULT 0,
   status TEXT DEFAULT 'pending',
   created_by_user_id TEXT,
+  last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES contacts(id)
@@ -660,7 +674,7 @@ CREATE TABLE IF NOT EXISTS desktop_state (
   user_id TEXT PRIMARY KEY,
   state TEXT NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES auth_credentials(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Clock Settings: Account-wide time preferences and world clocks
@@ -672,7 +686,7 @@ CREATE TABLE IF NOT EXISTS clock_settings (
   manualOffset INTEGER DEFAULT 0,
   worldClocks TEXT DEFAULT '[]',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES auth_credentials(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Weather Settings: Account-wide weather preferences
@@ -684,7 +698,7 @@ CREATE TABLE IF NOT EXISTS weather_settings (
   unit TEXT DEFAULT 'C',
   isExpanded INTEGER DEFAULT 0,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES auth_credentials(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_settings_device ON Settings(device_id);

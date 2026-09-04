@@ -1,10 +1,29 @@
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
+
   return {
     createCreditNote: (req, res) => {
       const { transaction_id, customer_id, amount, reason, status = 'active', reference_number, notes } = req.body;
       
       if (!customer_id || !amount || !reason) {
         return res.status(400).json({ error: 'Missing required fields: customer_id, amount, reason' });
+      }
+
+      if (!isCustomerAccessible(req, customer_id)) {
+        return res.status(403).json({ error: 'Access denied to this customer' });
       }
 
       try {
@@ -87,6 +106,11 @@ module.exports = function(db) {
         if (!row) {
           return res.status(404).json({ error: 'Credit note not found' });
         }
+
+        if (row.customer_id && !isCustomerAccessible(req, row.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this credit note' });
+        }
+
         res.json(row);
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -97,13 +121,22 @@ module.exports = function(db) {
       const { id } = req.params;
       const { status, notes } = req.body;
 
-      const sql = `
-        UPDATE credit_notes 
-        SET status = ?, notes = ?
-        WHERE id = ?
-      `;
-
       try {
+        const existing = db.prepare('SELECT customer_id FROM credit_notes WHERE id = ?').get(id);
+        if (!existing) {
+          return res.status(404).json({ error: 'Credit note not found' });
+        }
+
+        if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this credit note' });
+        }
+
+        const sql = `
+          UPDATE credit_notes 
+          SET status = ?, notes = ?
+          WHERE id = ?
+        `;
+
         const stmt = db.prepare(sql);
         const result = stmt.run(status || 'active', notes || null, id);
         
@@ -121,9 +154,18 @@ module.exports = function(db) {
 
     deleteCreditNote: (req, res) => {
       const { id } = req.params;
-      const sql = 'DELETE FROM credit_notes WHERE id = ?';
 
       try {
+        const existing = db.prepare('SELECT customer_id FROM credit_notes WHERE id = ?').get(id);
+        if (!existing) {
+          return res.status(404).json({ error: 'Credit note not found' });
+        }
+
+        if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this credit note' });
+        }
+
+        const sql = 'DELETE FROM credit_notes WHERE id = ?';
         const stmt = db.prepare(sql);
         const result = stmt.run(id);
         

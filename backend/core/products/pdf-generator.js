@@ -97,7 +97,9 @@ async function generatePDFFromHTML(htmlContent) {
       <html>
       <head>
         <meta charset="utf-8">
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">
         <style>
           ${qrCss}
           
@@ -110,8 +112,12 @@ async function generatePDFFromHTML(htmlContent) {
             margin: 0 !important;
             padding: 0 !important;
             background: #f4f6fb !important;
+            font-family: 'Plus Jakarta Sans', 'Noto Sans Oriya', 'Lohit Odia', 'Samyak Oriya', sans-serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          .qr-product-name, .qr-doc-subtitle, .product-odia-title, .qr-product-odia-name {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans Oriya', 'Lohit Odia', 'Samyak Oriya', sans-serif !important;
           }
           .qr-print-container {
             display: block !important;

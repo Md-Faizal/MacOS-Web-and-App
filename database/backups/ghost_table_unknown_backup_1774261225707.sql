@@ -1,1 +1,0 @@
-CREATE TABLE ghost_table (id INTEGER PRIMARY KEY, msg TEXT)

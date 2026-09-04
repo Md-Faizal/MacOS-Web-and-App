@@ -1,4 +1,19 @@
 module.exports = function(db) {
+  function getWorkerContactScope(req, tableAlias = 'c') {
+    if (req.user && req.user.role === 'worker') {
+      const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+    }
+    return null;
+  }
+
+  function isCustomerAccessible(req, customerId) {
+    if (!req.user || req.user.role !== 'worker') return true;
+    const workerScope = getWorkerContactScope(req, 'contacts');
+    const row = db.prepare(`SELECT id FROM contacts WHERE id = ? AND ${workerScope}`).get(customerId);
+    return Boolean(row);
+  }
+
   // Helper to safely check if query tables exist
   function getTableList() {
     try {
@@ -18,6 +33,11 @@ module.exports = function(db) {
       }
 
       try {
+        const contact = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customer_name.trim());
+        if (contact && !isCustomerAccessible(req, contact.id)) {
+          return res.json({ customer_name, suggestions: [], count: 0, note: 'Access restricted' });
+        }
+
         const tables = getTableList();
         if (!tables.includes('billing_transactions') || !tables.includes('contacts') || !tables.includes('products')) {
           return res.json({ customer_name, suggestions: [], count: 0, note: 'Data tables not yet populated' });
@@ -64,6 +84,11 @@ module.exports = function(db) {
       }
 
       try {
+        const contact = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customer_name.trim());
+        if (contact && !isCustomerAccessible(req, contact.id)) {
+          return res.json({ customer_name, history: [], total_transactions: 0 });
+        }
+
         const tables = getTableList();
         if (!tables.includes('billing_transactions') || !tables.includes('contacts') || !tables.includes('products')) {
           return res.json({ customer_name, history: [], total_transactions: 0 });

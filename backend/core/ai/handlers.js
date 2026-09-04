@@ -4,7 +4,7 @@
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { getAIContextString, generateDatabaseContext } = require('./db-context');
+const { getAIContextString, generateDatabaseContext, getEntityDirectory } = require('./db-context');
 
 const GEMINI_API_KEY = 'AIzaSyDUAiHHjq0TZMUfi602inE0FVu2dJShoa8';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -27,6 +27,20 @@ const AVAILABLE_MODELS = {
 // Conversation history for context
 const conversationHistory = new Map();
 
+function getWorkerContactScope(req, tableAlias = 'c') {
+  if (req && req.user && req.user.role === 'worker') {
+    const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+    return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+  }
+  return null;
+}
+
+function getScopedSessionKey(req, sessionId = 'default') {
+  const user = req?.user || {};
+  const userKey = user.id || user.userId || (user.role === 'owner' ? 'admin' : (user.role || 'guest'));
+  return `${userKey}::${sessionId}`;
+}
+
 module.exports = function(db) {
   return {
     /**
@@ -47,28 +61,63 @@ module.exports = function(db) {
         // Get actual model name (handle old names)
         const actualModel = AVAILABLE_MODELS[model] || 'gemini-2.5-flash';
 
-        // Get or initialize conversation history
-        if (!conversationHistory.has(sessionId)) {
-          conversationHistory.set(sessionId, []);
+        // Get or initialize user-isolated conversation history
+        const sessionKey = getScopedSessionKey(req, sessionId);
+        if (!conversationHistory.has(sessionKey)) {
+          conversationHistory.set(sessionKey, []);
         }
-        const history = conversationHistory.get(sessionId);
+        const history = conversationHistory.get(sessionKey);
 
         try {
           // Get model instance
           const aiModel = genAI.getGenerativeModel({ model: actualModel });
 
-          // Build the prompt with context
+          // Build the prompt with context and user-based scoping rules
           let prompt = query;
           
           if (useContext) {
-            const dbContext = generateDatabaseContext(db);
+            const dbContext = generateDatabaseContext(db, req);
+            const entityDirectory = getEntityDirectory(db, req);
             const contextInfo = JSON.stringify(dbContext, null, 2);
+            const entityInfo = JSON.stringify(entityDirectory, null, 2);
+
+            let userRoleInstruction = '';
+            if (req.user && req.user.role === 'worker') {
+              const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+              userRoleInstruction = `
+[ACCESS CONTROL & WORKER DATA ISOLATION]
+- The user is a WORKER with User ID: '${safeUserId}'.
+- Workers are STRICTLY restricted to only their assigned/created customers and transactions.
+- When generating SQLite queries touching contacts, invoices, payments, or orders, you MUST ALWAYS include:
+  - For contacts (alias c): (c.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR c.created_by_user_id = '${safeUserId}')
+  - For invoices/payments/orders (alias t): (t.customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR t.customer_id IN (SELECT id FROM contacts WHERE created_by_user_id = '${safeUserId}'))
+- NEVER mention or query data belonging to other workers or admin private accounts.
+`;
+            } else {
+              userRoleInstruction = `
+[ACCESS CONTROL]
+- The user is the OWNER / ADMINISTRATOR.
+- For business overview / KPI summaries, exclude customers with exclude_from_stats = 1 unless asked about a specific customer.
+`;
+            }
             
             prompt = `[INSTRUCTIONS]
-You are a helpful business assistant. You have access to a SQLite database. 
+You are a highly intelligent AI assistant for this business. You have direct access to the SQLite database.
 If the user's question requires querying, analyzing, or summarizing data from the database, you MUST write a single SQLite query inside a \`\`\`sqlite ... \`\`\` code block in your response. 
-The system will run this query automatically and feed the results back to you so you can provide a friendly, data-driven answer. 
-Write the query exactly, using the correct table and column names from the context. Do not use placeholders.
+The system will execute this query automatically and feed the results back to you so you can provide a natural, comprehensive answer.
+
+[INTELLIGENT NATURAL LANGUAGE & BROKEN PHRASE INTERPRETATION]
+- Users will often type fast with typos, scribbled shorthand, broken grammar, colloquial slang, or phonetic spelling (e.g. "shw bil of daccca", "crocn advans stck", "how mch daka owes", "dacca ka ledger dikhao", "kitna balance baki", "unpaid inv last mnth").
+- You MUST intelligently decipher what the user means:
+  1. Match scribbled names to the real entities in the [KNOWN ENTITIES DIRECTORY] below (e.g., "daccca" or "daka" -> customer "Dacca", "crocn" -> product "Crocin").
+  2. Map shorthand: "bil"/"inv" -> invoices, "pymt"/"pay" -> payments, "crd" -> credit notes, "stk"/"qty" -> stock quantity, "bal"/"due"/"pend" -> balance due / pending.
+  3. When querying string fields in SQLite, ALWAYS use case-insensitive fuzzy pattern matching (e.g., \`LOWER(name) LIKE '%dacca%'\` or \`customer_id = <matched_id_from_directory>\`) rather than strict exact equality (\`=\`).
+  4. Write clean, valid SQLite queries using the schema provided.
+
+${userRoleInstruction}
+
+[KNOWN ENTITIES DIRECTORY (Scoped to User)]
+${entityInfo}
 
 [DATABASE CONTEXT]
 ${contextInfo}
@@ -98,21 +147,51 @@ ${query}`;
 
           if (match) {
             executedQuery = match[1].trim();
-            try {
-              queryResults = db.prepare(executedQuery).all();
-              
-              // Send results back to Gemini for natural language summary
-              const secondPrompt = `Here are the results of the query:\n${JSON.stringify(queryResults, null, 2)}\n\nPlease summarize these results and provide a friendly response to the user's original query. Do not output the SQL query again in your text response.`;
-              const secondResult = await chat.sendMessage(secondPrompt);
-              responseText = secondResult.response.text();
-            } catch (dbError) {
-              console.error('Database query execution failed:', dbError.message);
-              queryError = dbError.message;
-              
-              // Feed error back to Gemini for explanation
-              const secondPrompt = `The SQLite query failed with the following error: "${dbError.message}". Please explain this error or suggest a fix to the user.`;
-              const secondResult = await chat.sendMessage(secondPrompt);
-              responseText = secondResult.response.text();
+
+            // Safety rule: Only allow SELECT queries
+            if (!/^\s*SELECT\b/i.test(executedQuery)) {
+              queryError = 'Only read-only SELECT queries are allowed.';
+              queryResults = [];
+            } else {
+              try {
+                queryResults = db.prepare(executedQuery).all();
+
+                // Enforce worker scoping filter on results
+                if (req.user && req.user.role === 'worker') {
+                  const workerScope = getWorkerContactScope(req, 'contacts');
+                  const allowedContacts = new Set(
+                    db.prepare(`SELECT id FROM contacts WHERE ${workerScope}`).all().map(c => c.id)
+                  );
+                  queryResults = queryResults.filter(row => {
+                    if (row.customer_id !== undefined && row.customer_id !== null) {
+                      return allowedContacts.has(Number(row.customer_id));
+                    }
+                    if (row.contact_id !== undefined && row.contact_id !== null) {
+                      return allowedContacts.has(Number(row.contact_id));
+                    }
+                    if (row.id !== undefined && (row.name !== undefined || row.phone !== undefined || row.email !== undefined)) {
+                      return allowedContacts.has(Number(row.id));
+                    }
+                    return true;
+                  });
+                }
+                
+                // Send results back to Gemini for natural language summary
+                const secondPrompt = `Here are the results of the query:\n${JSON.stringify(queryResults, null, 2)}\n\n` +
+                  (queryResults.length === 0
+                    ? `Note: 0 matching rows were returned by this query. If the user query contained a typo or scribbled name, use the known entities directory to explain what was searched or clarify if they meant a specific known customer/product.`
+                    : `Please summarize these results and provide a friendly, helpful, and concise answer to the user's original query. Do not repeat the SQL code block.`);
+                const secondResult = await chat.sendMessage(secondPrompt);
+                responseText = secondResult.response.text();
+              } catch (dbError) {
+                console.error('Database query execution failed:', dbError.message);
+                queryError = dbError.message;
+                
+                // Feed error back to Gemini for explanation
+                const secondPrompt = `The SQLite query failed with the following error: "${dbError.message}". Please explain this error or suggest a fix to the user.`;
+                const secondResult = await chat.sendMessage(secondPrompt);
+                responseText = secondResult.response.text();
+              }
             }
           }
 
@@ -190,24 +269,71 @@ ${query}`;
         const actualModel = AVAILABLE_MODELS[selectedModel] || 'gemini-2.5-flash';
         const aiModel = genAI.getGenerativeModel({ model: actualModel });
 
-        const dbContext = generateDatabaseContext(db);
+        const dbContext = generateDatabaseContext(db, req);
+        const entityDirectory = getEntityDirectory(db, req);
+
+        let userRoleInstruction = '';
+        if (req.user && req.user.role === 'worker') {
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          userRoleInstruction = `
+- The user is a WORKER (ID: '${safeUserId}').
+- If querying contacts, orders, invoices, or payments, ALWAYS filter by:
+  - contacts: (id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR created_by_user_id = '${safeUserId}')
+  - transactions: (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id = '${safeUserId}'))
+- Never query data of other workers or owner-private accounts.`;
+        }
         
         const prompt = `Based on this database schema: ${JSON.stringify(dbContext, null, 2)}
-        
+KNOWN ENTITIES DIRECTORY: ${JSON.stringify(entityDirectory, null, 2)}
+
+[INSTRUCTIONS]
+- The user description may contain typos, slang, or scribbled phrases. Intelligently match misspelled names to known customers/products in the directory.
+- Use case-insensitive fuzzy pattern matching (e.g. LOWER(name) LIKE '%...%') or match by the entity ID from the directory.
+${userRoleInstruction}
+
 Generate only a SQL query (and nothing else) for: "${description}"
 
 Rules:
-- Return ONLY the SQL statement
+- Return ONLY a single SELECT SQL statement
 - Use SQLite syntax
 - Do not include backticks or markdown
-- Ensure the query is valid`;
+- Ensure the query is valid and obeys the access control rules`;
 
         const result = await aiModel.generateContent(prompt);
         const sqlQuery = result.response.text().trim();
 
+        // Safety: only allow SELECT statements
+        if (!/^\s*SELECT\b/i.test(sqlQuery)) {
+          return res.status(403).json({
+            success: false,
+            error: 'Only read-only SELECT queries can be generated and executed.'
+          });
+        }
+
         // Execute the generated query
         try {
-          const results = db.prepare(sqlQuery).all();
+          let results = db.prepare(sqlQuery).all();
+
+          // Enforce worker scoping filter on results
+          if (req.user && req.user.role === 'worker') {
+            const workerScope = getWorkerContactScope(req, 'contacts');
+            const allowedContacts = new Set(
+              db.prepare(`SELECT id FROM contacts WHERE ${workerScope}`).all().map(c => c.id)
+            );
+            results = results.filter(row => {
+              if (row.customer_id !== undefined && row.customer_id !== null) {
+                return allowedContacts.has(Number(row.customer_id));
+              }
+              if (row.contact_id !== undefined && row.contact_id !== null) {
+                return allowedContacts.has(Number(row.contact_id));
+              }
+              if (row.id !== undefined && (row.name !== undefined || row.phone !== undefined || row.email !== undefined)) {
+                return allowedContacts.has(Number(row.id));
+              }
+              return true;
+            });
+          }
+
           res.json({
             success: true,
             query: sqlQuery,
@@ -256,47 +382,84 @@ Rules:
         let analysisPrompt = '';
         let data = {};
 
+        const isWorker = req.user && req.user.role === 'worker';
+        const safeUserId = isWorker ? String(req.user.id || req.user.userId).replace(/'/g, "''") : null;
+        const workerScope = getWorkerContactScope(req, 'c');
+
         switch(type) {
-          case 'sales':
-            data = db.prepare(`
+          case 'sales': {
+            let salesSql = `
               SELECT 
                 COUNT(*) as total_orders,
-                SUM(total) as total_revenue,
-                AVG(total) as avg_order_value,
+                COALESCE(SUM(total_amount), 0) as total_revenue,
+                COALESCE(AVG(total_amount), 0) as avg_order_value,
                 MAX(created_at) as latest_order
               FROM orders
-            `).get() || {};
+            `;
+            if (isWorker) {
+              salesSql += ` WHERE (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id = '${safeUserId}'))`;
+            }
+            data = db.prepare(salesSql).get() || {};
             analysisPrompt = `Analyze these sales metrics and provide insights: ${JSON.stringify(data)}`;
             break;
+          }
 
-          case 'products':
+          case 'products': {
             data = db.prepare(`
               SELECT 
                 COUNT(*) as total_products,
-                AVG(quantity) as avg_stock,
-                SUM(quantity) as total_inventory,
-                COUNT(CASE WHEN quantity < 10 THEN 1 END) as low_stock_items
-              FROM products
+                COALESCE(AVG(units_sold), 0) as avg_units_sold,
+                COALESCE(SUM(units_sold), 0) as total_units_sold
+              FROM batches
             `).get() || {};
-            analysisPrompt = `Analyze these inventory metrics and suggest improvements: ${JSON.stringify(data)}`;
+            analysisPrompt = `Analyze these product metrics and suggest improvements: ${JSON.stringify(data)}`;
             break;
+          }
 
-          case 'customers':
-            data = db.prepare(`
-              SELECT 
-                COUNT(*) as total_customers,
-                COUNT(DISTINCT customer_id) as unique_buyers,
-                AVG(purchase_count) as avg_purchases
-              FROM (
-                SELECT customer_id, COUNT(*) as purchase_count FROM orders GROUP BY customer_id
-              )
-            `).get() || {};
-            analysisPrompt = `Analyze these customer metrics: ${JSON.stringify(data)}`;
+          case 'customers': {
+            let custSql = '';
+            if (isWorker) {
+              custSql = `
+                SELECT 
+                  COUNT(*) as total_customers,
+                  COALESCE(SUM(current_due), 0) as total_outstanding,
+                  COALESCE(AVG(current_due), 0) as avg_outstanding
+                FROM (
+                  SELECT c.id, 
+                         (COALESCE(c.opening_balance, 0) + 
+                          COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = c.id), 0) - 
+                          COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT'), 0) -
+                          COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = c.id AND type = 'CREDIT_NOTE'), 0)) as current_due
+                  FROM contacts c
+                  WHERE ${workerScope}
+                )
+              `;
+            } else {
+              custSql = `
+                SELECT 
+                  COUNT(*) as total_customers,
+                  COALESCE(SUM(current_due), 0) as total_outstanding,
+                  COALESCE(AVG(current_due), 0) as avg_outstanding
+                FROM (
+                  SELECT c.id, 
+                         (COALESCE(c.opening_balance, 0) + 
+                          COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = c.id), 0) - 
+                          COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT'), 0) -
+                          COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = c.id AND type = 'CREDIT_NOTE'), 0)) as current_due
+                  FROM contacts c
+                  WHERE c.exclude_from_stats = 0
+                )
+              `;
+            }
+            data = db.prepare(custSql).get() || {};
+            analysisPrompt = `Analyze these customer account metrics: ${JSON.stringify(data)}`;
             break;
+          }
 
-          default:
+          default: {
             const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
             analysisPrompt = `Provide general business insights about this application with these tables: ${tables.map(t => t.name).join(', ')}`;
+          }
         }
 
         const result = await aiModel.generateContent(analysisPrompt);
@@ -334,7 +497,8 @@ Rules:
      */
     clearHistory: (req, res) => {
       const { sessionId = 'default' } = req.body;
-      conversationHistory.delete(sessionId);
+      const sessionKey = getScopedSessionKey(req, sessionId);
+      conversationHistory.delete(sessionKey);
       res.json({
         success: true,
         message: 'Conversation history cleared',

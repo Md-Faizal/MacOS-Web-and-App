@@ -83,25 +83,42 @@ class HistoryView {
     this.loadHistoryData();
   }
 
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
   async loadHistoryData() {
     try {
       console.log('Loading history data...');
       
-      // Fetch all data in parallel - single efficient calls only (no individual item-count calls)
-      const [billsData, paymentsData] = await Promise.all([
+      const isWorker = this.isWorkerUser();
+      const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+      const accessibleNames = scoped && isWorker ? new Set(scoped.contacts.map(c => c.name).filter(Boolean)) : null;
+
+      // Fetch all data in parallel - single efficient calls only
+      const [billsDataRaw, paymentsDataRaw] = await Promise.all([
         this.fetchBills(),
         this.fetchPayments()
       ]);
 
-      if (!billsData || !paymentsData) {
+      if (!billsDataRaw || !paymentsDataRaw) {
         throw new Error('Failed to fetch transaction data');
       }
+
+      // Filter by worker access if applicable
+      const billsData = (isWorker && accessibleNames)
+        ? billsDataRaw.filter(b => accessibleNames.has(b.customer_name))
+        : billsDataRaw;
+
+      const paymentsData = (isWorker && accessibleNames)
+        ? paymentsDataRaw.filter(p => accessibleNames.has(p.customer_name))
+        : paymentsDataRaw;
 
       console.log('✓ Bills fetched:', billsData.length);
       console.log('✓ Payments fetched:', paymentsData.length);
 
       // Separate payments and credit notes
-      const payments = paymentsData.filter(p => p.type === 'PAYMENT');
+      const payments = paymentsData.filter(p => p.type === 'PAYMENT' || !p.type);
       const creditNotes = paymentsData.filter(p => p.type === 'CREDIT_NOTE');
 
       // Build unified transaction list
@@ -177,7 +194,7 @@ class HistoryView {
   }
 
   async updateStats() {
-    // 1. Fetch all contacts once to get exclusion and opening balance info
+    const isWorker = this.isWorkerUser();
     let excludedCustomerNames = new Set();
     let customerOpeningBalances = new Map();
     
@@ -199,13 +216,13 @@ class HistoryView {
       console.warn('Error fetching contacts for history stats:', error);
     }
 
-    // 2. Filter transactions by excluded customers for stats calculation
+    // 2. Filter transactions by excluded customers for admin stats calculation
     const bills = this.allTransactions.filter(t => t.typeCode === 'bill' && !excludedCustomerNames.has(t.data.customer_name));
     const payments = this.allTransactions.filter(t => t.typeCode === 'payment' && !excludedCustomerNames.has(t.data.customer_name));
     const credits = this.allTransactions.filter(t => t.typeCode === 'credit_note' && !excludedCustomerNames.has(t.data.customer_name));
 
     // 3. Calculate totals
-    let totalInvoiced = bills.reduce((sum, t) => sum + (t.data.grand_total || 0), 0);
+    let totalInvoiced = bills.reduce((sum, t) => sum + (t.data.grand_total || t.data.total || 0), 0);
     const totalPaid = payments.reduce((sum, t) => sum + (t.data.amount || 0), 0);
     const totalCredits = credits.reduce((sum, t) => sum + (t.data.credit_amount || 0), 0);
 
@@ -243,6 +260,11 @@ class HistoryView {
     if (sortSelect) {
       sortSelect.addEventListener('change', () => this.renderTransactions());
     }
+
+    // Listen for worker badges toggle
+    window.addEventListener('worker-badges-toggle-changed', () => {
+      this.renderTransactions();
+    });
   }
 
   renderTransactions() {
@@ -338,34 +360,10 @@ class HistoryView {
       return;
     }
 
-    // Get unique customers from filtered transactions
-    const customers = [...new Set(filtered.map(t => t.data.customer_name).filter(c => c))];
-    
-    // Build opening balance cards HTML
-    const openingBalanceCardsHTML = customers.map(customer => `
-      <div class="history-card opening-balance-card" data-customer="${customer}" style="background: linear-gradient(135deg, #f0f8ff 0%, #e0efff 100%); border: 2px solid #1e40af; margin-bottom: 12px;">
-        <div style="padding: 20px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 11px; color: #1e40af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">📊 Opening Balance</div>
-              <div style="font-size: 13px; color: #1e40af; font-weight: 700; margin-top: 6px;">${customer}</div>
-            </div>
-            <div class="opening-balance-amount" style="font-size: 16px; font-weight: 700; color: #1e40af;">Loading...</div>
-          </div>
-          <div style="font-size: 10px; color: #1e40af; margin-top: 8px; font-weight: 500;">From Old ERP (${new Date().getFullYear() - 1})</div>
-        </div>
-      </div>
-    `).join('');
-
-    const html = openingBalanceCardsHTML + filtered.map(t => this.renderCard(t)).join('');
+    const html = filtered.map(t => this.renderCard(t)).join('');
     container.innerHTML = html;
     loadingMsg.style.display = 'none';
     container.style.display = 'block';
-    
-    // Fetch opening balances for each customer
-    customers.forEach(customer => {
-      this.fetchAndDisplayOpeningBalance(customer, container);
-    });
   }
 
   async fetchAndDisplayOpeningBalance(customerName, container) {
@@ -433,16 +431,31 @@ class HistoryView {
     const invNo = data.invoice_no || data.invoice_number || `INV-${data.id}`;
     const amount = data.grand_total || 0;
     const status = data.status || 'pending';
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(data, { compact: true })
+      : '';
+
+    const auditInfo = JSON.stringify({
+      type: 'Invoice',
+      id: data.id,
+      name: `Invoice ${invNo} (${data.customer_name || 'Customer'})`,
+      created_by_role: data.created_by_role,
+      created_by_name: data.created_by_name,
+      last_edited_by_role: data.last_edited_by_role,
+      last_edited_by_name: data.last_edited_by_name,
+      date: data.invoice_date || data.bill_date || data.created_at,
+      created_at: data.created_at
+    });
 
     return `
-      <div class="transaction-card invoice-card">
+      <div class="transaction-card invoice-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
         <div class="card-marker invoice-marker"></div>
         <div class="card-content">
           <div class="card-header-row">
             <div class="card-title-block">
               <span class="card-badge invoice-badge">📄</span>
               <div>
-                <div class="card-title">Invoice ${invNo}</div>
+                <div class="card-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>Invoice ${invNo}</span> ${workerBadgeHtml}</div>
                 <div class="card-subtitle">${data.customer_name || 'Unknown'}</div>
               </div>
             </div>
@@ -464,16 +477,31 @@ class HistoryView {
     const refNo = data.reference_no || data.reference_number || `PAY-${data.id}`;
     const amount = data.amount || 0;
     const medium = data.payment_medium || 'Cash';
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(data, { compact: true })
+      : '';
+
+    const auditInfo = JSON.stringify({
+      type: 'Payment',
+      id: data.id,
+      name: `Payment ${refNo} (${data.customer_name || 'Customer'})`,
+      created_by_role: data.created_by_role,
+      created_by_name: data.created_by_name,
+      last_edited_by_role: data.last_edited_by_role,
+      last_edited_by_name: data.last_edited_by_name,
+      date: data.payment_date || data.created_at,
+      created_at: data.created_at
+    });
 
     return `
-      <div class="transaction-card payment-card">
+      <div class="transaction-card payment-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
         <div class="card-marker payment-marker"></div>
         <div class="card-content">
           <div class="card-header-row">
             <div class="card-title-block">
               <span class="card-badge payment-badge">✓</span>
               <div>
-                <div class="card-title">Payment ${refNo}</div>
+                <div class="card-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>Payment ${refNo}</span> ${workerBadgeHtml}</div>
                 <div class="card-subtitle">${data.customer_name || 'Unknown'}</div>
               </div>
             </div>
@@ -496,16 +524,31 @@ class HistoryView {
     const refNo = data.reference_no || data.reference_number || `CREDIT-${data.id}`;
     const amount = data.credit_amount || 0;
     const reason = data.reason || 'General Credit';
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(data, { compact: true })
+      : '';
+
+    const auditInfo = JSON.stringify({
+      type: 'Credit Note',
+      id: data.id,
+      name: `Credit Note ${refNo} (${data.customer_name || 'Customer'})`,
+      created_by_role: data.created_by_role,
+      created_by_name: data.created_by_name,
+      last_edited_by_role: data.last_edited_by_role,
+      last_edited_by_name: data.last_edited_by_name,
+      date: data.payment_date || data.created_at,
+      created_at: data.created_at
+    });
 
     return `
-      <div class="transaction-card credit-card">
+      <div class="transaction-card credit-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
         <div class="card-marker credit-marker"></div>
         <div class="card-content">
           <div class="card-header-row">
             <div class="card-title-block">
               <span class="card-badge credit-badge">💳</span>
               <div>
-                <div class="card-title">Credit Note ${refNo}</div>
+                <div class="card-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>Credit Note ${refNo}</span> ${workerBadgeHtml}</div>
                 <div class="card-subtitle">${data.customer_name || 'Unknown'}</div>
               </div>
             </div>

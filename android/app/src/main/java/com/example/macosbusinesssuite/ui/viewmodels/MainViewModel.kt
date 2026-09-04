@@ -10,11 +10,14 @@ import com.example.macosbusinesssuite.AppUpdateUtils
 import com.example.macosbusinesssuite.BuildConfig
 import com.example.macosbusinesssuite.data.api.NetworkClient
 import com.example.macosbusinesssuite.data.api.SessionManager
+import com.example.macosbusinesssuite.data.api.MultiUserManager
 import com.example.macosbusinesssuite.data.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
@@ -51,6 +54,79 @@ sealed class AndroidUpdateUiState {
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val sessionManager = SessionManager(application)
+    val multiUserManager = MultiUserManager(application)
+
+    // Multi-User state
+    private val _rememberedUsers = MutableStateFlow<List<RememberedUser>>(multiUserManager.getUsers())
+    val rememberedUsers: StateFlow<List<RememberedUser>> = _rememberedUsers.asStateFlow()
+
+    private val _activeUser = MutableStateFlow<RememberedUser?>(multiUserManager.getActiveUser())
+    val activeUser: StateFlow<RememberedUser?> = _activeUser.asStateFlow()
+
+    fun refreshMultiUsers() {
+        _rememberedUsers.value = multiUserManager.getUsers()
+        _activeUser.value = multiUserManager.getActiveUser()
+    }
+
+    fun selectUser(user: RememberedUser) {
+        val selected = multiUserManager.setActiveUserId(user.id)
+        _activeUser.value = selected ?: user
+        _rememberedUsers.value = multiUserManager.getUsers()
+    }
+
+    fun removeRememberedUser(idOrIdentifier: String) {
+        multiUserManager.removeUser(idOrIdentifier)
+        refreshMultiUsers()
+    }
+
+    fun clearAllRememberedUsers() {
+        multiUserManager.clearAllUsers()
+        refreshMultiUsers()
+    }
+
+    init {
+        syncRememberedUsers()
+    }
+
+    fun syncRememberedUsers() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val users = multiUserManager.getUsers()
+            var changed = false
+            for (user in users) {
+                val token = user.savedAuthToken
+                if (!token.isNullOrBlank()) {
+                    try {
+                        val tempSession = SessionManager(getApplication()).apply {
+                            authToken = token
+                        }
+                        val service = NetworkClient.getService(tempSession)
+                        val res = service.getProfile()
+                        if (res.isSuccessful && res.body()?.profile != null) {
+                            val p = res.body()!!.profile!!
+                            val realName = p.actualName ?: user.displayName
+                            val realEmail = p.actualEmail ?: user.identifier
+                            val realPicture = p.actualPicture ?: user.displayPicture
+                            if (realName != user.displayName || realEmail != user.identifier || realPicture != user.displayPicture) {
+                                multiUserManager.saveUser(
+                                    user.copy(
+                                        displayName = realName,
+                                        identifier = realEmail,
+                                        displayPicture = realPicture
+                                    )
+                                )
+                                changed = true
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+            if (changed) {
+                withContext(Dispatchers.Main) {
+                    refreshMultiUsers()
+                }
+            }
+        }
+    }
 
     // Theme Mode State
     private val _themeMode = MutableStateFlow(ThemeMode.AUTO)
@@ -72,6 +148,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    fun setErrorMessage(msg: String?) {
+        _errorMessage.value = msg
+    }
 
     // Profile & Device States
     private val _profile = MutableStateFlow<ProfileData?>(null)
@@ -207,6 +287,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val KEY_LAST_UPDATE_CHECK = "last_update_check_ms"
 
     init {
+        // Populate profile immediately from cached user data for instant zero-latency rendering
+        val cachedUser = multiUserManager.getActiveUser()
+        if (cachedUser != null) {
+            _profile.value = ProfileData(
+                id = cachedUser.id,
+                username = cachedUser.identifier,
+                fullName = cachedUser.displayName,
+                displayName = cachedUser.displayName,
+                email = cachedUser.identifier,
+                emailId = cachedUser.identifier,
+                displayEmail = cachedUser.identifier,
+                profilePicture = cachedUser.displayPicture,
+                displayPicture = cachedUser.displayPicture
+            )
+        } else if (!sessionManager.userEmail.isNullOrBlank() || !sessionManager.userName.isNullOrBlank()) {
+            _profile.value = ProfileData(
+                id = sessionManager.userId,
+                username = sessionManager.userName,
+                fullName = sessionManager.userName,
+                displayName = sessionManager.userName,
+                email = sessionManager.userEmail,
+                emailId = sessionManager.userEmail,
+                displayEmail = sessionManager.userEmail,
+                profilePicture = sessionManager.userPicture,
+                displayPicture = sessionManager.userPicture
+            )
+        }
+
         // If not keep logged in, clear session on startup
         if (!sessionManager.keepLoggedIn) {
             sessionManager.clearSession()
@@ -256,7 +364,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun login(username: String, password: String, keepLoggedIn: Boolean = false, onResult: (Boolean, String?) -> Unit) {
+    fun login(username: String, password: String, keepLoggedIn: Boolean = false, onResult: (Boolean, String?, UserProfile?) -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
@@ -267,37 +375,289 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         identifier = username,
                         password = password,
                         deviceName = android.os.Build.MODEL,
-                        deviceType = "Android"
+                        deviceType = "Android App",
+                        clientType = "native_android"
                     )
                 )
                 if (response.isSuccessful && response.body()?.success == true) {
+                    val userProfile = response.body()?.user
+                    val token = response.body()?.token
+                    val refreshToken = response.body()?.refreshToken
+
                     _isLoggedIn.value = true
                     sessionManager.isLoggedIn = true
                     sessionManager.keepLoggedIn = keepLoggedIn
-                    response.body()?.token?.let { token ->
-                        sessionManager.authToken = token
-                    }
-                    response.body()?.refreshToken?.let { refreshToken ->
-                        sessionManager.refreshToken = refreshToken
-                    }
-                    response.body()?.user?.let {
+                    token?.let { sessionManager.authToken = it }
+                    refreshToken?.let { sessionManager.refreshToken = it }
+
+                    userProfile?.let {
                         sessionManager.userId = it.id
-                        sessionManager.userName = it.username ?: username
-                        sessionManager.userEmail = it.email ?: ""
+                        sessionManager.userName = it.actualName ?: it.username ?: username
+                        sessionManager.userEmail = it.actualEmail ?: it.email ?: ""
+                        it.actualPicture?.let { pic -> sessionManager.userPicture = pic }
                         sessionManager.userRole = it.role ?: "owner"
                         sessionManager.userStatus = "active"
                     }
+
+                    // Always cache user profile details in MultiUserManager so avatar, name, and email persist
+                    val existing = multiUserManager.getUsers().find {
+                        it.identifier.equals(username, ignoreCase = true) || (userProfile?.id != null && it.id == userProfile.id)
+                    }
+                    val isBio = existing?.isBiometricEnabled ?: sessionManager.biometricEnabled
+                    val realName = userProfile?.actualName ?: userProfile?.username ?: existing?.displayName ?: username.substringBefore('@')
+                    val realEmail = userProfile?.actualEmail ?: userProfile?.email ?: existing?.identifier ?: username
+                    val realPicture = userProfile?.actualPicture ?: userProfile?.avatar ?: existing?.displayPicture
+                    multiUserManager.saveUser(
+                        RememberedUser(
+                            id = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36)),
+                            identifier = realEmail,
+                            displayName = realName,
+                            displayPicture = realPicture,
+                            role = userProfile?.role ?: existing?.role ?: "user",
+                            isBiometricEnabled = isBio,
+                            savedAuthToken = if (keepLoggedIn) token else null,
+                            savedRefreshToken = if (keepLoggedIn) refreshToken else null
+                        )
+                    )
+                    refreshMultiUsers()
+
                     loadAllData()
-                    onResult(true, null)
+                    onResult(true, null, userProfile)
                 } else {
                     val msg = response.body()?.message ?: "Login failed. Check credentials."
                     _errorMessage.value = msg
-                    onResult(false, msg)
+                    onResult(false, msg, null)
                 }
             } catch (e: Exception) {
                 val msg = "Connection error: ${e.localizedMessage}"
                 _errorMessage.value = msg
+                onResult(false, msg, null)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun loginWithBiometrics(user: RememberedUser, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                // Set session credentials
+                sessionManager.userId = user.id
+                sessionManager.userName = user.displayName
+                sessionManager.userEmail = user.identifier
+                sessionManager.userRole = user.role
+                sessionManager.userStatus = "active"
+                user.savedAuthToken?.let { sessionManager.authToken = it }
+                user.savedRefreshToken?.let { sessionManager.refreshToken = it }
+
+                // Try to refresh mobile session if refresh token exists
+                val refreshToken = user.savedRefreshToken
+                var sessionValid = false
+                if (!refreshToken.isNullOrBlank()) {
+                    try {
+                        val service = NetworkClient.getService(sessionManager)
+                        val refreshRes = service.refreshMobileSession(MobileRefreshRequest(refreshToken))
+                        if (refreshRes.isSuccessful && refreshRes.body()?.success == true) {
+                            refreshRes.body()?.token?.let { sessionManager.authToken = it }
+                            refreshRes.body()?.refreshToken?.let { sessionManager.refreshToken = it }
+                            sessionValid = true
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                // If tokens exist or offline tolerance
+                if (sessionValid || !sessionManager.authToken.isNullOrBlank()) {
+                    sessionManager.isLoggedIn = true
+                    _isLoggedIn.value = true
+                    multiUserManager.setActiveUserId(user.id)
+                    multiUserManager.saveUser(user.copy(
+                        savedAuthToken = sessionManager.authToken,
+                        savedRefreshToken = sessionManager.refreshToken
+                    ))
+                    refreshMultiUsers()
+                    loadAllData()
+                    onResult(true, null)
+                } else {
+                    val msg = "Biometric session expired. Please enter your password."
+                    _errorMessage.value = msg
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                val msg = "Biometric login failed: ${e.localizedMessage}"
+                _errorMessage.value = msg
                 onResult(false, msg)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun saveRememberedProfile(
+        identifier: String,
+        displayName: String? = null,
+        displayPicture: String? = null,
+        role: String? = null,
+        isBiometricEnabled: Boolean = false,
+        authToken: String? = sessionManager.authToken,
+        refreshToken: String? = sessionManager.refreshToken
+    ): RememberedUser {
+        val finalIdentifier = (sessionManager.userEmail?.takeIf { it.isNotBlank() } ?: identifier).trim()
+        val finalName = displayName ?: sessionManager.userName ?: identifier.substringBefore('@')
+        val finalPic = displayPicture ?: sessionManager.userPicture
+        val user = RememberedUser(
+            id = sessionManager.userId ?: ("usr_" + System.currentTimeMillis().toString(36)),
+            identifier = finalIdentifier,
+            displayName = finalName,
+            displayPicture = finalPic,
+            role = role ?: sessionManager.userRole,
+            isBiometricEnabled = isBiometricEnabled,
+            savedAuthToken = authToken,
+            savedRefreshToken = refreshToken
+        )
+        val saved = multiUserManager.saveUser(user)
+        refreshMultiUsers()
+        return saved
+    }
+
+    fun fetchSecurityChallenge(identifier: String, onResult: (Boolean, AuthChallengeResponse?, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.getAuthChallenge(identifier.trim())
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    if (body.error != null) {
+                        onResult(false, null, body.error)
+                    } else {
+                        onResult(true, body, null)
+                    }
+                } else {
+                    val errorMsg = "No account found with this username or email."
+                    onResult(false, null, errorMsg)
+                }
+            } catch (e: Exception) {
+                onResult(false, null, "Connection error: ${e.localizedMessage}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun verifySecurityAnswer(identifier: String, answer: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.verifySecurityAnswer(VerifyAnswerRequest(identifier.trim(), answer.trim()))
+                if (response.isSuccessful && response.body()?.success == true) {
+                    onResult(true, null)
+                } else {
+                    val msg = response.body()?.message ?: "Incorrect answer. Please try again."
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, "Connection error: ${e.localizedMessage}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun resetPassword(newPassword: String, identifier: String? = null, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val req = ResetPasswordSecurityRequest(
+                    newPassword = newPassword,
+                    identifier = identifier,
+                    email = null,
+                    username = null,
+                    securityQuestion = null,
+                    securityAnswer = null
+                )
+                val response = service.updateSecurity(req)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    onResult(true, null)
+                } else {
+                    val errorStr = response.errorBody()?.string()
+                    val parsedMsg = try {
+                        if (!errorStr.isNullOrBlank()) {
+                            val obj = org.json.JSONObject(errorStr)
+                            obj.optString("error").ifBlank { obj.optString("message") }
+                        } else null
+                    } catch (_: Exception) { null }
+                    val msg = parsedMsg?.ifBlank { null } ?: response.body()?.message ?: "Failed to update password."
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, "Connection error: ${e.localizedMessage}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun checkUsernameAvailability(username: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.checkUsername(username.trim())
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    onResult(body.available, body.message)
+                } else {
+                    onResult(false, "Username check failed")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateWorkerCredentials(
+        identifier: String,
+        isEmail: Boolean,
+        password: String,
+        question: String,
+        answer: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val req = ResetPasswordSecurityRequest(
+                    newPassword = password,
+                    securityQuestion = question,
+                    securityAnswer = answer,
+                    identifier = identifier,
+                    email = if (isEmail) identifier else null,
+                    username = if (!isEmail) identifier else null
+                )
+                val response = service.updateSecurity(req)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    onResult(true, null)
+                } else {
+                    val errorStr = response.errorBody()?.string()
+                    val parsedMsg = try {
+                        if (!errorStr.isNullOrBlank()) {
+                            val obj = org.json.JSONObject(errorStr)
+                            obj.optString("error").ifBlank { obj.optString("message") }
+                        } else null
+                    } catch (_: Exception) { null }
+                    val msg = parsedMsg?.ifBlank { null } ?: response.body()?.message ?: "Unable to save credentials."
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, "Connection error: ${e.localizedMessage}")
             } finally {
                 _isLoading.value = false
             }
@@ -343,15 +703,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         loadAllData()
                         onResult(true, null, body)
                     } else {
-                        onResult(false, null, body)
+                        val msg = (body["message"] as? String)
+                            ?: (body["error"] as? String)
+                            ?: "Account is pending approval or inactive."
+                        _errorMessage.value = msg
+                        onResult(false, msg, body)
                     }
                 } else {
-                    val msg = "Google sign-in failed. Please try again."
-                    _errorMessage.value = msg
-                    onResult(false, msg, null)
+                    val errorBody = try { response.errorBody()?.string() } catch (e: Exception) { null }
+                    val msg = if (!errorBody.isNullOrBlank() && errorBody.contains("\"message\":")) {
+                        try {
+                            com.google.gson.JsonParser.parseString(errorBody).asJsonObject.get("message")?.asString
+                        } catch (e: Exception) { null }
+                    } else null
+                    val finalMsg = msg ?: "Google sign-in failed. Please try again."
+                    _errorMessage.value = finalMsg
+                    onResult(false, finalMsg, null)
                 }
             } catch (e: Exception) {
-                val msg = "Connection error: ${e.localizedMessage}"
+                val msg = "Connection error: ${e.localizedMessage ?: e.message}"
                 _errorMessage.value = msg
                 onResult(false, msg, null)
             } finally {
@@ -414,6 +784,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (_: Exception) {}
             sessionManager.clearSession()
+            refreshMultiUsers()
             _isLoggedIn.value = false
         }
     }
@@ -813,25 +1184,240 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getProfile()
                 if (res.isSuccessful && res.body()?.profile != null) {
-                    _profile.value = res.body()?.profile
+                    val p = res.body()!!.profile!!
+                    _profile.value = p
+                    val name = p.actualName ?: p.displayName ?: p.fullName ?: p.username
+                    val email = p.actualEmail ?: p.displayEmail ?: p.emailId ?: p.email
+                    val pic = p.actualPicture ?: p.displayPicture ?: p.profilePicture ?: p.googlePicture
+
+                    if (!name.isNullOrBlank()) sessionManager.userName = name
+                    if (!email.isNullOrBlank()) sessionManager.userEmail = email
+                    if (!pic.isNullOrBlank()) sessionManager.userPicture = pic
+
+                    // Seamlessly update cached profile in MultiUserManager if anything updated on server
+                    val activeId = sessionManager.userId ?: p.id
+                    val activeIdent = email ?: sessionManager.userEmail
+                    val users = multiUserManager.getUsers()
+                    val existing = users.find {
+                        (!activeId.isNullOrBlank() && it.id == activeId) ||
+                        (!activeIdent.isNullOrBlank() && it.identifier.equals(activeIdent, ignoreCase = true))
+                    }
+                    if (existing != null) {
+                        if (existing.displayName != name || existing.identifier != email || existing.displayPicture != pic) {
+                            multiUserManager.saveUser(
+                                existing.copy(
+                                    displayName = name ?: existing.displayName,
+                                    identifier = email ?: existing.identifier,
+                                    displayPicture = pic ?: existing.displayPicture
+                                )
+                            )
+                            refreshMultiUsers()
+                        }
+                    }
                 }
             } catch (_: Exception) {}
         }
     }
 
-    fun updateProfile(fullName: String, email: String, onComplete: (Boolean) -> Unit) {
+    fun updateProfile(
+        fullName: String,
+        email: String,
+        profilePicture: String? = null,
+        onComplete: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
         viewModelScope.launch {
             try {
                 val service = NetworkClient.getService(sessionManager)
-                val res = service.updateProfile(UpdateProfileRequest(full_name = fullName, email_id = email))
-                if (res.isSuccessful) {
+                val req = UpdateProfileRequest(
+                    full_name = fullName.trim(),
+                    email_id = email.trim(),
+                    profile_picture = profilePicture
+                )
+                val res = service.updateProfile(req)
+                if (res.isSuccessful && res.body()?.success == true) {
+                    sessionManager.userName = fullName.trim()
+                    sessionManager.userEmail = email.trim()
+                    if (!profilePicture.isNullOrBlank()) {
+                        sessionManager.userPicture = profilePicture
+                    }
+                    val activeUser = multiUserManager.getActiveUser()
+                    if (activeUser != null) {
+                        multiUserManager.saveUser(
+                            activeUser.copy(
+                                displayName = fullName.trim(),
+                                identifier = email.trim(),
+                                displayPicture = profilePicture ?: activeUser.displayPicture
+                            )
+                        )
+                        refreshMultiUsers()
+                    }
                     loadProfile()
-                    onComplete(true)
+                    onComplete(true, null)
                 } else {
-                    onComplete(false)
+                    val errStr = res.errorBody()?.string()
+                    val msg = try {
+                        if (!errStr.isNullOrBlank()) org.json.JSONObject(errStr).optString("error") else null
+                    } catch (_: Exception) { null } ?: "Failed to update profile"
+                    onComplete(false, msg)
                 }
             } catch (e: Exception) {
-                onComplete(false)
+                onComplete(false, e.localizedMessage)
+            }
+        }
+    }
+
+    fun updateProfile(fullName: String, email: String, onComplete: (Boolean) -> Unit) {
+        updateProfile(fullName, email, null) { success, _ -> onComplete(success) }
+    }
+
+    fun changePassword(newPassword: String, onResult: (Boolean, String?) -> Unit) {
+        changePassword("", newPassword, onResult)
+    }
+
+    fun changePassword(oldPassword: String, newPassword: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val req = ResetPasswordSecurityRequest(
+                    newPassword = newPassword,
+                    identifier = sessionManager.userEmail
+                )
+                val response = service.updateSecurity(req)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    _passwordSet.value = true
+                    onResult(true, null)
+                } else {
+                    val errorStr = response.errorBody()?.string()
+                    val parsedMsg = try {
+                        if (!errorStr.isNullOrBlank()) {
+                            val obj = org.json.JSONObject(errorStr)
+                            obj.optString("error").ifBlank { obj.optString("message") }
+                        } else null
+                    } catch (_: Exception) { null }
+                    val msg = parsedMsg?.ifBlank { null } ?: response.body()?.message ?: "Failed to update password."
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "Failed to change password")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateSecurityQuestion(question: String, answer: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val req = ResetPasswordSecurityRequest(
+                    newPassword = null,
+                    securityQuestion = question.trim(),
+                    securityAnswer = answer.trim(),
+                    identifier = sessionManager.userEmail
+                )
+                val response = service.updateSecurity(req)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    _hasSecurityQuestion.value = true
+                    onResult(true, null)
+                } else {
+                    val errorStr = response.errorBody()?.string()
+                    val parsedMsg = try {
+                        if (!errorStr.isNullOrBlank()) {
+                            val obj = org.json.JSONObject(errorStr)
+                            obj.optString("error").ifBlank { obj.optString("message") }
+                        } else null
+                    } catch (_: Exception) { null }
+                    val msg = parsedMsg?.ifBlank { null } ?: response.body()?.message ?: "Failed to update security question."
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "Failed to update security question")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun registerMobileBiometric(
+        deviceId: String? = null,
+        deviceName: String? = null,
+        deviceModel: String? = null,
+        credentialPayload: Map<String, Any>? = null,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val resolvedName = deviceName ?: deviceModel ?: "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                val req = MobileBiometricRegisterRequest(
+                    deviceId = deviceId ?: sessionManager.userId ?: android.os.Build.MODEL,
+                    deviceName = resolvedName,
+                    biometricType = "biometric"
+                )
+                val response = service.registerMobileBiometric(req)
+                if (response.isSuccessful && response.body()?.success == true) {
+                    sessionManager.biometricEnabled = true
+                    _biometricEnabled.value = true
+                    val activeUser = multiUserManager.getActiveUser()
+                    if (activeUser != null) {
+                        multiUserManager.saveUser(activeUser.copy(isBiometricEnabled = true))
+                        refreshMultiUsers()
+                    }
+                    onResult(true, null)
+                } else {
+                    val errStr = response.errorBody()?.string()
+                    val msg = try {
+                        if (!errStr.isNullOrBlank()) org.json.JSONObject(errStr).optString("error") else null
+                    } catch (_: Exception) { null } ?: response.body()?.message ?: "Failed to register biometrics on server"
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "Failed to register biometrics")
+            }
+        }
+    }
+
+    fun revokeMobileBiometric(deviceId: String? = null, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                service.revokeMobileBiometric()
+            } catch (_: Exception) {}
+            sessionManager.biometricEnabled = false
+            _biometricEnabled.value = false
+            val activeUser = multiUserManager.getActiveUser()
+            if (activeUser != null) {
+                multiUserManager.saveUser(activeUser.copy(isBiometricEnabled = false))
+                refreshMultiUsers()
+            }
+            onResult(true, null)
+        }
+    }
+
+    fun switchActiveUser(user: RememberedUser) {
+        multiUserManager.setActiveUserId(user.id)
+        refreshMultiUsers()
+    }
+
+    fun disconnectGoogle(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val service = NetworkClient.getService(sessionManager)
+                val response = service.disconnectGoogle()
+                if (response.isSuccessful && response.body()?.success == true) {
+                    loadProfile()
+                    onResult(true, null)
+                } else {
+                    val errStr = response.errorBody()?.string()
+                    val msg = try {
+                        if (!errStr.isNullOrBlank()) org.json.JSONObject(errStr).optString("error") else null
+                    } catch (_: Exception) { null } ?: "Failed to disconnect Google account"
+                    onResult(false, msg)
+                }
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage)
             }
         }
     }

@@ -1,4 +1,13 @@
-const path = require('path');
+/**
+ * PM2 Ecosystem Configuration
+ * 
+ * All secrets (Google OAuth, JWT, etc.) are loaded from .env files,
+ * NOT hardcoded here. This file is safe to commit to Git.
+ * 
+ * Usage:
+ *   Windows:  pm2 start ecosystem.config.js --env production --update-env
+ *   Ubuntu:   pm2 start ecosystem.config.js --env oraclevm --only backend,frontend --update-env
+ */
 
 module.exports = {
   apps: [
@@ -15,17 +24,12 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: '3001',
-        HOST: '::',          // IPv6 dual-stack on Windows
-        GOOGLE_CLIENT_ID: '540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com',
-        GOOGLE_CLIENT_SECRET: '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'
+        HOST: '::'           // IPv6 dual-stack on Windows
       },
       env_oraclevm: {
         NODE_ENV: 'oraclevm',
         PORT: '3001',
-        HOST: '0.0.0.0',    // IPv4 on Ubuntu (behind Nginx)
-        GOOGLE_CLIENT_ID: '540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com',
-        GOOGLE_CLIENT_SECRET: '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',
-        GOOGLE_REDIRECT_URI: 'https://mac.faizal.uk/api/auth/google/callback'
+        HOST: '0.0.0.0'     // IPv4 on Ubuntu (behind Nginx)
       },
       instances: 1
     },
@@ -56,7 +60,7 @@ module.exports = {
     // ===== IPV6 UPDATER (WINDOWS PRODUCTION ONLY) =====
     {
       name: 'ipv6-updater',
-      script: 'scripts_py/ipv6-updater.py',
+      script: 'tools/python/ipv6-updater.py',
       cwd: './',
       interpreter: 'python',
       autorestart: true,

@@ -4,6 +4,8 @@
  * Now connected to backend API
  */
 
+import { renderWorkerBadge } from '/shared/worker-badges.js';
+
 class ContactsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
     const width = window.innerWidth;
@@ -56,6 +58,9 @@ class ContactsApp extends AppWindow {
       <!-- Contacts Sidebar -->
       <div class="contacts-sidebar">
         <div id="contactsList"></div>
+        <div class="contacts-sidebar-footer">
+          <button class="refresh-btn" id="contactsRefreshBtn" title="Refresh contacts from database">↻</button>
+        </div>
       </div>
 
       <!-- Contact Card -->
@@ -162,6 +167,38 @@ class ContactsApp extends AppWindow {
     addBtn?.addEventListener('click', () => {
       this.openAddContactModal();
     });
+
+    // Refresh button - reload contacts from database
+    const refreshBtn = this.sidebar ? this.sidebar.querySelector('#contactsRefreshBtn') : document.getElementById('contactsRefreshBtn');
+    refreshBtn?.addEventListener('click', async () => {
+      refreshBtn.style.opacity = '0.5';
+      refreshBtn.style.cursor = 'wait';
+      try {
+        await this.loadContactsFromAPI();
+        if (this.selectedContactId) {
+          const stillExists = this.contacts.some(c => c.id === this.selectedContactId);
+          if (stillExists) {
+            this.renderContactCard();
+          }
+        }
+        this.showNotification('Contacts refreshed from database', 'success');
+        console.log('✓ Contacts refreshed from database');
+      } catch (error) {
+        console.error('Failed to refresh contacts:', error);
+        this.showNotification('Failed to refresh contacts', 'error');
+      } finally {
+        refreshBtn.style.opacity = '1';
+        refreshBtn.style.cursor = 'pointer';
+      }
+    });
+
+    // Listen for worker badge visibility toggle
+    window.addEventListener('worker-badges-toggle-changed', () => {
+      this.renderContactsList(this.searchInput?.value?.toLowerCase() || '');
+      if (this.selectedContactId) {
+        this.renderContactCard();
+      }
+    });
   }
 
   renderContactsList(searchQuery = '') {
@@ -195,6 +232,18 @@ class ContactsApp extends AppWindow {
       grouped[letter].forEach(contact => {
         const item = document.createElement('button');
         item.className = 'contacts-list-item';
+        const auditInfo = JSON.stringify({
+          type: 'Contact',
+          id: contact.id,
+          name: contact.name,
+          created_by_role: contact.created_by_role,
+          created_by_name: contact.created_by_name,
+          last_edited_by_role: contact.last_edited_by_role,
+          last_edited_by_name: contact.last_edited_by_name,
+          created_at: contact.creationDate,
+          last_activity: contact.lastActivity
+        });
+        item.setAttribute('data-worker-audit', auditInfo);
         item.setAttribute('data-contact-id', contact.id);
         if (this.selectedContactId === contact.id) {
           item.classList.add('active');
@@ -205,11 +254,18 @@ class ContactsApp extends AppWindow {
           ? '<span class="contacts-list-active-badge" style="color: #8bc34a;">●</span>'
           : '<span class="contacts-list-active-badge" style="color: #dc2626;">●</span>';
         
+        const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+          ? window.renderWorkerBadge(contact, { compact: true })
+          : '';
+
         item.innerHTML = `
           <div class="contacts-avatar" style="background: ${contact.color};">
             ${initials}
           </div>
-          <span>${contact.name}</span>
+          <span style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${contact.name}</span>
+            ${workerBadgeHtml}
+          </span>
           ${activeIndicator}
         `;
 
@@ -275,6 +331,22 @@ class ContactsApp extends AppWindow {
       this.cardContainer.style.transition = 'background 0.5s ease';
     }
 
+    const workerBadgeDetail = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(contact, { compact: false })
+      : '';
+
+    const auditInfo = JSON.stringify({
+      type: 'Contact',
+      id: contact.id,
+      name: contact.name,
+      created_by_role: contact.created_by_role,
+      created_by_name: contact.created_by_name,
+      last_edited_by_role: contact.last_edited_by_role,
+      last_edited_by_name: contact.last_edited_by_name,
+      created_at: contact.creationDate,
+      last_activity: contact.lastActivity
+    });
+
     card.innerHTML = `
       <!-- Fixed Avatar Background -->
       <div class="contact-fixed-bg-avatar">
@@ -287,12 +359,17 @@ class ContactsApp extends AppWindow {
       <div class="contact-details-scroll">
         
         <!-- Profile Header (Name & Actions) inside scroll area -->
-        <div class="contact-profile-header">
-          <div class="contact-name">${contact.name}${contact.excludeFromStats ? ' <span class="excluded-badge" title="Excluded from Statistics" style="font-size: 16px; margin-left: 8px; vertical-align: middle;">🚫</span>' : ''}</div>
+        <div class="contact-profile-header" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
+          <div class="contact-name" style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span>${contact.name}</span>
+            ${contact.excludeFromStats ? ' <span class="excluded-badge" title="Excluded from Statistics" style="font-size: 16px; vertical-align: middle;">🚫</span>' : ''}
+            ${workerBadgeDetail}
+          </div>
           <div class="contact-actions">
             <button class="contact-action-btn message-btn" title="Message (WhatsApp)" data-action="whatsapp">💬</button>
             <button class="contact-action-btn phone-btn" title="View Ledger" data-action="ledger">📄</button>
             <button class="contact-action-btn" title="Share Ledger" data-action="share-ledger" style="font-size: 14px;">🔗</button>
+            ${!this.isWorkerUser() ? `<button class="contact-action-btn share-worker-btn" title="Share with Worker" data-action="share-worker" style="font-size: 14px;">👥</button>` : ''}
             <button class="contact-action-btn video-btn" title="New Bill" data-action="new-bill">🧾</button>
             <button class="contact-action-btn mail-btn" title="New Payment" data-action="new-payment">💰</button>
             <button class="contact-action-btn print-btn" title="Print Slip" data-action="print-slip">⎙</button>
@@ -439,6 +516,9 @@ class ContactsApp extends AppWindow {
                  };
                  document.addEventListener('click', closeFn);
                }, 100);
+            break;
+          case 'share-worker':
+            this.openShareContactModal(contact.id, contact.name);
             break;
           case 'ledger':
             if (window.appBar) {
@@ -729,7 +809,7 @@ class ContactsApp extends AppWindow {
   }
 
   loadContactsFromAPI() {
-    fetch(this.apiUrl, { credentials: 'same-origin' })
+    return fetch(this.apiUrl, { credentials: 'same-origin' })
       .then(response => {
         if (!response.ok) throw new Error(`API error: ${response.statusText}`);
         return response.json();
@@ -760,10 +840,15 @@ class ContactsApp extends AppWindow {
           lastActivity: contact.last_activity || null,
           excludeFromStats: contact.exclude_from_stats || 0,
           disableDuplexExport: contact.disable_duplex_export || 0,
+          created_by_role: contact.created_by_role,
+          created_by_name: contact.created_by_name,
+          last_edited_by_role: contact.last_edited_by_role,
+          last_edited_by_name: contact.last_edited_by_name,
           color: this.generateColorForContact(contact.name)
         }));
         console.log(`✓ Loaded ${this.contacts.length} contacts from API`);
         this.renderContactsList();
+        return this.contacts;
       })
       .catch(error => {
         console.error('Error loading contacts from API:', error);
@@ -772,6 +857,7 @@ class ContactsApp extends AppWindow {
         console.warn(`⚠️  Contacts API not available on :${port}. The billing-api-server may not be running.`);
         this.contacts = [];
         this.renderContactsList();
+        throw error;
       });
   }
 
@@ -953,7 +1039,6 @@ class ContactsApp extends AppWindow {
                 </div>
               </div>
 
-              ${!isWorker ? `
               <div class="contact-form-row">
                 <div class="contact-form-group full-width" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px; margin-top: 8px; width: 100%;">
                   <div style="flex: 1;">
@@ -966,7 +1051,19 @@ class ContactsApp extends AppWindow {
                   </label>
                 </div>
               </div>
-              ` : ''}
+
+              <div class="contact-form-row">
+                <div class="contact-form-group full-width" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 8px; margin-top: 8px; width: 100%;">
+                  <div style="flex: 1;">
+                    <label style="margin: 0; font-weight: 600;">2-Page Duplex Printing</label>
+                    <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">Enable front & back duplex layout when exporting or printing invoices for this customer.</p>
+                  </div>
+                  <label class="macos-switch">
+                    <input type="checkbox" name="duplexPrint" ${(contactData.disableDuplexExport === 0 || contactData.disableDuplexExport === '0' || contactData.disableDuplexExport === false || contactData.disableDuplexExport === undefined) ? 'checked' : ''}>
+                    <span class="macos-slider"></span>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <!-- Additional Information Section -->
@@ -1020,6 +1117,10 @@ class ContactsApp extends AppWindow {
     });
   }
 
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
   saveContactFromModal(form, closeModal) {
     const formData = new FormData(form);
     const name = formData.get('name').trim();
@@ -1029,7 +1130,6 @@ class ContactsApp extends AppWindow {
       return;
     }
     
-    const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
     const contactData = {
       name,
       phone: formData.get('phone') || '',
@@ -1042,7 +1142,8 @@ class ContactsApp extends AppWindow {
       avg_sales: parseFloat(formData.get('avgSales')) || 0,
       favourite_products: formData.get('favouriteProducts') || '',
       opening_balance: parseFloat(formData.get('openingBalance')) || 0,
-      exclude_from_stats: isWorker ? 1 : (formData.get('excludeFromStats') === 'on' ? 1 : 0),
+      exclude_from_stats: formData.get('excludeFromStats') === 'on' ? 1 : 0,
+      disable_duplex_export: formData.get('duplexPrint') === 'on' ? 0 : 1,
       notes: formData.get('notes') || '',
       transport_preference: formData.get('transportPreference') || ''
     };
@@ -1129,6 +1230,119 @@ class ContactsApp extends AppWindow {
           alert(`Error deleting contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
         });
     }
+  }
+
+  async openShareContactModal(contactId, contactName) {
+    try {
+      const res = await fetch(`${this.apiUrl}/${contactId}/access`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Failed to fetch worker access list');
+      const data = await res.json();
+      const workers = data.workers || [];
+
+      const modalHTML = `
+        <div class="contact-modal-overlay" id="shareWorkerModalOverlay" style="z-index: 2147483647;">
+          <div class="contact-modal" style="max-width: 440px; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.35);">
+            <div class="contact-modal-header" style="background: var(--bg-secondary, #f7f7f7); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <h2 class="contact-modal-title" style="font-size: 16px; font-weight: 700; margin: 0;">Share with Workers</h2>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #777;">Control worker access for <strong>${contactName}</strong>.</p>
+              </div>
+              <button type="button" class="contact-modal-close" id="closeShareModalBtn" style="border: none; background: transparent; font-size: 20px; cursor: pointer; color: #888;">&times;</button>
+            </div>
+            <div class="contact-modal-body" style="padding: 16px 20px; max-height: 360px; overflow-y: auto;">
+              ${workers.length === 0 ? `
+                <div style="text-align: center; padding: 24px 0; color: #888; font-size: 13px;">No active worker accounts found.</div>
+              ` : `
+                <div class="worker-share-list" style="display: flex; flex-direction: column; gap: 8px;">
+                  ${workers.map(w => {
+                    const initials = (w.fullName || w.username).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                    return `
+                      <label class="worker-share-row" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.06); cursor: pointer; transition: background 0.2s;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                          <div style="width: 36px; height: 36px; border-radius: 50%; background: #007aff; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;">
+                            ${initials}
+                          </div>
+                          <div>
+                            <div style="font-weight: 600; font-size: 13px; color: var(--text-color, #000);">${w.fullName}</div>
+                            <div style="font-size: 11px; color: #888;">${w.email || `@${w.username}`}</div>
+                          </div>
+                        </div>
+                        <input type="checkbox" class="worker-access-checkbox" value="${w.id}" ${w.hasAccess ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: #007aff;">
+                      </label>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+            <div class="contact-modal-actions" style="display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid rgba(0,0,0,0.08); background: var(--bg-secondary, #f7f7f7);">
+              <button type="button" class="contact-modal-btn submit" id="saveWorkerAccessBtn" style="flex: 1; height: 38px; font-size: 13px; font-weight: 600; border-radius: 8px; background: #007aff; color: #fff; border: none; cursor: pointer;">Save Access</button>
+              <button type="button" class="contact-modal-btn cancel" id="cancelShareModalBtn" style="flex: 1; height: 38px; font-size: 13px; border-radius: 8px; background: transparent; border: 1px solid #ccc; color: #555; cursor: pointer;">Cancel</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const modalElem = document.createElement('div');
+      modalElem.innerHTML = modalHTML;
+      document.body.appendChild(modalElem.firstElementChild);
+
+      const overlay = document.getElementById('shareWorkerModalOverlay');
+      const closeBtn = document.getElementById('closeShareModalBtn');
+      const cancelBtn = document.getElementById('cancelShareModalBtn');
+      const saveBtn = document.getElementById('saveWorkerAccessBtn');
+
+      const closeModal = () => overlay.remove();
+      closeBtn?.addEventListener('click', closeModal);
+      cancelBtn?.addEventListener('click', closeModal);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+      });
+
+      saveBtn?.addEventListener('click', async () => {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        const checkboxes = overlay.querySelectorAll('.worker-access-checkbox:checked');
+        const userIds = Array.from(checkboxes).map(cb => cb.value);
+
+        try {
+          const updateRes = await fetch(`${this.apiUrl}/${contactId}/access`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userIds })
+          });
+          const updateData = await updateRes.json();
+          if (!updateRes.ok || !updateData.success) {
+            throw new Error(updateData.error || 'Failed to update access');
+          }
+          closeModal();
+          alert(`Worker access updated for ${contactName}.`);
+        } catch (err) {
+          alert('Error saving worker access: ' + err.message);
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Access';
+        }
+      });
+    } catch (err) {
+      alert('Error fetching worker list: ' + err.message);
+    }
+  }
+
+  showNotification(message, type = 'info') {
+    let notification = document.querySelector('.contacts-notification');
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.className = 'contacts-notification';
+      document.body.appendChild(notification);
+    }
+
+    notification.textContent = message;
+    notification.className = `contacts-notification contacts-notification-${type}`;
+    notification.style.display = 'block';
+
+    setTimeout(() => {
+      notification.style.display = 'none';
+    }, 3000);
   }
 }
 

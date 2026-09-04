@@ -78,11 +78,20 @@ const serverAll = http.createServer((req, res) => {
   }
   else {
     filePath = path.join(DIST_DIR, url);
-    // Fallback to frontend directory if not found at root
+    // Fallback search across dist/frontend, project root, frontend/, and frontend/public
     if (!fs.existsSync(filePath)) {
-      const frontendPath = path.join(DIST_DIR, 'frontend', url);
-      if (fs.existsSync(frontendPath)) {
-        filePath = frontendPath;
+      const candidates = [
+        path.join(DIST_DIR, 'frontend', url),
+        path.join(__dirname, url),
+        path.join(__dirname, 'frontend', url),
+        path.join(__dirname, 'frontend', 'public', url),
+        path.join(DIST_DIR, 'scripts', 'shared', path.basename(url))
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          filePath = candidate;
+          break;
+        }
       }
     }
   }

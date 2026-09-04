@@ -108,12 +108,13 @@ module.exports = function(db) {
         const previousDueAmount = opening_balance + (previousInvoices.total_invoiced || 0) - (payments.total_paid || 0) - (payments.total_credited || 0);
         const previous_due = Math.max(0, previousDueAmount); // Don't show negative as previous_due
 
+        const creatorId = req.user ? (req.user.id || req.user.userId) : null;
         // INSERT INVOICE HEADER
         const invoiceStmt = db.prepare(`
           INSERT INTO invoices 
           (invoice_no, customer_id, total_amount, total_discount, total_gst, 
-           round_off, grand_total, previous_due, due_date, invoice_date, notes, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+           round_off, grand_total, previous_due, due_date, invoice_date, notes, created_by_user_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `);
 
         const invoiceResult = invoiceStmt.run(
@@ -127,7 +128,8 @@ module.exports = function(db) {
           previous_due,
           due_date || null,
           invoice_date || null,
-          notes || null
+          notes || null,
+          creatorId
         );
 
 
@@ -242,10 +244,15 @@ module.exports = function(db) {
             i.created_at,
             COALESCE(i.invoice_date, i.created_at) as bill_date,
             i.updated_at,
-
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
             c.name as customer_name
           FROM invoices i
           LEFT JOIN contacts c ON i.customer_id = c.id
+          LEFT JOIN users u_creator ON i.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON i.last_edited_by_user_id = u_editor.id
           WHERE 1=1
         `;
         const params = [];
@@ -347,10 +354,15 @@ module.exports = function(db) {
             i.total_gst,
             i.round_off,
             i.grand_total,
+            i.notes,
             i.previous_due,
             i.invoice_date,
             i.created_at,
             i.updated_at,
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
             c.name as customer_name,
             c.address as customer_address,
             c.phone as customer_phone,
@@ -358,6 +370,8 @@ module.exports = function(db) {
             c.gstin as customer_gstin
           FROM invoices i
           LEFT JOIN contacts c ON i.customer_id = c.id
+          LEFT JOIN users u_creator ON i.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON i.last_edited_by_user_id = u_editor.id
           WHERE i.id = ?
         `).get(id);
 
@@ -560,11 +574,12 @@ module.exports = function(db) {
         const previousDueAmount = opening_balance + (previousInvoices.total_invoiced || 0) - (payments.total_paid || 0) - (payments.total_credited || 0);
         const previous_due = Math.max(0, previousDueAmount); // Don't show negative as previous_due
 
+        const editorId = req.user ? (req.user.id || req.user.userId) : null;
         // UPDATE INVOICE HEADER with recalculated totals
         db.prepare(`
           UPDATE invoices 
           SET total_amount = ?, total_discount = ?, total_gst = ?, round_off = ?, grand_total = ?, 
-              previous_due = ?, due_date = ?, invoice_date = ?, notes = ?, updated_at = datetime('now')
+              previous_due = ?, due_date = ?, invoice_date = ?, notes = ?, last_edited_by_user_id = ?, updated_at = datetime('now')
           WHERE id = ?
         `).run(
           total_amount,
@@ -576,6 +591,7 @@ module.exports = function(db) {
           due_date || null,
           invoice_date || null,
           notes || null,
+          editorId,
           id
         );
 
@@ -822,7 +838,10 @@ module.exports = function(db) {
         const workerScope = getWorkerContactScope(req, 'c');
         let filterClause = '';
         if (workerScope) {
-          filterClause = ` AND ${workerScope}`;
+          const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+          filterClause = ` AND ${workerScope} AND (
+            c.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)
+          )`;
         } else {
           filterClause = ` AND (c.exclude_from_stats IS NULL OR c.exclude_from_stats = 0)`;
         }

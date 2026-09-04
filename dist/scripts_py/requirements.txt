@@ -1,4 +1,0 @@
-reportlab
-PyMuPDF
-requests
-python-dotenv

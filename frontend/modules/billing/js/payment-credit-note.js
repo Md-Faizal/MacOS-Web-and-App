@@ -21,6 +21,10 @@ class PaymentCreditNote {
     this.selectedBillDetails = null;
   }
 
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
   /**
    * Format a date for <input type="date"> (YYYY-MM-DD)
    */
@@ -640,22 +644,24 @@ class PaymentCreditNote {
   }
 
   /**
-   * Get unique customer names from bills
+   * Get unique customer names from scoped contacts and bills
    */
   getUniqueCustomers() {
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const contacts = scoped ? scoped.contacts : (this.billingData.contacts || []);
+    const bills = scoped ? scoped.bills : (this.billingData.bills || []);
+    
     const customers = new Set();
     
-    // Add customers from active bills
-    (this.billingData.bills || []).forEach(bill => {
-      if (bill.customer_name) {
-        customers.add(bill.customer_name);
-      }
+    // Add customers from contacts list first
+    contacts.forEach(contact => {
+      if (contact.name) customers.add(contact.name);
     });
 
-    // Add customers from contacts who have an opening balance
-    (this.billingData.contacts || []).forEach(contact => {
-      if (contact.name && (contact.opening_balance || 0) !== 0) {
-        customers.add(contact.name);
+    // Add any customer names from active scoped bills
+    bills.forEach(bill => {
+      if (bill.customer_name) {
+        customers.add(bill.customer_name);
       }
     });
 
@@ -686,17 +692,12 @@ class PaymentCreditNote {
   }
 
   async calculateStats() {
-    const allBills = this.billingData.bills || [];
-    const allContacts = this.billingData.contacts || [];
-
-    // Filter out excluded customers for global statistics
-    // Create a set of excluded customer names for efficient lookup
-    const excludedCustomerNames = new Set(
-      allContacts.filter(c => c.exclude_from_stats === 1 || c.exclude_from_stats === '1').map(c => c.name)
-    );
-
-    const bills = allBills.filter(bill => !excludedCustomerNames.has(bill.customer_name));
-    const contacts = allContacts.filter(contact => contact.exclude_from_stats !== 1 && contact.exclude_from_stats !== '1');
+    const isWorker = this.billingApp.isWorkerUser ? this.billingApp.isWorkerUser() : false;
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    
+    const bills = scoped ? (scoped.statsBills || scoped.bills) : (this.billingData.bills || []);
+    const contacts = scoped ? (scoped.statsContacts || scoped.contacts) : (this.billingData.contacts || []);
+    const payments = scoped ? (scoped.statsPayments || scoped.payments) : (this.billingData.payments || []);
 
     let totalInvoiced = 0;
     let partialBills = 0;
@@ -709,38 +710,31 @@ class PaymentCreditNote {
       if (bill.status === 'partial') partialBills++;
     });
 
-    // Get total collected directly from database (this endpoint is now filtered by customer exclusion)
-    try {
-      if (this.billingApp.api && this.billingApp.api.getTotalCollected) {
-        const result = await this.billingApp.api.getTotalCollected();
-        totalPaid = result.total_collected || 0;
-      }
-    } catch (error) {
-      console.warn('Error fetching total collected:', error.message);
-      totalPaid = 0;
-    }
-
-    // Optimization: Use cached contact data for opening balance calculation
-    // This avoids multiple per-customer API calls
-    if (contacts.length > 0) {
-      contacts.forEach(contact => {
-        totalOpeningBalance += (contact.opening_balance || 0);
+    // If worker, calculate totalPaid directly from scoped payments
+    if (isWorker) {
+      payments.forEach(p => {
+        if (p.type === 'PAYMENT' || !p.type) {
+          totalPaid += (p.amount || 0);
+        } else if (p.type === 'CREDIT_NOTE') {
+          totalPaid += (p.credit_amount || 0);
+        }
       });
     } else {
-      // Fallback: If contacts not loaded yet, use the slower API method for non-excluded customers
+      // Admin: Get total collected directly from database (respects exclude_from_stats)
       try {
-        const uniqueCustomers = this.getUniqueCustomers();
-        // We still need to filter here if contacts weren't passed
-        for (const customerName of uniqueCustomers) {
-          if (excludedCustomerNames.has(customerName)) continue;
-          
-          const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
-          totalOpeningBalance += (stats.opening_balance || 0);
+        if (this.billingApp.api && this.billingApp.api.getTotalCollected) {
+          const result = await this.billingApp.api.getTotalCollected();
+          totalPaid = result.total_collected || 0;
         }
       } catch (error) {
-        console.warn('Error fetching total opening balance fallback:', error.message);
+        console.warn('Error fetching total collected:', error.message);
+        totalPaid = 0;
       }
     }
+
+    contacts.forEach(contact => {
+      totalOpeningBalance += (contact.opening_balance || 0);
+    });
 
     // Pending = Total Invoiced + Opening Balance - Total Collected
     const totalPending = Math.max(0, totalInvoiced + totalOpeningBalance - totalPaid);
@@ -1062,8 +1056,9 @@ class PaymentCreditNote {
     const container = document.getElementById('recentTransactions');
     if (!container) return;
 
-    // All payments and credit notes come from billingData.payments with type field
-    const allPayments = (this.billingData.payments || []);
+    // All payments and credit notes come from scoped payments
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const allPayments = scoped ? scoped.payments : (this.billingData.payments || []);
     
     // Separate by type
     const payments = allPayments.filter(p => p.type === 'PAYMENT');
@@ -1123,7 +1118,8 @@ class PaymentCreditNote {
    * Load full transaction history
    */
   loadTransactionHistory() {
-    const allPayments = this.billingData.payments || [];
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const allPayments = scoped ? scoped.payments : (this.billingData.payments || []);
     this.displayTransactionHistory(allPayments);
   }
 
@@ -1134,7 +1130,8 @@ class PaymentCreditNote {
     const searchTerm = document.getElementById('historySearch')?.value.toLowerCase() || '';
     const filterType = document.getElementById('historyFilter')?.value || 'all';
 
-    let transactions = this.billingData.payments || [];
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    let transactions = scoped ? scoped.payments : (this.billingData.payments || []);
     let showingOpeningBalance = false;
 
     // Apply type filter
@@ -1170,8 +1167,8 @@ class PaymentCreditNote {
     if (!container) return;
 
     if (showingOpeningBalance) {
-      // Show only opening balance cards
-      const uniqueCustomers = [...new Set((this.billingData.payments || []).map(t => t.customer_name).filter(c => c))];
+      // Show only opening balance cards for accessible customers
+      const uniqueCustomers = this.getUniqueCustomers();
       
       const openingBalanceCardsHTML = uniqueCustomers.map(customer => `
         <div class="transaction-card opening-balance-card" data-customer="${customer}" style="background-color: #f0f8ff; border: 2px solid #1e40af;">
@@ -1239,13 +1236,28 @@ class PaymentCreditNote {
       </div>
     `).join('');
 
-    container.innerHTML = openingBalanceCardsHTML + transactions.map(txn => `
-      <div class="transaction-card">
+    container.innerHTML = openingBalanceCardsHTML + transactions.map(txn => {
+      const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+        ? window.renderWorkerBadge(txn, { compact: true })
+        : '';
+      const auditInfo = JSON.stringify({
+        type: txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note',
+        id: txn.id,
+        name: `${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'} (${txn.customer_name || 'Customer'})`,
+        created_by_role: txn.created_by_role,
+        created_by_name: txn.created_by_name,
+        last_edited_by_role: txn.last_edited_by_role,
+        last_edited_by_name: txn.last_edited_by_name,
+        date: txn.payment_date || txn.created_at,
+        created_at: txn.created_at
+      });
+      return `
+      <div class="transaction-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
         <div class="card-header">
           <div class="card-title">
             <span class="icon">${txn.type === 'PAYMENT' ? '💳' : '📋'}</span>
             <div class="title-text">
-              <div class="main-title">${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'}</div>
+              <div class="main-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'}</span> ${workerBadgeHtml}</div>
               <div class="sub-title">${txn.customer_name || 'Unknown'}</div>
             </div>
           </div>
@@ -1280,7 +1292,8 @@ class PaymentCreditNote {
           </div>
         </div>
       </div>
-    `).join('');
+      `;
+    }).join('');
     
     // Fetch opening balances for each customer
     customers.forEach(customer => {

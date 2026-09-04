@@ -64,6 +64,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
 import java.util.Locale
+import java.util.Calendar
 
 enum class ProductSubPage(val title: String, val icon: ImageVector) {
     ALL("Products", Icons.Outlined.Inventory2),
@@ -95,6 +96,212 @@ fun formatDateReadable(dateStr: String?): String {
         }
     } catch (e: Exception) {
         dateStr
+    }
+}
+
+fun calculateExpiryDate(mfgDateStr: String?, gapYears: Int): String {
+    if (mfgDateStr.isNullOrBlank() || gapYears <= 0) return ""
+    return try {
+        val raw = mfgDateStr.trim()
+        val clean = if (raw.contains("T")) raw.substringBefore("T") else raw.substringBefore(" ")
+        val parts = clean.split("-")
+        if (parts.size >= 3) {
+            val y = parts[0].toIntOrNull() ?: return ""
+            val m = parts[1].toIntOrNull() ?: return ""
+            val d = parts[2].toIntOrNull() ?: return ""
+            val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+            cal.set(Calendar.YEAR, y)
+            cal.set(Calendar.MONTH, m - 1)
+            cal.set(Calendar.DAY_OF_MONTH, d)
+            cal.add(Calendar.YEAR, gapYears)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.format(cal.time)
+        } else if (parts.size == 2) {
+            val y = parts[0].toIntOrNull() ?: return ""
+            val m = parts[1].toIntOrNull() ?: return ""
+            val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+            cal.set(Calendar.YEAR, y)
+            cal.set(Calendar.MONTH, m - 1)
+            cal.add(Calendar.YEAR, gapYears)
+            val sdf = SimpleDateFormat("yyyy-MM", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.format(cal.time)
+        } else {
+            ""
+        }
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+fun getYearGap(mfgDateStr: String?, expDateStr: String?): Int? {
+    if (mfgDateStr.isNullOrBlank() || expDateStr.isNullOrBlank()) return null
+    return try {
+        val cleanMfg = if (mfgDateStr.contains("T")) mfgDateStr.substringBefore("T") else mfgDateStr.substringBefore(" ")
+        val cleanExp = if (expDateStr.contains("T")) expDateStr.substringBefore("T") else expDateStr.substringBefore(" ")
+        val mfgParts = cleanMfg.split("-")
+        val expParts = cleanExp.split("-")
+        if (mfgParts.size >= 2 && expParts.size >= 2) {
+            val mfgY = mfgParts[0].toIntOrNull() ?: return null
+            val mfgM = mfgParts[1].toIntOrNull() ?: return null
+            val expY = expParts[0].toIntOrNull() ?: return null
+            val expM = expParts[1].toIntOrNull() ?: return null
+            val gap = Math.round((expY - mfgY).toDouble() + (expM - mfgM).toDouble() / 12.0).toInt()
+            if (gap in 1..15) gap else null
+        } else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun getProductExpiryGap(product: Product?): Int? {
+    if (product == null || product.variants.isEmpty()) return null
+    val gapCounts = mutableMapOf<Int, Int>()
+    for (v in product.variants) {
+        for (b in v.batches) {
+            val mfg = b.mfgDate
+            val exp = b.expDate
+            if (!mfg.isNullOrBlank() && !exp.isNullOrBlank()) {
+                val gap = getYearGap(mfg, exp)
+                if (gap != null && gap in 1..15) {
+                    gapCounts[gap] = (gapCounts[gap] ?: 0) + 1
+                }
+            }
+        }
+    }
+    if (gapCounts.isEmpty()) return null
+    return gapCounts.maxByOrNull { it.value }?.key
+}
+
+fun getExpiryGapFromDraftVariants(draftVariants: List<DraftVariant>): Int? {
+    val gapCounts = mutableMapOf<Int, Int>()
+    for (v in draftVariants) {
+        for (b in v.batches) {
+            val mfg = b.mfgDate
+            val exp = b.expDate
+            if (mfg.isNotBlank() && exp.isNotBlank()) {
+                val gap = getYearGap(mfg, exp)
+                if (gap != null && gap in 1..15) {
+                    gapCounts[gap] = (gapCounts[gap] ?: 0) + 1
+                }
+            }
+        }
+    }
+    if (gapCounts.isEmpty()) return null
+    return gapCounts.maxByOrNull { it.value }?.key
+}
+
+fun getProductPackUnit(product: Product?): String {
+    if (product == null || product.variants.isEmpty()) return ""
+    val counts = mutableMapOf<String, Int>()
+    val unitRegex = Regex("^[\\d.]+(.+)$")
+    for (v in product.variants) {
+        var unit = (v.packSizeType ?: "").uppercase().trim()
+        if (unit.isEmpty() && v.packSize.isNotEmpty() && v.packSize != "Standard") {
+            val match = unitRegex.find(v.packSize)
+            if (match != null && match.groupValues.size > 1) {
+                unit = match.groupValues[1].uppercase().trim()
+            }
+        }
+        if (unit.isNotEmpty()) {
+            counts[unit] = (counts[unit] ?: 0) + 1
+        }
+    }
+    if (counts.isEmpty()) return ""
+    return counts.maxByOrNull { it.value }?.key ?: ""
+}
+
+fun getDraftVariantsPackUnit(draftVariants: List<DraftVariant>): String {
+    val counts = mutableMapOf<String, Int>()
+    val unitRegex = Regex("^[\\d.]+(.+)$")
+    for (v in draftVariants) {
+        var unit = v.packSizeType.uppercase().trim()
+        if (unit.isEmpty() && v.packSizeValue.isNotEmpty()) {
+            val match = unitRegex.find(v.packSizeValue)
+            if (match != null && match.groupValues.size > 1) {
+                unit = match.groupValues[1].uppercase().trim()
+            }
+        }
+        if (unit.isNotEmpty()) {
+            counts[unit] = (counts[unit] ?: 0) + 1
+        }
+    }
+    return counts.maxByOrNull { it.value }?.key ?: ""
+}
+
+@Composable
+fun ExpiryYearsPicker(
+    selectedGap: Int?,
+    onGapSelected: (Int) -> Unit,
+    onClear: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Surface(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            color = if (selectedGap != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (selectedGap != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+            ),
+            modifier = Modifier.height(34.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = if (selectedGap != null) "+$selectedGap yr${if (selectedGap > 1) "s" else ""}" else "+yrs",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (selectedGap != null) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selectedGap != null) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = "Select expiry gap in years",
+                    tint = if (selectedGap != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("None (Clear gap)", style = MaterialTheme.typography.bodySmall) },
+                onClick = {
+                    onClear()
+                    expanded = false
+                }
+            )
+            HorizontalDivider()
+            for (yr in 1..15) {
+                val isSelected = selectedGap == yr
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "+$yr year${if (yr > 1) "s" else ""}",
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    leadingIcon = if (isSelected) {
+                        { Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) }
+                    } else null,
+                    onClick = {
+                        onGapSelected(yr)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -1255,7 +1462,11 @@ fun ProductDetailsBottomSheet(
     }
 
     if (showAddVariantModal) {
+        val detectedUnit = getProductPackUnit(product).ifBlank { "ML" }
+        val detectedGap = getProductExpiryGap(product)
         AddVariantModal(
+            defaultUnit = detectedUnit,
+            defaultExpiryGap = detectedGap,
             onDismiss = { showAddVariantModal = false },
             onAdd = { dVar ->
                 showAddVariantModal = false
@@ -1290,8 +1501,10 @@ fun ProductDetailsBottomSheet(
 
     if (targetVariantForBatchModal != null) {
         val targetVar = targetVariantForBatchModal!!
+        val detectedGap = getProductExpiryGap(product)
         AddBatchModal(
             variantPackSize = targetVar.packSize,
+            defaultExpiryGap = detectedGap,
             onDismiss = { targetVariantForBatchModal = null },
             onAdd = { dB ->
                 targetVariantForBatchModal = null
@@ -1457,9 +1670,20 @@ fun EditVariantDialog(
         else -> ""
     }
     var packSizeValue by remember { mutableStateOf(initialValue) }
-    var packSizeType by remember { mutableStateOf(variant.packSizeType ?: "ML") }
+    val detectedUnit = variant.packSizeType?.ifBlank { null } ?: run {
+        val match = Regex("^[\\d.]+(.+)$").find(variant.packSize)
+        match?.groupValues?.getOrNull(1)?.uppercase()?.trim()
+    } ?: "ML"
+    var packSizeType by remember { mutableStateOf(detectedUnit) }
     var expandedUnit by remember { mutableStateOf(false) }
-    val packSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS")
+    val basePackSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS", "BOX", "PACK", "CAPS")
+    val packSizeTypes = remember(detectedUnit) {
+        if (detectedUnit.isNotBlank() && !basePackSizeTypes.contains(detectedUnit)) {
+            listOf(detectedUnit) + basePackSizeTypes
+        } else {
+            basePackSizeTypes
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1516,17 +1740,67 @@ fun EditBatchDialog(
     var mfgDate by remember { mutableStateOf(batch.mfgDate ?: "") }
     var expDate by remember { mutableStateOf(batch.expDate ?: "") }
     var unitsSold by remember { mutableStateOf(batch.unitsSold.toString()) }
+    var selectedExpiryGap by remember { mutableStateOf(getYearGap(batch.mfgDate, batch.expDate)) }
+
+    fun updateMfg(newMfg: String) {
+        mfgDate = newMfg
+        selectedExpiryGap?.let { gap ->
+            if (newMfg.isNotBlank()) {
+                expDate = calculateExpiryDate(newMfg, gap)
+            }
+        }
+    }
+
+    fun updateGap(newGap: Int) {
+        selectedExpiryGap = newGap
+        if (mfgDate.isNotBlank()) {
+            expDate = calculateExpiryDate(mfgDate, newGap)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Batch") },
+        title = { Text("Edit Batch", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = batchNo, onValueChange = { batchNo = it }, label = { Text("Batch Number") })
-                OutlinedTextField(value = mrp, onValueChange = { mrp = it }, label = { Text("MRP (₹)") })
-                OutlinedTextField(value = mfgDate, onValueChange = { mfgDate = it }, label = { Text("Mfg Date (YYYY-MM-DD)") })
-                OutlinedTextField(value = expDate, onValueChange = { expDate = it }, label = { Text("Exp Date (YYYY-MM-DD)") })
-                OutlinedTextField(value = unitsSold, onValueChange = { unitsSold = it }, label = { Text("Units Sold") })
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = batchNo, onValueChange = { batchNo = it }, label = { Text("Batch Number *") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = mrp, onValueChange = { mrp = it }, label = { Text("MRP (₹) *") }, modifier = Modifier.weight(1f))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Mfg & Expiry Dates", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ExpiryYearsPicker(
+                        selectedGap = selectedExpiryGap,
+                        onGapSelected = { updateGap(it) },
+                        onClear = { selectedExpiryGap = null }
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DatePickerField(
+                        value = mfgDate,
+                        onDateSelected = { updateMfg(it) },
+                        label = "Mfg Date",
+                        modifier = Modifier.weight(1f)
+                    )
+                    DatePickerField(
+                        value = expDate,
+                        onDateSelected = { newExp ->
+                            expDate = newExp
+                            val gap = getYearGap(mfgDate, newExp)
+                            if (gap != null) selectedExpiryGap = gap
+                        },
+                        label = "Exp Date",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                OutlinedTextField(value = unitsSold, onValueChange = { unitsSold = it }, label = { Text("Units Sold") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
@@ -1658,7 +1932,7 @@ fun ProductFormFullScreenDialog(
     var showAddVariantModal by remember { mutableStateOf(false) }
     var targetVariantForBatchIndex by remember { mutableStateOf<Int?>(null) }
 
-    val packSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS")
+    val packSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS", "BOX", "PACK", "CAPS")
     val classifications = listOf("Gold", "Non-Gold")
 
     BackHandler(onBack = onDismiss)
@@ -1804,16 +2078,44 @@ fun ProductFormFullScreenDialog(
                                                 OutlinedTextField(value = batch.batchNo, onValueChange = { batch.batchNo = it; draftVariants[vIndex] = variant.copy() }, label = { Text("Batch No *") }, modifier = Modifier.weight(1f))
                                                 OutlinedTextField(value = batch.mrp, onValueChange = { batch.mrp = it; draftVariants[vIndex] = variant.copy() }, label = { Text("MRP (₹) *") }, modifier = Modifier.weight(1f))
                                             }
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            val currentGap = getYearGap(batch.mfgDate, batch.expDate)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Mfg & Expiry Dates", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                ExpiryYearsPicker(
+                                                    selectedGap = currentGap,
+                                                    onGapSelected = { gap ->
+                                                        if (batch.mfgDate.isNotBlank()) {
+                                                            batch.expDate = calculateExpiryDate(batch.mfgDate, gap)
+                                                            draftVariants[vIndex] = variant.copy()
+                                                        }
+                                                    },
+                                                    onClear = {}
+                                                )
+                                            }
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 DatePickerField(
                                                     value = batch.mfgDate,
-                                                    onDateSelected = { batch.mfgDate = it; draftVariants[vIndex] = variant.copy() },
+                                                    onDateSelected = { newMfg ->
+                                                        batch.mfgDate = newMfg
+                                                        val gap = currentGap ?: getExpiryGapFromDraftVariants(draftVariants)
+                                                        if (gap != null && newMfg.isNotBlank()) {
+                                                            batch.expDate = calculateExpiryDate(newMfg, gap)
+                                                        }
+                                                        draftVariants[vIndex] = variant.copy()
+                                                    },
                                                     label = "Mfg Date",
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 DatePickerField(
                                                     value = batch.expDate,
-                                                    onDateSelected = { batch.expDate = it; draftVariants[vIndex] = variant.copy() },
+                                                    onDateSelected = { newExp ->
+                                                        batch.expDate = newExp
+                                                        draftVariants[vIndex] = variant.copy()
+                                                    },
                                                     label = "Exp Date",
                                                     modifier = Modifier.weight(1f)
                                                 )
@@ -1876,7 +2178,11 @@ fun ProductFormFullScreenDialog(
             }
 
             if (showAddVariantModal) {
+                val detectedUnit = getDraftVariantsPackUnit(draftVariants).ifBlank { "ML" }
+                val detectedGap = getExpiryGapFromDraftVariants(draftVariants)
                 AddVariantModal(
+                    defaultUnit = detectedUnit,
+                    defaultExpiryGap = detectedGap,
                     onDismiss = { showAddVariantModal = false },
                     onAdd = { dVar ->
                         draftVariants.add(dVar)
@@ -1889,8 +2195,10 @@ fun ProductFormFullScreenDialog(
                 val vIdx = targetVariantForBatchIndex!!
                 val targetVariant = draftVariants.getOrNull(vIdx)
                 if (targetVariant != null) {
+                    val detectedGap = getExpiryGapFromDraftVariants(draftVariants)
                     AddBatchModal(
                         variantPackSize = "${targetVariant.packSizeValue} ${targetVariant.packSizeType}",
+                        defaultExpiryGap = detectedGap,
                         onDismiss = { targetVariantForBatchIndex = null },
                         onAdd = { dB ->
                             targetVariant.batches.add(dB)
@@ -2101,19 +2409,45 @@ fun DatePickerField(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddVariantModal(
+    defaultUnit: String = "ML",
+    defaultExpiryGap: Int? = null,
     onDismiss: () -> Unit,
     onAdd: (DraftVariant) -> Unit
 ) {
     var packSizeValue by remember { mutableStateOf("") }
-    var packSizeType by remember { mutableStateOf("ML") }
+    var packSizeType by remember { mutableStateOf(defaultUnit.ifBlank { "ML" }) }
     var batchNo by remember { mutableStateOf("BATCH-001") }
     var mrp by remember { mutableStateOf("0.00") }
     var mfgDate by remember { mutableStateOf("") }
     var expDate by remember { mutableStateOf("") }
     var unitsSold by remember { mutableStateOf("0") }
+    var selectedExpiryGap by remember { mutableStateOf(defaultExpiryGap) }
 
     var expandedUnit by remember { mutableStateOf(false) }
-    val packSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS", "BOX", "PACK", "CAPS")
+    val basePackSizeTypes = listOf("ML", "GMS", "TAB", "L", "KG", "PCS", "BOX", "PACK", "CAPS")
+    val packSizeTypes = remember(defaultUnit) {
+        if (defaultUnit.isNotBlank() && !basePackSizeTypes.contains(defaultUnit)) {
+            listOf(defaultUnit) + basePackSizeTypes
+        } else {
+            basePackSizeTypes
+        }
+    }
+
+    fun updateMfg(newMfg: String) {
+        mfgDate = newMfg
+        selectedExpiryGap?.let { gap ->
+            if (newMfg.isNotBlank()) {
+                expDate = calculateExpiryDate(newMfg, gap)
+            }
+        }
+    }
+
+    fun updateGap(newGap: Int) {
+        selectedExpiryGap = newGap
+        if (mfgDate.isNotBlank()) {
+            expDate = calculateExpiryDate(mfgDate, newGap)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2184,16 +2518,35 @@ fun AddVariantModal(
                 }
 
                 item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Mfg & Expiry Dates", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ExpiryYearsPicker(
+                            selectedGap = selectedExpiryGap,
+                            onGapSelected = { updateGap(it) },
+                            onClear = { selectedExpiryGap = null }
+                        )
+                    }
+                }
+
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         DatePickerField(
                             value = mfgDate,
-                            onDateSelected = { mfgDate = it },
+                            onDateSelected = { updateMfg(it) },
                             label = "Mfg Date",
                             modifier = Modifier.weight(1f)
                         )
                         DatePickerField(
                             value = expDate,
-                            onDateSelected = { expDate = it },
+                            onDateSelected = { newExp ->
+                                expDate = newExp
+                                val gap = getYearGap(mfgDate, newExp)
+                                if (gap != null) selectedExpiryGap = gap
+                            },
                             label = "Exp Date",
                             modifier = Modifier.weight(1f)
                         )
@@ -2238,12 +2591,13 @@ fun AddVariantModal(
                 OutlinedButton(
                     onClick = {
                         packSizeValue = ""
-                        packSizeType = "ML"
+                        packSizeType = defaultUnit.ifBlank { "ML" }
                         batchNo = ""
                         mrp = "0.00"
                         mfgDate = ""
                         expDate = ""
                         unitsSold = "0"
+                        selectedExpiryGap = defaultExpiryGap
                     }
                 ) {
                     Text("Clear")
@@ -2261,6 +2615,7 @@ fun AddVariantModal(
 @Composable
 fun AddBatchModal(
     variantPackSize: String,
+    defaultExpiryGap: Int? = null,
     onDismiss: () -> Unit,
     onAdd: (DraftBatch) -> Unit
 ) {
@@ -2269,6 +2624,23 @@ fun AddBatchModal(
     var mfgDate by remember { mutableStateOf("") }
     var expDate by remember { mutableStateOf("") }
     var unitsSold by remember { mutableStateOf("0") }
+    var selectedExpiryGap by remember { mutableStateOf(defaultExpiryGap) }
+
+    fun updateMfg(newMfg: String) {
+        mfgDate = newMfg
+        selectedExpiryGap?.let { gap ->
+            if (newMfg.isNotBlank()) {
+                expDate = calculateExpiryDate(newMfg, gap)
+            }
+        }
+    }
+
+    fun updateGap(newGap: Int) {
+        selectedExpiryGap = newGap
+        if (mfgDate.isNotBlank()) {
+            expDate = calculateExpiryDate(mfgDate, newGap)
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2280,52 +2652,63 @@ fun AddBatchModal(
             }
         },
         text = {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = batchNo,
-                            onValueChange = { batchNo = it },
-                            label = { Text("Batch No *") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = mrp,
-                            onValueChange = { mrp = it },
-                            label = { Text("MRP (₹) *") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DatePickerField(
-                            value = mfgDate,
-                            onDateSelected = { mfgDate = it },
-                            label = "Mfg Date",
-                            modifier = Modifier.weight(1f)
-                        )
-                        DatePickerField(
-                            value = expDate,
-                            onDateSelected = { expDate = it },
-                            label = "Exp Date",
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = unitsSold,
-                        onValueChange = { unitsSold = it },
-                        label = { Text("Units Sold") },
-                        modifier = Modifier.fillMaxWidth()
+                        value = batchNo,
+                        onValueChange = { batchNo = it },
+                        label = { Text("Batch No *") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = mrp,
+                        onValueChange = { mrp = it },
+                        label = { Text("MRP (₹) *") },
+                        modifier = Modifier.weight(1f)
                     )
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Mfg & Expiry Dates", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ExpiryYearsPicker(
+                        selectedGap = selectedExpiryGap,
+                        onGapSelected = { updateGap(it) },
+                        onClear = { selectedExpiryGap = null }
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DatePickerField(
+                        value = mfgDate,
+                        onDateSelected = { updateMfg(it) },
+                        label = "Mfg Date",
+                        modifier = Modifier.weight(1f)
+                    )
+                    DatePickerField(
+                        value = expDate,
+                        onDateSelected = { newExp ->
+                            expDate = newExp
+                            val gap = getYearGap(mfgDate, newExp)
+                            if (gap != null) selectedExpiryGap = gap
+                        },
+                        label = "Exp Date",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = unitsSold,
+                    onValueChange = { unitsSold = it },
+                    label = { Text("Units Sold") },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
@@ -2355,6 +2738,7 @@ fun AddBatchModal(
                         mfgDate = ""
                         expDate = ""
                         unitsSold = "0"
+                        selectedExpiryGap = defaultExpiryGap
                     }
                 ) {
                     Text("Clear")

@@ -2,8 +2,8 @@ const crypto = require('crypto');
 
 const SESSION_COOKIE = 'auth_session';
 const SESSION_SECRET_BYTES = 32;
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const ABSOLUTE_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
+const ABSOLUTE_TIMEOUT_MS = 30 * 24 * 60 * 60 * 1000;
 
 function toSqliteDate(timestamp) {
   return new Date(timestamp).toISOString().replace('T', ' ').replace('Z', '');
@@ -125,6 +125,7 @@ function createSessionService(db) {
       httpOnly: true,
       secure: ['production', 'oraclevm'].includes(process.env.NODE_ENV) || req.protocol === 'https',
       sameSite: 'Lax',
+      maxAge: ABSOLUTE_TIMEOUT_MS,
       path: '/'
     });
   };

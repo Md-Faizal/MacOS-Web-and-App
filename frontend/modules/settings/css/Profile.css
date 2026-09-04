@@ -543,6 +543,239 @@ input:checked + .slider:before {
     font-weight: 600;
 }
 
+/* ===================================================
+   SECURITY CHALLENGE & GATEWAY - macOS Liquid Glass UI
+   =================================================== */
+
+.security-challenge-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-top: 14px;
+}
+
+.security-challenge-card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--settings-card-bg, rgba(255, 255, 255, 0.45));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.1));
+    border-radius: 18px;
+    padding: 28px 24px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    text-align: center;
+    animation: securityCardIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes securityCardIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(6px);
+        filter: blur(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0);
+    }
+}
+
+.security-challenge-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(0, 113, 227, 0.12);
+    border: 1px solid rgba(0, 113, 227, 0.25);
+    margin-bottom: 14px;
+    box-shadow: 0 6px 18px rgba(0, 113, 227, 0.15);
+}
+
+.security-challenge-icon {
+    font-size: 28px;
+}
+
+.security-challenge-header {
+    margin-bottom: 20px;
+}
+
+.security-challenge-title {
+    font-size: 1.22rem;
+    font-weight: 600;
+    color: var(--settings-text, #1d1d1f);
+    margin: 0 0 6px 0;
+    letter-spacing: -0.01em;
+}
+
+.security-challenge-subtitle {
+    font-size: 0.86rem;
+    color: var(--settings-text-secondary, #666666);
+    line-height: 1.45;
+    margin: 0 auto;
+    max-width: 380px;
+}
+
+.security-question-banner {
+    background: rgba(0, 113, 227, 0.08);
+    border: 1px solid rgba(0, 113, 227, 0.2);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+    text-align: left;
+}
+
+.security-question-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--settings-primary, #0071E3);
+    margin-bottom: 4px;
+}
+
+.security-question-prompt {
+    font-size: 0.96rem;
+    font-weight: 600;
+    color: var(--settings-text, #1d1d1f);
+    line-height: 1.4;
+}
+
+.security-input-group {
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.security-input-group label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--settings-text-secondary, #666666);
+    margin-bottom: 6px;
+    display: block;
+}
+
+.security-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.security-text-input {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--settings-text, #1d1d1f);
+    background: var(--settings-input-bg, rgba(0, 0, 0, 0.05));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.12));
+    border-radius: 10px;
+    outline: none;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.security-text-input:focus {
+    border-color: var(--settings-primary, #0071E3);
+    background: var(--settings-card-bg, rgba(255, 255, 255, 0.6));
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.25);
+}
+
+.security-text-input::placeholder {
+    color: var(--settings-text-tertiary, #999999);
+}
+
+.security-text-input.font-mono {
+    font-family: SF Mono, Monaco, Consolas, monospace;
+    letter-spacing: 0.05em;
+}
+
+.form-actions-security {
+    margin-top: 14px;
+    margin-bottom: 20px;
+}
+
+.security-action-btn {
+    width: 100%;
+    padding: 10px 18px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3);
+}
+
+.security-modes-switcher {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
+}
+
+.security-mode-tab-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--settings-primary, #0071E3);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.security-mode-tab-btn:hover {
+    background: rgba(0, 113, 227, 0.08);
+    border-color: rgba(0, 113, 227, 0.15);
+}
+
+.settings-select-wide,
+.settings-input-wide {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--settings-text, #1d1d1f);
+    background: var(--settings-input-bg, rgba(0, 0, 0, 0.05));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.12));
+    border-radius: 10px;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.settings-select-wide:focus,
+.settings-input-wide:focus {
+    border-color: var(--settings-primary, #0071E3);
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.25);
+}
+
+.section-label-dim {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--settings-text-secondary, #666666);
+    margin-bottom: 6px;
+    display: block;
+    text-align: left;
+}
+
+.challenge-instruction-left {
+    text-align: left;
+    margin-bottom: 14px;
+    color: var(--settings-text-secondary, #666666);
+}
+
 /* Personal Information Styles */
 .profile-avatar-large.editable {
     position: relative;
@@ -1125,4 +1358,512 @@ input:checked + .slider:before {
 .zoom-icon-large {
     font-size: 18px;
     opacity: 0.8;
+}
+
+/* Personal Info Header Actions & Dirty State */
+.subview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.subview-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.save-status-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: rgba(48, 209, 88, 0.15);
+    color: #30D158;
+    transition: all 0.2s ease;
+}
+
+.save-status-badge.dirty {
+    background: rgba(255, 159, 10, 0.18);
+    color: #FF9F0A;
+}
+
+.header-save-btn {
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 14px;
+}
+
+.header-save-btn:disabled,
+.primary-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none !important;
+    filter: none !important;
+}
+
+.btn-actions-row {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.secondary-action-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 8px 22px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.secondary-action-btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+}
+
+/* Unsaved Changes Dialog */
+.unsaved-changes-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000000;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.unsaved-changes-dialog {
+    background: var(--settings-window-bg, rgba(38, 38, 42, 0.95));
+    border: 1px solid var(--settings-border, rgba(255, 255, 255, 0.2));
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.2);
+    padding: 26px 24px;
+    max-width: 380px;
+    width: 90%;
+    text-align: center;
+    animation: popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 20000001;
+}
+
+.unsaved-warning-icon {
+    font-size: 34px;
+    margin-bottom: 10px;
+}
+
+.unsaved-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--settings-text, #ffffff);
+    margin-bottom: 8px;
+}
+
+.unsaved-message {
+    font-size: 13px;
+    color: var(--settings-text-secondary, rgba(255, 255, 255, 0.75));
+    line-height: 1.45;
+    margin-bottom: 20px;
+}
+
+.unsaved-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.unsaved-buttons button {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.danger-btn {
+    background: rgba(255, 69, 58, 0.2);
+    color: #FF453A;
+    border: 1px solid rgba(255, 69, 58, 0.4);
+    transition: all 0.15s ease;
+}
+
+.danger-btn:hover {
+    background: #FF453A;
+    color: #ffffff;
+}
+
+/* ===================================================
+   macOS Tahoe Theme - Personal Information Redesign
+   =================================================== */
+
+.tahoe-personal-container {
+    animation: tahoeCardIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tahoeCardIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98) translateY(6px);
+        filter: blur(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0);
+    }
+}
+
+.personal-info-card {
+    background: var(--settings-card-bg, rgba(255, 255, 255, 0.45));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
+    border-radius: 18px;
+    padding: 24px 22px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(28px) saturate(150%);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    margin-top: 10px;
+}
+
+.tahoe-avatar-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.tahoe-avatar-wrap {
+    width: 82px;
+    height: 82px;
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    border: 2.5px solid rgba(255, 255, 255, 0.6);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.tahoe-avatar-wrap:hover {
+    transform: scale(1.04);
+    box-shadow: 0 10px 30px rgba(0, 113, 227, 0.25);
+    border-color: var(--settings-primary, #0071E3);
+}
+
+.tahoe-avatar-wrap .avatar-edit-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 4px 0;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.tahoe-avatar-wrap:hover .avatar-edit-overlay {
+    opacity: 1;
+}
+
+.tahoe-avatar-hint {
+    font-size: 11.5px;
+    color: var(--settings-text-secondary, #666666);
+    margin-top: 8px;
+    text-align: center;
+}
+
+.tahoe-segmented-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 18px;
+}
+
+.tahoe-segmented-control {
+    display: inline-flex;
+    background: var(--settings-input-bg, rgba(0, 0, 0, 0.06));
+    padding: 3px;
+    border-radius: 12px;
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
+    gap: 2px;
+}
+
+.tahoe-segment-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--settings-text-secondary, #666666);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tahoe-segment-btn:hover {
+    color: var(--settings-text, #1d1d1f);
+}
+
+.tahoe-segment-btn.active {
+    background: var(--settings-content-bg, #ffffff);
+    color: var(--settings-text, #1d1d1f);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.tahoe-form-group {
+    background: var(--settings-input-bg, rgba(0, 0, 0, 0.03));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.07));
+    border-radius: 14px;
+    padding: 4px 14px;
+    margin-bottom: 18px;
+}
+
+.tahoe-field-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--settings-row-border, rgba(0, 0, 0, 0.06));
+}
+
+.tahoe-field-row:last-child {
+    border-bottom: none;
+}
+
+.tahoe-field-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--settings-text-secondary, #666666);
+    margin-bottom: 3px;
+    display: block;
+}
+
+.tahoe-field-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    color: var(--settings-text, #1d1d1f);
+    font-family: inherit;
+    padding: 2px 0;
+    box-sizing: border-box;
+}
+
+.tahoe-field-input::placeholder {
+    color: var(--settings-text-tertiary, #999999);
+}
+
+.tahoe-field-input.readonly-input {
+    opacity: 0.7;
+    cursor: default;
+}
+
+.tahoe-section-heading {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--settings-text-secondary, #666666);
+    margin: 18px 0 8px 4px;
+}
+
+.tahoe-service-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--settings-input-bg, rgba(0, 0, 0, 0.03));
+    border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.07));
+    border-radius: 14px;
+    margin-bottom: 18px;
+}
+
+.tahoe-service-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tahoe-service-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.tahoe-service-meta {
+    display: flex;
+    flex-direction: column;
+}
+
+.tahoe-service-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--settings-text, #1d1d1f);
+}
+
+.tahoe-service-status {
+    font-size: 11.5px;
+    color: var(--settings-text-secondary, #666666);
+}
+
+.tahoe-service-status.status-linked {
+    color: #34C759;
+    font-weight: 500;
+}
+
+.tahoe-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    background: rgba(0, 113, 227, 0.1);
+    color: var(--settings-primary, #0071E3);
+    border: 1px solid rgba(0, 113, 227, 0.22);
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tahoe-action-btn:hover {
+    background: var(--settings-primary, #0071E3);
+    color: #ffffff;
+    border-color: var(--settings-primary, #0071E3);
+    box-shadow: 0 4px 12px rgba(0, 113, 227, 0.25);
+    transform: translateY(-1px);
+}
+
+.tahoe-action-btn:hover .sync-spin-icon {
+    transform: rotate(180deg);
+}
+
+.sync-spin-icon {
+    transition: transform 0.4s ease;
+}
+
+.tahoe-action-btn.danger-ghost {
+    background: rgba(255, 69, 58, 0.1);
+    color: #FF453A;
+    border-color: rgba(255, 69, 58, 0.25);
+}
+
+.tahoe-action-btn.danger-ghost:hover {
+    background: #FF453A;
+    color: #ffffff;
+    border-color: #FF453A;
+    box-shadow: 0 4px 12px rgba(255, 69, 58, 0.25);
+}
+
+@keyframes syncSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.tahoe-text-link-btn {
+    background: transparent;
+    border: none;
+    color: var(--settings-primary, #0071E3);
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tahoe-text-link-btn:hover {
+    text-decoration: underline;
+}
+
+.tahoe-shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--settings-row-border, rgba(0, 0, 0, 0.06));
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tahoe-shortcut-row:last-child {
+    border-bottom: none;
+}
+
+.tahoe-shortcut-row:hover .tahoe-shortcut-title {
+    color: var(--settings-primary, #0071E3);
+}
+
+.tahoe-shortcut-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tahoe-shortcut-icon {
+    font-size: 16px;
+    width: 22px;
+    text-align: center;
+}
+
+.tahoe-shortcut-meta {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.tahoe-shortcut-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--settings-text, #1d1d1f);
+    transition: color 0.15s ease;
+}
+
+.tahoe-shortcut-val {
+    font-size: 11px;
+    color: var(--settings-text-secondary, #666666);
+}
+
+.tahoe-shortcut-chevron {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--settings-primary, #0071E3);
+    opacity: 0.85;
+}
+
+.save-status-badge.saving {
+    color: var(--settings-primary, #0071E3);
+    background: rgba(0, 113, 227, 0.12);
 }

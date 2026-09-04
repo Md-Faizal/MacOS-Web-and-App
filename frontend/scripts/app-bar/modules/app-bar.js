@@ -87,9 +87,9 @@ function initializeDock() {
     {
       id: 'billing',
       name: 'Billing',
-      icon: '/assets/Images/Spotify.png',
+      icon: '/assets/Images/Billing.png?v=2',
       alt: 'Billing',
-      color: '#1db954',
+      color: '#3b82f6',
       category: 'productivity',
       action: (params) => AppWindow.launchApp('billing', window.BillingApp, 'billingAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
     },

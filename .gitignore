@@ -1,23 +1,56 @@
+# ─── Dependencies ───
 node_modules/
+
+# ─── Build output ───
 dist/
-logs/
-tmp/
+
+# ─── Runtime data (never commit) ───
+logs/*
+!logs/.gitkeep
+tmp/*
+!tmp/.gitkeep
+database/*.db
+database/backups/*
+!database/backups/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/**/.gitkeep
+Wallpapers/*
+!Wallpapers/.gitkeep
+CloudStorage/*
+!CloudStorage/.gitkeep
+!.gitkeep
+
+# ─── Environment / Secrets ───
 .env
 .env.*
 !.env.example
-.env*.local
-*.log
-.DS_Store
-Thumbs.db
 
-# SQLite temp files
+# ─── Archives (should never be committed) ───
+*.tar.gz
+
+# ─── SQLite temp files ───
 *.db-shm
 *.db-wal
 *.db-journal
 
-# Android build outputs & local config
+# ─── Android build outputs & local config ───
 .gradle/
 android/**/build/
 android/local.properties
 android/.idea/
+android/.kotlin/
+*.apk
 
+# ─── OS files ───
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Python ───
+__pycache__/
+*.pyc
+*.pyo
+
+# ─── PM2 ───
+.pm2/

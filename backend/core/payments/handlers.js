@@ -37,25 +37,35 @@ module.exports = function(db) {
     getPayments: (req, res) => {
       const { status, payment_method, limit = 100, offset = 0 } = req.query;
       
-      let sql = 'SELECT * FROM payments WHERE 1=1';
+      let sql = `
+        SELECT p.*,
+               COALESCE(u_creator.role, 'owner') as created_by_role,
+               COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+               u_editor.role as last_edited_by_role,
+               COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+        FROM payments p
+        LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+        LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
+        WHERE 1=1
+      `;
       const params = [];
 
       if (status) {
-        sql += ' AND status = ?';
+        sql += ' AND p.status = ?';
         params.push(status);
       }
 
       if (payment_method) {
-        sql += ' AND payment_method = ?';
+        sql += ' AND p.payment_method = ?';
         params.push(payment_method);
       }
 
       if (req.user && req.user.role === 'worker') {
         const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
-        sql += ` AND (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
+        sql += ` AND (p.customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR p.customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
       }
 
-      sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+      sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 
       try {
@@ -70,7 +80,17 @@ module.exports = function(db) {
     // Get single payment
     getPayment: (req, res) => {
       const { id } = req.params;
-      const sql = 'SELECT * FROM payments WHERE id = ?';
+      const sql = `
+        SELECT p.*,
+               COALESCE(u_creator.role, 'owner') as created_by_role,
+               COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+               u_editor.role as last_edited_by_role,
+               COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+        FROM payments p
+        LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+        LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
+        WHERE p.id = ?
+      `;
 
       try {
         const stmt = db.prepare(sql);

@@ -20,7 +20,10 @@ module.exports = function(db) {
       const users = db.prepare(`
         SELECT id, username, full_name, email, google_email, google_picture,
                role, status, invite_code, invite_qr_base64, approved_at,
-               deletion_requested_at, deletion_reason, deleted_at, deleted_by, created_at
+               deletion_requested_at, deletion_reason, deleted_at, deleted_by, created_at,
+               (SELECT d.client_type FROM user_devices d WHERE d.user_id = users.id ORDER BY d.last_seen DESC LIMIT 1) as last_client_type,
+               (SELECT d.device_type FROM user_devices d WHERE d.user_id = users.id ORDER BY d.last_seen DESC LIMIT 1) as last_device_type,
+               (SELECT a.platform FROM activity_log a WHERE a.user_id = users.id ORDER BY a.created_at DESC LIMIT 1) as last_platform
         FROM users
         WHERE role = 'worker'
         ORDER BY 
@@ -134,29 +137,54 @@ module.exports = function(db) {
   };
 
   const approveDeletion = (req, res) => {
-    const user = db.prepare("SELECT id, username, email, full_name, role, status, deletion_reason FROM users WHERE id = ? AND role = 'worker'").get(req.params.userId);
+    const user = db.prepare("SELECT id, username, email, full_name, role, status, created_at, approved_at, approved_by, deletion_requested_at, deletion_reason FROM users WHERE id = ? AND role = 'worker'").get(req.params.userId);
     if (!user) return res.status(404).json({ error: 'Worker not found' });
+
+    // Determine the exact deletion type/reason
+    let finalReason = '';
+    let actionType = 'delete_worker';
+    
+    if (user.status === 'pending') {
+      actionType = 'deny_request';
+      finalReason = req.body?.reason || 'Access request denied by owner';
+    } else if (user.status === 'pending_deletion' || user.deletion_requested_at) {
+      actionType = 'approve_deletion';
+      finalReason = user.deletion_reason 
+        ? `Worker requested deletion: "${user.deletion_reason}" (Approved by owner)`
+        : 'Worker requested account deletion (Approved by owner)';
+    } else {
+      actionType = 'delete_worker';
+      finalReason = req.body?.reason || 'Worker account deleted by owner';
+    }
 
     db.transaction(() => {
       // 1. Purge credentials and personal data (GDPR / Privacy compliant)
       db.prepare(`
         UPDATE users SET 
+          username = NULL,
           password_hash = NULL,
+          security_question = NULL,
+          security_answer_hash = NULL,
+          security_answer = NULL,
           google_id = NULL,
           google_email = NULL,
           google_name = NULL,
           google_picture = NULL,
           status = 'deleted',
+          deletion_reason = ?,
           deleted_at = CURRENT_TIMESTAMP,
           deleted_by = ?,
           token_version = token_version + 1,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(req.user.userId, user.id);
+      `).run(finalReason, req.user.userId, user.id);
 
       db.prepare('DELETE FROM user_identities WHERE user_id = ?').run(user.id);
-      db.prepare('DELETE FROM webauthn_credentials WHERE user_id = ?').run(user.id);
+      try { db.prepare('DELETE FROM webauthn_credentials WHERE user_id = ?').run(user.id); } catch (e) {}
       db.prepare('DELETE FROM user_profile WHERE id = ?').run(user.id);
+      db.prepare('DELETE FROM user_devices WHERE user_id = ?').run(user.id);
+      db.prepare('DELETE FROM oauth_states WHERE user_id = ?').run(user.id);
+      db.prepare("DELETE FROM webauthn_challenges WHERE challenge_key LIKE ?").run(`${user.id}:%`);
       db.prepare('DELETE FROM clock_settings WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM weather_settings WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM user_permissions WHERE user_id = ?').run(user.id);
@@ -170,19 +198,31 @@ module.exports = function(db) {
       try {
         const historyId = crypto.randomUUID();
         db.prepare(`
-          INSERT INTO worker_lifecycle_history (id, user_id, email, full_name, role, status, deletion_reason, deleted_at, deleted_by)
-          VALUES (?, ?, ?, ?, 'worker', 'deleted', ?, CURRENT_TIMESTAMP, ?)
-        `).run(historyId, user.id, user.email, user.full_name || user.username, user.deletion_reason || 'Owner approved deletion request', req.user.userId);
-      } catch (e) {}
+          INSERT INTO worker_lifecycle_history (id, user_id, email, full_name, role, status, joined_at, approved_at, approved_by, deletion_reason, deleted_at, deleted_by)
+          VALUES (?, ?, ?, ?, 'worker', 'deleted', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+        `).run(
+          historyId,
+          user.id,
+          user.email,
+          user.full_name || user.username || user.email,
+          user.created_at,
+          user.approved_at,
+          user.approved_by,
+          finalReason,
+          req.user.userId
+        );
+      } catch (e) {
+        console.error('Failed to insert lifecycle history:', e);
+      }
 
       // 4. Log in activity_log
       db.prepare(`
         INSERT INTO activity_log (user_id, platform, module, action, resource_type, resource_id, metadata)
-        VALUES (?, 'web', 'admin', 'approve_deletion', 'user', ?, ?)
-      `).run(req.user.userId, user.id, JSON.stringify({ email: user.email, reason: user.deletion_reason }));
+        VALUES (?, 'web', 'admin', ?, 'user', ?, ?)
+      `).run(req.user.userId, actionType, user.id, JSON.stringify({ email: user.email, reason: finalReason }));
     })();
 
-    res.json({ success: true, message: 'Worker account deleted and archived successfully', status: 'deleted' });
+    res.json({ success: true, message: 'Worker account deleted and archived successfully', status: 'deleted', reason: finalReason });
   };
 
   const rejectDeletion = (req, res) => {
@@ -211,14 +251,29 @@ module.exports = function(db) {
   const getWorkerLifecycleHistory = (req, res) => {
     const { userId } = req.params;
     try {
+      const user = db.prepare("SELECT id, username, email, full_name, role, status, created_at, approved_at, approved_by, deletion_requested_at, deletion_reason, deleted_at, deleted_by FROM users WHERE id = ?").get(userId);
+
       const history = db.prepare(`
         SELECT * FROM worker_lifecycle_history
-        WHERE user_id = ? OR email IN (SELECT email FROM users WHERE id = ?)
+        WHERE user_id = ? OR (email IS NOT NULL AND email = ?)
         ORDER BY created_at DESC
+      `).all(userId, user?.email || '');
+
+      const auditLogs = db.prepare(`
+        SELECT id, user_id, platform, module, action, metadata, ip_address, created_at
+        FROM activity_log
+        WHERE user_id = ? OR resource_id = ?
+        ORDER BY created_at DESC LIMIT 50
       `).all(userId, userId);
-      res.json({ history });
+
+      res.json({
+        user: user || null,
+        history,
+        auditLogs
+      });
     } catch (e) {
-      res.json({ history: [] });
+      console.error('getWorkerLifecycleHistory error:', e);
+      res.json({ user: null, history: [], auditLogs: [] });
     }
   };
 
@@ -300,23 +355,46 @@ module.exports = function(db) {
   const getAuditLogs = (req, res) => {
     const { userId } = req.params;
     let query = `
-      SELECT id, user_id, platform, module, action, resource_type, resource_id, resource_name, metadata, ip_address, created_at
-      FROM activity_log
+      SELECT a.id, a.user_id, a.platform, a.module, a.action, a.resource_type, a.resource_id, a.resource_name, a.metadata, a.ip_address, a.created_at,
+             u.full_name, u.google_name, u.username, u.email, u.role as user_role
+      FROM activity_log a
+      LEFT JOIN users u ON a.user_id = u.id
     `;
     let params = [];
     
     if (userId && userId !== 'all') {
-      query += ` WHERE user_id = ? `;
+      query += ` WHERE a.user_id = ? `;
       params.push(userId);
     }
     
-    query += ` ORDER BY created_at DESC LIMIT 100`;
+    query += ` ORDER BY a.created_at DESC LIMIT 150`;
     
-    const logs = db.prepare(query).all(...params).map(log => ({
-      ...log,
-      metadata: log.metadata ? JSON.parse(log.metadata) : null
-    }));
-    
+    const logs = db.prepare(query).all(...params).map(log => {
+      let displayName = 'System';
+      if (log.user_id === 'admin' || log.user_role === 'owner') {
+        displayName = log.full_name || log.username || 'Admin';
+      } else if (log.full_name) {
+        displayName = log.full_name;
+      } else if (log.google_name) {
+        displayName = log.google_name;
+      } else if (log.username && log.username !== log.user_id) {
+        displayName = log.username;
+      } else if (log.email) {
+        displayName = log.email;
+      } else if (log.username) {
+        displayName = log.username;
+      } else if (log.user_id) {
+        displayName = log.user_id;
+      }
+
+      return {
+        ...log,
+        display_name: displayName,
+        username: displayName,
+        metadata: log.metadata ? (typeof log.metadata === 'string' ? JSON.parse(log.metadata) : log.metadata) : null
+      };
+    });
+
     res.json({ logs });
   };
 

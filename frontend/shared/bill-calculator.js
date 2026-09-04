@@ -33,10 +33,28 @@ class BillCalculator {
     const qty = parseInt(product.qty || 1) || 1;
     const disc1Percent = parseFloat(product.disc1 || product.discount_1_percent || 0) || 0;
     const disc2Percent = parseFloat(product.disc2 || product.discount_2_percent || 0) || 0;
-    const sgstPercent = parseFloat(product.sgst || product.sgst_percent || 0) || 0;
-    const cgstPercent = parseFloat(product.cgst || product.cgst_percent || 0) || 0;
-    const gstTotal = parseFloat(product.gstTotal || product.gst_percent || (sgstPercent + cgstPercent)) || 0;
     const gstReverse = product.gst_reverse || false;
+
+    // Resolve tax percentages cleanly and robustly
+    let gstTotal = 0;
+    let sgstPercent = 0;
+    let cgstPercent = 0;
+
+    if (product.gstTotal !== undefined && product.gstTotal !== null && !isNaN(product.gstTotal)) {
+      gstTotal = parseFloat(product.gstTotal) || 0;
+      sgstPercent = gstTotal / 2;
+      cgstPercent = gstTotal / 2;
+    } else if (product.gst_percent !== undefined && product.gst_percent !== null && !isNaN(product.gst_percent)) {
+      gstTotal = parseFloat(product.gst_percent) || 0;
+      sgstPercent = gstTotal / 2;
+      cgstPercent = gstTotal / 2;
+    } else if (product.sgst !== undefined || product.cgst !== undefined || product.sgst_percent !== undefined || product.cgst_percent !== undefined) {
+      const s = parseFloat(product.sgst || product.sgst_percent || 0) || 0;
+      const c = parseFloat(product.cgst || product.cgst_percent || 0) || 0;
+      sgstPercent = s;
+      cgstPercent = c > 0 ? c : s;
+      gstTotal = sgstPercent + cgstPercent;
+    }
 
     if (typeof console !== 'undefined') {
       console.log(`📐 BillCalculator.calculateLineItem:`, {
@@ -77,16 +95,8 @@ class BillCalculator {
 
     if (gstTotal > 0) {
       gst_amount = amountAfterDisc2 * (gstTotal / 100);
-      
-      // If SGST and CGST are specified separately, use them
-      if (sgstPercent > 0 && cgstPercent > 0) {
-        sgst_amount = amountAfterDisc2 * (sgstPercent / 100);
-        cgst_amount = amountAfterDisc2 * (cgstPercent / 100);
-      } else {
-        // Otherwise split total GST evenly (assume combined rate means 50-50 split)
-        sgst_amount = gst_amount / 2;
-        cgst_amount = gst_amount / 2;
-      }
+      sgst_amount = amountAfterDisc2 * (sgstPercent / 100);
+      cgst_amount = amountAfterDisc2 * (cgstPercent / 100);
     }
 
     // Step 5: Calculate final amount = discounted amount + tax (keep full precision until final rounding)

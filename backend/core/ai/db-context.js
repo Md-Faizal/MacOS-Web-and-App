@@ -4,7 +4,15 @@
  * for the Gemini AI to understand the system's capabilities
  */
 
-function generateDatabaseContext(db) {
+function getWorkerContactScope(req, tableAlias = 'c') {
+  if (req && req.user && req.user.role === 'worker') {
+    const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+    return `(${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')`;
+  }
+  return null;
+}
+
+function generateDatabaseContext(db, req = null) {
   try {
     if (!db) {
       console.warn('Database not available for context generation');
@@ -15,11 +23,29 @@ function generateDatabaseContext(db) {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
     
     const tablesInfo = {};
+    const workerScope = getWorkerContactScope(req, 'contacts');
     
     tables.forEach(table => {
       try {
         const tableInfo = db.prepare(`PRAGMA table_info(${table.name})`).all();
-        const countResult = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get();
+        let count = 0;
+
+        if (workerScope && table.name === 'contacts') {
+          const r = db.prepare(`SELECT COUNT(*) as count FROM contacts WHERE ${workerScope}`).get();
+          count = r ? r.count : 0;
+        } else if (workerScope && table.name === 'invoices') {
+          const r = db.prepare(`SELECT COUNT(*) as count FROM invoices WHERE customer_id IN (SELECT id FROM contacts WHERE ${workerScope})`).get();
+          count = r ? r.count : 0;
+        } else if (workerScope && table.name === 'payments') {
+          const r = db.prepare(`SELECT COUNT(*) as count FROM payments WHERE customer_id IN (SELECT id FROM contacts WHERE ${workerScope})`).get();
+          count = r ? r.count : 0;
+        } else if (workerScope && table.name === 'orders') {
+          const r = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE customer_id IN (SELECT id FROM contacts WHERE ${workerScope})`).get();
+          count = r ? r.count : 0;
+        } else {
+          const countResult = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get();
+          count = countResult ? countResult.count : 0;
+        }
         
         tablesInfo[table.name] = {
           columns: tableInfo.map(col => ({
@@ -28,7 +54,7 @@ function generateDatabaseContext(db) {
             notnull: col.notnull === 1,
             pk: col.pk === 1
           })),
-          rowCount: countResult ? countResult.count : 0
+          rowCount: count
         };
       } catch (tableError) {
         console.warn(`Could not access table ${table.name}:`, tableError.message);
@@ -147,8 +173,32 @@ INSTRUCTIONS:
   return contextString;
 }
 
+function getEntityDirectory(db, req = null) {
+  try {
+    if (!db) return {};
+    const workerScope = getWorkerContactScope(req, 'c');
+    let contactsQuery = 'SELECT id, name, phone, address FROM contacts c';
+    if (workerScope) {
+      contactsQuery += ` WHERE ${workerScope}`;
+    }
+    contactsQuery += ' ORDER BY name ASC LIMIT 150';
+    
+    const contacts = db.prepare(contactsQuery).all();
+    const products = db.prepare('SELECT id, name, classification FROM products ORDER BY name ASC LIMIT 150').all();
+
+    return {
+      knownCustomers: contacts.map(c => ({ id: c.id, name: c.name, phone: c.phone || undefined, address: c.address || undefined })),
+      knownProducts: products.map(p => ({ id: p.id, name: p.name, classification: p.classification || undefined }))
+    };
+  } catch (err) {
+    console.warn('Could not fetch entity directory for AI:', err.message);
+    return {};
+  }
+}
+
 module.exports = {
   generateDatabaseContext,
   generateSystemContext,
-  getAIContextString
+  getAIContextString,
+  getEntityDirectory
 };

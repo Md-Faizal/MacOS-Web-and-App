@@ -92,20 +92,36 @@ module.exports = function(db) {
     });
   };
 
-  const publicUser = (user, deviceId) => ({
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    deviceId
-  });
+  const publicUser = (user, deviceId) => {
+    let profile = null;
+    try {
+      profile = db.prepare('SELECT full_name, profile_picture, email_id, name_source, picture_source, google_name, google_email, google_picture FROM user_profile WHERE id = ?').get(user.id);
+    } catch (_) {}
+    const actualName = (profile?.name_source === 'google' && profile?.google_name)
+      ? profile.google_name
+      : (profile?.full_name || user.full_name || user.username);
+    const loginEmail = profile?.email_id || user.email || profile?.google_email || '';
+    let displayPicture = profile?.profile_picture || user.google_picture || profile?.google_picture || null;
+    if (profile?.picture_source === 'google' && (user.google_picture || profile?.google_picture)) {
+      displayPicture = user.google_picture || profile?.google_picture;
+    }
+    return {
+      id: user.id,
+      username: actualName,
+      fullName: actualName,
+      email: loginEmail,
+      avatar: displayPicture,
+      role: user.role,
+      status: user.status,
+      deviceId
+    };
+  };
 
-  const issueWebSession = (req, res, user, deviceId, provider = 'local', elevated = false) => {
+  const issueWebSession = (req, res, user, deviceId, provider = 'local', elevated = false, platform = 'web') => {
     const session = sessionService.create({
       userId: user.id,
       deviceId,
-      platform: 'web',
+      platform,
       provider,
       elevated,
       req
@@ -197,6 +213,59 @@ module.exports = function(db) {
     },
 
     /**
+     * Check username availability (real-time validation)
+     */
+    checkUsername: (req, res) => {
+      try {
+        const username = req.query?.username || req.body?.username;
+        if (!username || typeof username !== 'string') {
+          return res.status(400).json({ available: false, message: 'Username is required' });
+        }
+
+        const cleanUsername = username.trim();
+        if (cleanUsername.length < 3) {
+          return res.json({ available: false, message: 'Must be at least 3 characters' });
+        }
+        if (cleanUsername.length > 30) {
+          return res.json({ available: false, message: 'Cannot exceed 30 characters' });
+        }
+        if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+          return res.json({ available: false, message: 'Only letters, numbers, underscores, dashes, or dots allowed' });
+        }
+
+        const reserved = ['admin', 'owner', 'root', 'system', 'api', 'guest', 'null', 'undefined'];
+        if (reserved.includes(cleanUsername.toLowerCase())) {
+          return res.json({ available: false, message: 'This username is reserved' });
+        }
+
+        let currentUserId = null;
+        if (req.user?.userId) {
+          currentUserId = req.user.userId;
+        } else {
+          const serverSession = sessionService?.resolve ? sessionService.resolve(req.cookies?.[sessionService.cookieName], req) : null;
+          if (serverSession) currentUserId = serverSession.userId;
+        }
+
+        const existing = db.prepare(`
+          SELECT id, username FROM users 
+          WHERE (LOWER(username) = ? OR LOWER(email) = ?)
+        `).get(cleanUsername.toLowerCase(), cleanUsername.toLowerCase());
+
+        if (existing) {
+          if (currentUserId && existing.id === currentUserId) {
+            return res.json({ available: true, isCurrent: true, message: 'Current username' });
+          }
+          return res.json({ available: false, message: 'Username is already taken' });
+        }
+
+        return res.json({ available: true, message: 'Username is available' });
+      } catch (error) {
+        console.error('Check username error:', error);
+        res.status(500).json({ available: false, error: 'Failed to check username availability' });
+      }
+    },
+
+    /**
      * Get list of security questions
      */
     getSecurityQuestions: (req, res) => {
@@ -230,12 +299,7 @@ module.exports = function(db) {
           userName: user.email || user.username || user.id,
           userDisplayName: user.full_name || user.username || user.email || 'MacOS User',
           attestationType: 'none',
-          excludeCredentials: existingCredentials.map(credential => ({
-            id: credential.provider_user_id,
-            transports: credential.credential_transports
-              ? JSON.parse(credential.credential_transports)
-              : undefined
-          })),
+          excludeCredentials: [],
           authenticatorSelection: {
             authenticatorAttachment: 'platform',
             residentKey: 'preferred',
@@ -272,6 +336,12 @@ module.exports = function(db) {
         }
 
         const credential = verification.registrationInfo.credential;
+        
+        // Remove previous webauthn credentials for clean overwrite/re-enrollment
+        try {
+          db.prepare("DELETE FROM user_identities WHERE user_id = ? AND provider = 'webauthn'").run(user.id);
+        } catch (e) {}
+
         db.prepare(`
           INSERT INTO user_identities (
             id, user_id, provider, provider_user_id, credential_public_key,
@@ -375,32 +445,115 @@ module.exports = function(db) {
       }
     },
 
+    registerMobileBiometric: async (req, res) => {
+      try {
+        const user = req.user?.userId ? getUserById(req.user.userId) : null;
+        if (!user) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+        const { deviceId, deviceName } = req.body || {};
+        const effectiveDeviceId = (deviceId || req.user.deviceId || `android_${Date.now()}`).trim();
+        const effectiveDeviceName = (deviceName || 'Android Device').trim();
+
+        // Remove previous android_biometric credentials for this user for clean enrollment
+        db.prepare("DELETE FROM user_identities WHERE user_id = ? AND provider = 'android_biometric'").run(user.id);
+
+        db.prepare(`
+          INSERT INTO user_identities (
+            id, user_id, provider, provider_user_id, credential_device_type, is_verified, created_at, updated_at
+          ) VALUES (?, ?, 'android_biometric', ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).run(
+          `bio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          user.id,
+          effectiveDeviceId,
+          effectiveDeviceName
+        );
+
+        auditService.record({
+          req,
+          eventType: 'biometric_enrolled',
+          outcome: 'success',
+          userId: user.id,
+          deviceId: effectiveDeviceId,
+          platform: 'android',
+          provider: 'android_biometric'
+        });
+
+        res.json({ success: true, message: 'Biometrics enrolled successfully' });
+      } catch (error) {
+        console.error('Mobile biometric registration error:', error);
+        res.status(500).json({ error: 'Failed to register biometric credential' });
+      }
+    },
+
+    revokeMobileBiometric: async (req, res) => {
+      try {
+        const user = req.user?.userId ? getUserById(req.user.userId) : null;
+        if (!user) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        db.prepare("DELETE FROM user_identities WHERE user_id = ? AND provider = 'android_biometric'").run(user.id);
+
+        auditService.record({
+          req,
+          eventType: 'biometric_revoked',
+          outcome: 'success',
+          userId: user.id,
+          platform: 'android',
+          provider: 'android_biometric'
+        });
+
+        res.json({ success: true, message: 'Biometrics removed successfully' });
+      } catch (error) {
+        console.error('Mobile biometric revoke error:', error);
+        res.status(500).json({ error: 'Failed to revoke biometric credential' });
+      }
+    },
+
+
     /**
-     * Get the user's selected security question (public)
+     * Get the user's selected security question (public for challenges, populated with answer for authenticated callers)
      */
     getChallengeQuestion: (req, res) => {
       try {
         const identifier = (req.query.identifier || '').trim();
         let auth = null;
+        let isAuth = false;
 
         if (req.user) {
           auth = getUserById(req.user.userId);
-        } else if (identifier) {
-          auth = findUserByIdentifier(identifier);
-          if (!auth) {
-            return res.status(404).json({ error: 'No account found with this username or email' });
-          }
+          isAuth = true;
         } else {
-          auth = getOwner();
+          // Check active session if req.user was not populated by optional middleware
+          const session = sessionService?.resolve ? sessionService.resolve(req.cookies?.[sessionService.cookieName], req) : null;
+          if (session) {
+            auth = getUserById(session.userId);
+            isAuth = true;
+          } else if (identifier) {
+            auth = findUserByIdentifier(identifier);
+            if (!auth) {
+              return res.status(404).json({ error: 'No account found with this username or email' });
+            }
+          } else {
+            auth = getOwner();
+          }
         }
 
-        if (!auth) {
-          return res.status(404).json({ error: 'Account not found' });
+        let answerPlain = null;
+        if (isAuth && auth) {
+          try {
+            const colCheck = db.prepare("SELECT security_answer FROM users WHERE id = ?").get(auth.id);
+            if (colCheck && colCheck.security_answer) {
+              answerPlain = colCheck.security_answer;
+            }
+          } catch (e) {}
         }
 
         res.json({
-          question: auth.security_question || null,
-          hasSecurityQuestion: !!auth.security_question
+          question: auth ? (auth.security_question || null) : null,
+          answer: answerPlain,
+          hasSecurityQuestion: !!(auth && (auth.security_question || auth.security_answer_hash))
         });
       } catch (error) {
         console.error('Challenge retrieval error:', error);
@@ -456,8 +609,9 @@ module.exports = function(db) {
         }
 
         if (isVerified) {
-          const session = issueWebSession(req, res, auth, null, 'recovery', true);
-          auditService.record({ req, eventType: 'step_up', outcome: 'success', userId: auth.id, sessionId: session.sessionId, platform: 'web', provider: providerType });
+          const deviceId = req.user?.deviceId || null;
+          const session = issueWebSession(req, res, auth, deviceId, 'recovery', true);
+          auditService.record({ req, eventType: 'step_up', outcome: 'success', userId: auth.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: providerType });
           return res.json({ success: true, sessionId: session.sessionId, verifiedBy: providerType });
         }
 
@@ -473,7 +627,7 @@ module.exports = function(db) {
      */
     login: (req, res) => {
       try {
-        const { identifier, password, deviceName, deviceType, biometric } = req.body;
+        const { identifier, password, deviceName, deviceType, clientType, biometric } = req.body;
         const owner = getOwner();
 
         if (!identifier && !biometric) {
@@ -499,63 +653,70 @@ module.exports = function(db) {
           return res.status(401).json({ error: 'Invalid username/email or password' });
         }
 
-        const isWebLogin = typeof req?.get === 'function' && (deviceType || 'Web').toLowerCase() !== 'android';
+        const clientPlatformHeader = (req.headers['x-client-platform'] || '').toLowerCase();
+        const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
+        const isAndroidApp = (clientType === 'native_android') || (deviceType && (deviceType.toLowerCase() === 'android' || deviceType.toLowerCase() === 'android app')) || (clientPlatformHeader === 'android' && !isPWA) || (req.headers['x-app-type'] === 'native_android');
+        const isWebLogin = !isAndroidApp;
 
-        // Record device info
-        if (deviceName) {
-          db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(user.id);
-          db.prepare(`
-            INSERT INTO user_devices (user_id, device_name, device_type, is_current, last_login, last_seen)
-            VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ON CONFLICT(user_id, device_name) DO UPDATE SET
-              last_login = excluded.last_login,
-              last_seen = excluded.last_seen,
-              is_current = 1,
-              device_type = excluded.device_type
-          `).run(user.id, deviceName, deviceType || 'Web', 1);
+        const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : 'web');
+        const resolvedDeviceType = isAndroidApp ? 'Android App' : (isPWA ? 'Mobile (PWA)' : (deviceType || (isWebLogin ? 'Desktop' : 'Mobile')));
 
-          // Record history and get deviceId
-          const device = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
-            .get(user.id, deviceName);
-          const deviceId = device?.id;
+        // Record device info scoped specifically to this authenticated user
+        let resolvedDeviceName = (deviceName || '').trim();
+        if (!resolvedDeviceName || resolvedDeviceName === 'Generic Device' || resolvedDeviceName.startsWith("Sign's ")) {
+          resolvedDeviceName = isAndroidApp ? 'Android Device' : (isPWA ? 'Mobile Device' : (isWebLogin ? 'Windows PC (x64)' : 'Mobile Device'));
+        }
+        // Strip any previous or incorrect user name prefix
+        resolvedDeviceName = resolvedDeviceName.replace(/^[A-Za-z0-9_]+'s\s+/, '');
+        resolvedDeviceName = resolvedDeviceName.replace(/\s*\((PWA|Native App|Mobile Web)\)\s*$/i, '').trim();
 
-          if (device) {
-            db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
-          }
+        const firstName = (user.full_name || user.username || '').split(' ')[0].trim();
+        if (firstName && !['sign', 'generic', 'user'].includes(firstName.toLowerCase())) {
+          resolvedDeviceName = `${firstName}'s ${resolvedDeviceName}`;
+        }
 
-          if (isWebLogin) {
-            const session = issueWebSession(req, res, user, deviceId);
-            auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: 'local' });
-            return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user, deviceId) });
-          }
+        if (isAndroidApp) {
+          resolvedDeviceName = `${resolvedDeviceName} (Native App)`;
+        } else if (isPWA) {
+          resolvedDeviceName = `${resolvedDeviceName} (PWA)`;
+        }
 
-          if (typeof req?.get === 'function') {
-            const mobileSession = issueMobileSession(req, user, deviceId);
-            auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
-            return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId) });
-          }
+        db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(user.id);
+        db.prepare(`
+          INSERT INTO user_devices (user_id, device_name, device_type, client_type, is_current, last_login, last_seen)
+          VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+          ON CONFLICT(user_id, device_name) DO UPDATE SET
+            last_login = excluded.last_login,
+            last_seen = excluded.last_seen,
+            is_current = 1,
+            device_type = excluded.device_type,
+            client_type = excluded.client_type
+        `).run(user.id, resolvedDeviceName, resolvedDeviceType, resolvedClientType, 1);
 
-          const token = createSessionToken(user, deviceId);
-          setSessionCookie(req, res, token);
-          return res.json({ success: true, token, user: publicUser(user, deviceId) });
+        // Record history and get deviceId
+        const device = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
+          .get(user.id, resolvedDeviceName);
+        const deviceId = device?.id;
+
+        if (device) {
+          db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
         }
 
         if (isWebLogin) {
-          const session = issueWebSession(req, res, user, null);
-          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, platform: 'web', provider: 'local' });
-          return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user) });
+          const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType);
+          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
+          return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user, deviceId) });
         }
 
         if (typeof req?.get === 'function') {
-          const mobileSession = issueMobileSession(req, user, null);
-          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, platform: 'android', provider: 'local' });
-          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user) });
+          const mobileSession = issueMobileSession(req, user, deviceId);
+          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
+          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId) });
         }
 
-        const token = createSessionToken(user);
+        const token = createSessionToken(user, deviceId);
         setSessionCookie(req, res, token);
-
-        res.json({ success: true, token, user: publicUser(user) });
+        return res.json({ success: true, token, user: publicUser(user, deviceId) });
 
       } catch (error) {
         console.error('Login error:', error);
@@ -586,11 +747,16 @@ module.exports = function(db) {
         `).all(currentDeviceId, userId, currentDeviceId);
 
         res.json({
-          devices: devices.map(d => ({
-            ...d,
-            isCurrent: Boolean(d.is_current_device),
-            hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
-          })),
+          devices: devices.map(d => {
+            const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
+            return {
+              ...d,
+              client_type: resolvedClient,
+              clientType: resolvedClient,
+              isCurrent: Boolean(d.is_current_device),
+              hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
+            };
+          }),
           currentDeviceId,
           currentSessionId
         });
@@ -690,7 +856,7 @@ module.exports = function(db) {
      */
     updateSecurity: (req, res) => {
       try {
-        const { currentPassword, newPassword, securityQuestion, securityAnswer, email } = req.body;
+        const { currentPassword, newPassword, securityQuestion, securityAnswer, email, username, identifier } = req.body;
         
         const auth = req.user ? getUserById(req.user.userId) : getOwner();
         const isInitialSetup = !auth || !auth.password_hash;
@@ -698,7 +864,10 @@ module.exports = function(db) {
         // Ensure user is EITHER correct on password OR elevated via security question OR it's initial setup
         if (!isInitialSetup && !req.user?.elevated && !req.user?.recovery) {
           if (!auth || !auth.password_hash || !currentPassword || !bcrypt.compareSync(currentPassword, auth.password_hash)) {
-            return res.status(401).json({ error: 'Authentication required to change security settings' });
+            return res.status(401).json({ 
+              error: 'Authentication required to change security settings',
+              requiresSecurityCheck: true 
+            });
           }
         }
 
@@ -706,14 +875,36 @@ module.exports = function(db) {
         const updates = [];
         const params = [];
 
-        if (email && typeof email === 'string' && email.trim()) {
-          const cleanEmail = email.trim().toLowerCase();
+        let targetEmail = email;
+        let targetUsername = username;
+
+        if (identifier && typeof identifier === 'string' && identifier.trim()) {
+          const cleanId = identifier.trim();
+          if (cleanId.includes('@')) {
+            targetEmail = cleanId;
+          } else {
+            targetUsername = cleanId;
+          }
+        }
+
+        if (targetEmail && typeof targetEmail === 'string' && targetEmail.trim()) {
+          const cleanEmail = targetEmail.trim().toLowerCase();
           const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? AND id != ?').get(cleanEmail, auth.id);
           if (existing) {
             return res.status(400).json({ error: 'This email is already in use by another account' });
           }
           updates.push('email = ?');
           params.push(cleanEmail);
+        }
+
+        if (targetUsername && typeof targetUsername === 'string' && targetUsername.trim()) {
+          const cleanUsername = targetUsername.trim();
+          const existing = db.prepare('SELECT id FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) AND id != ?').get(cleanUsername.toLowerCase(), cleanUsername.toLowerCase(), auth.id);
+          if (existing) {
+            return res.status(400).json({ error: 'This username is already taken' });
+          }
+          updates.push('username = ?');
+          params.push(cleanUsername);
         }
 
         if (newPassword) {
@@ -735,6 +926,14 @@ module.exports = function(db) {
           const salt = bcrypt.genSaltSync(10);
           updates.push('security_answer_hash = ?');
           params.push(bcrypt.hashSync(securityAnswer.toLowerCase().trim(), salt));
+          try {
+            // Check if column exists, if not add it
+            try {
+              db.exec('ALTER TABLE users ADD COLUMN security_answer TEXT');
+            } catch (e) {}
+            updates.push('security_answer = ?');
+            params.push(securityAnswer.trim());
+          } catch (e) {}
         }
 
         if (updates.length > 0) {
@@ -792,7 +991,6 @@ module.exports = function(db) {
         sessionService.revoke(serverSession.sessionId, 'logout');
         sessionService.clearCookie(res);
         auditService.record({ req, eventType: 'logout', outcome: 'success', userId: serverSession.userId, sessionId: serverSession.sessionId, deviceId: serverSession.deviceId, platform: 'web', provider: serverSession.provider });
-        return res.json({ success: true, message: 'Logged out successfully' });
       }
 
       const token = req.cookies?.auth_token || req.headers.authorization?.split(' ')[1];
@@ -807,6 +1005,8 @@ module.exports = function(db) {
         }
       }
       res.clearCookie('auth_token', { path: '/' });
+      res.clearCookie('macos_session', { path: '/' });
+      res.clearCookie('token', { path: '/' });
       res.json({ success: true, message: 'Logged out successfully' });
     }
   };

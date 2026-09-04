@@ -54,6 +54,16 @@ class OrdersView {
     // Track selected orders for multi-select
     selectedOrderIds = new Set();
 
+    isWorkerUser() {
+      const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role');
+      return role === 'worker';
+    }
+
+    isExcluded(contact) {
+      if (!contact) return false;
+      return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
+    }
+
     toggleOrderSelection(orderId) {
       if (!this.selectedOrderIds) this.selectedOrderIds = new Set();
       if (this.selectedOrderIds.has(orderId)) {
@@ -843,12 +853,16 @@ class OrdersView {
     this.selectedOrderIds = new Set();
     this.updateMultiSelectUI();
 
-    const totalOrders = this.orders.length;
-    const totalItems = this.orders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
+    const excludedCustomerIds = new Set(
+      (this.customers || []).filter(c => this.isExcluded(c)).map(c => String(c.id))
+    );
+    const statsOrders = this.orders.filter(o => !excludedCustomerIds.has(String(o.customer_id)));
+    const totalOrders = statsOrders.length;
+    const totalItems = statsOrders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
     const pendingOrders = this.orders.filter(o => o.status !== 'complete');
     const completedOrders = this.orders.filter(o => o.status === 'complete');
-    const pendingCount = pendingOrders.length;
-    const completedCount = completedOrders.length;
+    const pendingCount = statsOrders.filter(o => o.status !== 'complete').length;
+    const completedCount = statsOrders.filter(o => o.status === 'complete').length;
 
     // Update header
     document.getElementById('ordersMainTitle').textContent = 'All Customers';
@@ -1177,12 +1191,17 @@ class OrdersView {
 
   async loadCustomersAndProducts() {
     try {
-      const [customersRes, productsRes] = await Promise.all([
-        fetch('/api/contacts'),
-        fetch('/api/products')
-      ]);
-      this.customers = customersRes.ok ? await customersRes.json() : [];
-      this.products = productsRes.ok ? await productsRes.json() : [];
+      const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+      if (scoped && scoped.contacts && scoped.contacts.length > 0) {
+        this.customers = scoped.contacts;
+      } else {
+        const customersRes = await fetch('/api/contacts');
+        const custData = customersRes.ok ? await customersRes.json() : [];
+        this.customers = Array.isArray(custData) ? custData : (custData.data || []);
+      }
+      const productsRes = await fetch('/api/products');
+      const prodData = productsRes.ok ? await productsRes.json() : [];
+      this.products = Array.isArray(prodData) ? prodData : (prodData.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       this.showNotification('Failed to load customers and products', 'error');
@@ -1191,6 +1210,10 @@ class OrdersView {
 
   async loadOrders() {
     try {
+      const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+      const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+      const accessibleContactIds = scoped && isWorker ? new Set(scoped.contacts.map(c => c.id).filter(Boolean)) : null;
+
       const res = await fetch('/api/billing/orders');
       if (res.ok) {
         const data = await res.json();
@@ -1203,6 +1226,10 @@ class OrdersView {
           }
           return order;
         });
+
+        if (isWorker && accessibleContactIds) {
+          orders = orders.filter(o => accessibleContactIds.has(o.customer_id));
+        }
         
         this.orders = orders;
       }
@@ -1245,6 +1272,7 @@ class OrdersView {
       const orderCount = this.orders.filter(o => String(o.customer_id) === String(customer.id)).length;
       const pendingCount = this.orders.filter(o => String(o.customer_id) === String(customer.id) && o.status !== 'complete').length;
       const completeCount = this.orders.filter(o => String(o.customer_id) === String(customer.id) && o.status === 'complete').length;
+      const isExcluded = this.isExcluded(customer);
       
       // Build status display based on order status
       let statusText = '';
@@ -1261,7 +1289,7 @@ class OrdersView {
       return `
       <div class="orders-customer-item" data-customer-id="${customer.id}" data-customer-name="${customer.name}" style="padding: 12px 12px; margin: 6px 4px; border-radius: 3px; cursor: pointer; transition: all 0.15s; user-select: none; background: #1a1a1a; border: 1px solid #333333; border-left: 3px solid #333333; flex-shrink: 0;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; gap: 8px;">
-          <div style="font-weight: 700; color: #ffffff; font-size: 13px; font-family: 'Courier New', monospace; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${customer.name}</div>
+          <div style="font-weight: 700; color: #ffffff; font-size: 13px; font-family: 'Courier New', monospace; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${customer.name}${isExcluded ? ' <span title="Excluded from Global Stats">🚫</span>' : ''}</div>
           <div class="order-count-badge" data-customer-id="${customer.id}" style="font-size: 9px; font-weight: 800; color: #ffffff; background: #333333; border: 1px solid #555555; padding: 4px 6px; border-radius: 2px; white-space: nowrap; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${orderCount}</div>
         </div>
         <div class="order-status-text" data-customer-id="${customer.id}" style="font-size: 10px; color: ${statusColor}; font-family: 'Courier New', monospace; font-weight: 600;">● ${statusText}</div>
@@ -1600,11 +1628,33 @@ class OrdersView {
         showCheckbox = true;
       }
     }
-    // ...existing code...
+    const customer = this.customers?.find?.(c => String(c.id) === String(customerId));
+    const isCustExcluded = this.isExcluded(customer);
+    const orderObj = this.orders?.find?.(o => String(o.id) === String(orderId)) || order;
+    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge && orderObj)
+      ? window.renderWorkerBadge(orderObj, { compact: true })
+      : '';
+
+    const auditInfo = JSON.stringify({
+      type: 'Order',
+      id: orderId,
+      name: `Order ${orderNumber} (${customerName})`,
+      created_by_role: orderObj?.created_by_role || order.created_by_role,
+      created_by_name: orderObj?.created_by_name || order.created_by_name,
+      last_edited_by_role: orderObj?.last_edited_by_role || order.last_edited_by_role,
+      last_edited_by_name: orderObj?.last_edited_by_name || order.last_edited_by_name,
+      date: order.order_date || order.created_at,
+      created_at: order.created_at,
+      updated_at: order.updated_at
+    });
+
     return `
-      <div class="orders-order-record" data-order-id="${orderId}" data-total-items="${itemCount}" style="padding: 12px; background: #fafafa; border: 2px solid #666666; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace; position: relative;">
+      <div class="orders-order-record" data-order-id="${orderId}" data-total-items="${itemCount}" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}' style="padding: 12px; background: #fafafa; border: 2px solid #666666; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace; position: relative;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
-          <div style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px;">${orderNumber}</div>
+          <div style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>${orderNumber}</span>
+            ${workerBadgeHtml}
+          </div>
           <div style="font-size: 10px; font-weight: 800; color: #ffffff; background: #000000; padding: 2px 4px; border: 1px solid #000000; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.4px;">${stageSym} ${stageName}</div>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333333; margin-bottom: 4px;">
@@ -1612,7 +1662,7 @@ class OrdersView {
           <span class="item-count-display" style="font-weight: 700; color: #000000;">Items: ${itemCount}</span>
         </div>
         <div style="display: flex; align-items: center; margin-bottom: 4px; justify-content: space-between;">
-          <div style="font-size: 10px; color: #666666; letter-spacing: 0.2px;">◆ ${customerName}</div>
+          <div style="font-size: 10px; color: #666666; letter-spacing: 0.2px;">◆ ${customerName}${isCustExcluded ? ' <span title="Excluded from Global Stats">🚫</span>' : ''}</div>
           ${showCheckbox ? `<input type="checkbox" class="order-multiselect-checkbox" data-order-id="${orderId}" style="margin-left: 8px; position: static;" onclick="event.stopPropagation(); window.currentOrdersView.toggleOrderSelection('${orderId}')">` : ''}
         </div>
         <div id="details-${prefix}${orderId}" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #cccccc;"></div>
@@ -1813,7 +1863,11 @@ class OrdersView {
     });
 
     // 1. Header
-    const headerTitle = this.createBaseElement('h2', { margin: '0 0 16px 0', fontSize: '18px', fontWeight: '900', color: '#000', letterSpacing: '-0.5px' }, orderNumber);
+    const workerBadgeModal = (!this.isWorkerUser() && window.renderWorkerBadge)
+      ? window.renderWorkerBadge(order)
+      : '';
+    const headerTitle = this.createBaseElement('h2', { margin: '0 0 16px 0', fontSize: '18px', fontWeight: '900', color: '#000', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' });
+    headerTitle.innerHTML = `<span>${orderNumber}</span> ${workerBadgeModal}`;
     const deliveryInfo = order.delivery_date ? ` | Delivery: ${Utils.formatDate(new Date(order.delivery_date))}` : ' | Not Delivered';
     const headerSub = this.createBaseElement('p', { margin: '0 0 20px 0', fontSize: '12px', color: '#666', fontWeight: '500' }, `Customer: ${customerName} | Order Date: ${Utils.formatDate(orderDate)}${deliveryInfo}`);
     modalContent.append(headerTitle, headerSub);

@@ -58,6 +58,8 @@ object NetworkClient {
                     val requestBuilder = chain.request().newBuilder()
 
                     requestBuilder.addHeader("X-API-Key", "test-api-key-1234")
+                    requestBuilder.addHeader("X-Client-Platform", "android")
+                    requestBuilder.addHeader("X-App-Type", "native_android")
 
                     sessionManager.authToken?.let { token ->
                         if (token.isNotEmpty()) {
@@ -73,9 +75,13 @@ object NetworkClient {
                     val response = chain.proceed(requestBuilder.build())
 
                     // Capture Set-Cookie headers
-                    val setCookieHeaders = response.headers("Set-Cookie")
-                    if (setCookieHeaders.isNotEmpty()) {
-                        sessionManager.authCookie = setCookieHeaders.joinToString("; ")
+                    try {
+                        val setCookieHeaders = response.headers("Set-Cookie")
+                        if (setCookieHeaders.isNotEmpty()) {
+                            sessionManager.authCookie = setCookieHeaders.joinToString("; ")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("NetworkClient", "Failed to save Set-Cookie header", e)
                     }
 
                     response

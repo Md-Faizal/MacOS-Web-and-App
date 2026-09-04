@@ -1,0 +1,10 @@
+const DatabaseManager = require('../core/db/database-manager');
+const db = DatabaseManager.initialize();
+console.log('--- desktop_state FKs ---');
+console.log(db.prepare('PRAGMA foreign_key_list(desktop_state)').all());
+console.log('--- clock_settings FKs ---');
+console.log(db.prepare('PRAGMA foreign_key_list(clock_settings)').all());
+console.log('--- weather_settings FKs ---');
+console.log(db.prepare('PRAGMA foreign_key_list(weather_settings)').all());
+console.log('--- Latest Migration ---');
+console.log(db.prepare('SELECT MAX(version), name FROM migrations').get());

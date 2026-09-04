@@ -279,7 +279,94 @@ export class BillingApp extends AppWindow {
       this.ensureDataUpToDate();
     });
 
+    // Listen for worker badge toggle
+    window.addEventListener('worker-badges-toggle-changed', () => {
+      if (this.currentViewInstance && typeof this.currentViewInstance.render === 'function') {
+        this.currentViewInstance.render();
+      }
+    });
+
     this.checkBackendConnection();
+  }
+
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
+  isExcluded(contact) {
+    if (!contact) return false;
+    return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
+  }
+
+  getScopedBillingData() {
+    const isWorker = this.isWorkerUser();
+    const allContacts = this.billingData?.contacts || [];
+    const allBills = this.billingData?.bills || [];
+    const allPayments = this.billingData?.payments || [];
+    const allOrders = this.billingData?.orders || [];
+
+    const excludedContactIds = new Set(
+      allContacts.filter(c => this.isExcluded(c)).map(c => c.id).filter(Boolean)
+    );
+    const excludedContactNames = new Set(
+      allContacts.filter(c => this.isExcluded(c)).map(c => c.name).filter(Boolean)
+    );
+
+    if (!isWorker) {
+      // Admin/Owner: Full access to all contacts, bills, payments, and orders for UI & interaction
+      return {
+        contacts: allContacts,
+        bills: allBills,
+        payments: allPayments,
+        orders: allOrders,
+        allContacts,
+        statsContacts: allContacts.filter(c => !this.isExcluded(c)),
+        statsBills: allBills.filter(b => !excludedContactIds.has(b.customer_id) && !excludedContactNames.has(b.customer_name)),
+        statsPayments: allPayments.filter(p => !excludedContactIds.has(p.customer_id) && !excludedContactNames.has(p.customer_name)),
+        statsOrders: allOrders.filter(o => !excludedContactIds.has(o.customer_id) && !excludedContactNames.has(o.customer_name)),
+        excludedContactIds,
+        excludedContactNames,
+        rawBills: allBills,
+        rawPayments: allPayments,
+        rawOrders: allOrders
+      };
+    }
+
+    // Worker: Strictly scoped to accessible contacts
+    const accessibleContactIds = new Set(allContacts.map(c => c.id).filter(Boolean));
+    const accessibleContactNames = new Set(allContacts.map(c => c.name).filter(Boolean));
+
+    const bills = allBills.filter(b => 
+      (b.customer_id && accessibleContactIds.has(b.customer_id)) || 
+      (b.customer_name && accessibleContactNames.has(b.customer_name))
+    );
+
+    const payments = allPayments.filter(p => 
+      (p.customer_id && accessibleContactIds.has(p.customer_id)) || 
+      (p.customer_name && accessibleContactNames.has(p.customer_name))
+    );
+
+    const orders = allOrders.filter(o => 
+      (o.customer_id && accessibleContactIds.has(o.customer_id)) || 
+      (o.customer_name && accessibleContactNames.has(o.customer_name))
+    );
+
+    return {
+      contacts: allContacts,
+      bills,
+      payments,
+      orders,
+      allContacts,
+      statsContacts: allContacts.filter(c => !this.isExcluded(c)),
+      statsBills: bills.filter(b => !excludedContactIds.has(b.customer_id) && !excludedContactNames.has(b.customer_name)),
+      statsPayments: payments.filter(p => !excludedContactIds.has(p.customer_id) && !excludedContactNames.has(p.customer_name)),
+      statsOrders: orders.filter(o => !excludedContactIds.has(o.customer_id) && !excludedContactNames.has(o.customer_name)),
+      excludedContactIds,
+      excludedContactNames,
+      rawBills: allBills,
+      rawPayments: allPayments,
+      rawOrders: allOrders
+    };
   }
 
   async checkBackendConnection() {
@@ -605,7 +692,7 @@ export class BillingApp extends AppWindow {
     }
   }
 
-  performGlobalSearchWithDropdown(query) {
+  async performGlobalSearchWithDropdown(query) {
     if (!query || !this.searchDropdown) {
       if (this.searchDropdown) {
         this.searchDropdown.style.display = 'none';
@@ -615,7 +702,19 @@ export class BillingApp extends AppWindow {
     }
 
     try {
-      // Search in all bills, payments, and credit notes
+      // If products not loaded yet, fetch them now
+      if (!this.billingData || !this.billingData.products || this.billingData.products.length === 0) {
+        try {
+          const prods = await this.api.getProducts();
+          if (this.billingData) {
+            this.billingData.products = Array.isArray(prods) ? prods : (prods.data || []);
+          }
+        } catch (e) {
+          console.warn('Could not fetch products on demand for search:', e.message);
+        }
+      }
+
+      // Search in all bills, payments, credit notes, and products
       const results = this.searchAllBillsPaymentsCredits(query);
       
       // Populate dropdown with results
@@ -649,6 +748,7 @@ export class BillingApp extends AppWindow {
 
       // Group results by type
       const grouped = {
+        product: [],
         bill: [],
         payment: [],
         credit: [],
@@ -660,6 +760,19 @@ export class BillingApp extends AppWindow {
           grouped[result.type].push(result);
         }
       });
+
+      // Add products
+      if (grouped.product.length > 0) {
+        const prodHeader = document.createElement('div');
+        prodHeader.style.cssText = 'padding: 8px 16px; background: #f5f5f5; font-weight: bold; font-size: 11px; color: #666; text-transform: uppercase;';
+        prodHeader.textContent = `Products (${grouped.product.length})`;
+        this.searchDropdown.appendChild(prodHeader);
+
+        grouped.product.forEach(result => {
+          const item = this.createDropdownItem(result, 'product');
+          if (item) this.searchDropdown.appendChild(item);
+        });
+      }
 
       // Add bills
       if (grouped.bill.length > 0) {
@@ -738,7 +851,34 @@ export class BillingApp extends AppWindow {
       let displayText = '';
       let secondaryText = '';
 
-      if (type === 'bill') {
+      if (type === 'product') {
+        const prod = data;
+        const variantCount = (prod.variants && Array.isArray(prod.variants)) ? prod.variants.length : 0;
+        const variantsList = (prod.variants && Array.isArray(prod.variants)) ? prod.variants.map(v => v.packSize || `${v.pack_size_value || ''} ${v.pack_size_type || ''}`).join(', ') : '';
+        
+        let min = Infinity, max = -Infinity, found = false;
+        if (prod.variants && Array.isArray(prod.variants)) {
+          prod.variants.forEach(v => {
+            if (v.batches && Array.isArray(v.batches)) {
+              v.batches.forEach(b => {
+                const mrp = parseFloat(b.mrp || 0);
+                if (mrp > 0) {
+                  if (mrp < min) min = mrp;
+                  if (mrp > max) max = mrp;
+                  found = true;
+                }
+              });
+            }
+          });
+        }
+        const priceDisplay = found ? (min === max ? `₹${min.toFixed(2)}` : `₹${min.toFixed(2)} - ₹${max.toFixed(2)}`) : (prod.mrp ? `₹${parseFloat(prod.mrp).toFixed(2)}` : '');
+
+        displayText = `${prod.name}${prod.odia_name ? ` (${prod.odia_name})` : ''}`;
+        secondaryText = `Category: ${prod.category_name || prod.category || 'N/A'} | ${variantCount} variant(s)${variantsList ? ` (${variantsList})` : ''}${priceDisplay ? ` | ${priceDisplay}` : ''}`;
+        if (result.matchedDetails) {
+          secondaryText += ` | 🔍 ${result.matchedDetails}`;
+        }
+      } else if (type === 'bill') {
         displayText = `${data.customer_name || 'Unknown'}`;
         secondaryText = `Invoice: ${data.invoice_no || 'N/A'} | ₹${data.total || '0'}`;
       } else if (type === 'payment') {
@@ -776,6 +916,33 @@ export class BillingApp extends AppWindow {
       }
       if (this.searchInput) {
         this.searchInput.value = '';
+      }
+
+      if (type === 'product') {
+        const prodId = result.data.id;
+        const productAppIcon = document.querySelector('[data-app="product-list"], [data-page="product-list"]');
+        if (productAppIcon) {
+          productAppIcon.click();
+        }
+        setTimeout(() => {
+          if (window.currentProductApp) {
+            window.currentProductApp.switchView('all');
+            setTimeout(() => {
+              const card = document.querySelector(`[data-product-id="${prodId}"]`);
+              if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.transition = 'all 0.3s ease';
+                card.style.borderColor = '#0071e3';
+                card.style.boxShadow = '0 0 0 3px rgba(0, 113, 227, 0.3)';
+                setTimeout(() => {
+                  card.style.borderColor = '';
+                  card.style.boxShadow = '';
+                }, 3000);
+              }
+            }, 300);
+          }
+        }, 300);
+        return;
       }
 
       // For orders, navigate to orders view
@@ -900,13 +1067,68 @@ export class BillingApp extends AppWindow {
 
   searchAllBillsPaymentsCredits(query) {
     const results = [];
+    const q = query.toLowerCase().trim();
 
     try {
+      // Search in products
+      const products = (this.billingData && this.billingData.products) ? this.billingData.products : [];
+      products.forEach(product => {
+        const name = (product.name || '').toLowerCase();
+        const odia = (product.odia_name || '').toLowerCase();
+        const cat = (product.category_name || product.category || '').toLowerCase();
+        const cls = (product.classification || '').toLowerCase();
+
+        let matched = false;
+        let matchedDetails = '';
+
+        if (name.includes(q) || odia.includes(q)) {
+          matched = true;
+        } else if (cat.includes(q)) {
+          matched = true;
+          matchedDetails = `Category: ${product.category_name || product.category}`;
+        } else if (cls.includes(q)) {
+          matched = true;
+          matchedDetails = `Type: ${product.classification || 'Non-Gold'}`;
+        }
+
+        if (product.variants && Array.isArray(product.variants)) {
+          for (const v of product.variants) {
+            const pack = (v.packSize || `${v.pack_size_value || ''} ${v.pack_size_type || ''}`).toLowerCase();
+            if (pack.includes(q)) {
+              matched = true;
+              matchedDetails = `Pack: ${v.packSize || `${v.pack_size_value || ''} ${v.pack_size_type || ''}`}`;
+              break;
+            }
+            if (v.batches && Array.isArray(v.batches)) {
+              for (const b of v.batches) {
+                const bNo = (b.batchNo || b.batch_no || '').toLowerCase();
+                const mrp = (b.mrp !== undefined && b.mrp !== null) ? b.mrp.toString() : '';
+                if (bNo.includes(q)) {
+                  matched = true;
+                  matchedDetails = `Batch: ${b.batchNo || b.batch_no} | ₹${b.mrp}`;
+                  break;
+                }
+                if (mrp.includes(q)) {
+                  matched = true;
+                  matchedDetails = `MRP: ₹${b.mrp} (${v.packSize || v.pack_size_value || ''})`;
+                  break;
+                }
+              }
+            }
+            if (matched) break;
+          }
+        }
+
+        if (matched) {
+          results.push({ type: 'product', data: product, matchedDetails });
+        }
+      });
+
       // Search in bills
       if (this.billingData && this.billingData.bills) {
         this.billingData.bills.forEach(bill => {
           const text = `${bill.customer_name || ''} ${bill.invoice_no || ''} ${bill.reference_no || ''} ${bill.total || ''}`.toLowerCase();
-          if (text.includes(query)) {
+          if (text.includes(q)) {
             results.push({ type: 'bill', data: bill });
           }
         });
@@ -1245,6 +1467,16 @@ export class BillingApp extends AppWindow {
         ordersResponse = [];
       }
 
+      // Fetch products with error handling
+      let productsResponse = [];
+      try {
+        const resp = await this.api.getProducts();
+        productsResponse = Array.isArray(resp) ? resp : (resp.data || []);
+      } catch (prodErr) {
+        console.warn('Warning: Error fetching products for billing search:', prodErr.message);
+        productsResponse = [];
+      }
+
       // Handle both direct arrays and wrapped responses
       const bills = Array.isArray(billsResponse) ? billsResponse : (billsResponse.data || billsResponse.transactions || []);
       const payments = Array.isArray(paymentsResponse) ? paymentsResponse : (paymentsResponse.data || paymentsResponse.payments || []);
@@ -1261,6 +1493,10 @@ export class BillingApp extends AppWindow {
           bill_date: b.invoice_date || b.created_at,
           invoice_date: b.invoice_date || b.created_at,
           created_at: b.created_at,
+          created_by_role: b.created_by_role,
+          created_by_name: b.created_by_name,
+          last_edited_by_role: b.last_edited_by_role,
+          last_edited_by_name: b.last_edited_by_name,
 
           total: b.grand_total || b.total || 0,
           subtotal: b.subtotal || 0,
@@ -1289,6 +1525,10 @@ export class BillingApp extends AppWindow {
           notes: p.notes,
           attachment_data: p.attachment_data,
           created_at: p.created_at,
+          created_by_role: p.created_by_role,
+          created_by_name: p.created_by_name,
+          last_edited_by_role: p.last_edited_by_role,
+          last_edited_by_name: p.last_edited_by_name,
           customer_name: p.customer_name || 'Unknown'
         })),
         orders: ordersResponse.map(o => {
@@ -1310,6 +1550,10 @@ export class BillingApp extends AppWindow {
             order_date: o.order_date || o.created_at,
             delivery_date: o.delivery_date || '',
             created_at: o.created_at,
+            created_by_role: o.created_by_role,
+            created_by_name: o.created_by_name,
+            last_edited_by_role: o.last_edited_by_role,
+            last_edited_by_name: o.last_edited_by_name,
             reference_number: o.reference_number,
             items: o.items || []
           };
@@ -1318,8 +1562,13 @@ export class BillingApp extends AppWindow {
           id: c.id,
           name: c.name,
           opening_balance: c.opening_balance || 0,
-          exclude_from_stats: c.exclude_from_stats || 0
+          exclude_from_stats: c.exclude_from_stats || 0,
+          created_by_role: c.created_by_role,
+          created_by_name: c.created_by_name,
+          last_edited_by_role: c.last_edited_by_role,
+          last_edited_by_name: c.last_edited_by_name
         })),
+        products: productsResponse,
         history: [],
         settings: {}
       };

@@ -27,15 +27,17 @@ class SecureTokenStore(context: Context) {
         if (existing != null) return existing
 
         val generator = KeyGenerator.getInstance("AES", KEYSTORE)
-        generator.init(android.security.keystore.KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
-                android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+        generator.init(
+            android.security.keystore.KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
+                    android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .build()
         )
-            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setRandomizedEncryptionRequired(true)
-            .build())
         return generator.generateKey()
     }
 
@@ -43,12 +45,14 @@ class SecureTokenStore(context: Context) {
         val encoded = prefs.getString(name, null) ?: return null
         return try {
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
+            if (payload.size <= IV_LENGTH) return null
             val iv = payload.copyOfRange(0, IV_LENGTH)
             val ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_LENGTH, iv))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("SecureTokenStore", "Failed to decrypt $name, falling back to null", e)
             null
         }
     }
@@ -58,15 +62,30 @@ class SecureTokenStore(context: Context) {
             prefs.edit().remove(name).apply()
             return
         }
-        val iv = ByteArray(IV_LENGTH).also { java.security.SecureRandom().nextBytes(it) }
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key(), GCMParameterSpec(TAG_LENGTH, iv))
-        val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
-        prefs.edit().putString(name, Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)).apply()
+        try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, key())
+            val iv = cipher.iv
+            if (iv == null || iv.isEmpty()) {
+                android.util.Log.e("SecureTokenStore", "Generated IV is null or empty")
+                return
+            }
+            val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
+            prefs.edit().putString(name, Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)).apply()
+        } catch (e: Exception) {
+            android.util.Log.e("SecureTokenStore", "Failed to encrypt $name", e)
+            try {
+                // If key is in bad state, clear and recreate
+                val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+                keyStore.deleteEntry(KEY_ALIAS)
+            } catch (_: Exception) {}
+        }
     }
 
     fun migratePlaintext(name: String, plaintext: String?) {
-        if (!plaintext.isNullOrEmpty() && get(name) == null) put(name, plaintext)
+        if (!plaintext.isNullOrEmpty() && get(name) == null) {
+            put(name, plaintext)
+        }
     }
 
     fun clear() {

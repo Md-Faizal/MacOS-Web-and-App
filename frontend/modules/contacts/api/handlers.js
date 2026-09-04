@@ -1,4 +1,8 @@
+const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+
 module.exports = function(db) {
+  const activityLogger = createActivityLogger(db);
+
   function getWorkerContactScope(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
@@ -17,12 +21,28 @@ module.exports = function(db) {
   return {
     getContacts: (req, res) => {
       try {
+        const isWorker = req.user && req.user.role === 'worker';
+        const safeUserId = isWorker ? String(req.user.id || req.user.userId).replace(/'/g, "''") : null;
         const workerScope = getWorkerContactScope(req, 'c');
         const whereClause = workerScope ? ` WHERE ${workerScope} ` : '';
 
+        const selectFields = isWorker
+          ? `c.*,
+             COALESCE(uca.exclude_from_stats, 0) as exclude_from_stats,
+             COALESCE(uca.disable_duplex_export, 0) as disable_duplex_export,`
+          : `c.*,`;
+
+        const joinUca = isWorker
+          ? `LEFT JOIN user_contact_access uca ON uca.contact_id = c.id AND uca.user_id = '${safeUserId}'`
+          : '';
+
         const stmt = db.prepare(`
           SELECT 
-            c.*, 
+            ${selectFields}
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
             COALESCE(SUM(i.grand_total), 0) as real_total_sales,
             COALESCE(AVG(i.grand_total), 0) as real_avg_sales,
             (
@@ -44,6 +64,9 @@ module.exports = function(db) {
             (SELECT MAX(COALESCE(invoice_date, created_at)) FROM invoices WHERE customer_id = c.id) as last_bill_date,
             (SELECT MAX(COALESCE(payment_date, created_at)) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT') as last_payment_date
           FROM contacts c
+          ${joinUca}
+          LEFT JOIN users u_creator ON c.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON c.last_edited_by_user_id = u_editor.id
           LEFT JOIN invoices i ON c.id = i.customer_id
           ${whereClause}
           GROUP BY c.id
@@ -58,13 +81,22 @@ module.exports = function(db) {
 
     createContact: (req, res) => {
       try {
-        const { name, email, phone, address, gstin, licence_no, pan, total_sales, avg_sales, favorite_product_id, opening_balance, notes, transport_preference, disable_duplex_export } = req.body;
+        const { name, email, phone, address, gstin, licence_no, pan, total_sales, avg_sales, favorite_product_id, opening_balance, notes, transport_preference, disable_duplex_export, exclude_from_stats } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
 
         const isWorker = req.user && req.user.role === 'worker';
         const creatorId = req.user ? (req.user.id || req.user.userId) : null;
-        // For workers: force exclude_from_stats = 1 (excluded from Admin's master books by default)
-        const excludeFlag = isWorker ? 1 : (req.body.exclude_from_stats !== undefined ? Number(req.body.exclude_from_stats) : 0);
+
+        // When created by Worker:
+        // - Admin master view: exclude_from_stats = 1 (EXCLUDED by default for Admin), disable_duplex_export = 1 (Duplex OFF by default for Admin)
+        // - Worker view (in user_contact_access): worker's choice (default exclude = 0, default duplex = 0 / ON)
+        // When created by Admin:
+        // - Admin master view: exclude_from_stats from body (default 0), disable_duplex_export from body (default 0 / ON)
+        const adminExclude = isWorker ? 1 : (exclude_from_stats !== undefined ? Number(exclude_from_stats) : 0);
+        const adminDuplex = isWorker ? 1 : (disable_duplex_export !== undefined ? Number(disable_duplex_export) : 0);
+
+        const workerExclude = exclude_from_stats !== undefined ? Number(exclude_from_stats) : 0;
+        const workerDuplex = disable_duplex_export !== undefined ? Number(disable_duplex_export) : 0;
 
         const stmt = db.prepare(`
           INSERT INTO contacts (
@@ -76,19 +108,37 @@ module.exports = function(db) {
           name, email || null, phone || null, address || null,
           gstin || null, licence_no || null, pan || null,
           total_sales || 0, avg_sales || 0, favorite_product_id || null,
-          opening_balance || 0, excludeFlag, notes || null, transport_preference || null, disable_duplex_export || 0, creatorId
+          opening_balance || 0, adminExclude, notes || null, transport_preference || null, adminDuplex, creatorId
         );
 
-        // If created by a worker, automatically associate with that worker in user_contact_access
+        const newContactId = info.lastInsertRowid;
+
+        // If created by a worker, automatically associate with that worker in user_contact_access with worker's preferences
         if (isWorker && creatorId) {
           try {
-            db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(creatorId, info.lastInsertRowid);
+            db.prepare(`
+              INSERT INTO user_contact_access (user_id, contact_id, exclude_from_stats, disable_duplex_export)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(user_id, contact_id) DO UPDATE SET
+                exclude_from_stats = excluded.exclude_from_stats,
+                disable_duplex_export = excluded.disable_duplex_export
+            `).run(creatorId, newContactId, workerExclude, workerDuplex);
           } catch (accessErr) {
             console.warn('Failed to associate contact with worker:', accessErr.message);
           }
         }
 
-        res.status(201).json({ success: true, id: info.lastInsertRowid });
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'contacts',
+          action: 'create',
+          resourceType: 'contact',
+          resourceId: newContactId,
+          resourceName: name,
+          metadata: { phone, email, opening_balance, exclude_from_stats: isWorker ? workerExclude : adminExclude }
+        });
+
+        res.status(201).json({ success: true, id: newContactId });
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
@@ -101,9 +151,26 @@ module.exports = function(db) {
           return res.status(403).json({ error: 'Access denied to this contact' });
         }
 
+        const isWorker = req.user && req.user.role === 'worker';
+        const safeUserId = isWorker ? String(req.user.id || req.user.userId).replace(/'/g, "''") : null;
+
+        const selectFields = isWorker
+          ? `c.*,
+             COALESCE(uca.exclude_from_stats, 0) as exclude_from_stats,
+             COALESCE(uca.disable_duplex_export, 0) as disable_duplex_export,`
+          : `c.*,`;
+
+        const joinUca = isWorker
+          ? `LEFT JOIN user_contact_access uca ON uca.contact_id = c.id AND uca.user_id = '${safeUserId}'`
+          : '';
+
         const stmt = db.prepare(`
           SELECT 
-            c.*, 
+            ${selectFields}
+            COALESCE(u_creator.role, 'owner') as created_by_role,
+            COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+            u_editor.role as last_edited_by_role,
+            COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name,
             COALESCE(SUM(i.grand_total), 0) as real_total_sales,
             COALESCE(AVG(i.grand_total), 0) as real_avg_sales,
             (
@@ -117,6 +184,9 @@ module.exports = function(db) {
               LIMIT 1
             ) as favorite_product
           FROM contacts c
+          ${joinUca}
+          LEFT JOIN users u_creator ON c.created_by_user_id = u_creator.id
+          LEFT JOIN users u_editor ON c.last_edited_by_user_id = u_editor.id
           LEFT JOIN invoices i ON c.id = i.customer_id
           WHERE c.id = ?
           GROUP BY c.id
@@ -136,15 +206,42 @@ module.exports = function(db) {
           return res.status(403).json({ error: 'Access denied to update this contact' });
         }
 
+        const isWorker = req.user && req.user.role === 'worker';
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+
+        if (isWorker && userId) {
+          // If worker, update user_contact_access for exclude_from_stats and disable_duplex_export
+          if (req.body.exclude_from_stats !== undefined || req.body.disable_duplex_export !== undefined) {
+            const currentUca = db.prepare('SELECT exclude_from_stats, disable_duplex_export FROM user_contact_access WHERE user_id = ? AND contact_id = ?').get(userId, id);
+            const nextExclude = req.body.exclude_from_stats !== undefined ? Number(req.body.exclude_from_stats) : (currentUca ? currentUca.exclude_from_stats : 0);
+            const nextDuplex = req.body.disable_duplex_export !== undefined ? Number(req.body.disable_duplex_export) : (currentUca ? currentUca.disable_duplex_export : 0);
+
+            db.prepare(`
+              INSERT INTO user_contact_access (user_id, contact_id, exclude_from_stats, disable_duplex_export)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(user_id, contact_id) DO UPDATE SET
+                exclude_from_stats = excluded.exclude_from_stats,
+                disable_duplex_export = excluded.disable_duplex_export
+            `).run(userId, id, nextExclude, nextDuplex);
+          }
+        }
+
+        // Shared contact fields to update in contacts table
         const updates = [];
         const params = [];
         
-        // List of all possible fields that can be updated
-        const fields = [
-          'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
-          'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
-          'exclude_from_stats', 'notes', 'transport_preference', 'type', 'active', 'last_activity', 'disable_duplex_export'
-        ];
+        // If worker, exclude_from_stats and disable_duplex_export are NOT written to contacts table
+        const fields = isWorker
+          ? [
+              'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
+              'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
+              'notes', 'transport_preference', 'type', 'active', 'last_activity'
+            ]
+          : [
+              'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
+              'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
+              'exclude_from_stats', 'notes', 'transport_preference', 'type', 'active', 'last_activity', 'disable_duplex_export'
+            ];
 
         // Build dynamic query
         fields.forEach(field => {
@@ -154,19 +251,109 @@ module.exports = function(db) {
           }
         });
 
-        if (updates.length === 0) {
-          return res.status(400).json({ error: 'No fields provided to update' });
+        if (userId) {
+          updates.push('last_edited_by_user_id = ?');
+          params.push(userId);
         }
 
-        // Add updated_at and ID
-        updates.push("updated_at = datetime('now')");
-        params.push(id);
+        if (updates.length > 0) {
+          updates.push("updated_at = datetime('now')");
+          params.push(id);
 
-        const sql = `UPDATE contacts SET ${updates.join(', ')} WHERE id = ?`;
-        const stmt = db.prepare(sql);
-        stmt.run(...params);
+          const sql = `UPDATE contacts SET ${updates.join(', ')} WHERE id = ?`;
+          db.prepare(sql).run(...params);
+        }
+
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'contacts',
+          action: 'update',
+          resourceType: 'contact',
+          resourceId: id,
+          resourceName: req.body.name || null,
+          metadata: req.body
+        });
 
         res.json({ success: true, id });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    getContactAccess: (req, res) => {
+      try {
+        const { id } = req.params;
+        if (req.user && req.user.role === 'worker') {
+          return res.status(403).json({ error: 'Only admin can view worker assignments' });
+        }
+
+        const workers = db.prepare(`
+          SELECT 
+            u.id, 
+            u.username, 
+            u.email, 
+            u.full_name,
+            (SELECT COUNT(1) FROM user_contact_access uca WHERE uca.user_id = u.id AND uca.contact_id = ?) as has_access
+          FROM users u
+          WHERE u.role = 'worker' AND (u.status = 'active' OR u.status IS NULL)
+          ORDER BY u.full_name ASC, u.username ASC
+        `).all(id);
+
+        res.json({
+          success: true,
+          contactId: Number(id),
+          workers: workers.map(w => ({
+            id: w.id,
+            username: w.username,
+            email: w.email,
+            fullName: w.full_name || w.username,
+            hasAccess: Boolean(w.has_access)
+          }))
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    updateContactAccess: (req, res) => {
+      try {
+        const { id } = req.params;
+        if (req.user && req.user.role === 'worker') {
+          return res.status(403).json({ error: 'Only admin can manage worker assignments' });
+        }
+
+        const userIds = Array.isArray(req.body.userIds) ? req.body.userIds : [];
+
+        db.transaction(() => {
+          // Get currently assigned workers
+          const currentWorkers = db.prepare('SELECT user_id FROM user_contact_access WHERE contact_id = ?').all(id).map(r => r.user_id);
+          
+          // Remove workers not in userIds
+          for (const currentUserId of currentWorkers) {
+            if (!userIds.includes(currentUserId)) {
+              db.prepare('DELETE FROM user_contact_access WHERE contact_id = ? AND user_id = ?').run(id, currentUserId);
+            }
+          }
+
+          // Add newly assigned workers with defaults: exclude_from_stats = 0 (Included), disable_duplex_export = 0 (Duplex ON)
+          const insertStmt = db.prepare(`
+            INSERT OR IGNORE INTO user_contact_access (user_id, contact_id, exclude_from_stats, disable_duplex_export)
+            VALUES (?, ?, 0, 0)
+          `);
+          for (const userId of userIds) {
+            insertStmt.run(userId, id);
+          }
+
+          activityLogger.logActivity(req, {
+            module: 'contacts',
+            action: 'share',
+            resourceType: 'contact',
+            resourceId: id,
+            metadata: { assignedWorkerCount: userIds.length, userIds }
+          });
+        })();
+
+        res.json({ success: true, message: 'Contact access updated successfully' });
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
@@ -203,6 +390,15 @@ module.exports = function(db) {
         deleteTransaction();
         
         console.log(`✓ Deleted contact "${contactName}" (ID: ${id})`);
+        
+        // Audit Log
+        activityLogger.logActivity(req, {
+          module: 'contacts',
+          action: 'delete',
+          resourceType: 'contact',
+          resourceId: id,
+          resourceName: contactName
+        });
         
         res.json({ 
           success: true, 

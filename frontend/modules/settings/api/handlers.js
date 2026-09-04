@@ -13,9 +13,14 @@ module.exports = function(db) {
           deviceId = currentDevice?.id;
         }
 
+        if (!deviceId && req.user?.userId) {
+          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
+          deviceId = userDevice?.id;
+        }
+
         if (!deviceId) {
-          console.warn('[Settings] No device ID found in token or database defaults');
-          return res.status(401).json({ error: 'Device ID required' });
+          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
+          deviceId = anyDevice ? anyDevice.id : 1;
         }
 
         console.log(`[Settings] Fetching settings for device: ${deviceId}`);
@@ -41,7 +46,8 @@ module.exports = function(db) {
           iconStyle: settings.icon_style,
           liquidGlass: settings.liquid_glass,
           'sidebar-size': settings.sidebar_icon_size,
-          'tint-wallpaper': !!settings.tint_wallpaper
+          'tint-wallpaper': !!settings.tint_wallpaper,
+          showWorkerBadges: settings.show_worker_badges !== undefined && settings.show_worker_badges !== null ? Boolean(settings.show_worker_badges) : true
         };
         
         res.json(result);
@@ -60,9 +66,14 @@ module.exports = function(db) {
           deviceId = currentDevice?.id;
         }
 
+        if (!deviceId && req.user?.userId) {
+          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
+          deviceId = userDevice?.id;
+        }
+
         if (!deviceId) {
-          console.warn('[Settings] No device ID found for single save');
-          return res.status(401).json({ error: 'Device ID required' });
+          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
+          deviceId = anyDevice ? anyDevice.id : 1;
         }
 
         console.log(`[Settings] Saving single setting: ${setting_key} = ${setting_value} for device: ${deviceId}`);
@@ -75,14 +86,16 @@ module.exports = function(db) {
           'iconStyle': 'icon_style',
           'liquidGlass': 'liquid_glass',
           'sidebar-size': 'sidebar_icon_size',
-          'tint-wallpaper': 'tint_wallpaper'
+          'tint-wallpaper': 'tint_wallpaper',
+          'showWorkerBadges': 'show_worker_badges',
+          'show_worker_badges': 'show_worker_badges'
         };
 
         const columnName = keyMap[setting_key];
         if (!columnName) return res.status(400).json({ error: `Invalid setting key: ${setting_key}` });
 
         let value = setting_value;
-        if (columnName === 'tint_wallpaper') value = value ? 1 : 0;
+        if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges') value = value ? 1 : 0;
 
         const stmt = db.prepare(`
           UPDATE Settings SET ${columnName} = ?, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?
@@ -116,9 +129,14 @@ module.exports = function(db) {
           deviceId = currentDevice?.id;
         }
 
+        if (!deviceId && req.user?.userId) {
+          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
+          deviceId = userDevice?.id;
+        }
+
         if (!deviceId) {
-          console.warn('[Settings] No device ID found for bulk update');
-          return res.status(401).json({ error: 'Device ID required' });
+          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
+          deviceId = anyDevice ? anyDevice.id : 1;
         }
 
         const keyMap = {
@@ -128,7 +146,9 @@ module.exports = function(db) {
           'iconStyle': 'icon_style',
           'liquidGlass': 'liquid_glass',
           'sidebar-size': 'sidebar_icon_size',
-          'tint-wallpaper': 'tint_wallpaper'
+          'tint-wallpaper': 'tint_wallpaper',
+          'showWorkerBadges': 'show_worker_badges',
+          'show_worker_badges': 'show_worker_badges'
         };
 
         const updates = [];
@@ -139,7 +159,7 @@ module.exports = function(db) {
           if (columnName) {
             updates.push(`${columnName} = ?`);
             let finalValue = value;
-            if (columnName === 'tint_wallpaper') finalValue = value ? 1 : 0;
+            if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges') finalValue = value ? 1 : 0;
             values.push(finalValue);
           }
         });

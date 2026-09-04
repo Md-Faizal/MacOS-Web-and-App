@@ -12,10 +12,10 @@
  * - Background sync when coming back online
  */
 
-const CACHE_VERSION = 'wallpaper-v3';
+const CACHE_VERSION = 'wallpaper-v6';
 const API_CACHE = 'api-cache-v1';
-const ASSET_CACHE = 'asset-cache-v1';
-const IMAGE_CACHE = 'image-cache-v1';
+const ASSET_CACHE = 'asset-cache-v4';
+const IMAGE_CACHE = 'image-cache-v4';
 const VIDEO_CACHE = 'video-cache-v3';  // Incremented for new logic
 
 // Assets to cache on install - Updated for modular system
@@ -88,6 +88,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Auth, Profile, Health, and WebSocket/SSE endpoints: ALWAYS bypass SW (Network only)
+  if (
+    url.pathname.startsWith('/api/auth/') ||
+    url.pathname.startsWith('/api/profile/') ||
+    url.pathname === '/api/health' ||
+    url.pathname.startsWith('/api/ws') ||
+    url.pathname.startsWith('/api/sse')
+  ) {
+    return;
+  }
+
   // API calls: Stale-While-Revalidate
   // Serve from cache immediately, update in background
   if (url.pathname.startsWith('/api/')) {
@@ -106,7 +117,10 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
           }).catch((err) => {
             console.warn('[SW] Fetch failed:', url.pathname, err);
-            return response;  // Return cached response on error
+            return response || new Response(JSON.stringify({ error: 'Network unavailable' }), {
+              status: 503,
+              headers: { 'Content-Type': 'application/json' }
+            });
           });
           
           // Return cached response first, or wait for fetch

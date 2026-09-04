@@ -30,8 +30,8 @@
     --qr-shadow:      6px 6px 0px var(--qr-border-black);
     --qr-shadow-sm:   3px 3px 0px var(--qr-border-black);
     
-    --qr-font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --qr-font-body:    'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --qr-font-display: 'Plus Jakarta Sans', 'Noto Sans Oriya', 'Lohit Odia', 'Samyak Oriya', -apple-system, BlinkMacSystemFont, sans-serif;
+    --qr-font-body:    'Plus Jakarta Sans', 'Noto Sans Oriya', 'Lohit Odia', 'Samyak Oriya', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   /* ── Global Print Reset ─────────────────────────────────────────── */

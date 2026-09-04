@@ -1,6 +1,7 @@
 module.exports = function(router, handlers) {
   router.get('/', handlers.getSettings);
   router.post('/', handlers.saveSetting);
+  router.post('/save', handlers.saveSetting);
   router.post('/bulk', handlers.bulkUpdateSettings);
   router.get('/app-settings', handlers.getAppSettings);
   router.post('/app-settings', handlers.saveAppSettings);

@@ -46,8 +46,23 @@ interface ApiService {
     @GET("auth/questions")
     suspend fun getSecurityQuestions(): Response<List<SecurityQuestion>>
 
+    @GET("auth/challenge")
+    suspend fun getAuthChallenge(@Query("identifier") identifier: String): Response<AuthChallengeResponse>
+
+    @POST("auth/verify-answer")
+    suspend fun verifySecurityAnswer(@Body request: VerifyAnswerRequest): Response<ApiResponse<Unit>>
+
+    @GET("auth/check-username")
+    suspend fun checkUsername(@Query("username") username: String): Response<CheckUsernameResponse>
+
     @POST("auth/update-security")
-    suspend fun updateSecurity(@Body request: UpdateSecurityRequest): Response<ApiResponse<Unit>>
+    suspend fun updateSecurity(@Body request: ResetPasswordSecurityRequest): Response<ApiResponse<Unit>>
+
+    @POST("auth/mobile/biometric/register")
+    suspend fun registerMobileBiometric(@Body request: MobileBiometricRegisterRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("auth/mobile/biometric")
+    suspend fun revokeMobileBiometric(): Response<ApiResponse<Unit>>
 
     @GET("profile/permissions")
     suspend fun getPermissions(): Response<Map<String, Any?>>
@@ -58,6 +73,9 @@ interface ApiService {
 
     @POST("profile")
     suspend fun updateProfile(@Body request: UpdateProfileRequest): Response<ProfileResponse>
+
+    @POST("profile/disconnect-google")
+    suspend fun disconnectGoogle(): Response<ApiResponse<Unit>>
 
     // ==================== PRODUCTS ====================
     @GET("products")
