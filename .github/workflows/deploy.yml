@@ -192,7 +192,11 @@ jobs:
           fi
 
           echo "🔄 Reloading PM2 services with zero downtime..."
-          pm2 reload ecosystem.config.js --env oraclevm --only backend,frontend --update-env || pm2 restart ecosystem.config.js --env oraclevm --only backend,frontend --update-env
+          # Cleanly transition from old separate processes to unified macos-server
+          pm2 stop backend frontend 2>/dev/null || true
+          pm2 delete backend frontend 2>/dev/null || true
+          pm2 start ecosystem.config.js --env oraclevm --only macos-server --update-env || pm2 reload ecosystem.config.js --env oraclevm --only macos-server --update-env
+          pm2 save
 
           echo "🏥 Verifying server health..."
           sleep 4

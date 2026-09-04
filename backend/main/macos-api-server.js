@@ -194,6 +194,15 @@ const staticOptions = {
   }
 };
 
+const distPath = path.join(__dirname, '../../dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath, staticOptions));
+  app.use('/assets', express.static(path.join(distPath, 'assets'), {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: staticOptions.setHeaders
+  }));
+}
 app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOptions));
@@ -201,9 +210,8 @@ app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOpti
 // Serve large wallpaper assets from root to keep them out of frontend build
 const wallpaperPath = path.join(__dirname, '../../Wallpapers');
 app.use('/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
+app.use('/Assets/Wallpaper', express.static(wallpaperPath, staticOptions));
 app.use('/api/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
-
-// Lowercase aliases for robustness
 app.use('/assets/wallpaper', express.static(wallpaperPath, staticOptions));
 app.use('/api/assets/wallpaper', express.static(wallpaperPath, staticOptions));
 
@@ -653,24 +661,82 @@ app.get('/api/debug/notes', (req, res) => {
   }
 });
 
+// ─── SPA & Static HTML Fallback ───
+app.get('*', (req, res, next) => {
+  // Never serve HTML for missing API endpoints
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+
+  // Never serve HTML for missing asset extensions (prevents MIME type errors)
+  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|eot)$/i)) {
+    return res.status(404).send('Asset Not Found');
+  }
+
+  // Public product / batch catalog fallback
+  if (req.path.startsWith('/public/product/') || req.path.startsWith('/public/batch/')) {
+    const distPub = path.join(__dirname, '../../dist/public-product.html');
+    if (fs.existsSync(distPub)) return res.sendFile(distPub);
+    const srcPub = path.join(__dirname, '../../frontend/public-product.html');
+    if (fs.existsSync(srcPub)) return res.sendFile(srcPub);
+  }
+
+  // Customer ledger fallback
+  if (req.path.startsWith('/customer-ledger')) {
+    const distLedger = path.join(__dirname, '../../dist/customer-ledger.html');
+    if (fs.existsSync(distLedger)) return res.sendFile(distLedger);
+    const srcLedger = path.join(__dirname, '../../frontend/customer-ledger.html');
+    if (fs.existsSync(srcLedger)) return res.sendFile(srcLedger);
+  }
+
+  // Home fallback (/home or /home.html)
+  if (req.path === '/home' || req.path === '/home.html') {
+    const distHome = path.join(__dirname, '../../dist/home.html');
+    if (fs.existsSync(distHome)) return res.sendFile(distHome);
+    const srcHome = path.join(__dirname, '../../frontend/home.html');
+    if (fs.existsSync(srcHome)) return res.sendFile(srcHome);
+  }
+
+  // Default SPA index.html
+  const distIndex = path.join(__dirname, '../../dist/index.html');
+  if (fs.existsSync(distIndex)) {
+    return res.sendFile(distIndex);
+  }
+  const srcIndex = path.join(__dirname, '../../frontend/index.html');
+  if (fs.existsSync(srcIndex)) {
+    return res.sendFile(srcIndex);
+  }
+
+  next();
+});
+
 // Start server
-const BASE_PORT = Number(process.env.PORT) || 3002;
-const HOST = process.env.HOST || '0.0.0.0'; // Default to IPv4 for Ubuntu; bind to all interfaces
+const BASE_PORT = Number(process.env.PORT) || 3001;
+const ALT_PORT = process.env.ALT_PORT ? Number(process.env.ALT_PORT) : null;
+const HOST = process.env.HOST || '0.0.0.0';
 
 function startServer(port, attemptsLeft = 20) {
   const server = app.listen(port, HOST, () => {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log(`✨ Backend MacOS API Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
-    console.log('───────────────────────────────────────────────────────────');
-    console.log(`Local: http://localhost:${port}`);
-    console.log(`LAN:   http://127.0.0.1:${port}`);
-    if (process.env.PUBLIC_HOST) {
-      console.log(`Public: http://${process.env.PUBLIC_HOST}:${port}`);
-    }
-    console.log('───────────────────────────────────────────────────────────');
+    console.log(`✨ Unified MacOS Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
+    console.log(`📁 Static files: dist/ and frontend/`);
     console.log(`📚 API Documentation: http://localhost:${port}/api`);
     console.log(`💚 Health Check:      http://localhost:${port}/api/health`);
     console.log('═══════════════════════════════════════════════════════════\n');
+
+    // Dual-port listener for zero-downtime transition if ALT_PORT is configured
+    if (ALT_PORT && ALT_PORT !== port) {
+      try {
+        const altServer = app.listen(ALT_PORT, HOST, () => {
+          console.log(`🌐 Also listening on secondary port ${ALT_PORT} for zero-downtime compatibility.`);
+        });
+        altServer.on('error', (e) => {
+          console.warn(`[Server] Secondary port ${ALT_PORT} notice: ${e.message}. Primary on ${port} is active.`);
+        });
+      } catch (e) {
+        console.warn(`[Server] Could not bind secondary port ${ALT_PORT}: ${e.message}`);
+      }
+    }
   });
 
   server.on('error', (err) => {

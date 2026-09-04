@@ -11,49 +11,26 @@
 
 module.exports = {
   apps: [
-    // ===== BACKEND APP (PRODUCTION & VM) =====
+    // ===== UNIFIED MACOS SERVER (API + FRONTEND) =====
     {
-      name: 'backend',
+      name: 'macos-server',
       script: 'backend/main/macos-api-server.js',
       cwd: './',
       autorestart: true,
-      max_memory_restart: '512M',
-      error_file: 'logs/backend-error.log',
-      out_file: 'logs/backend-out.log',
+      max_memory_restart: '768M',
+      error_file: 'logs/server-error.log',
+      out_file: 'logs/server-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       env_production: {
         NODE_ENV: 'production',
-        PORT: '3001',
+        PORT: '80',
         HOST: '::'           // IPv6 dual-stack on Windows
       },
       env_oraclevm: {
         NODE_ENV: 'oraclevm',
         PORT: '3001',
-        HOST: '0.0.0.0'     // IPv4 on Ubuntu (behind Nginx)
-      },
-      instances: 1
-    },
-    // ===== FRONTEND APP (PRODUCTION & VM) =====
-    {
-      name: 'frontend',
-      script: 'server-prod.js',
-      cwd: './',
-      autorestart: true,
-      max_memory_restart: '512M',
-      error_file: 'logs/frontend-error.log',
-      out_file: 'logs/frontend-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: '80',
-        HOST: '::',         // IPv6 dual-stack on Windows
-        API_PORT: '3001'
-      },
-      env_oraclevm: {
-        NODE_ENV: 'oraclevm',
-        PORT: '3000',
-        HOST: '0.0.0.0',   // IPv4 on Ubuntu (behind Nginx)
-        API_PORT: '3001'
+        ALT_PORT: '3000',    // Secondary listener for existing Nginx configurations
+        HOST: '0.0.0.0'     // IPv4 on Ubuntu
       },
       instances: 1
     },
