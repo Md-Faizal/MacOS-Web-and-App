@@ -27,6 +27,9 @@ services:
       - ./Wallpapers:/app/Wallpapers
       # APK distribution directory
       - ./backend/uploads:/app/backend/uploads
+      # Application code and assets
+      - ./backend:/app/backend
+      - ./dist:/app/dist
       # Application logs
       - ./logs:/app/logs
     deploy:

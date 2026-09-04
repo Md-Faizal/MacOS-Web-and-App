@@ -127,10 +127,11 @@ app.use(cookieParser());
 
 app.use((req, res, next) => {
   const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
+  const isHttps = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https';
   if (!req.cookies?.csrf_token) {
     res.cookie('csrf_token', csrfToken, {
       httpOnly: false,
-      secure: isProd || isVM || req.protocol === 'https',
+      secure: isHttps,
       sameSite: 'Strict',
       maxAge: 12 * 60 * 60 * 1000,
       path: '/'
@@ -238,8 +239,8 @@ const defaultProductionOrigins = new Set([
 function isOriginAllowed(origin) {
   if (!origin) return true; // same-origin / curl / server-to-server
   if (corsOrigins.length > 0) return corsOrigins.includes(origin);
-  // In dev, Vite may pick the next available port (5174+). Allow localhost/127.0.0.1 on any port.
-  if (isDev && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
+  // Allow local development and SSH port tunnels on any port
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   if (isDev) return defaultDevOrigins.has(origin);
   return defaultProductionOrigins.has(origin);
 }
