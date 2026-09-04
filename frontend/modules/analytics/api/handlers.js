@@ -752,7 +752,7 @@ module.exports = function(db) {
         const scope = getContactScopeFilter(req, 'c');
         
         const customer = db.prepare(`
-          SELECT c.*, l.current_due as ledger_due, l.total_outstanding
+          SELECT c.*, l.current_due as ledger_due, l.current_due as total_outstanding
           FROM contacts c
           LEFT JOIN ledger l ON c.id = l.customer_id
           WHERE c.id = ? AND ${scope}

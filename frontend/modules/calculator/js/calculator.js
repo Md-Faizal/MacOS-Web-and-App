@@ -29,7 +29,7 @@ class Calculator extends AppWindow {
     
     window.currentCalculatorApp = this;
     this.createCalculatorUI();
-    this.setupCalculatorEventListeners();
+    this.setupEventListeners();
   }
 
   createCalculatorUI() {
