@@ -62,7 +62,7 @@ module.exports = {
       name: 'ipv6-updater',
       script: 'tools/python/ipv6-updater.py',
       cwd: './',
-      interpreter: 'python',
+      interpreter: process.platform === 'win32' ? 'python' : 'python3',
       autorestart: true,
       env_production: {
         NODE_ENV: 'production'
