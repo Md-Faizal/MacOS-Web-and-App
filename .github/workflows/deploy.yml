@@ -87,19 +87,26 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Strip Windows carriage returns (\r) and ensure clean Unix newlines
-          echo "$SSH_KEY" | tr -d '\r' | sed -e '$a\' > ~/.ssh/deploy_key
+          # Decode key (handles Base64 encoded key or raw PEM)
+          if echo "$SSH_KEY" | grep -q "^LS0t"; then
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+          elif echo "$SSH_KEY" | grep -q "BEGIN"; then
+            echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          else
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key 2>/dev/null || echo "$SSH_KEY" > ~/.ssh/deploy_key
+          fi
           chmod 600 ~/.ssh/deploy_key
 
-          # Verify key structure
-          if ! head -n 1 ~/.ssh/deploy_key | grep -q "BEGIN"; then
-            echo "❌ ERROR: deploy_key does not start with a valid BEGIN header!"
+          # Verify key with ssh-keygen
+          ssh-keygen -y -f ~/.ssh/deploy_key > ~/.ssh/deploy_key.pub || {
+            echo "❌ ERROR: Key failed local ssh-keygen parsing check!"
             exit 1
-          fi
+          }
+          echo "✅ SSH Key successfully validated and public key generated."
 
           # Start ssh-agent and load key
           eval "$(ssh-agent -s)"
-          echo "$SSH_KEY" | tr -d '\r' | ssh-add -
+          ssh-add ~/.ssh/deploy_key
 
           # Configure SSH client with full RSA compatibility
           cat << 'EOF' > ~/.ssh/config
