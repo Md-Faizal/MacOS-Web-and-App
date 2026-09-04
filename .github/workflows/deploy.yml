@@ -75,85 +75,111 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
 
-      - name: 🔌 Connect via SSH & Deploy
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: 22
-          script_stop: true
-          script: |
-            set -e
-            TARGET_DIR="/home/ubuntu/MacOS-Production"
-            TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+      - name: 🔌 Setup SSH & Deploy via Native OpenSSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          SKIP_NPM: ${{ github.event.inputs.skip_npm_install }}
+        run: |
+          # Create .ssh directory
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-            echo "======================================================"
-            echo "🚀 1-Click Deployment Triggered"
-            echo "Timestamp: $TIMESTAMP"
-            echo "======================================================"
+          # Write key file with guaranteed Unix newline
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-            if [ ! -d "$TARGET_DIR" ]; then
-              echo "❌ Error: Production directory $TARGET_DIR does not exist!"
-              exit 1
-            fi
+          # Disable host key checking for automated runner
+          cat << 'EOF' > ~/.ssh/config
+          Host production
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          EOF
+          chmod 600 ~/.ssh/config
 
-            cd "$TARGET_DIR"
+          echo "Connecting to $SSH_USER@$SSH_HOST..."
 
-            # ─── 1. Automated Pre-Deploy SQLite Safety Snapshot ───
-            echo "🛡️ Step 1: Creating database safety snapshot..."
-            mkdir -p "$TARGET_DIR/database/backups"
-            if [ -f "$TARGET_DIR/database/MacOS.db" ]; then
-              cp "$TARGET_DIR/database/MacOS.db" "$TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db"
-              echo "✅ Database safely backed up to: database/backups/MacOS_backup_${TIMESTAMP}.db"
-            else
-              echo "⚠️ Warning: database/MacOS.db not found, skipping backup."
-            fi
+          # Run remote deployment script via native SSH
+          ssh production bash -s << 'REMOTESCRIPT'
+          set -e
+          TARGET_DIR="/home/ubuntu/MacOS-Production"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-            # ─── 2. Handle Dry Run Option ───
-            if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-              echo "🔍 DRY RUN: Pre-flight checks & backup succeeded. No live files modified."
-              exit 0
-            fi
+          echo "======================================================"
+          echo "🚀 1-Click Deployment Triggered"
+          echo "Timestamp: $TIMESTAMP"
+          echo "======================================================"
 
-            # ─── 3. Sync Latest Code from Git ───
-            echo "📦 Step 2: Pulling latest code from main branch..."
-            git fetch origin main
-            git reset --hard origin/main
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "❌ Error: Production directory $TARGET_DIR does not exist!"
+            exit 1
+          fi
 
-            # ─── 4. Install Dependencies if needed ───
-            if [ "${{ github.event.inputs.skip_npm_install }}" != "true" ]; then
-              echo "📦 Step 3: Installing production dependencies..."
-              npm ci --omit=dev
-            else
-              echo "⏩ Step 3: Skipping npm install as requested."
-            fi
+          cd "$TARGET_DIR"
 
-            # ─── 5. Build Lean Frontend Bundle ───
-            echo "🔨 Step 4: Building frontend bundle..."
-            npm run build
+          # ─── 1. Automated Pre-Deploy SQLite Safety Snapshot ───
+          echo "🛡️ Step 1: Creating database safety snapshot..."
+          mkdir -p "$TARGET_DIR/database/backups"
+          if [ -f "$TARGET_DIR/database/MacOS.db" ]; then
+            cp "$TARGET_DIR/database/MacOS.db" "$TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db"
+            echo "✅ Database safely backed up to: database/backups/MacOS_backup_${TIMESTAMP}.db"
+          else
+            echo "⚠️ Warning: database/MacOS.db not found, skipping backup."
+          fi
 
-            # ─── 6. Reload PM2 with Zero Downtime ───
-            echo "🔄 Step 5: Reloading PM2 services..."
-            pm2 reload ecosystem.config.js --env oraclevm --update-env || pm2 restart ecosystem.config.js --env oraclevm --update-env
+          # ─── 2. Handle Dry Run Option ───
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔍 DRY RUN: Pre-flight checks & backup succeeded. No live files modified."
+            exit 0
+          fi
 
-            # ─── 7. Post-Deploy Health Check ───
-            echo "🏥 Step 6: Verifying server health..."
-            sleep 4
-            
-            HEALTH_URL="http://127.0.0.1:3001/api/health"
-            ALT_HEALTH_URL="http://127.0.0.1:3000/api/health"
-            
-            if curl -s -f -m 5 "$HEALTH_URL" > /dev/null 2>&1; then
-              echo "✅ Health check passed on :3001"
-            elif curl -s -f -m 5 "$ALT_HEALTH_URL" > /dev/null 2>&1; then
-              echo "✅ Health check passed on :3000"
-            else
-              echo "⚠️ Health check warning: Unable to verify /api/health directly via curl."
-              echo "Checking PM2 process status..."
-              pm2 status
-            fi
+          # ─── 3. Sync Latest Code from Git ───
+          echo "📦 Step 2: Pulling latest code from main branch..."
+          git fetch origin main
+          git reset --hard origin/main
 
-            echo "======================================================"
-            echo "🎉 1-Click Deployment Complete & Production Live!"
-            echo "======================================================"
+          # ─── 4. Install Dependencies if needed ───
+          if [ "$SKIP_NPM" != "true" ]; then
+            echo "📦 Step 3: Installing production dependencies..."
+            npm ci --omit=dev
+          else
+            echo "⏩ Step 3: Skipping npm install as requested."
+          fi
+
+          # ─── 5. Build Lean Frontend Bundle ───
+          echo "🔨 Step 4: Building frontend bundle..."
+          npm run build
+
+          # ─── 6. Reload PM2 with Zero Downtime ───
+          echo "🔄 Step 5: Reloading PM2 services..."
+          pm2 reload ecosystem.config.js --env oraclevm --update-env || pm2 restart ecosystem.config.js --env oraclevm --update-env
+
+          # ─── 7. Post-Deploy Health Check ───
+          echo "🏥 Step 6: Verifying server health..."
+          sleep 4
+          
+          HEALTH_URL="http://127.0.0.1:3001/api/health"
+          ALT_HEALTH_URL="http://127.0.0.1:3000/api/health"
+          
+          if curl -s -f -m 5 "$HEALTH_URL" > /dev/null 2>&1; then
+            echo "✅ Health check passed on :3001"
+          elif curl -s -f -m 5 "$ALT_HEALTH_URL" > /dev/null 2>&1; then
+            echo "✅ Health check passed on :3000"
+          else
+            echo "⚠️ Health check warning: Unable to verify /api/health directly via curl."
+            echo "Checking PM2 process status..."
+            pm2 status
+          fi
+
+          echo "======================================================"
+          echo "🎉 1-Click Deployment Complete & Production Live!"
+          echo "======================================================"
+          REMOTESCRIPT
