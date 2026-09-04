@@ -87,11 +87,21 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          # Write key file with guaranteed Unix newline
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          # Strip Windows carriage returns (\r) and ensure clean Unix newlines
+          echo "$SSH_KEY" | tr -d '\r' | sed -e '$a\' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          # Disable host key checking for automated runner
+          # Verify key structure
+          if ! head -n 1 ~/.ssh/deploy_key | grep -q "BEGIN"; then
+            echo "❌ ERROR: deploy_key does not start with a valid BEGIN header!"
+            exit 1
+          fi
+
+          # Start ssh-agent and load key
+          eval "$(ssh-agent -s)"
+          echo "$SSH_KEY" | tr -d '\r' | ssh-add -
+
+          # Configure SSH client with full RSA compatibility
           cat << 'EOF' > ~/.ssh/config
           Host production
             HostName ${{ secrets.SSH_HOST }}
@@ -100,6 +110,8 @@ jobs:
             Port 22
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             ServerAliveInterval 30
             ServerAliveCountMax 3
           EOF
