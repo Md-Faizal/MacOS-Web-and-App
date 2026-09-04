@@ -57,18 +57,38 @@
     body { display: none !important; }
   </style>
   <script>
-    // Global fetch interceptor to tag platform (PWA vs Web Desktop)
+    // Handle browser extension messages gracefully to suppress "Unchecked runtime.lastError" warnings
+    if (window.chrome && window.chrome.runtime && window.chrome.runtime.onMessage) {
+      window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        try { sendResponse({}); } catch (e) {}
+        return true;
+      });
+    }
+
+    // Global fetch interceptor to tag platform (PWA vs Web Desktop) for our backend API
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || 
                   window.navigator.standalone === true || 
                   document.referrer.includes('android-app://');
     const nativeFetch = window.fetch;
     window.fetch = function(url, options = {}) {
-      const opts = { ...options };
-      opts.headers = new Headers(opts.headers || {});
-      if (!opts.headers.has('X-Client-Platform')) {
-        opts.headers.set('X-Client-Platform', isPWA ? 'pwa' : 'web');
+      try {
+        const reqUrl = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+        const isRelative = reqUrl.startsWith('/') && !reqUrl.startsWith('//');
+        const isSameOrigin = reqUrl.startsWith(window.location.origin);
+        
+        // Only attach internal tracking header to our own backend/same-origin requests
+        if (isRelative || isSameOrigin) {
+          const opts = { ...options };
+          opts.headers = new Headers(opts.headers || {});
+          if (!opts.headers.has('X-Client-Platform')) {
+            opts.headers.set('X-Client-Platform', isPWA ? 'pwa' : 'web');
+          }
+          return nativeFetch.call(this, url, opts);
+        }
+      } catch (e) {
+        // Fall through to native fetch on error
       }
-      return nativeFetch.call(this, url, opts);
+      return nativeFetch.call(this, url, options);
     };
 
     // Strict Session Guard: Block direct unauthenticated access to home.html
