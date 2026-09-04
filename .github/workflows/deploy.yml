@@ -44,13 +44,44 @@ jobs:
     needs: pre-flight-check
     runs-on: ubuntu-latest
     steps:
+      - name: 🔍 Check Secrets Configuration
+        run: |
+          echo "Verifying deployment secrets..."
+          ERRORS=0
+          if [ -z "$SSH_HOST" ]; then
+            echo "❌ ERROR: 'SSH_HOST' is missing or empty in GitHub Secrets!"
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ SSH_HOST is configured"
+          fi
+          if [ -z "$SSH_USER" ]; then
+            echo "❌ ERROR: 'SSH_USER' is missing or empty in GitHub Secrets!"
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ SSH_USER is configured ($SSH_USER)"
+          fi
+          if [ -z "$SSH_KEY" ]; then
+            echo "❌ ERROR: 'SSH_KEY' is missing or empty in GitHub Secrets!"
+            echo "👉 Ensure you added a secret named exactly 'SSH_KEY' under Settings -> Secrets and variables -> Actions."
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ SSH_KEY is configured (Length: ${#SSH_KEY} characters)"
+          fi
+          if [ $ERRORS -gt 0 ]; then
+            exit 1
+          fi
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+
       - name: 🔌 Connect via SSH & Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          port: 22
           script_stop: true
           script: |
             set -e
