@@ -113,6 +113,7 @@ module.exports = function(db) {
       avatar: displayPicture,
       role: user.role,
       status: user.status,
+      hasLocalPassword: !!user.password_hash,
       deviceId
     };
   };

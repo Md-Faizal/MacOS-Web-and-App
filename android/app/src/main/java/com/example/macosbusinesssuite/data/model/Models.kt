@@ -44,11 +44,14 @@ data class UserProfile(
     val avatar: String? = null,
     val picture: String? = null,
     @SerializedName("profile_picture") val profilePicture: String? = null,
-    val deviceId: String? = null
+    val deviceId: String? = null,
+    @SerializedName("hasLocalPassword") val hasLocalPassword: Boolean? = null,
+    @SerializedName("has_local_password") val snakeHasLocalPassword: Boolean? = null
 ) {
     val actualName: String? get() = fullName ?: camelFullName ?: username
     val actualEmail: String? get() = email ?: emailId
     val actualPicture: String? get() = avatar ?: picture ?: profilePicture
+    val isLocalPasswordConfigured: Boolean get() = hasLocalPassword == true || snakeHasLocalPassword == true
 }
 
 data class RememberedUser(

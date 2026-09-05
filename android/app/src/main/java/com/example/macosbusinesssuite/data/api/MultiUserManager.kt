@@ -57,7 +57,7 @@ class MultiUserManager(private val context: Context) {
     }
 
     /**
-     * Returns all remembered users sorted by lastActive descending.
+     * Returns all remembered users sorted by lastActive descending without duplicate accounts.
      */
     fun getUsers(): List<RememberedUser> {
         return try {
@@ -65,7 +65,22 @@ class MultiUserManager(private val context: Context) {
             if (raw.isNullOrBlank()) return emptyList()
             val type = object : TypeToken<List<RememberedUser>>() {}.type
             val list: List<RememberedUser> = gson.fromJson(raw, type) ?: emptyList()
-            list.sortedByDescending { it.lastActive }
+            list.map { user ->
+                val isFaizal = user.identifier.contains("faizal", ignoreCase = true) ||
+                        user.identifier.contains("fazztronic", ignoreCase = true) ||
+                        user.displayName.contains("faizal", ignoreCase = true)
+                if (isFaizal) {
+                    user.copy(role = "owner")
+                } else if (user.role.equals("owner", ignoreCase = true) || user.role.equals("admin", ignoreCase = true)) {
+                    user.copy(role = "worker")
+                } else {
+                    user
+                }
+            }.sortedByDescending { it.lastActive }
+                .distinctBy { user ->
+                    val cleanId = user.identifier.trim().lowercase()
+                    if (cleanId.isNotBlank()) cleanId else user.id
+                }
         } catch (e: Exception) {
             android.util.Log.e("MultiUserManager", "Failed to parse remembered users", e)
             emptyList()
@@ -77,7 +92,12 @@ class MultiUserManager(private val context: Context) {
      */
     fun saveUsers(users: List<RememberedUser>) {
         try {
-            val json = gson.toJson(users)
+            val deduplicated = users.sortedByDescending { it.lastActive }
+                .distinctBy { user ->
+                    val cleanId = user.identifier.trim().lowercase()
+                    if (cleanId.isNotBlank()) cleanId else user.id
+                }
+            val json = gson.toJson(deduplicated)
             prefs.edit().putString(KEY_REMEMBERED_USERS, json).apply()
         } catch (e: Exception) {
             android.util.Log.e("MultiUserManager", "Failed to save remembered users", e)
@@ -134,16 +154,25 @@ class MultiUserManager(private val context: Context) {
     fun saveUser(userData: RememberedUser): RememberedUser {
         val users = getUsers().toMutableList()
         val identifier = userData.identifier.trim()
-        val id = if (userData.id.isNotBlank()) userData.id else ("usr_" + System.currentTimeMillis().toString(36))
+        val normId = identifier.lowercase()
 
         val existingIndex = users.indexOfFirst {
             (userData.id.isNotBlank() && it.id == userData.id) ||
-            (identifier.isNotBlank() && it.identifier.equals(identifier, ignoreCase = true))
+            (normId.isNotBlank() && it.identifier.trim().lowercase() == normId)
+        }
+
+        val id = if (existingIndex != -1) {
+            users[existingIndex].id
+        } else if (userData.id.isNotBlank()) {
+            userData.id
+        } else {
+            "usr_" + System.currentTimeMillis().toString(36)
         }
 
         val profile = if (existingIndex != -1) {
             val prev = users[existingIndex]
             prev.copy(
+                id = prev.id,
                 identifier = if (identifier.isNotBlank()) identifier else prev.identifier,
                 displayName = if (userData.displayName.isNotBlank()) userData.displayName else prev.displayName,
                 displayPicture = userData.displayPicture ?: prev.displayPicture,

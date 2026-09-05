@@ -38,6 +38,19 @@ fun MainNavigation(
 ) {
     val isLoggedIn by mainViewModel.isLoggedIn.collectAsState()
     val themeMode by mainViewModel.themeMode.collectAsState()
+    val profile by mainViewModel.profile.collectAsState()
+    val activeUser by mainViewModel.activeUser.collectAsState()
+    val serverUrl by mainViewModel.serverUrl.collectAsState()
+
+    val userPicture = profile?.actualPicture ?: activeUser?.displayPicture ?: mainViewModel.sessionManager.userPicture
+    val userName = profile?.actualName ?: activeUser?.displayName ?: mainViewModel.sessionManager.userName ?: "User"
+    val userEmail = profile?.actualEmail ?: activeUser?.identifier ?: mainViewModel.sessionManager.userEmail ?: ""
+    val userRole = profile?.role ?: activeUser?.role ?: mainViewModel.sessionManager.userRole
+
+    val serverOrigin = remember(serverUrl) {
+        val url = serverUrl.trimEnd('/')
+        if (url.endsWith("/api")) url.removeSuffix("/api") else url
+    }
 
     val isDarkTheme = when (themeMode) {
         ThemeMode.DARK -> true
@@ -99,6 +112,7 @@ fun MainNavigation(
             LoginScreen(
                 viewModel = mainViewModel,
                 onLoginSuccess = {
+                    mainViewModel.completeLogin()
                     currentTab = AppTab.BILLING
                 }
             )
@@ -173,7 +187,12 @@ fun MainNavigation(
                         onOpenUpdatePage = { isUpdatePageOpen = true },
                         onOpenSettings = { isSettingsOpen = true },
                         onOpenProfile = { isProfileOpen = true },
-                        onLogout = { mainViewModel.logout() }
+                        onLogout = { mainViewModel.logout() },
+                        userPictureUrl = userPicture,
+                        userName = userName,
+                        userEmail = userEmail,
+                        userRole = userRole,
+                        serverOrigin = serverOrigin
                     )
                 }
             }

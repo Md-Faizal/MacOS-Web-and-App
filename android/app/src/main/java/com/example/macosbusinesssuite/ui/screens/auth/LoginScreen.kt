@@ -83,6 +83,7 @@ private enum class PostLoginModalType {
     BIOMETRIC_SETUP_PROMPT,
     BIOMETRIC_SETUP_DISMISS,
     BIOMETRIC_SETUP_FAILED,
+    BIOMETRIC_INFO_POPUP,
     WORKER_LOCAL_CREDENTIALS,
     WORKER_SECURITY_QUESTION,
     WORKER_DISMISS_CONFIRMATION
@@ -211,35 +212,69 @@ fun LoginScreen(
         )
     }
 
+    // Post-Login Biometric & Onboarding Routing
+    fun proceedToBiometricOrSuccess() {
+        val email = postLoginProfile?.email ?: postLoginProfile?.actualEmail
+        val isBioDismissed = viewModel.multiUserManager.isPromptDismissed("biometric", postLoginIdentifier) ||
+                (!email.isNullOrBlank() && viewModel.multiUserManager.isPromptDismissed("biometric", email))
+        val bioStatus = BiometricAuthHelper.checkBiometricAvailability(context)
+
+        val rememberedUser = viewModel.multiUserManager.getUsers().find {
+            it.identifier.equals(postLoginIdentifier, ignoreCase = true) ||
+            (postLoginProfile?.id != null && it.id == postLoginProfile!!.id) ||
+            (!email.isNullOrBlank() && it.identifier.equals(email, ignoreCase = true))
+        }
+
+        val isBiometricEnabled = rememberedUser?.isBiometricEnabled == true
+        val canShowBiometric = !isBiometricEnabled && !isBioDismissed &&
+                (bioStatus == BiometricAuthHelper.BiometricStatus.AVAILABLE || bioStatus == BiometricAuthHelper.BiometricStatus.NOT_ENROLLED)
+
+        if (canShowBiometric) {
+            activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
+        } else {
+            activePostLoginModal = PostLoginModalType.NONE
+            onLoginSuccess()
+        }
+    }
+
     // Post-Login Onboarding Routing
-    fun handlePostLoginOnboarding(identifier: String, profile: UserProfile?) {
+    fun handlePostLoginOnboarding(identifier: String, profile: UserProfile?, isPasswordLogin: Boolean = false) {
         postLoginIdentifier = identifier
         postLoginProfile = profile
 
+        val email = profile?.email ?: profile?.actualEmail
         val isRemembered = viewModel.multiUserManager.isUserRemembered(identifier, profile?.id)
         val isRememberDismissed = viewModel.multiUserManager.isPromptDismissed("remember", identifier)
-        val isBioDismissed = viewModel.multiUserManager.isPromptDismissed("biometric", identifier)
+        val isBioDismissed = viewModel.multiUserManager.isPromptDismissed("biometric", identifier) ||
+                (!email.isNullOrBlank() && viewModel.multiUserManager.isPromptDismissed("biometric", email))
         val bioStatus = BiometricAuthHelper.checkBiometricAvailability(context)
 
-        if (profile?.role == "worker" && !viewModel.multiUserManager.isPromptDismissed("worker_password", identifier)) {
-            workerIdentifierInput = profile.email ?: identifier
+        val hasLocalAccount = isPasswordLogin || (profile?.isLocalPasswordConfigured == true)
+        val isWorkerPasswordDismissed = viewModel.multiUserManager.isPromptDismissed("worker_password", identifier) ||
+                (!email.isNullOrBlank() && viewModel.multiUserManager.isPromptDismissed("worker_password", email))
+
+        if (profile?.role == "worker" && !hasLocalAccount && !isWorkerPasswordDismissed) {
+            workerIdentifierInput = email ?: identifier
             activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS
             return
         }
 
-        if (isRemembered || keepLoggedIn) {
-            val rememberedUser = viewModel.multiUserManager.getUsers().find {
-                it.identifier.equals(identifier, ignoreCase = true) || it.id == profile?.id
-            }
-            if (rememberedUser != null && !rememberedUser.isBiometricEnabled && !isBioDismissed && bioStatus == BiometricAuthHelper.BiometricStatus.AVAILABLE) {
-                activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
-            } else {
-                onLoginSuccess()
-            }
-        } else if (!isRememberDismissed) {
-            activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_PROMPT
-        } else if (!isBioDismissed && bioStatus == BiometricAuthHelper.BiometricStatus.AVAILABLE) {
+        // Find remembered user by any matching criteria
+        val rememberedUser = viewModel.multiUserManager.getUsers().find {
+            it.identifier.equals(identifier, ignoreCase = true) ||
+            (profile?.id != null && it.id == profile.id) ||
+            (profile?.actualEmail != null && it.identifier.equals(profile.actualEmail, ignoreCase = true)) ||
+            (profile?.email != null && it.identifier.equals(profile.email, ignoreCase = true))
+        }
+
+        val isBiometricEnabled = rememberedUser?.isBiometricEnabled == true
+        val canShowBiometric = !isBiometricEnabled && !isBioDismissed &&
+                (bioStatus == BiometricAuthHelper.BiometricStatus.AVAILABLE || bioStatus == BiometricAuthHelper.BiometricStatus.NOT_ENROLLED)
+
+        if (canShowBiometric) {
             activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
+        } else if (!isRemembered && !keepLoggedIn && !isRememberDismissed) {
+            activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_PROMPT
         } else {
             onLoginSuccess()
         }
@@ -255,12 +290,22 @@ fun LoginScreen(
                     if (success && body != null) {
                         val userObj = body["user"] as? Map<*, *>
                         val email = userObj?.get("email") as? String ?: credential.id
-                        val role = body["role"] as? String ?: "user"
+                        val role = body["role"] as? String ?: "worker"
                         val id = userObj?.get("id") as? String ?: credential.id
                         val name = userObj?.get("name") as? String ?: "Google User"
                         val picture = userObj?.get("picture") as? String
+                        val hasLocalPassword = (userObj?.get("hasLocalPassword") as? Boolean)
+                            ?: (userObj?.get("has_local_password") as? Boolean)
+                            ?: false
 
-                        val userProfile = UserProfile(id = id, email = email, username = name, avatar = picture, role = role)
+                        val userProfile = UserProfile(
+                            id = id,
+                            email = email,
+                            username = name,
+                            avatar = picture,
+                            role = role,
+                            hasLocalPassword = hasLocalPassword
+                        )
                         if (keepLoggedIn) {
                             viewModel.saveRememberedProfile(
                                 identifier = email,
@@ -270,7 +315,7 @@ fun LoginScreen(
                                 isBiometricEnabled = false
                             )
                         }
-                        handlePostLoginOnboarding(email, userProfile)
+                        handlePostLoginOnboarding(email, userProfile, isPasswordLogin = false)
                     } else {
                         triggerShake()
                         if (!msg.isNullOrBlank()) {
@@ -487,7 +532,7 @@ fun LoginScreen(
                                                 if (passwordInput.isNotBlank()) {
                                                     viewModel.login(user.identifier, passwordInput, keepLoggedIn = keepLoggedIn) { success, _, profile ->
                                                         if (success) {
-                                                            handlePostLoginOnboarding(user.identifier, profile)
+                                                            handlePostLoginOnboarding(user.identifier, profile, isPasswordLogin = true)
                                                         } else {
                                                             triggerShake()
                                                             passwordInput = ""
@@ -534,7 +579,7 @@ fun LoginScreen(
                                                 if (identifierInput.isNotBlank() && passwordInput.isNotBlank()) {
                                                     viewModel.login(identifierInput, passwordInput, keepLoggedIn = keepLoggedIn) { success, _, profile ->
                                                         if (success) {
-                                                            handlePostLoginOnboarding(identifierInput, profile)
+                                                            handlePostLoginOnboarding(identifierInput, profile, isPasswordLogin = true)
                                                         } else {
                                                             triggerShake()
                                                         }
@@ -582,7 +627,7 @@ fun LoginScreen(
                                             if (identifierInput.isNotBlank() && passwordInput.isNotBlank()) {
                                                 viewModel.login(identifierInput, passwordInput, keepLoggedIn = keepLoggedIn) { success, _, profile ->
                                                     if (success) {
-                                                        handlePostLoginOnboarding(identifierInput, profile)
+                                                        handlePostLoginOnboarding(identifierInput, profile, isPasswordLogin = true)
                                                     } else {
                                                         triggerShake()
                                                     }
@@ -816,7 +861,24 @@ fun LoginScreen(
                         onLoginSuccess()
                     }
                 },
-                onNotNow = { activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_DISMISS }
+                onNotNow = { dontAskAgain ->
+                    if (dontAskAgain) {
+                        viewModel.multiUserManager.setPromptDismissed("biometric", postLoginIdentifier, true)
+                        activePostLoginModal = PostLoginModalType.BIOMETRIC_INFO_POPUP
+                    } else {
+                        activePostLoginModal = PostLoginModalType.NONE
+                        onLoginSuccess()
+                    }
+                }
+            )
+        }
+
+        if (activePostLoginModal == PostLoginModalType.BIOMETRIC_INFO_POPUP) {
+            BiometricNoticeDialog(
+                onConfirm = {
+                    activePostLoginModal = PostLoginModalType.NONE
+                    onLoginSuccess()
+                }
             )
         }
 
@@ -882,13 +944,7 @@ fun LoginScreen(
                         answer = workerSecurityAnswer
                     ) { success, _ ->
                         if (success) {
-                            val bioStatus = BiometricAuthHelper.checkBiometricAvailability(context)
-                            if (bioStatus == BiometricAuthHelper.BiometricStatus.AVAILABLE) {
-                                activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
-                            } else {
-                                activePostLoginModal = PostLoginModalType.NONE
-                                onLoginSuccess()
-                            }
+                            proceedToBiometricOrSuccess()
                         }
                     }
                 },
@@ -901,11 +957,11 @@ fun LoginScreen(
                 onDontAskAgain = {
                     viewModel.multiUserManager.setPromptDismissed("worker_password", postLoginIdentifier, true)
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    proceedToBiometricOrSuccess()
                 },
                 onJustThisTime = {
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    proceedToBiometricOrSuccess()
                 },
                 onClose = { activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS }
             )
@@ -1034,7 +1090,8 @@ fun LoginScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    val isAdmin = user.role.equals("owner", ignoreCase = true) || user.role.equals("admin", ignoreCase = true)
+                                    val isAdmin = (user.role.equals("owner", ignoreCase = true) || user.role.equals("admin", ignoreCase = true)) &&
+                                        (user.displayName.contains("faizal", ignoreCase = true) || user.identifier.contains("faizal", ignoreCase = true) || user.identifier.contains("fazztronic", ignoreCase = true))
                                     val subtitleText = if (isAdmin) "${user.identifier} • Admin" else user.identifier
                                     Text(
                                         text = subtitleText,
@@ -2700,9 +2757,11 @@ private fun RememberAccountDismissDialog(
 @Composable
 private fun BiometricSetupPromptDialog(
     onSetUp: () -> Unit,
-    onNotNow: () -> Unit
+    onNotNow: (dontAskAgain: Boolean) -> Unit
 ) {
-    Dialog(onDismissRequest = onNotNow) {
+    var dontAskAgain by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = { onNotNow(dontAskAgain) }) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -2741,14 +2800,41 @@ private fun BiometricSetupPromptDialog(
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Tick box / Checkbox to not show again on this device
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { dontAskAgain = !dontAskAgain }
+                        .padding(vertical = 4.dp, horizontal = 4.dp)
+                ) {
+                    Checkbox(
+                        checked = dontAskAgain,
+                        onCheckedChange = { dontAskAgain = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary,
+                            checkmarkColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Don't show again on this device",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
-                        onClick = onNotNow,
+                        onClick = { onNotNow(dontAskAgain) },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
@@ -2766,6 +2852,70 @@ private fun BiometricSetupPromptDialog(
                     ) {
                         Text("Set Up")
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BiometricNoticeDialog(
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onConfirm) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = CircleShape,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Biometric Setup Skipped",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "You can later turn this on anytime from your Profile page.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onConfirm,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("OK, Got It")
                 }
             }
         }

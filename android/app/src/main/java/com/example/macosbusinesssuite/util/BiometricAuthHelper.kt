@@ -21,8 +21,16 @@ object BiometricAuthHelper {
     fun checkBiometricAvailability(context: Context): BiometricStatus {
         return try {
             val biometricManager = BiometricManager.from(context)
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
-            when (biometricManager.canAuthenticate(authenticators)) {
+            val strongRes = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            if (strongRes == BiometricManager.BIOMETRIC_SUCCESS) return BiometricStatus.AVAILABLE
+            if (strongRes == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) return BiometricStatus.NOT_ENROLLED
+
+            val weakRes = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            if (weakRes == BiometricManager.BIOMETRIC_SUCCESS) return BiometricStatus.AVAILABLE
+            if (weakRes == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) return BiometricStatus.NOT_ENROLLED
+
+            val combinedRes = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            when (combinedRes) {
                 BiometricManager.BIOMETRIC_SUCCESS -> BiometricStatus.AVAILABLE
                 BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> BiometricStatus.NOT_ENROLLED
                 BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> BiometricStatus.NOT_SUPPORTED

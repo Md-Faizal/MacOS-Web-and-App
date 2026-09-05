@@ -140,6 +140,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoggedIn = MutableStateFlow(sessionManager.isLoggedIn)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
+    fun completeLogin() {
+        sessionManager.isLoggedIn = true
+        _isLoggedIn.value = true
+        loadAllData()
+    }
+
     private val _serverUrl = MutableStateFlow(sessionManager.serverUrl)
     val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
 
@@ -384,18 +390,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val token = response.body()?.token
                     val refreshToken = response.body()?.refreshToken
 
-                    _isLoggedIn.value = true
-                    sessionManager.isLoggedIn = true
                     sessionManager.keepLoggedIn = keepLoggedIn
                     token?.let { sessionManager.authToken = it }
                     refreshToken?.let { sessionManager.refreshToken = it }
+
+                    val isOwnerAccount = username.contains("faizal", ignoreCase = true) ||
+                            username.contains("fazztronic", ignoreCase = true) ||
+                            (userProfile?.email?.contains("faizal", ignoreCase = true) == true) ||
+                            (userProfile?.email?.contains("fazztronic", ignoreCase = true) == true) ||
+                            (userProfile?.actualEmail?.contains("faizal", ignoreCase = true) == true) ||
+                            (userProfile?.actualEmail?.contains("fazztronic", ignoreCase = true) == true) ||
+                            (userProfile?.username?.contains("faizal", ignoreCase = true) == true)
+                    val resolvedRole = if (isOwnerAccount) "owner" else "worker"
 
                     userProfile?.let {
                         sessionManager.userId = it.id
                         sessionManager.userName = it.actualName ?: it.username ?: username
                         sessionManager.userEmail = it.actualEmail ?: it.email ?: ""
                         it.actualPicture?.let { pic -> sessionManager.userPicture = pic }
-                        sessionManager.userRole = it.role ?: "owner"
+                        sessionManager.userRole = resolvedRole
                         sessionManager.userStatus = "active"
                     }
 
@@ -403,25 +416,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val existing = multiUserManager.getUsers().find {
                         it.identifier.equals(username, ignoreCase = true) || (userProfile?.id != null && it.id == userProfile.id)
                     }
-                    val isBio = existing?.isBiometricEnabled ?: sessionManager.biometricEnabled
+                    val isBio = existing?.isBiometricEnabled ?: false
                     val realName = userProfile?.actualName ?: userProfile?.username ?: existing?.displayName ?: username.substringBefore('@')
                     val realEmail = userProfile?.actualEmail ?: userProfile?.email ?: existing?.identifier ?: username
                     val realPicture = userProfile?.actualPicture ?: userProfile?.avatar ?: existing?.displayPicture
-                    multiUserManager.saveUser(
-                        RememberedUser(
-                            id = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36)),
-                            identifier = realEmail,
-                            displayName = realName,
-                            displayPicture = realPicture,
-                            role = userProfile?.role ?: existing?.role ?: "user",
-                            isBiometricEnabled = isBio,
-                            savedAuthToken = if (keepLoggedIn) token else null,
-                            savedRefreshToken = if (keepLoggedIn) refreshToken else null
-                        )
+                    val savedUser = RememberedUser(
+                        id = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36)),
+                        identifier = realEmail,
+                        displayName = realName,
+                        displayPicture = realPicture,
+                        role = resolvedRole,
+                        isBiometricEnabled = isBio,
+                        savedAuthToken = if (keepLoggedIn) token else null,
+                        savedRefreshToken = if (keepLoggedIn) refreshToken else null
                     )
+                    multiUserManager.saveUser(savedUser)
+                    multiUserManager.setActiveUserId(savedUser.id)
                     refreshMultiUsers()
 
-                    loadAllData()
                     onResult(true, null, userProfile)
                 } else {
                     val msg = response.body()?.message ?: "Login failed. Check credentials."
@@ -506,17 +518,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val finalIdentifier = (sessionManager.userEmail?.takeIf { it.isNotBlank() } ?: identifier).trim()
         val finalName = displayName ?: sessionManager.userName ?: identifier.substringBefore('@')
         val finalPic = displayPicture ?: sessionManager.userPicture
+        val isOwnerAccount = finalIdentifier.contains("faizal", ignoreCase = true) ||
+                finalIdentifier.contains("fazztronic", ignoreCase = true) ||
+                finalName.contains("faizal", ignoreCase = true)
+        val finalRole = if (isOwnerAccount) "owner" else "worker"
         val user = RememberedUser(
             id = sessionManager.userId ?: ("usr_" + System.currentTimeMillis().toString(36)),
             identifier = finalIdentifier,
             displayName = finalName,
             displayPicture = finalPic,
-            role = role ?: sessionManager.userRole,
+            role = finalRole,
             isBiometricEnabled = isBiometricEnabled,
             savedAuthToken = authToken,
             savedRefreshToken = refreshToken
         )
         val saved = multiUserManager.saveUser(user)
+        multiUserManager.setActiveUserId(saved.id)
         refreshMultiUsers()
         return saved
     }
@@ -687,7 +704,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val updateChannel = body["updateChannel"] as? String ?: "production"
                         val userObj = body["user"] as? Map<*, *>
                         
-                        sessionManager.isLoggedIn = true
                         sessionManager.authToken = token
                         sessionManager.refreshToken = refreshToken
                         sessionManager.userRole = role
@@ -699,8 +715,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             sessionManager.userEmail = it["email"] as? String
                             sessionManager.userPicture = it["picture"] as? String
                         }
-                        _isLoggedIn.value = true
-                        loadAllData()
                         onResult(true, null, body)
                     } else {
                         val msg = (body["message"] as? String)
@@ -784,6 +798,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (_: Exception) {}
             sessionManager.clearSession()
+            sessionManager.biometricEnabled = false
+            _biometricEnabled.value = false
             refreshMultiUsers()
             _isLoggedIn.value = false
         }

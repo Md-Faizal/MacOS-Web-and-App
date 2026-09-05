@@ -60,6 +60,10 @@ fun ProfileScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit = {}
 ) {
+    BackHandler {
+        onBack()
+    }
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -86,7 +90,8 @@ fun ProfileScreen(
     val displayEmail = profile?.emailId ?: activeUser?.identifier ?: sessionManager.userEmail ?: ""
     val displayAvatar = profile?.profilePicture ?: activeUser?.displayPicture
     val userRole = profile?.role ?: activeUser?.role ?: "worker"
-    val isAdmin = userRole.equals("owner", ignoreCase = true) || userRole.equals("admin", ignoreCase = true)
+    val isAdmin = (userRole.equals("owner", ignoreCase = true) || userRole.equals("admin", ignoreCase = true)) &&
+        (displayName.contains("faizal", ignoreCase = true) || displayEmail.contains("faizal", ignoreCase = true) || displayEmail.contains("fazztronic", ignoreCase = true))
 
     // Form states for Personal Info
     var fullNameInput by remember(profile?.fullName) { mutableStateOf(profile?.fullName ?: displayName) }
