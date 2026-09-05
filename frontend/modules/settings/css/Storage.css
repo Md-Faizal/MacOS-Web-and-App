@@ -920,4 +920,92 @@
   border-color: var(--gold-border);
 }
 
+/* ========================================
+   DOCKER CLUSTER & ROLLBACK GUI STYLES
+   ======================================== */
+.cluster-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cluster-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-sidebar-bg);
+  color: var(--settings-text);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cluster-btn:hover:not(:disabled) {
+  background: var(--settings-hover-bg);
+  border-color: var(--gold-border);
+  transform: translateY(-1px);
+}
+
+.cluster-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cluster-btn.primary {
+  background: #0a84ff;
+  color: #ffffff;
+  border-color: #0a84ff;
+}
+
+.cluster-btn.primary:hover:not(:disabled) {
+  background: #0071e3;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+}
+
+.cluster-btn.success {
+  background: #34c759;
+  color: #ffffff;
+  border-color: #34c759;
+}
+
+.cluster-btn.success:hover:not(:disabled) {
+  background: #28a745;
+  box-shadow: 0 2px 8px rgba(52, 199, 89, 0.3);
+}
+
+.cluster-btn.warning {
+  background: rgba(255, 159, 10, 0.15);
+  color: #ff9f0a;
+  border-color: rgba(255, 159, 10, 0.3);
+}
+
+.cluster-btn.warning:hover:not(:disabled) {
+  background: #ff9f0a;
+  color: #ffffff;
+}
+
+.cluster-pill-active {
+  background: #34c759;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.cluster-pill-standby {
+  background: rgba(120, 120, 128, 0.2);
+  color: var(--settings-text-secondary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+
 

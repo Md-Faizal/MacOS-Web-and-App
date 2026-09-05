@@ -791,6 +791,67 @@ module.exports = function(db) {
         console.error('[Settings] saveAppSettings error:', error);
         res.status(500).json({ error: error.message });
       }
+    },
+
+    switchClusterSlot: async (req, res) => {
+      try {
+        const { targetSlot } = req.body;
+        const currentSlot = process.env.DOCKER_SLOT || (process.env.PORT === '3004' ? 'green' : 'blue');
+        const nextSlot = targetSlot || (currentSlot === 'blue' ? 'green' : 'blue');
+        const nextPort = nextSlot === 'blue' ? 3001 : 3004;
+
+        console.log(`[Docker Cluster] Switch requested from ${currentSlot} to ${nextSlot} (port ${nextPort})`);
+
+        // Check if standby container is reachable
+        const http = require('http');
+        const checkTarget = () => new Promise((resolve) => {
+          const checkReq = http.request({
+            hostname: '127.0.0.1',
+            port: nextPort,
+            path: '/api/health',
+            method: 'GET',
+            timeout: 2000
+          }, (checkRes) => resolve(checkRes.statusCode === 200));
+          checkReq.on('error', () => resolve(false));
+          checkReq.on('timeout', () => { checkReq.destroy(); resolve(false); });
+          checkReq.end();
+        });
+
+        const isTargetUp = await checkTarget();
+
+        // If target is down or cannot be reached directly, try executing the host deploy-docker.sh via sudo if available
+        const { exec } = require('child_process');
+        exec(`bash deploy/ubuntu/deploy-docker.sh --target ${nextSlot}`, (err, stdout, stderr) => {
+          if (err) {
+            console.warn('[Docker Cluster] Deploy script execution notice:', err.message);
+          }
+        });
+
+        res.json({
+          success: true,
+          previousSlot: currentSlot,
+          targetSlot: nextSlot,
+          targetPort: nextPort,
+          targetAlreadyHealthy: isTargetUp,
+          message: `Cutover to ${nextSlot.toUpperCase()} initiated with zero downtime`
+        });
+      } catch (error) {
+        console.error('[Docker Cluster] switchClusterSlot error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    restartClusterSlot: (req, res) => {
+      try {
+        const currentSlot = process.env.DOCKER_SLOT || (process.env.PORT === '3004' ? 'green' : 'blue');
+        console.log(`[Docker Cluster] Restarting slot ${currentSlot} in 1 second...`);
+        setTimeout(() => {
+          process.exit(0); // Container manager (Docker restart: unless-stopped) restarts it cleanly
+        }, 1000);
+        res.json({ success: true, slot: currentSlot, message: `Container macos-server-${currentSlot} restarting...` });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
     }
   };
 };

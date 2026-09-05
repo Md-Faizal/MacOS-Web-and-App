@@ -25,5 +25,9 @@ module.exports = function(router, handlers) {
   router.post('/backup-config', handlers.saveBackupConfig);
   router.post('/backup/test-r2', handlers.testBackupR2);
   
+  // Docker Cluster Management
+  router.post('/docker/switch', handlers.switchClusterSlot);
+  router.post('/docker/restart', handlers.restartClusterSlot);
+  
   return router;
 };

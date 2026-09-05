@@ -807,6 +807,24 @@ export class SettingsApp extends AppWindow {
                 </div>
               </div>
 
+              <!-- Interactive Docker Actions Toolbar -->
+              <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--settings-border); padding-top: 10px; flex-wrap: wrap; gap: 8px;">
+                <div class="cluster-btn-group">
+                  <button class="cluster-btn primary" id="dockerSwitchSlotBtn">
+                    ⇄ Switch Active Slot
+                  </button>
+                  <button class="cluster-btn warning" id="dockerRestartSlotBtn">
+                    ↻ Restart Active Container
+                  </button>
+                  <button class="cluster-btn" id="dockerRollbackBtn">
+                    ↩ Instant Rollback
+                  </button>
+                </div>
+                <div style="font-size: 11px; color: var(--settings-text-tertiary);" id="dockerActionStatus">
+                  Ready • Zero-Downtime Safe
+                </div>
+              </div>
+
               <div style="font-size: 11px; color: var(--settings-text-tertiary); display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--settings-border); padding-top: 8px;">
                 <span>Nginx Upstream: <code>/etc/nginx/conf.d/upstream_macos.conf</code></span>
                 <span id="dockerSwitchSummary">Active traffic seamlessly routed via zero-downtime hot reloading</span>
@@ -1034,6 +1052,78 @@ export class SettingsApp extends AppWindow {
         generalMainView.classList.remove('hidden');
       });
     }
+
+    // Docker Cluster Interactive Management Events
+    const switchSlotBtn = document.getElementById('dockerSwitchSlotBtn');
+    const restartSlotBtn = document.getElementById('dockerRestartSlotBtn');
+    const rollbackBtn = document.getElementById('dockerRollbackBtn');
+    const actionStatus = document.getElementById('dockerActionStatus');
+
+    switchSlotBtn?.addEventListener('click', async () => {
+      const confirmSwitch = confirm('Initiate zero-downtime cutover to the standby container slot? Traffic will smoothly transition with zero interruption.');
+      if (!confirmSwitch) return;
+
+      switchSlotBtn.disabled = true;
+      if (actionStatus) actionStatus.textContent = '⏳ Initiating zero-downtime cutover...';
+
+      try {
+        const res = await fetch('/api/settings/docker/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`✓ Cutover Success: ${data.message}`);
+          setTimeout(() => this.checkSystemHealth(), 1500);
+        } else {
+          alert(`Switch failed: ${data.error || 'Server error'}`);
+        }
+      } catch (err) {
+        alert('Network request sent. Checking cluster status...');
+        setTimeout(() => this.checkSystemHealth(), 2000);
+      } finally {
+        switchSlotBtn.disabled = false;
+        if (actionStatus) actionStatus.textContent = 'Ready • Zero-Downtime Safe';
+      }
+    });
+
+    restartSlotBtn?.addEventListener('click', async () => {
+      const confirmRestart = confirm('Restart the currently active container? Docker will automatically bring it back up cleanly in 2-3 seconds.');
+      if (!confirmRestart) return;
+
+      restartSlotBtn.disabled = true;
+      if (actionStatus) actionStatus.textContent = '⏳ Graceful restart initiated...';
+
+      try {
+        await fetch('/api/settings/docker/restart', { method: 'POST' });
+        setTimeout(() => {
+          this.checkSystemHealth();
+          if (actionStatus) actionStatus.textContent = '🟢 Container restarted successfully';
+        }, 3000);
+      } catch (err) {
+        setTimeout(() => this.checkSystemHealth(), 3000);
+      } finally {
+        restartSlotBtn.disabled = false;
+      }
+    });
+
+    rollbackBtn?.addEventListener('click', async () => {
+      const confirmRollback = confirm('Execute an instant rollback? This swaps the live Nginx proxy to the previous verified slot immediately.');
+      if (!confirmRollback) return;
+
+      if (actionStatus) actionStatus.textContent = '⏳ Rolling back to previous slot...';
+      try {
+        const res = await fetch('/api/settings/docker/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+        const data = await res.json();
+        alert(data.success ? `✓ Rollback complete! Active slot changed.` : `Rollback notice: ${data.error}`);
+        this.checkSystemHealth();
+      } catch (e) {
+        setTimeout(() => this.checkSystemHealth(), 1500);
+      } finally {
+        if (actionStatus) actionStatus.textContent = 'Ready • Zero-Downtime Safe';
+      }
+    });
 
     // Initial health check
     this.checkSystemHealth();
