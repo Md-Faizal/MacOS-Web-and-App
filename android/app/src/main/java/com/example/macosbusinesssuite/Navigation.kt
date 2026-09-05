@@ -131,57 +131,7 @@ fun MainNavigation(
             var lastBackPressedTime by remember { mutableLongStateOf(0L) }
 
             Box(modifier = Modifier.fillMaxSize()) {
-                // Layer 0: LoginScreen (stays visible while logged out OR radiating out during unlock reveal)
-                if (!isLoggedIn || isUnlockRevealing) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                if (isUnlockRevealing) {
-                                    val p = unlockProgress.value
-                                    // Subtle organic scale expansion as the screen bursts open
-                                    scaleX = 1f + (p * 0.04f)
-                                    scaleY = 1f + (p * 0.04f)
-                                }
-                            }
-                    ) {
-                        LoginScreen(
-                            viewModel = mainViewModel,
-                            onLoginSuccess = { clickOrigin ->
-                                coroutineScope.launch {
-                                    unlockOrigin = clickOrigin ?: Offset.Zero
-                                    isUnlockRevealing = true
-                                    mainViewModel.completeLogin()
-                                    currentTab = AppTab.BILLING
-                                    unlockProgress.snapTo(0f)
-                                    unlockProgress.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = tween(
-                                            durationMillis = 1300,
-                                            easing = CubicBezierEasing(0.20f, 0.0f, 0.15f, 1.0f)
-                                        )
-                                    )
-                                    isUnlockRevealing = false
-                                }
-                            }
-                        )
-
-                        // Deep AMOLED black contrast transition layer:
-                        // As the ripple bursts outward, the base dims into deep pitch-black,
-                        // creating the intense contrast of bursting from a black screen into a vibrant colorful dashboard
-                        if (isUnlockRevealing) {
-                            val p = unlockProgress.value
-                            val blackScrimAlpha = ((1f - p * 0.45f) * 0.88f).coerceIn(0f, 0.92f)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0xFF000000).copy(alpha = blackScrimAlpha))
-                            )
-                        }
-                    }
-                }
-
-                // Layer 1: Authenticated Dashboard (revealed within the expanding circle)
+                // Layer 0: Authenticated Dashboard (Underneath base layer, progressively revealed as lock screen disintegrates)
                 if (isLoggedIn) {
                     // Root BackHandler for tab switching and double back exit
                     BackHandler(enabled = !isProfileOpen && !isSettingsOpen && !isUpdatePageOpen && !isSubPageOpen && !isUnlockRevealing) {
@@ -201,33 +151,6 @@ fun MainNavigation(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(
-                                if (isUnlockRevealing) {
-                                    Modifier.graphicsLayer {
-                                        val progress = unlockProgress.value
-                                        val center = if (unlockOrigin == Offset.Zero) Offset(size.width / 2f, size.height / 2f) else unlockOrigin
-                                        val maxRadius = kotlin.math.hypot(
-                                            kotlin.math.max(center.x, size.width - center.x),
-                                            kotlin.math.max(center.y, size.height - center.y)
-                                        ) * 1.12f
-                                        val currentRadius = maxRadius * progress
-
-                                        clip = true
-                                        shape = object : Shape {
-                                            override fun createOutline(
-                                                size: Size,
-                                                layoutDirection: LayoutDirection,
-                                                density: Density
-                                            ): Outline {
-                                                val path = Path().apply {
-                                                    addOval(Rect(center = center, radius = currentRadius))
-                                                }
-                                                return Outline.Generic(path)
-                                            }
-                                        }
-                                    }
-                                } else Modifier
-                            )
                             .nestedScroll(nestedScrollConnection)
                     ) {
                         AnimatedContent(
@@ -288,6 +211,71 @@ fun MainNavigation(
                                 serverOrigin = serverOrigin
                             )
                         }
+                    }
+                }
+
+                // Layer 1: Lock Screen Card (Sitting on top of the dashboard; disintegrates in a circular fashion slowly revealing dashboard)
+                if (!isLoggedIn || isUnlockRevealing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(
+                                if (isUnlockRevealing) {
+                                    Modifier.graphicsLayer {
+                                        val progress = unlockProgress.value
+                                        val center = if (unlockOrigin == Offset.Zero) Offset(size.width / 2f, size.height / 2f) else unlockOrigin
+                                        val maxRadius = kotlin.math.hypot(
+                                            kotlin.math.max(center.x, size.width - center.x),
+                                            kotlin.math.max(center.y, size.height - center.y)
+                                        ) * 1.14f
+                                        val currentRadius = maxRadius * progress
+
+                                        // Subtle organic card elevation & slight dissolve as it disintegrates
+                                        scaleX = 1f + (progress * 0.025f)
+                                        scaleY = 1f + (progress * 0.025f)
+                                        alpha = (1f - (progress * 0.18f)).coerceIn(0f, 1f)
+
+                                        clip = true
+                                        shape = object : Shape {
+                                            override fun createOutline(
+                                                size: Size,
+                                                layoutDirection: LayoutDirection,
+                                                density: Density
+                                            ): Outline {
+                                                val path = Path().apply {
+                                                    fillType = PathFillType.EvenOdd
+                                                    // Full-screen card boundary
+                                                    addRect(Rect(0f, 0f, size.width, size.height))
+                                                    // Expanding circular cutout disintegrating the card!
+                                                    addOval(Rect(center = center, radius = currentRadius))
+                                                }
+                                                return Outline.Generic(path)
+                                            }
+                                        }
+                                    }
+                                } else Modifier
+                            )
+                    ) {
+                        LoginScreen(
+                            viewModel = mainViewModel,
+                            onLoginSuccess = { clickOrigin ->
+                                coroutineScope.launch {
+                                    unlockOrigin = clickOrigin ?: Offset.Zero
+                                    isUnlockRevealing = true
+                                    mainViewModel.completeLogin()
+                                    currentTab = AppTab.BILLING
+                                    unlockProgress.snapTo(0f)
+                                    unlockProgress.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = tween(
+                                            durationMillis = 1400,
+                                            easing = CubicBezierEasing(0.20f, 0.0f, 0.15f, 1.0f)
+                                        )
+                                    )
+                                    isUnlockRevealing = false
+                                }
+                            }
+                        )
                     }
                 }
 
