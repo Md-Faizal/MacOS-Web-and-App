@@ -46,6 +46,7 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
+      - DOCKER_SLOT=blue
       - NODE_OPTIONS=--max-old-space-size=400
 
   # Green Instance (Listens on port 3004)
@@ -58,4 +59,5 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - HOST=0.0.0.0
+      - DOCKER_SLOT=green
       - NODE_OPTIONS=--max-old-space-size=400

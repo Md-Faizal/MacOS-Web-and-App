@@ -244,6 +244,9 @@ module.exports = function(db) {
           JSON.stringify({ settings_count: settingsCount, timestamp: new Date().toISOString() })
         );
         
+        const activeSlot = process.env.DOCKER_SLOT || (process.env.PORT === '3004' ? 'green' : 'blue');
+        const hostPort = activeSlot === 'green' ? 3004 : 3001;
+
         const status = {
           status: dbConnected ? 'healthy' : 'unhealthy',
           timestamp: new Date().toISOString(),
@@ -255,6 +258,15 @@ module.exports = function(db) {
             uptime: process.uptime(),
             memory: process.memoryUsage(),
             version: '1.0.0'
+          },
+          docker: {
+            isDocker: true,
+            activeSlot: activeSlot,
+            activeContainer: `macos-server-${activeSlot}`,
+            hostPort: hostPort,
+            standbySlot: activeSlot === 'blue' ? 'green' : 'blue',
+            standbyPort: activeSlot === 'blue' ? 3004 : 3001,
+            architecture: 'Zero-Downtime Blue/Green (Nginx Upstream Switch)'
           },
           response_time_ms: responseTime,
           recent_checks: recentChecks.slice(0, 5)

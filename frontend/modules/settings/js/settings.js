@@ -764,6 +764,55 @@ export class SettingsApp extends AppWindow {
               </div>
             </div>
           </div>
+
+          <!-- Docker Blue / Green Architecture Visualizer Card -->
+          <div class="health-card" style="grid-column: 1 / -1;">
+            <div class="health-card-header">
+              <span class="health-icon">🐳</span>
+              <div class="health-card-info">
+                <div class="health-label">Docker Zero-Downtime Cluster</div>
+                <div class="health-value" id="dockerClusterStatus" style="color: #34c759;">🟢 Active Slot: Detecting...</div>
+              </div>
+            </div>
+            <div class="health-details" style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <!-- Blue Slot -->
+                <div id="dockerBlueSlotCard" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 10px; background: rgba(0, 122, 255, 0.05);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <div style="font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                      <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #007aff;"></span>
+                      <span>Blue Slot (3001)</span>
+                    </div>
+                    <span id="dockerBlueBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;">Standby</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.4;">
+                    Container: <code>macos-server-blue</code><br/>
+                    Target: <code>127.0.0.1:3001</code>
+                  </div>
+                </div>
+
+                <!-- Green Slot -->
+                <div id="dockerGreenSlotCard" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 10px; background: rgba(52, 199, 89, 0.05);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <div style="font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                      <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #34c759;"></span>
+                      <span>Green Slot (3004)</span>
+                    </div>
+                    <span id="dockerGreenBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;">Standby</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.4;">
+                    Container: <code>macos-server-green</code><br/>
+                    Target: <code>127.0.0.1:3004</code>
+                  </div>
+                </div>
+              </div>
+
+              <div style="font-size: 11px; color: var(--settings-text-tertiary); display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--settings-border); padding-top: 8px;">
+                <span>Nginx Upstream: <code>/etc/nginx/conf.d/upstream_macos.conf</code></span>
+                <span id="dockerSwitchSummary">Active traffic seamlessly routed via zero-downtime hot reloading</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="settings-section">
@@ -1412,6 +1461,48 @@ export class SettingsApp extends AppWindow {
               document.getElementById('databaseStatusIcon').textContent = '✓';
               document.getElementById('databaseTables').textContent = '13 tables (app_settings, status_checks, products, contacts, notes, calendar_events, analytics, billing_transactions, preferences, payments, orders, variants, batches, credit_notes, suggestions)';
               
+              // Update Docker Blue / Green Cluster Visualizer
+              if (healthData.docker) {
+                const activeSlot = healthData.docker.activeSlot || 'green';
+                const clusterStatus = document.getElementById('dockerClusterStatus');
+                const blueBadge = document.getElementById('dockerBlueBadge');
+                const greenBadge = document.getElementById('dockerGreenBadge');
+                const blueCard = document.getElementById('dockerBlueSlotCard');
+                const greenCard = document.getElementById('dockerGreenSlotCard');
+
+                if (clusterStatus) {
+                  clusterStatus.textContent = `🟢 Active: ${activeSlot.toUpperCase()} (Port ${healthData.docker.hostPort})`;
+                }
+
+                if (activeSlot === 'blue') {
+                  if (blueBadge) {
+                    blueBadge.textContent = 'ACTIVE (TRAFFIC)';
+                    blueBadge.style.background = '#007aff';
+                    blueBadge.style.color = '#ffffff';
+                  }
+                  if (greenBadge) {
+                    greenBadge.textContent = 'STANDBY (OFF)';
+                    greenBadge.style.background = 'rgba(120, 120, 128, 0.2)';
+                    greenBadge.style.color = 'var(--settings-text-secondary)';
+                  }
+                  if (blueCard) blueCard.style.borderColor = '#007aff';
+                  if (greenCard) greenCard.style.borderColor = 'var(--settings-border)';
+                } else {
+                  if (greenBadge) {
+                    greenBadge.textContent = 'ACTIVE (TRAFFIC)';
+                    greenBadge.style.background = '#34c759';
+                    greenBadge.style.color = '#ffffff';
+                  }
+                  if (blueBadge) {
+                    blueBadge.textContent = 'STANDBY (OFF)';
+                    blueBadge.style.background = 'rgba(120, 120, 128, 0.2)';
+                    blueBadge.style.color = 'var(--settings-text-secondary)';
+                  }
+                  if (greenCard) greenCard.style.borderColor = '#34c759';
+                  if (blueCard) blueCard.style.borderColor = 'var(--settings-border)';
+                }
+              }
+
               // Check API endpoints availability
               try {
                 const productsRes = await fetch('/api/products');
