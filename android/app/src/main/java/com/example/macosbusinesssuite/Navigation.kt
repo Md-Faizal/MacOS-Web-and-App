@@ -4,23 +4,23 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.ClipOp
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.BackHandler
@@ -128,7 +128,41 @@ fun MainNavigation(
             var lastBackPressedTime by remember { mutableLongStateOf(0L) }
 
             Box(modifier = Modifier.fillMaxSize()) {
-                // Authenticated Dashboard layer
+                // Layer 0: LoginScreen (stays visible while logged out OR radiating out during unlock reveal)
+                if (!isLoggedIn || isUnlockRevealing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                if (isUnlockRevealing) {
+                                    val p = unlockProgress.value
+                                    // Subtle organic scale expansion as the screen bursts open
+                                    scaleX = 1f + (p * 0.05f)
+                                    scaleY = 1f + (p * 0.05f)
+                                }
+                            }
+                    ) {
+                        LoginScreen(
+                            viewModel = mainViewModel,
+                            onLoginSuccess = { clickOrigin ->
+                                coroutineScope.launch {
+                                    unlockOrigin = clickOrigin ?: Offset.Zero
+                                    isUnlockRevealing = true
+                                    mainViewModel.completeLogin()
+                                    currentTab = AppTab.BILLING
+                                    unlockProgress.snapTo(0f)
+                                    unlockProgress.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = tween(durationMillis = 750, easing = FastOutSlowInEasing)
+                                    )
+                                    isUnlockRevealing = false
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // Layer 1: Authenticated Dashboard (revealed within the expanding circle)
                 if (isLoggedIn) {
                     // Root BackHandler for tab switching and double back exit
                     BackHandler(enabled = !isProfileOpen && !isSettingsOpen && !isUpdatePageOpen && !isSubPageOpen && !isUnlockRevealing) {
@@ -148,6 +182,33 @@ fun MainNavigation(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .then(
+                                if (isUnlockRevealing) {
+                                    Modifier.graphicsLayer {
+                                        val progress = unlockProgress.value
+                                        val center = if (unlockOrigin == Offset.Zero) Offset(size.width / 2f, size.height / 2f) else unlockOrigin
+                                        val maxRadius = kotlin.math.hypot(
+                                            kotlin.math.max(center.x, size.width - center.x),
+                                            kotlin.math.max(center.y, size.height - center.y)
+                                        ) * 1.08f
+                                        val currentRadius = maxRadius * progress
+
+                                        clip = true
+                                        shape = object : Shape {
+                                            override fun createOutline(
+                                                size: Size,
+                                                layoutDirection: LayoutDirection,
+                                                density: Density
+                                            ): Outline {
+                                                val path = Path().apply {
+                                                    addOval(Rect(center = center, radius = currentRadius))
+                                                }
+                                                return Outline.Generic(path)
+                                            }
+                                        }
+                                    }
+                                } else Modifier
+                            )
                             .nestedScroll(nestedScrollConnection)
                     ) {
                         AnimatedContent(
@@ -211,85 +272,62 @@ fun MainNavigation(
                     }
                 }
 
-                // Login layer: shown when logged out OR during the circular unlock reveal animation
-                if (!isLoggedIn || isUnlockRevealing) {
+                // Layer 2: Vivid, Stock Android AOD/Lock Screen Radiant Dissipating Wavefront
+                if (isUnlockRevealing) {
                     val density = LocalDensity.current
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .drawWithContent {
-                                if (isUnlockRevealing) {
-                                    val progress = unlockProgress.value
-                                    val center = if (unlockOrigin == Offset.Zero) Offset(size.width / 2f, size.height / 2f) else unlockOrigin
-                                    val maxRadius = kotlin.math.hypot(
-                                        kotlin.math.max(center.x, size.width - center.x),
-                                        kotlin.math.max(center.y, size.height - center.y)
-                                    ) * 1.05f
-                                    val currentRadius = maxRadius * progress
-
-                                    // Clip out expanding circular hole to reveal the dashboard underneath
-                                    clipPath(
-                                        path = Path().apply {
-                                            addOval(Rect(center = center, radius = currentRadius))
-                                        },
-                                        clipOp = ClipOp.Difference
-                                    ) {
-                                        this@drawWithContent.drawContent()
-                                    }
-
-                                    // Stock Android AOD/Lock Screen style dissipating luminous glow along perimeter
-                                    val fadeAlpha = (1f - progress).coerceIn(0f, 1f)
-                                    if (fadeAlpha > 0.01f && currentRadius > 0f) {
-                                        val strokeWide = with(density) { (56f + progress * 44f).dp.toPx() }
-                                        val strokeMedium = with(density) { (22f + progress * 18f).dp.toPx() }
-                                        val strokeCore = with(density) { 3.dp.toPx() }
-
-                                        // Wide diffuse radiant ambient bloom
-                                        drawCircle(
-                                            color = Color(0xFF448AFF).copy(alpha = fadeAlpha * 0.35f),
-                                            radius = currentRadius,
-                                            center = center,
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWide)
-                                        )
-
-                                        // Medium intense cyan luminous ring
-                                        drawCircle(
-                                            color = Color(0xFF80D8FF).copy(alpha = fadeAlpha * 0.65f),
-                                            radius = currentRadius,
-                                            center = center,
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeMedium)
-                                        )
-
-                                        // Ultra crisp white wavefront leading edge
-                                        drawCircle(
-                                            color = Color.White.copy(alpha = fadeAlpha * 0.95f),
-                                            radius = currentRadius,
-                                            center = center,
-                                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeCore)
-                                        )
-                                    }
-                                } else {
-                                    this@drawWithContent.drawContent()
-                                }
-                            }
+                    Canvas(
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        LoginScreen(
-                            viewModel = mainViewModel,
-                            onLoginSuccess = { clickOrigin ->
-                                coroutineScope.launch {
-                                    unlockOrigin = clickOrigin ?: Offset.Zero
-                                    isUnlockRevealing = true
-                                    mainViewModel.completeLogin()
-                                    currentTab = AppTab.BILLING
-                                    unlockProgress.snapTo(0f)
-                                    unlockProgress.animateTo(
-                                        targetValue = 1f,
-                                        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
-                                    )
-                                    isUnlockRevealing = false
-                                }
-                            }
-                        )
+                        val progress = unlockProgress.value
+                        val center = if (unlockOrigin == Offset.Zero) Offset(size.width / 2f, size.height / 2f) else unlockOrigin
+                        val maxRadius = kotlin.math.hypot(
+                            kotlin.math.max(center.x, size.width - center.x),
+                            kotlin.math.max(center.y, size.height - center.y)
+                        ) * 1.08f
+                        val currentRadius = maxRadius * progress
+
+                        // Intense Stock Android AOD / Lock screen radiating glow
+                        val fadeAlpha = (1f - (progress * 0.75f)).coerceIn(0f, 1f)
+                        if (fadeAlpha > 0.001f && currentRadius > 0f) {
+                            // 1. Radiant electric cyan/blue atmospheric halo around the perimeter
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.40f),
+                                        Color(0xFF2979FF).copy(alpha = fadeAlpha * 0.20f),
+                                        Color.Transparent
+                                    ),
+                                    center = center,
+                                    radius = currentRadius + with(density) { 50.dp.toPx() }
+                                ),
+                                radius = currentRadius + with(density) { 50.dp.toPx() },
+                                center = center
+                            )
+
+                            // 2. Thick luminous neon-cyan glow band directly along the boundary
+                            drawCircle(
+                                color = Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.85f),
+                                radius = currentRadius,
+                                center = center,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { (28f + progress * 20f).dp.toPx() })
+                            )
+
+                            // 3. Electric blue inner/outer wavefront band
+                            drawCircle(
+                                color = Color(0xFF448AFF).copy(alpha = fadeAlpha * 0.70f),
+                                radius = currentRadius,
+                                center = center,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { (12f + progress * 8f).dp.toPx() })
+                            )
+
+                            // 4. Ultra-bright blazing white cutting edge wavefront
+                            drawCircle(
+                                color = Color.White.copy(alpha = fadeAlpha * 0.98f),
+                                radius = currentRadius,
+                                center = center,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 4.5.dp.toPx() })
+                            )
+                        }
                     }
                 }
             }
