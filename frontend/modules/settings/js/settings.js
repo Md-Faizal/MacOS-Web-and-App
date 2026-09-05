@@ -115,12 +115,18 @@ export class SettingsApp extends AppWindow {
         // Lock to Light mode for worker
         this.settings.theme = 'light';
         this.applyTheme();
+
+        // Re-scope Android App controls for worker
+        this.bindAndroidUpdateControls();
       } else {
         this.userRole = 'owner';
         // Ensure all sidebar items are visible for owner
         document.querySelectorAll('.settings-sidebar-item, .sidebar-profile-item, .settings-sidebar-divider').forEach(item => {
           item.style.display = '';
         });
+
+        // Re-scope Android App controls for owner
+        this.bindAndroidUpdateControls();
       }
     } catch {
       // Fallback safe state
@@ -729,10 +735,10 @@ export class SettingsApp extends AppWindow {
             <div id="androidUpdateNotes" style="font-size:12px; color:var(--settings-text-secondary); line-height:1.5; white-space:pre-wrap;">Loading notes...</div>
           </div>
 
-          <!-- Version History & Rollback Card -->
-          <div style="margin-bottom:16px; background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
+          <!-- Version History Card -->
+          <div id="androidHistoryCard" style="margin-bottom:16px; background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-              <div style="font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px;">
+              <div id="androidHistoryHeaderTitle" style="font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px;">
                 ⏱️ Version History & Instant Rollback
               </div>
               <div style="font-size:11px; color:var(--settings-text-tertiary);">Last 20 builds archived</div>
@@ -743,7 +749,7 @@ export class SettingsApp extends AppWindow {
           </div>
 
           <!-- Admin Manual Upload & Overwrite Card -->
-          <div style="background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
+          <div id="androidPublishCard" style="background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
             <div style="font-size:13px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
               🚀 Publish / Upload APK Manually
             </div>
@@ -1762,6 +1768,20 @@ export class SettingsApp extends AppWindow {
     const uploadForm = document.getElementById('androidUploadForm');
     const uploadStatusMsg = document.getElementById('uploadStatusMsg');
 
+    const isWorker = this.userRole === 'worker';
+
+    // Hide Publish / Manual Upload card for workers
+    const publishCard = document.getElementById('androidPublishCard');
+    if (publishCard) {
+      publishCard.style.display = isWorker ? 'none' : 'block';
+    }
+
+    // Adjust version history card header for workers
+    const historyHeaderTitle = document.getElementById('androidHistoryHeaderTitle');
+    if (historyHeaderTitle) {
+      historyHeaderTitle.textContent = isWorker ? '⏱️ Version History' : '⏱️ Version History & Instant Rollback';
+    }
+
     let currentSha256 = '';
 
     const formatBytes = (bytes) => {
@@ -1773,7 +1793,7 @@ export class SettingsApp extends AppWindow {
       if (!manifest || !manifest.versionName) {
         if (versionBadge) versionBadge.textContent = 'No build';
         if (codeBadge) codeBadge.textContent = 'Build #0';
-        if (notesEl) notesEl.textContent = 'No active Android release published yet. Use the publish form below or run the GitHub Action to publish a build.';
+        if (notesEl) notesEl.textContent = isWorker ? 'No active Android release published yet.' : 'No active Android release published yet. Use the publish form below or run the GitHub Action to publish a build.';
         if (sha256El) sha256El.textContent = 'None';
         return;
       }
@@ -1827,6 +1847,7 @@ export class SettingsApp extends AppWindow {
           const dateStr = v.archivedAt || v.publishedAt ? new Date(v.archivedAt || v.publishedAt).toLocaleDateString() : 'Previous';
           const sizeStr = formatBytes(v.fileSize);
           const dlUrl = v.downloadUrl || (v.archiveFile ? `/api/android/update/archive/${encodeURIComponent(v.archiveFile)}` : null);
+          const showRollbackBtn = !isWorker && idx === 0;
 
           return `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(0,0,0,0.15); border-radius:8px; border:1px solid rgba(255,255,255,0.05); font-size:12px;">
@@ -1843,7 +1864,7 @@ export class SettingsApp extends AppWindow {
               </div>
               <div style="display:flex; gap:6px; align-items:center;">
                 ${dlUrl ? `<a href="${dlUrl}" class="storage-cell-edit-btn" style="text-decoration:none; padding:4px 8px; font-size:11px; border-radius:4px;" title="Download this archived build">⬇️ APK</a>` : ''}
-                ${idx === 0 ? `<button class="storage-btn btn-rollback" data-version="${v.versionName}" style="padding:4px 10px; font-size:11px; border-radius:4px; background:rgba(255,59,48,0.2); color:#ff453a; border:1px solid rgba(255,59,48,0.3); cursor:pointer;">⏪ Rollback</button>` : ''}
+                ${showRollbackBtn ? `<button class="storage-btn btn-rollback" data-version="${v.versionName}" style="padding:4px 10px; font-size:11px; border-radius:4px; background:rgba(255,59,48,0.2); color:#ff453a; border:1px solid rgba(255,59,48,0.3); cursor:pointer;">⏪ Rollback</button>` : ''}
               </div>
             </div>
           `;
