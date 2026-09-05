@@ -64,10 +64,10 @@ const { router: logsRouter, initializeDatabase: initLogs } = require('../core/lo
 const qrRouter = require('../core/qr-routing')(globalDb);
 
 // Auth Module
-const authModule = require('../core/auth/auth')(globalDb);
+const permissionsHelper = require('../core/auth/permissions')(globalDb);
+const authModule = require('../core/auth/auth')(globalDb, permissionsHelper);
 const profileModule = require('../core/auth/profile')(globalDb);
 const oauthModule = require('../core/auth/oauth')(globalDb);
-const permissionsHelper = require('../core/auth/permissions')(globalDb);
 const workerGoogleAuth = require('../core/auth/worker-google-auth')(globalDb, permissionsHelper);
 const adminAuth = require('../core/auth/admin')(globalDb);
 const createAuditService = require('../core/auth/audit-service');

@@ -218,6 +218,17 @@ fun LoginScreen(
         )
     }
 
+    // Auto-prompt biometric authentication once if active user has biometric enabled
+    var hasAutoPromptedBiometric by remember { mutableStateOf(false) }
+    LaunchedEffect(activeUser, rememberedUsers) {
+        val target = activeUser ?: rememberedUsers.firstOrNull()
+        if (!hasAutoPromptedBiometric && target != null && target.isBiometricEnabled && currentFlowState == LoginFlowState.ACTIVE_USER_LOGIN) {
+            hasAutoPromptedBiometric = true
+            delay(350)
+            triggerBiometricPrompt(target)
+        }
+    }
+
     // Post-Login Biometric & Onboarding Routing
     fun proceedToBiometricOrSuccess(origin: Offset? = null) {
         if (origin != null) lastClickPosition = origin

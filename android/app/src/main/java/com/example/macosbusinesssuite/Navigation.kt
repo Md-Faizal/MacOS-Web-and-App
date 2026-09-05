@@ -54,13 +54,14 @@ fun MainNavigation(
     val profile by mainViewModel.profile.collectAsState()
     val activeUser by mainViewModel.activeUser.collectAsState()
     val serverUrl by mainViewModel.serverUrl.collectAsState()
+    val permissionsJson by mainViewModel.permissionsJson.collectAsState()
 
     val userPicture = profile?.actualPicture ?: activeUser?.displayPicture ?: mainViewModel.sessionManager.userPicture
     val userName = profile?.actualName ?: activeUser?.displayName ?: mainViewModel.sessionManager.userName ?: "User"
     val userEmail = profile?.actualEmail ?: activeUser?.identifier ?: mainViewModel.sessionManager.userEmail ?: ""
     val userRole = profile?.role ?: activeUser?.role ?: mainViewModel.sessionManager.userRole
 
-    val visibleTabs = remember(userRole, isLoggedIn, mainViewModel.sessionManager.permissionsJson) {
+    val visibleTabs = remember(userRole, isLoggedIn, permissionsJson) {
         val allowed = mutableListOf<AppTab>()
         if (mainViewModel.sessionManager.isModuleAllowed("billing")) allowed.add(AppTab.BILLING)
         if (mainViewModel.sessionManager.isModuleAllowed("products")) allowed.add(AppTab.PRODUCTS)
@@ -280,7 +281,7 @@ fun MainNavigation(
                                     unlockOrigin = clickOrigin ?: Offset.Zero
                                     isUnlockRevealing = true
                                     mainViewModel.completeLogin()
-                                    currentTab = AppTab.BILLING
+                                    currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
                                     unlockProgress.snapTo(0f)
                                     unlockProgress.animateTo(
                                         targetValue = 1f,

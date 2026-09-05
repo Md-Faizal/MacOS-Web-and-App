@@ -137,8 +137,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Navigation & Auth state
-    private val _isLoggedIn = MutableStateFlow(sessionManager.isLoggedIn)
+    private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _permissionsJson = MutableStateFlow(sessionManager.permissionsJson)
+    val permissionsJson: StateFlow<String?> = _permissionsJson.asStateFlow()
 
     fun completeLogin() {
         sessionManager.isLoggedIn = true
@@ -321,20 +324,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        // If not keep logged in, clear session on startup
-        if (!sessionManager.keepLoggedIn) {
-            sessionManager.clearSession()
-        }
-
-        // If local preferences indicate logged in, stay logged in and load data
-        if (sessionManager.isLoggedIn) {
-            _isLoggedIn.value = true
-            loadAllData()
-            checkAuthStatus()
-        } else {
-            _isLoggedIn.value = false
-            checkAuthStatus()
-        }
+        // On cold start, do NOT automatically stay logged into the dashboard.
+        // Even when user accounts are remembered (like the website), app launch starts in locked/login state
+        // requiring password entry or biometric unlock.
+        _isLoggedIn.value = false
+        sessionManager.isLoggedIn = false
 
         // Post-installation detection on startup
         checkPostInstallSuccess()
@@ -358,14 +352,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val service = NetworkClient.getService(sessionManager)
                 val response = service.getAuthStatus()
                 if (response.isSuccessful && response.body()?.authenticated == true) {
-                    _isLoggedIn.value = true
-                    sessionManager.isLoggedIn = true
-                    loadAllData()
-                } else if (!sessionManager.isLoggedIn) {
-                    _isLoggedIn.value = false
+                    val perms = response.body()?.permissions
+                    if (perms != null) {
+                        val json = Gson().toJson(perms)
+                        sessionManager.permissionsJson = json
+                        _permissionsJson.value = json
+                    } else if (sessionManager.userRole == "owner") {
+                        sessionManager.permissionsJson = null
+                        _permissionsJson.value = null
+                    }
                 }
             } catch (e: Exception) {
-                // Keep local session if server temporary unreachable
+                // Ignore transient network errors during background status check
             }
         }
     }
@@ -410,6 +408,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         it.actualPicture?.let { pic -> sessionManager.userPicture = pic }
                         sessionManager.userRole = resolvedRole
                         sessionManager.userStatus = "active"
+                    }
+
+                    // Save permissions snapshot if provided, or clear for owner
+                    val perms = response.body()?.permissions
+                    if (perms != null) {
+                        val pJson = Gson().toJson(perms)
+                        sessionManager.permissionsJson = pJson
+                        _permissionsJson.value = pJson
+                    } else if (resolvedRole == "owner") {
+                        sessionManager.permissionsJson = null
+                        _permissionsJson.value = null
                     }
 
                     // Always cache user profile details in MultiUserManager so avatar, name, and email persist
@@ -474,6 +483,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (refreshRes.isSuccessful && refreshRes.body()?.success == true) {
                             refreshRes.body()?.token?.let { sessionManager.authToken = it }
                             refreshRes.body()?.refreshToken?.let { sessionManager.refreshToken = it }
+                            val perms = refreshRes.body()?.permissions
+                            if (perms != null) {
+                                val pJson = Gson().toJson(perms)
+                                sessionManager.permissionsJson = pJson
+                                _permissionsJson.value = pJson
+                            }
                             sessionValid = true
                         }
                     } catch (_: Exception) {}
@@ -776,6 +791,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             sessionManager.userEmail = it["email"] as? String
                             sessionManager.userPicture = it["picture"] as? String
                         }
+                        val permsObj = body["permissions"]
+                        if (permsObj != null) {
+                            val pJson = Gson().toJson(permsObj)
+                            sessionManager.permissionsJson = pJson
+                            _permissionsJson.value = pJson
+                        } else if (role == "owner") {
+                            sessionManager.permissionsJson = null
+                            _permissionsJson.value = null
+                        }
                         _isLoggedIn.value = true
                         loadAllData()
                     }
@@ -800,6 +824,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sessionManager.clearSession()
             sessionManager.biometricEnabled = false
             _biometricEnabled.value = false
+            _permissionsJson.value = null
             refreshMultiUsers()
             _isLoggedIn.value = false
         }

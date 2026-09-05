@@ -11,6 +11,9 @@ interface ApiService {
     @GET("auth/status")
     suspend fun getAuthStatus(): Response<AuthStatusResponse>
 
+    @GET("auth/verify")
+    suspend fun getAuthVerify(): Response<AuthStatusResponse>
+
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 

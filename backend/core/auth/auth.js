@@ -43,10 +43,15 @@ function consumeChallenge(db, key) {
   return stored.challenge;
 }
 
-module.exports = function(db) {
+module.exports = function(db, permissionsHelper = null) {
   const sessionService = createSessionService(db);
   const mobileSessionService = createMobileSessionService(db);
   const auditService = createAuditService(db);
+  if (!permissionsHelper) {
+    try {
+      permissionsHelper = require('./permissions')(db);
+    } catch (_) {}
+  }
   const getOwner = () => db.prepare(`
     SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
            role, status, token_version
@@ -703,21 +708,25 @@ module.exports = function(db) {
           db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
         }
 
+        const permissions = permissionsHelper && user.role === 'worker'
+          ? permissionsHelper.getUserPermissionsSnapshot(user.id, 'worker')
+          : null;
+
         if (isWebLogin) {
           const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType);
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
-          return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user, deviceId) });
+          return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user, deviceId), permissions });
         }
 
         if (typeof req?.get === 'function') {
           const mobileSession = issueMobileSession(req, user, deviceId);
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
-          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId) });
+          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId), permissions });
         }
 
         const token = createSessionToken(user, deviceId);
         setSessionCookie(req, res, token);
-        return res.json({ success: true, token, user: publicUser(user, deviceId) });
+        return res.json({ success: true, token, user: publicUser(user, deviceId), permissions });
 
       } catch (error) {
         console.error('Login error:', error);
@@ -974,7 +983,10 @@ module.exports = function(db) {
         return res.status(401).json({ error: 'Refresh token is invalid, expired, or revoked' });
       }
       auditService.record({ req, eventType: 'refresh', outcome: 'success', userId: result.user.id, sessionId: result.refreshTokenId, platform: 'android' });
-      res.json({ success: true, token: result.accessToken, refreshToken: result.refreshToken, expiresIn: result.expiresIn, user: publicUser(result.user, result.user.device_id) });
+      const permissions = permissionsHelper && result.user.role === 'worker'
+        ? permissionsHelper.getUserPermissionsSnapshot(result.user.id, 'worker')
+        : null;
+      res.json({ success: true, token: result.accessToken, refreshToken: result.refreshToken, expiresIn: result.expiresIn, user: publicUser(result.user, result.user.device_id), permissions });
     },
 
     logoutMobileSession: (req, res) => {
