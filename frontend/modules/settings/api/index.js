@@ -21,7 +21,23 @@ function initializeDatabase(globalDb) {
 
       // Start Background Backup & Disaster Recovery Scheduler
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
+        const path = require('path');
+        const fs = require('fs');
+        const candidates = [
+          path.resolve(__dirname, '../../../../backend/core/backup-manager.js'),
+          path.join(process.cwd(), 'backend', 'core', 'backup-manager.js'),
+          '/app/backend/core/backup-manager.js'
+        ];
+        let BackupManager = null;
+        for (const c of candidates) {
+          if (fs.existsSync(c)) {
+            BackupManager = require(c);
+            break;
+          }
+        }
+        if (!BackupManager) {
+          BackupManager = require('../../../../backend/core/backup-manager.js');
+        }
         const backupManager = new BackupManager(db);
         console.log('✓ Backup & Disaster Recovery manager initialized');
       } catch (backupInitErr) {

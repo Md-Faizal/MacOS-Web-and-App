@@ -1,4 +1,23 @@
+const path = require('path');
+const fs = require('fs');
+
+// Robust BackupManager loader (works both in dev, PM2, and Docker container /app)
+function getBackupManagerClass() {
+  const candidates = [
+    path.resolve(__dirname, '../../../../backend/core/backup-manager.js'),
+    path.join(process.cwd(), 'backend', 'core', 'backup-manager.js'),
+    '/app/backend/core/backup-manager.js'
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return require(candidate);
+    }
+  }
+  return require('../../../../backend/core/backup-manager.js');
+}
+
 module.exports = function(db) {
+  const BackupManager = getBackupManagerClass();
   // Simple ID generator
   const generateId = () => `check_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
@@ -573,7 +592,6 @@ module.exports = function(db) {
 
     getBackupConfig: (req, res) => {
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const config = backupManager.getConfig();
         // Mask secret key partially for security when sending to frontend
@@ -592,7 +610,6 @@ module.exports = function(db) {
 
     saveBackupConfig: (req, res) => {
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const newSettings = req.body;
         
@@ -611,7 +628,6 @@ module.exports = function(db) {
 
     testBackupR2: async (req, res) => {
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         let testConfig = req.body;
         
@@ -631,7 +647,6 @@ module.exports = function(db) {
 
     createDbBackup: async (req, res) => {
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const result = await backupManager.runBackup({ source: 'manual-ui' });
         res.json(result);
@@ -643,7 +658,6 @@ module.exports = function(db) {
 
     getDbBackups: (req, res) => {
       try {
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const files = backupManager.listLocalBackups();
         res.json({ backups: files });
@@ -659,7 +673,6 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
         
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const result = await backupManager.restoreBackup(filename);
         res.json(result);
@@ -676,7 +689,6 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
         
-        const BackupManager = require('../../../backend/core/backup-manager');
         const backupManager = new BackupManager(db);
         const result = backupManager.deleteBackup(filename);
         res.json(result);
