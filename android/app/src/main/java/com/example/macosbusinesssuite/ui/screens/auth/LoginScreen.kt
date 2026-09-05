@@ -50,7 +50,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.fragment.app.FragmentActivity
 import com.example.macosbusinesssuite.R
@@ -93,11 +98,12 @@ private enum class PostLoginModalType {
 @Composable
 fun LoginScreen(
     viewModel: MainViewModel,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: (Offset?) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val googleAuthHelper = remember { GoogleAuthHelper(context) }
+    var lastClickPosition by remember { mutableStateOf<Offset?>(null) }
 
     val rememberedUsers by viewModel.rememberedUsers.collectAsState()
     val activeUser by viewModel.activeUser.collectAsState()
@@ -183,7 +189,7 @@ fun LoginScreen(
                     if (approved) {
                         isPendingApproval = false
                         pendingInviteCode = ""
-                        onLoginSuccess()
+                        onLoginSuccess(lastClickPosition)
                     }
                 }
             }
@@ -203,7 +209,7 @@ fun LoginScreen(
             onSuccess = {
                 viewModel.loginWithBiometrics(targetUser) { success, _ ->
                     if (success) {
-                        onLoginSuccess()
+                        onLoginSuccess(lastClickPosition)
                     }
                 }
             },
@@ -213,7 +219,8 @@ fun LoginScreen(
     }
 
     // Post-Login Biometric & Onboarding Routing
-    fun proceedToBiometricOrSuccess() {
+    fun proceedToBiometricOrSuccess(origin: Offset? = null) {
+        if (origin != null) lastClickPosition = origin
         val email = postLoginProfile?.email ?: postLoginProfile?.actualEmail
         val isBioDismissed = viewModel.multiUserManager.isPromptDismissed("biometric", postLoginIdentifier) ||
                 (!email.isNullOrBlank() && viewModel.multiUserManager.isPromptDismissed("biometric", email))
@@ -233,12 +240,13 @@ fun LoginScreen(
             activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
         } else {
             activePostLoginModal = PostLoginModalType.NONE
-            onLoginSuccess()
+            onLoginSuccess(lastClickPosition)
         }
     }
 
     // Post-Login Onboarding Routing
-    fun handlePostLoginOnboarding(identifier: String, profile: UserProfile?, isPasswordLogin: Boolean = false) {
+    fun handlePostLoginOnboarding(identifier: String, profile: UserProfile?, isPasswordLogin: Boolean = false, origin: Offset? = null) {
+        if (origin != null) lastClickPosition = origin
         postLoginIdentifier = identifier
         postLoginProfile = profile
 
@@ -276,7 +284,7 @@ fun LoginScreen(
         } else if (!isRemembered && !keepLoggedIn && !isRememberDismissed) {
             activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_PROMPT
         } else {
-            onLoginSuccess()
+            onLoginSuccess(lastClickPosition)
         }
     }
 
@@ -384,6 +392,16 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull()?.position?.let { pos ->
+                            lastClickPosition = pos
+                        }
+                    }
+                }
+            }
             .drawBehind {
                 // Base background surface color
                 drawRect(if (isDark) colorScheme.surfaceContainerLowest else colorScheme.surface)
@@ -528,11 +546,12 @@ fun LoginScreen(
                                             onKeepLoggedInChange = { keepLoggedIn = it },
                                             isLoading = isLoading,
                                             errorMessage = errorMessage,
-                                            onSubmit = {
+                                            onSubmit = { origin ->
+                                                if (origin != null) lastClickPosition = origin
                                                 if (passwordInput.isNotBlank()) {
                                                     viewModel.login(user.identifier, passwordInput, keepLoggedIn = keepLoggedIn) { success, _, profile ->
                                                         if (success) {
-                                                            handlePostLoginOnboarding(user.identifier, profile, isPasswordLogin = true)
+                                                            handlePostLoginOnboarding(user.identifier, profile, isPasswordLogin = true, origin = origin)
                                                         } else {
                                                             triggerShake()
                                                             passwordInput = ""
@@ -575,11 +594,12 @@ fun LoginScreen(
                                             onKeepLoggedInChange = { keepLoggedIn = it },
                                             isLoading = isLoading,
                                             errorMessage = errorMessage,
-                                            onSubmit = {
+                                            onSubmit = { origin ->
+                                                if (origin != null) lastClickPosition = origin
                                                 if (identifierInput.isNotBlank() && passwordInput.isNotBlank()) {
                                                     viewModel.login(identifierInput, passwordInput, keepLoggedIn = keepLoggedIn) { success, _, profile ->
                                                         if (success) {
-                                                            handlePostLoginOnboarding(identifierInput, profile, isPasswordLogin = true)
+                                                            handlePostLoginOnboarding(identifierInput, profile, isPasswordLogin = true, origin = origin)
                                                         } else {
                                                             triggerShake()
                                                         }
@@ -766,8 +786,14 @@ fun LoginScreen(
 
         if (activePostLoginModal == PostLoginModalType.REMEMBER_ACCOUNT_PROMPT) {
             RememberAccountPromptDialog(
-                onRemember = { activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_WARNING },
-                onNotNow = { activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_DISMISS }
+                onRemember = { origin ->
+                    if (origin != null) lastClickPosition = origin
+                    activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_WARNING
+                },
+                onNotNow = { origin ->
+                    if (origin != null) lastClickPosition = origin
+                    activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_DISMISS
+                }
             )
         }
 
@@ -787,7 +813,7 @@ fun LoginScreen(
                         activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT
                     } else {
                         activePostLoginModal = PostLoginModalType.NONE
-                        onLoginSuccess()
+                        onLoginSuccess(lastClickPosition)
                     }
                 },
                 onCancel = { activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_PROMPT }
@@ -799,11 +825,11 @@ fun LoginScreen(
                 onDontAskAgain = {
                     viewModel.multiUserManager.setPromptDismissed("remember", postLoginIdentifier, true)
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 },
                 onContinueJustNow = {
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 },
                 onClose = { activePostLoginModal = PostLoginModalType.REMEMBER_ACCOUNT_PROMPT }
             )
@@ -811,7 +837,8 @@ fun LoginScreen(
 
         if (activePostLoginModal == PostLoginModalType.BIOMETRIC_SETUP_PROMPT) {
             BiometricSetupPromptDialog(
-                onSetUp = {
+                onSetUp = { origin ->
+                    if (origin != null) lastClickPosition = origin
                     val activity = context as? FragmentActivity
                     if (activity != null) {
                         BiometricAuthHelper.authenticate(
@@ -840,7 +867,7 @@ fun LoginScreen(
                                 )
                                 viewModel.setBiometricEnabled(true)
                                 activePostLoginModal = PostLoginModalType.NONE
-                                onLoginSuccess()
+                                onLoginSuccess(lastClickPosition)
                             },
                             onError = { errorCode, errString ->
                                 if (errorCode != androidx.biometric.BiometricPrompt.ERROR_USER_CANCELED &&
@@ -858,16 +885,17 @@ fun LoginScreen(
                         )
                     } else {
                         activePostLoginModal = PostLoginModalType.NONE
-                        onLoginSuccess()
+                        onLoginSuccess(lastClickPosition)
                     }
                 },
-                onNotNow = { dontAskAgain ->
+                onNotNow = { dontAskAgain, origin ->
+                    if (origin != null) lastClickPosition = origin
                     if (dontAskAgain) {
                         viewModel.multiUserManager.setPromptDismissed("biometric", postLoginIdentifier, true)
                         activePostLoginModal = PostLoginModalType.BIOMETRIC_INFO_POPUP
                     } else {
                         activePostLoginModal = PostLoginModalType.NONE
-                        onLoginSuccess()
+                        onLoginSuccess(lastClickPosition)
                     }
                 }
             )
@@ -877,7 +905,7 @@ fun LoginScreen(
             BiometricNoticeDialog(
                 onConfirm = {
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 }
             )
         }
@@ -887,11 +915,11 @@ fun LoginScreen(
                 onDontAskAgain = {
                     viewModel.multiUserManager.setPromptDismissed("biometric", postLoginIdentifier, true)
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 },
                 onContinue = {
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 },
                 onClose = { activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT }
             )
@@ -903,12 +931,12 @@ fun LoginScreen(
                 onRetry = { activePostLoginModal = PostLoginModalType.BIOMETRIC_SETUP_PROMPT },
                 onContinueWithPassword = {
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 },
                 onDontShowAgain = {
                     viewModel.multiUserManager.setPromptDismissed("biometric", postLoginIdentifier, true)
                     activePostLoginModal = PostLoginModalType.NONE
-                    onLoginSuccess()
+                    onLoginSuccess(lastClickPosition)
                 }
             )
         }
@@ -923,8 +951,14 @@ fun LoginScreen(
                 onPasswordChange = { workerPasswordInput = it },
                 confirmPassword = workerConfirmPasswordInput,
                 onConfirmPasswordChange = { workerConfirmPasswordInput = it },
-                onContinue = { activePostLoginModal = PostLoginModalType.WORKER_SECURITY_QUESTION },
-                onSkip = { activePostLoginModal = PostLoginModalType.WORKER_DISMISS_CONFIRMATION }
+                onContinue = { origin ->
+                    if (origin != null) lastClickPosition = origin
+                    activePostLoginModal = PostLoginModalType.WORKER_SECURITY_QUESTION
+                },
+                onSkip = { origin ->
+                    if (origin != null) lastClickPosition = origin
+                    activePostLoginModal = PostLoginModalType.WORKER_DISMISS_CONFIRMATION
+                }
             )
         }
 
@@ -954,14 +988,14 @@ fun LoginScreen(
 
         if (activePostLoginModal == PostLoginModalType.WORKER_DISMISS_CONFIRMATION) {
             WorkerDismissDialog(
-                onDontAskAgain = {
+                onDontAskAgain = { origin ->
                     viewModel.multiUserManager.setPromptDismissed("worker_password", postLoginIdentifier, true)
                     activePostLoginModal = PostLoginModalType.NONE
-                    proceedToBiometricOrSuccess()
+                    proceedToBiometricOrSuccess(origin)
                 },
-                onJustThisTime = {
+                onJustThisTime = { origin ->
                     activePostLoginModal = PostLoginModalType.NONE
-                    proceedToBiometricOrSuccess()
+                    proceedToBiometricOrSuccess(origin)
                 },
                 onClose = { activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS }
             )
@@ -1516,7 +1550,7 @@ private fun ActiveUserLoginForm(
     onKeepLoggedInChange: (Boolean) -> Unit,
     isLoading: Boolean,
     errorMessage: String?,
-    onSubmit: () -> Unit,
+    onSubmit: (Offset?) -> Unit,
     onBiometricClick: () -> Unit,
     onAddNewAccount: () -> Unit,
     onSwitchAccount: () -> Unit,
@@ -1526,6 +1560,8 @@ private fun ActiveUserLoginForm(
     rememberedUsers: List<RememberedUser>,
     serverOrigin: String = ""
 ) {
+    var submitBtnPos by remember { mutableStateOf<Offset?>(null) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
@@ -1606,7 +1642,7 @@ private fun ActiveUserLoginForm(
                     }
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (password.isNotBlank() && !isLoading) onSubmit() }),
+                keyboardActions = KeyboardActions(onDone = { if (password.isNotBlank() && !isLoading) onSubmit(submitBtnPos) }),
                 shape = RoundedCornerShape(22.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -1621,13 +1657,17 @@ private fun ActiveUserLoginForm(
 
             // Independent circular -> submit button perfectly aligned with password field height
             Surface(
-                onClick = onSubmit,
+                onClick = { onSubmit(submitBtnPos) },
                 enabled = password.isNotBlank() && !isLoading,
                 shape = CircleShape,
                 color = if (password.isNotBlank() && !isLoading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = if (password.isNotBlank() && !isLoading) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 shadowElevation = if (password.isNotBlank() && !isLoading) 3.dp else 0.dp,
-                modifier = Modifier.size(58.dp)
+                modifier = Modifier
+                    .size(58.dp)
+                    .onGloballyPositioned { coords ->
+                        submitBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                    }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (isLoading) {
@@ -1741,7 +1781,7 @@ private fun GenericLoginForm(
     onKeepLoggedInChange: (Boolean) -> Unit,
     isLoading: Boolean,
     errorMessage: String?,
-    onSubmit: () -> Unit,
+    onSubmit: (Offset?) -> Unit,
     onForgotPassword: () -> Unit,
     onAddNewAccount: () -> Unit,
     onSwitchAccount: () -> Unit,
@@ -1752,6 +1792,8 @@ private fun GenericLoginForm(
     isGenericLogin: Boolean = false,
     onBack: (() -> Unit)? = null
 ) {
+    var submitBtnPos by remember { mutableStateOf<Offset?>(null) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
@@ -1866,7 +1908,7 @@ private fun GenericLoginForm(
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
-                    if (identifier.isNotBlank() && password.isNotBlank() && !isLoading) onSubmit()
+                    if (identifier.isNotBlank() && password.isNotBlank() && !isLoading) onSubmit(submitBtnPos)
                 }),
                 shape = RoundedCornerShape(22.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -1882,13 +1924,17 @@ private fun GenericLoginForm(
 
             // Independent circular -> submit button aligned with password field height
             Surface(
-                onClick = onSubmit,
+                onClick = { onSubmit(submitBtnPos) },
                 enabled = (identifier.isNotBlank() && password.isNotBlank()) && !isLoading,
                 shape = CircleShape,
                 color = if (identifier.isNotBlank() && password.isNotBlank() && !isLoading) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = if (identifier.isNotBlank() && password.isNotBlank() && !isLoading) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 shadowElevation = if (identifier.isNotBlank() && password.isNotBlank() && !isLoading) 3.dp else 0.dp,
-                modifier = Modifier.size(58.dp)
+                modifier = Modifier
+                    .size(58.dp)
+                    .onGloballyPositioned { coords ->
+                        submitBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                    }
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     if (isLoading) {
@@ -2533,15 +2579,23 @@ private fun ForgotPasswordResetView(
 
 @Composable
 private fun RememberAccountPromptDialog(
-    onRemember: () -> Unit,
-    onNotNow: () -> Unit
+    onRemember: (Offset?) -> Unit,
+    onNotNow: (Offset?) -> Unit
 ) {
-    Dialog(onDismissRequest = onNotNow) {
+    var notNowButtonPos by remember { mutableStateOf<Offset?>(null) }
+    var rememberButtonPos by remember { mutableStateOf<Offset?>(null) }
+
+    Dialog(
+        onDismissRequest = { onNotNow(notNowButtonPos) },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2579,26 +2633,35 @@ private fun RememberAccountPromptDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
-                        onClick = onNotNow,
+                        onClick = { onNotNow(notNowButtonPos) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp),
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                notNowButtonPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Not Now")
+                        Text("Not Now", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Button(
-                        onClick = onRemember,
+                        onClick = { onRemember(rememberButtonPos) },
                         modifier = Modifier
-                            .weight(1.3f)
-                            .height(50.dp),
+                            .weight(1f)
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                rememberButtonPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Remember")
+                        Text("Remember", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -2611,12 +2674,17 @@ private fun PublicDeviceWarningDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Dialog(onDismissRequest = onCancel) {
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2654,26 +2722,29 @@ private fun PublicDeviceWarningDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = onCancel,
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Button(
                         onClick = onConfirm,
                         modifier = Modifier
-                            .weight(1.3f)
+                            .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Confirm")
+                        Text("Confirm", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -2687,12 +2758,17 @@ private fun RememberAccountDismissDialog(
     onContinueJustNow: () -> Unit,
     onClose: () -> Unit
 ) {
-    Dialog(onDismissRequest = onClose) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2735,7 +2811,7 @@ private fun RememberAccountDismissDialog(
                         .height(48.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Don't ask again on this device")
+                    Text("Don't ask again on this device", maxLines = 1, softWrap = false)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -2747,7 +2823,7 @@ private fun RememberAccountDismissDialog(
                         .height(48.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Continue without remembering")
+                    Text("Continue without remembering", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -2756,17 +2832,24 @@ private fun RememberAccountDismissDialog(
 
 @Composable
 private fun BiometricSetupPromptDialog(
-    onSetUp: () -> Unit,
-    onNotNow: (dontAskAgain: Boolean) -> Unit
+    onSetUp: (Offset?) -> Unit,
+    onNotNow: (dontAskAgain: Boolean, origin: Offset?) -> Unit
 ) {
     var dontAskAgain by remember { mutableStateOf(false) }
+    var notNowBtnPos by remember { mutableStateOf<Offset?>(null) }
+    var setUpBtnPos by remember { mutableStateOf<Offset?>(null) }
 
-    Dialog(onDismissRequest = { onNotNow(dontAskAgain) }) {
+    Dialog(
+        onDismissRequest = { onNotNow(dontAskAgain, notNowBtnPos) },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2831,26 +2914,35 @@ private fun BiometricSetupPromptDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
-                        onClick = { onNotNow(dontAskAgain) },
+                        onClick = { onNotNow(dontAskAgain, notNowBtnPos) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp),
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                notNowBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Not Now")
+                        Text("Not Now", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Button(
-                        onClick = onSetUp,
+                        onClick = { onSetUp(setUpBtnPos) },
                         modifier = Modifier
-                            .weight(1.3f)
-                            .height(50.dp),
+                            .weight(1f)
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                setUpBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Set Up")
+                        Text("Set Up", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -2862,12 +2954,17 @@ private fun BiometricSetupPromptDialog(
 private fun BiometricNoticeDialog(
     onConfirm: () -> Unit
 ) {
-    Dialog(onDismissRequest = onConfirm) {
+    Dialog(
+        onDismissRequest = onConfirm,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2915,7 +3012,7 @@ private fun BiometricNoticeDialog(
                         .height(50.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("OK, Got It")
+                    Text("OK, Got It", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -2928,12 +3025,17 @@ private fun BiometricSetupDismissDialog(
     onContinue: () -> Unit,
     onClose: () -> Unit
 ) {
-    Dialog(onDismissRequest = onClose) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2976,7 +3078,7 @@ private fun BiometricSetupDismissDialog(
                         .height(48.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Don't ask again on this device")
+                    Text("Don't ask again on this device", maxLines = 1, softWrap = false)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -2988,7 +3090,7 @@ private fun BiometricSetupDismissDialog(
                         .height(48.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Continue")
+                    Text("Continue", maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -3002,12 +3104,17 @@ private fun BiometricSetupFailedDialog(
     onContinueWithPassword: () -> Unit,
     onDontShowAgain: () -> Unit
 ) {
-    Dialog(onDismissRequest = onContinueWithPassword) {
+    Dialog(
+        onDismissRequest = onContinueWithPassword,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -3051,26 +3158,29 @@ private fun BiometricSetupFailedDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = onContinueWithPassword,
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Not Now")
+                        Text("Not Now", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Button(
                         onClick = onRetry,
                         modifier = Modifier
-                            .weight(1.3f)
+                            .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Retry")
+                        Text("Retry", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -3088,15 +3198,23 @@ private fun WorkerCredentialDialog(
     onPasswordChange: (String) -> Unit,
     confirmPassword: String,
     onConfirmPasswordChange: (String) -> Unit,
-    onContinue: () -> Unit,
-    onSkip: () -> Unit
+    onContinue: (Offset?) -> Unit,
+    onSkip: (Offset?) -> Unit
 ) {
-    Dialog(onDismissRequest = onSkip) {
+    var skipBtnPos by remember { mutableStateOf<Offset?>(null) }
+    var continueBtnPos by remember { mutableStateOf<Offset?>(null) }
+
+    Dialog(
+        onDismissRequest = { onSkip(skipBtnPos) },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -3211,27 +3329,36 @@ private fun WorkerCredentialDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
-                        onClick = onSkip,
+                        onClick = { onSkip(skipBtnPos) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp),
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                skipBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Not Now")
+                        Text("Not Now", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
 
                     Button(
-                        onClick = onContinue,
+                        onClick = { onContinue(continueBtnPos) },
                         enabled = identifier.isNotBlank() && password.isNotBlank() && password == confirmPassword,
                         modifier = Modifier
-                            .weight(1.3f)
-                            .height(50.dp),
+                            .weight(1f)
+                            .height(50.dp)
+                            .onGloballyPositioned { coords ->
+                                continueBtnPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                            },
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Continue")
+                        Text("Continue", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -3262,12 +3389,17 @@ private fun WorkerSecurityQuestionDialog(
 
     var dropdownExpanded by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onBack) {
+    Dialog(
+        onDismissRequest = onBack,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -3350,30 +3482,33 @@ private fun WorkerSecurityQuestionDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = onBack,
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Back")
+                        Text("Back", maxLines = 1, softWrap = false)
                     }
 
                     Button(
                         onClick = onSave,
                         enabled = question.isNotBlank() && answer.isNotBlank() && !isLoading,
                         modifier = Modifier
-                            .weight(1.3f)
+                            .weight(1f)
                             .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
                         } else {
-                            Text("Save Account")
+                            Text("Save Account", maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -3384,16 +3519,24 @@ private fun WorkerSecurityQuestionDialog(
 
 @Composable
 private fun WorkerDismissDialog(
-    onDontAskAgain: () -> Unit,
-    onJustThisTime: () -> Unit,
+    onDontAskAgain: (Offset?) -> Unit,
+    onJustThisTime: (Offset?) -> Unit,
     onClose: () -> Unit
 ) {
-    Dialog(onDismissRequest = onClose) {
+    var dontAskPos by remember { mutableStateOf<Offset?>(null) }
+    var notNowPos by remember { mutableStateOf<Offset?>(null) }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -3430,27 +3573,34 @@ private fun WorkerDismissDialog(
                 Spacer(modifier = Modifier.height(20.dp))
 
                 FilledTonalButton(
-                    onClick = onDontAskAgain,
+                    onClick = { onDontAskAgain(dontAskPos) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(48.dp)
+                        .onGloballyPositioned { coords ->
+                            dontAskPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                        },
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Don't ask again on this device")
+                    Text("Don't ask again on this device", maxLines = 1, softWrap = false)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
-                    onClick = onJustThisTime,
+                    onClick = { onJustThisTime(notNowPos) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .height(48.dp)
+                        .onGloballyPositioned { coords ->
+                            notNowPos = coords.positionInWindow() + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                        },
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Not Now")
+                    Text("Not Now", maxLines = 1, softWrap = false)
                 }
             }
         }
     }
 }
+

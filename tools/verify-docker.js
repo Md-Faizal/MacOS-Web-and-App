@@ -30,6 +30,23 @@ async function test(name, path, options = {}) {
   });
 }
 
+const fs = require('fs');
+const path = require('path');
+
+let sampleCssPath = '/assets/home-D9eu2egd.css';
+let sampleManifestPath = '/assets/manifest-B2zw_Mip.json';
+
+try {
+  const assetsDir = path.resolve(__dirname, '../dist/assets');
+  if (fs.existsSync(assetsDir)) {
+    const files = fs.readdirSync(assetsDir);
+    const cssFile = files.find(f => f.startsWith('home-') && f.endsWith('.css')) || files.find(f => f.endsWith('.css'));
+    if (cssFile) sampleCssPath = `/assets/${cssFile}`;
+    const manifestFile = files.find(f => f.startsWith('manifest-') && f.endsWith('.json')) || files.find(f => f.endsWith('.json')) || files.find(f => f.endsWith('.js'));
+    if (manifestFile) sampleManifestPath = `/assets/${manifestFile}`;
+  }
+} catch (e) {}
+
 (async () => {
   console.log('═══════════════════════════════════════════════════════════════════════');
   console.log(`🧪 DOCKER CONTAINER VERIFICATION SUITE (Target: http://127.0.0.1:${targetPort})`);
@@ -45,8 +62,8 @@ async function test(name, path, options = {}) {
     { name: 'Database Query (Products API)', path: '/api/products', expected: [200, 401] },
     { name: 'Database Query (Notes API)', path: '/api/notes', expected: [200, 401] },
     { name: 'Database Query (Wallpapers API)', path: '/api/wallpapers', expected: [200, 401] },
-    { name: 'Static Manifest JSON Asset', path: '/assets/manifest-B2zw_Mip.json', expected: [200] },
-    { name: 'Static CSS Bundle Asset', path: '/assets/home-KmFKKS1z.css', expected: [200] },
+    { name: 'Static Manifest JSON Asset', path: sampleManifestPath, expected: [200] },
+    { name: 'Static CSS Bundle Asset', path: sampleCssPath, expected: [200] },
     { name: 'Security Guard (Missing API Endpoint)', path: '/api/nonexistent-route', expected: [404] },
     { name: 'Security Guard (Missing Asset Extension)', path: '/assets/nonexistent.js', expected: [404] }
   ];
