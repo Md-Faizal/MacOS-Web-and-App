@@ -3,34 +3,76 @@ const fs = require('fs');
 const path = require('path');
 
 const targetPort = parseInt(process.argv[2] || process.env.TARGET_PORT || '3001', 10);
+const REQUEST_TIMEOUT_MS = 6000;
 
-async function request(name, path, options = {}) {
+async function request(name, reqPath, options = {}) {
   return new Promise((resolve) => {
+    const startTime = Date.now();
     const req = http.request({
       hostname: '127.0.0.1',
       port: targetPort,
-      path: path,
+      path: reqPath,
       method: options.method || 'GET',
-      headers: options.headers || {}
+      headers: options.headers || {},
+      timeout: REQUEST_TIMEOUT_MS
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         resolve({
           name,
-          path,
+          path: reqPath,
           status: res.statusCode,
+          durationMs: Date.now() - startTime,
           contentType: res.headers['content-type'] || '',
           bodyLength: data.length,
           data: data,
-          snippet: data.slice(0, 120).replace(/\n/g, ' ')
+          snippet: data.slice(0, 120).replace(/\r?\n/g, ' ')
         });
       });
     });
-    req.on('error', (err) => resolve({ name, path, error: err.message, status: 0, data: '' }));
+
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ name, path: reqPath, error: 'ETIMEDOUT', status: 0, durationMs: Date.now() - startTime, data: '' });
+    });
+
+    req.on('error', (err) => {
+      resolve({ name, path: reqPath, error: err.message, status: 0, durationMs: Date.now() - startTime, data: '' });
+    });
+
     if (options.body) req.write(options.body);
     req.end();
   });
+}
+
+function extractBundledAssets(html) {
+  if (!html || typeof html !== 'string') return { js: [], css: [] };
+  const js = [];
+  const css = [];
+
+  // Match: <script ... src="(/assets/...js)" ...>
+  // Strictly captures strings bounded by quotes that end in .js
+  const scriptRegex = /<script\b[^>]*\bsrc=["'](\/assets\/[^"'#?]+\.js)(?:[?#][^"']*)?["']/gi;
+  let m;
+  while ((m = scriptRegex.exec(html)) !== null) {
+    const url = m[1];
+    if (!url.includes('manifest') && !js.includes(url)) {
+      js.push(url);
+    }
+  }
+
+  // Match: <link ... href="(/assets/...css)" ...>
+  // Strictly captures strings bounded by quotes that end in .css
+  const cssRegex = /<link\b[^>]*\bhref=["'](\/assets\/[^"'#?]+\.css)(?:[?#][^"']*)?["']/gi;
+  while ((m = cssRegex.exec(html)) !== null) {
+    const url = m[1];
+    if (!css.includes(url)) {
+      css.push(url);
+    }
+  }
+
+  return { js, css };
 }
 
 (async () => {
@@ -38,27 +80,22 @@ async function request(name, path, options = {}) {
   console.log(`🧪 DOCKER CONTAINER VERIFICATION SUITE (Target: http://127.0.0.1:${targetPort})`);
   console.log('═══════════════════════════════════════════════════════════════════════\n');
 
-  // Dynamically probe the live target container to discover real built asset URLs
+  // Probe live target container to discover runtime compiled bundle asset URLs
   let sampleCssPath = null;
   let sampleJsPath = null;
 
   try {
     const homeHtmlRes = await request('Probe Home HTML', '/home.html');
     const indexHtmlRes = await request('Probe Index HTML', '/');
-    const htmlData = (homeHtmlRes.data || '') + ' ' + (indexHtmlRes.data || '');
 
-    const cssMatches = htmlData.match(/\/assets\/[a-zA-Z0-9_.-]+\.css/g);
-    if (cssMatches && cssMatches.length > 0) {
-      sampleCssPath = cssMatches[0];
-    }
+    const homeAssets = extractBundledAssets(homeHtmlRes.data || '');
+    const indexAssets = extractBundledAssets(indexHtmlRes.data || '');
 
-    const jsMatches = htmlData.match(/\/assets\/[a-zA-Z0-9_.-]+\.js/g);
-    if (jsMatches && jsMatches.length > 0) {
-      sampleJsPath = jsMatches[0];
-    }
+    sampleCssPath = homeAssets.css[0] || indexAssets.css[0] || null;
+    sampleJsPath = homeAssets.js[0] || indexAssets.js[0] || null;
   } catch (e) {}
 
-  // Local filesystem fallback if dist/assets exists locally
+  // Local filesystem inspection fallback if dist/assets exists locally
   try {
     const assetsDir = path.resolve(__dirname, '../dist/assets');
     if (fs.existsSync(assetsDir)) {
@@ -68,7 +105,7 @@ async function request(name, path, options = {}) {
         if (cssFile) sampleCssPath = `/assets/${cssFile}`;
       }
       if (!sampleJsPath) {
-        const jsFile = files.find(f => f.endsWith('.js'));
+        const jsFile = files.find(f => f.endsWith('.js') && !f.includes('manifest'));
         if (jsFile) sampleJsPath = `/assets/${jsFile}`;
       }
     }
@@ -80,6 +117,8 @@ async function request(name, path, options = {}) {
     { name: 'Desktop Workspace (home.html)', path: '/home.html', expected: [200] },
     { name: 'Customer Ledger Page', path: '/customer-ledger', expected: [200] },
     { name: 'Public Product Page', path: '/public/product/test', expected: [200] },
+    { name: 'Web App Manifest', path: '/manifest.json', expected: [200] },
+    { name: 'Desktop Favicon Asset', path: '/assets/Images/Favicon.png', expected: [200] },
     { name: 'Auth Status Endpoint', path: '/api/auth/status', expected: [200] },
     { name: 'Database Query (Products API)', path: '/api/products', expected: [200, 401] },
     { name: 'Database Query (Notes API)', path: '/api/notes', expected: [200, 401] },
@@ -102,11 +141,14 @@ async function request(name, path, options = {}) {
   for (const t of tests) {
     const res = await request(t.name, t.path);
     const isPass = t.expected.includes(res.status);
+    const timing = `${res.durationMs}ms`.padStart(6);
+    const cType = res.contentType ? res.contentType.split(';')[0] : 'none';
+
     if (isPass) {
       passed++;
-      console.log(`✅ PASS | ${t.name.padEnd(42)} [${t.path}] -> ${res.status} (${res.contentType.split(';')[0]})`);
+      console.log(`✅ PASS [${timing}] | ${t.name.padEnd(38)} [${t.path}] -> ${res.status} (${cType})`);
     } else {
-      console.log(`❌ FAIL | ${t.name.padEnd(42)} [${t.path}] -> ${res.status} (${res.error || res.snippet})`);
+      console.log(`❌ FAIL [${timing}] | ${t.name.padEnd(38)} [${t.path}] -> ${res.status} (${res.error || res.snippet || 'Unexpected status'})`);
     }
   }
 
