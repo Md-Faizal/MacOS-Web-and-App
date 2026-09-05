@@ -254,16 +254,30 @@ class DatabaseManager {
         const extraColumns = actualColumns.filter(col => !expectedColumns.includes(col));
         const missingColumns = expectedColumns.filter(col => !actualColumns.includes(col));
 
-        if (extraColumns.length > 0 || missingColumns.length > 0) {
-          if (['production', 'oraclevm'].includes(process.env.NODE_ENV)) {
-            console.warn(`  ⚠️  Production safety: preserving schema mismatch on '${tableName}'; use a reviewed migration.`);
-            continue;
+        if (missingColumns.length > 0 || extraColumns.length > 0) {
+          // Zero-downtime Blue/Green Safe Migration:
+          // If columns are missing in production, add them non-destructively via ALTER TABLE ADD COLUMN
+          if (missingColumns.length > 0) {
+            console.log(`  ➕ Non-destructively adding ${missingColumns.length} missing column(s) to '${tableName}': ${missingColumns.join(', ')}`);
+            for (const col of missingColumns) {
+              try {
+                this.db.exec(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${col}\` TEXT`);
+                console.log(`    ✓ Added column '${col}' to '${tableName}'`);
+              } catch (addErr) {
+                console.warn(`    ⚠️ Could not add column '${col}' directly: ${addErr.message}`);
+              }
+            }
           }
-          if (extraColumns.length > 0) console.log(`  ⚠️  Table '${tableName}' has ${extraColumns.length} extra column(s): ${extraColumns.join(', ')}`);
-          if (missingColumns.length > 0) console.log(`  ⚠️  Table '${tableName}' is missing ${missingColumns.length} column(s): ${missingColumns.join(', ')}`);
-          
-          console.log(`  🔄 Rebuilding table '${tableName}' to match master schema...`);
-          this.rebuildTable(tableName, masterDef);
+
+          if (extraColumns.length > 0) {
+            if (['production', 'oraclevm'].includes(process.env.NODE_ENV)) {
+              console.log(`  🛡️  Zero-Downtime Blue/Green Safety: Preserving ${extraColumns.length} existing column(s) on '${tableName}' during traffic overlap.`);
+              continue;
+            }
+            console.log(`  ⚠️  Table '${tableName}' has ${extraColumns.length} extra column(s): ${extraColumns.join(', ')}`);
+            console.log(`  🔄 Rebuilding table '${tableName}' to match master schema...`);
+            this.rebuildTable(tableName, masterDef);
+          }
         }
       }
 

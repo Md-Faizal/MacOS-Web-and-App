@@ -28,6 +28,11 @@ x-macos-base: &macos-base
       limits:
         cpus: '1.0'
         memory: 512M
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
   healthcheck:
     test: ["CMD", "curl", "-f", "http://127.0.0.1:3001/api/health"]
     interval: 10s
