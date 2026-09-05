@@ -571,23 +571,70 @@ module.exports = function(db) {
       }
     },
 
+    getBackupConfig: (req, res) => {
+      try {
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const config = backupManager.getConfig();
+        // Mask secret key partially for security when sending to frontend
+        const maskedConfig = { ...config };
+        if (maskedConfig.r2SecretAccessKey && maskedConfig.r2SecretAccessKey.length > 8) {
+          maskedConfig.r2SecretAccessKeyMasked = maskedConfig.r2SecretAccessKey.slice(0, 4) + '••••••••' + maskedConfig.r2SecretAccessKey.slice(-4);
+        } else {
+          maskedConfig.r2SecretAccessKeyMasked = '';
+        }
+        res.json({ success: true, config: maskedConfig });
+      } catch (error) {
+        console.error('[Settings] getBackupConfig error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    saveBackupConfig: (req, res) => {
+      try {
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const newSettings = req.body;
+        
+        // If user left masked secret key as empty or unchanged placeholder, don't overwrite with dots
+        if (newSettings.r2SecretAccessKey && newSettings.r2SecretAccessKey.includes('••••')) {
+          delete newSettings.r2SecretAccessKey;
+        }
+
+        backupManager.saveConfig(newSettings);
+        res.json({ success: true });
+      } catch (error) {
+        console.error('[Settings] saveBackupConfig error:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    testBackupR2: async (req, res) => {
+      try {
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        let testConfig = req.body;
+        
+        // If secret was omitted, fallback to saved secret
+        if (!testConfig.r2SecretAccessKey || testConfig.r2SecretAccessKey.includes('••••')) {
+          const current = backupManager.getConfig();
+          testConfig.r2SecretAccessKey = current.r2SecretAccessKey;
+        }
+
+        const result = await backupManager.testR2Connection(testConfig);
+        res.json(result);
+      } catch (error) {
+        console.error('[Settings] testBackupR2 error:', error);
+        res.status(400).json({ error: error.message });
+      }
+    },
+
     createDbBackup: async (req, res) => {
       try {
-        const fs = require('fs');
-        const path = require('path');
-        
-        const backupDir = path.join(process.cwd(), 'database', 'backups');
-        if (!fs.existsSync(backupDir)) {
-          fs.mkdirSync(backupDir, { recursive: true });
-        }
-        
-        const backupFileName = `backup_${Date.now()}.db`;
-        const backupPath = path.join(backupDir, backupFileName);
-        
-        console.log(`[Backup System] Backing up active database to: ${backupPath}`);
-        await db.backup(backupPath);
-        
-        res.json({ success: true, filename: backupFileName });
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const result = await backupManager.runBackup({ source: 'manual-ui' });
+        res.json(result);
       } catch (error) {
         console.error('[Backup System] createDbBackup error:', error);
         res.status(500).json({ error: error.message });
@@ -596,26 +643,9 @@ module.exports = function(db) {
 
     getDbBackups: (req, res) => {
       try {
-        const fs = require('fs');
-        const path = require('path');
-        const backupDir = path.join(process.cwd(), 'database', 'backups');
-        
-        if (!fs.existsSync(backupDir)) {
-          return res.json({ backups: [] });
-        }
-        
-        const files = fs.readdirSync(backupDir)
-          .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
-          .map(f => {
-            const stats = fs.statSync(path.join(backupDir, f));
-            return {
-              filename: f,
-              sizeBytes: stats.size,
-              createdAt: stats.mtime.toISOString()
-            };
-          })
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-          
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const files = backupManager.listLocalBackups();
         res.json({ backups: files });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -624,28 +654,15 @@ module.exports = function(db) {
 
     restoreDbBackup: async (req, res) => {
       try {
-        const fs = require('fs');
-        const path = require('path');
         const { filename } = req.body;
-        
         if (!filename || typeof filename !== 'string') {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
         
-        const backupDir = path.join(process.cwd(), 'database', 'backups');
-        const backupPath = path.join(backupDir, filename);
-        
-        if (!fs.existsSync(backupPath)) {
-          return res.status(404).json({ error: 'Backup file not found' });
-        }
-        
-        console.log(`[Backup System] Restoring database from snapshot: ${backupPath}`);
-        const backupDb = require('better-sqlite3')(backupPath);
-        
-        await backupDb.backup(path.join(process.cwd(), 'database', 'MacOS.db'));
-        backupDb.close();
-        
-        res.json({ success: true });
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const result = await backupManager.restoreBackup(filename);
+        res.json(result);
       } catch (error) {
         console.error('[Backup System] restoreDbBackup error:', error);
         res.status(500).json({ error: error.message });
@@ -654,28 +671,15 @@ module.exports = function(db) {
 
     deleteDbBackup: (req, res) => {
       try {
-        const fs = require('fs');
-        const path = require('path');
         const { filename } = req.body;
-        
         if (!filename || typeof filename !== 'string') {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
         
-        const safeFilename = path.basename(filename);
-        if (safeFilename !== filename || !filename.startsWith('backup_') || !filename.endsWith('.db')) {
-          return res.status(400).json({ error: 'Invalid backup filename format' });
-        }
-        
-        const backupDir = path.join(process.cwd(), 'database', 'backups');
-        const backupPath = path.join(backupDir, filename);
-        
-        if (!fs.existsSync(backupPath)) {
-          return res.status(404).json({ error: 'Backup file not found' });
-        }
-        
-        fs.unlinkSync(backupPath);
-        res.json({ success: true });
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        const result = backupManager.deleteBackup(filename);
+        res.json(result);
       } catch (error) {
         console.error('[Backup System] deleteDbBackup error:', error);
         res.status(500).json({ error: error.message });

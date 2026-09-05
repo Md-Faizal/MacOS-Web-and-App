@@ -780,3 +780,144 @@
   to { opacity: 0; }
 }
 
+/* ========================================
+   BACKUP & DISASTER RECOVERY PANEL STYLES
+   ======================================== */
+.backup-config-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+  animation: storageFadeIn 0.25s ease-out;
+}
+
+.backup-card {
+  background: var(--settings-sidebar-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backup-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.backup-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--settings-text);
+}
+
+.backup-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.backup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.backup-field label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--settings-text-secondary);
+}
+
+.backup-input, .backup-select {
+  padding: 7px 10px;
+  background: var(--settings-input-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  color: var(--settings-text);
+  font-size: 12px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.backup-input:focus, .backup-select:focus {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 2px var(--gold-bg-translucent);
+}
+
+.backup-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.backup-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.backup-status-pill.idle {
+  background: rgba(120, 120, 128, 0.16);
+  color: var(--settings-text-secondary);
+}
+
+.backup-status-pill.running {
+  background: rgba(255, 159, 10, 0.15);
+  color: #ff9f0a;
+}
+
+.backup-status-pill.success {
+  background: rgba(52, 199, 89, 0.15);
+  color: #34c759;
+}
+
+.backup-status-pill.error {
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+}
+
+.backup-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="dark"] .backup-history-list {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.backup-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--settings-window-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.backup-history-item:hover {
+  border-color: var(--gold-border);
+}
+
+

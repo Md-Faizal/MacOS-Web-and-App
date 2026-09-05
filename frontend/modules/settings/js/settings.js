@@ -6,6 +6,7 @@
 import { ProfileComponent } from './Profile.js';
 import { AppearanceComponent } from './Appearance.js';
 import { StorageComponent } from './Storage.js';
+import { BackupComponent } from './BackupComponent.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
 import { AdminComponent } from './Admin.js';
 
@@ -432,6 +433,15 @@ export class SettingsApp extends AppWindow {
               </div>
               <span class="settings-row-chevron">›</span>
             </div>
+
+            <!-- Database & Cloud Backup Row Button -->
+            <div class="settings-row-item" id="generalBackupBtn" style="cursor: pointer; margin-top: 8px;">
+              <div class="settings-row-left">
+                <span class="settings-row-icon">📦</span>
+                <span>Database & Cloud Backups</span>
+              </div>
+              <span class="settings-row-chevron">›</span>
+            </div>
           </div>
 
           <div class="settings-section">
@@ -483,6 +493,17 @@ export class SettingsApp extends AppWindow {
             <div style="font-weight: 600; font-size: 14px;">Storage settings</div>
           </div>
           <div id="storageComponentContainer" style="height: 100%;"></div>
+        </div>
+
+        <!-- Database & Cloud Backup View Container -->
+        <div id="general-backup-view" class="hidden" style="height: 100%;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <button id="generalBackupBackBtn" class="settings-back-btn">
+              <span>‹</span> <span>General</span>
+            </button>
+            <div style="font-weight: 600; font-size: 14px;">Database & Cloud Backups</div>
+          </div>
+          <div id="backupComponentContainer" style="height: calc(100% - 40px);"></div>
         </div>
       </div>
 
@@ -938,6 +959,29 @@ export class SettingsApp extends AppWindow {
 
       generalStorageBackBtn.addEventListener('click', () => {
         generalStorageView.classList.add('hidden');
+        generalMainView.classList.remove('hidden');
+      });
+    }
+
+    // General - Backup & Cloud Disaster Recovery sub-view logic
+    const generalBackupBtn = document.getElementById('generalBackupBtn');
+    const generalBackupBackBtn = document.getElementById('generalBackupBackBtn');
+    const generalBackupView = document.getElementById('general-backup-view');
+    const backupContainer = document.getElementById('backupComponentContainer');
+
+    if (generalBackupBtn && generalBackupBackBtn && generalMainView && generalBackupView && backupContainer) {
+      generalBackupBtn.addEventListener('click', () => {
+        generalMainView.classList.add('hidden');
+        generalBackupView.classList.remove('hidden');
+
+        if (!this.backupModule) {
+          this.backupModule = new BackupComponent(backupContainer);
+        }
+        this.backupModule.render();
+      });
+
+      generalBackupBackBtn.addEventListener('click', () => {
+        generalBackupView.classList.add('hidden');
         generalMainView.classList.remove('hidden');
       });
     }

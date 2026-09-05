@@ -20,5 +20,10 @@ module.exports = function(router, handlers) {
   router.post('/db/backup/restore', handlers.restoreDbBackup);
   router.delete('/db/backup', handlers.deleteDbBackup);
   
+  // Backup & Disaster Recovery settings
+  router.get('/backup-config', handlers.getBackupConfig);
+  router.post('/backup-config', handlers.saveBackupConfig);
+  router.post('/backup/test-r2', handlers.testBackupR2);
+  
   return router;
 };

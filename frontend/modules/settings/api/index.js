@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const createHandlers = require('./handlers');
 const createRoutes = require('./routes');
 
@@ -18,6 +18,15 @@ function initializeDatabase(globalDb) {
     try {
       const handlers = createHandlers(db);
       createRoutes(router, handlers);
+
+      // Start Background Backup & Disaster Recovery Scheduler
+      try {
+        const BackupManager = require('../../../backend/core/backup-manager');
+        const backupManager = new BackupManager(db);
+        console.log('✓ Backup & Disaster Recovery manager initialized');
+      } catch (backupInitErr) {
+        console.warn('⚠️ Backup scheduler initialization warning:', backupInitErr.message);
+      }
     } catch (err) {
       console.error('✗ Failed to mount settings routes:', err.message);
     }
