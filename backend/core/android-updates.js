@@ -79,7 +79,7 @@ function readManifest() {
       apkUrl: '/api/android/update/latest',
       releaseNotes: 'Initial debug release',
       publishedAt: new Date().toISOString(),
-      fileName: 'latest.apk',
+      fileName: 'BusinessSuite-v1.0.0.apk',
       sha256: '',
       fileSize: 0,
       minSdkVersion: 24,
@@ -151,7 +151,7 @@ function archiveCurrentApk() {
   if (!fs.existsSync(apkPath)) return;
 
   const manifest = readManifest();
-  const archiveName = `v${manifest.versionName}_${manifest.versionCode}_${Date.now()}.apk`;
+  const archiveName = `BusinessSuite-v${manifest.versionName || '1.0.0'}_${manifest.versionCode || 1}_${Date.now()}.apk`;
   const archiveDest = path.join(archiveDir, archiveName);
 
   try {
@@ -266,7 +266,7 @@ router.get('/latest', (req, res) => {
     const manifest = readManifest();
     const stats = fs.statSync(apkPath);
     const sha256 = manifest.sha256 || computeSha256(apkPath);
-    const fileName = manifest.fileName || 'latest.apk';
+    const fileName = manifest.fileName || `BusinessSuite-v${manifest.versionName || '1.0.0'}.apk`;
 
     // Increment download counter
     manifest.downloadCount = (manifest.downloadCount || 0) + 1;
@@ -332,7 +332,7 @@ router.post('/upload', upload.single('apk'), (req, res) => {
     const versionCode = Number(req.body.versionCode || manifestInput.versionCode || readManifest().versionCode || 1);
     const versionName = req.body.versionName || manifestInput.versionName || readManifest().versionName || '1.0.0';
     const releaseNotes = req.body.releaseNotes || manifestInput.releaseNotes || 'Updated via deployment script';
-    const fileName = req.body.fileName || manifestInput.fileName || req.file.originalname || 'latest.apk';
+    const fileName = req.body.fileName || manifestInput.fileName || req.file.originalname || `BusinessSuite-v${versionName}.apk`;
     const minSdkVersion = Number(req.body.minSdkVersion || manifestInput.minSdkVersion || 24);
 
     // Verify the uploaded file exists and is non-zero
@@ -356,6 +356,14 @@ router.post('/upload', upload.single('apk'), (req, res) => {
 
     // Atomic rename: tmp -> latest.apk
     fs.renameSync(tmpPath, apkPath);
+
+    // Maintain versioned copy for direct distinct downloads
+    const versionedApkPath = path.join(uploadDir, fileName);
+    try {
+      fs.copyFileSync(apkPath, versionedApkPath);
+    } catch (e) {
+      console.warn('[Android Update] Could not create versioned copy:', e.message);
+    }
 
     // Write enhanced manifest
     const manifest = writeManifest({
@@ -441,11 +449,30 @@ router.post('/rollback', (req, res) => {
 });
 
 /**
+ * GET /archive/:fileName — Download a historical archived APK
+ */
+router.get('/archive/:fileName', (req, res) => {
+  try {
+    const safeName = path.basename(req.params.fileName);
+    const targetFile = path.join(archiveDir, safeName);
+    if (!fs.existsSync(targetFile)) {
+      return res.status(404).json({ error: 'Archived APK not found' });
+    }
+    res.download(targetFile, safeName);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /history — List all published versions
  */
 router.get('/history', (req, res) => {
   try {
-    const history = readHistory();
+    const history = readHistory().map(item => ({
+      ...item,
+      downloadUrl: item.archiveFile ? `/api/android/update/archive/${encodeURIComponent(item.archiveFile)}` : null
+    }));
     res.json({
       count: history.length,
       versions: history

@@ -671,26 +671,109 @@ export class SettingsApp extends AppWindow {
 
       <div class="settings-panel hidden" id="android-update-panel">
         <div class="settings-section">
-          <div class="settings-section-title">Android App Updates</div>
-          <div class="appearance-item">
-            <div class="appearance-label">Latest build</div>
-            <div class="appearance-value" id="androidUpdateVersion">Checking…</div>
-          </div>
-          <div class="appearance-item">
-            <div class="appearance-label">Release notes</div>
-            <div class="appearance-value" id="androidUpdateNotes">Loading release information…</div>
-          </div>
-          <div class="appearance-item">
-            <div class="appearance-label">Download</div>
-            <div class="appearance-value" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-              <button id="androidUpdateCheckBtn" style="padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.12); cursor:pointer;">Check for update</button>
-              <a id="androidUpdateDownloadLink" href="/api/android/update/latest" style="padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.12); text-decoration:none; color:inherit;">Download APK</a>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <div class="settings-section-title" style="margin-bottom:2px;">🤖 Business Suite for Android</div>
+              <div style="font-size:12px; color:var(--settings-text-secondary);">Enterprise OTA Distribution, Integrity Verification & Release Channel</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button id="androidUpdateCheckBtn" class="storage-btn" style="font-size:12px; padding:6px 12px; cursor:pointer;">🔄 Check Updates</button>
             </div>
           </div>
-          <div class="appearance-item">
-            <div class="appearance-label">Status</div>
-            <div class="appearance-value" id="androidUpdateStatus">Waiting for manifest…</div>
+
+          <!-- Active Release Hero Card -->
+          <div class="health-card" style="margin-bottom:16px; background:rgba(255,255,255,0.06); border:1px solid var(--settings-border); border-radius:12px; padding:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; gap:14px; align-items:center;">
+                <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, #34c759, #30d158); display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 4px 12px rgba(52,199,89,0.3);">
+                  🤖
+                </div>
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:18px; font-weight:700;" id="androidHeroTitle">Business Suite Android</span>
+                    <span id="androidVersionBadge" style="font-size:11px; font-weight:700; background:rgba(52,199,89,0.2); color:#34c759; padding:2px 8px; border-radius:6px; border:1px solid rgba(52,199,89,0.3);">v1.0.0</span>
+                    <span id="androidCodeBadge" style="font-size:11px; font-weight:600; background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:6px;">Build #1</span>
+                  </div>
+                  <div id="androidMetaRow" style="font-size:12px; color:var(--settings-text-secondary); margin-top:4px;">
+                    Published: <span id="androidPublishedAt">-</span> • Size: <span id="androidApkSize">-</span> • Downloads: <span id="androidDownloadCount">0</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Download Buttons -->
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <a id="androidUpdateDownloadLink" href="/api/android/update/latest" class="storage-btn primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:8px 16px; background:#0a84ff; color:#fff; border-radius:8px;">
+                  ⬇️ Download APK (<span id="androidDownloadBtnLabel">BusinessSuite-v1.0.0.apk</span>)
+                </a>
+                <a id="androidR2DownloadLink" href="#" target="_blank" class="storage-btn" style="display:none; text-decoration:none; font-size:12px; padding:8px 14px; border-radius:8px;">
+                  ☁️ R2 Mirror
+                </a>
+              </div>
+            </div>
+
+            <!-- SHA-256 Checksum Bar -->
+            <div style="margin-top:14px; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; gap:10px; font-family:monospace; font-size:11px;">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <span style="color:var(--settings-text-tertiary); font-family:sans-serif; margin-right:6px;">SHA-256:</span>
+                <span id="androidSha256" style="color:#2997ff;">Computing...</span>
+              </div>
+              <button id="androidCopyHashBtn" class="storage-cell-edit-btn" style="font-size:10px; padding:3px 8px; white-space:nowrap; border-radius:4px; cursor:pointer;">📋 Copy</button>
+            </div>
           </div>
+
+          <!-- Active Release Notes Card -->
+          <div style="margin-bottom:16px; background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
+            <div style="font-size:13px; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+              📝 Current Release Notes
+            </div>
+            <div id="androidUpdateNotes" style="font-size:12px; color:var(--settings-text-secondary); line-height:1.5; white-space:pre-wrap;">Loading notes...</div>
+          </div>
+
+          <!-- Version History & Rollback Card -->
+          <div style="margin-bottom:16px; background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px;">
+                ⏱️ Version History & Instant Rollback
+              </div>
+              <div style="font-size:11px; color:var(--settings-text-tertiary);">Last 20 builds archived</div>
+            </div>
+            <div id="androidHistoryContainer" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="text-align:center; padding:12px; color:var(--settings-text-tertiary); font-size:12px;">Loading version history...</div>
+            </div>
+          </div>
+
+          <!-- Admin Manual Upload & Overwrite Card -->
+          <div style="background:rgba(255,255,255,0.04); border:1px solid var(--settings-border); border-radius:10px; padding:14px;">
+            <div style="font-size:13px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              🚀 Publish / Upload APK Manually
+            </div>
+            <div style="font-size:12px; color:var(--settings-text-secondary); margin-bottom:12px;">
+              Upload an updated APK binary to immediately replace the live version and broadcast update notifications.
+            </div>
+
+            <form id="androidUploadForm" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+              <div>
+                <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Version Name</label>
+                <input type="text" id="uploadVersionName" class="settings-input" placeholder="e.g. 1.0.6" style="width:100%; font-size:12px; padding:7px 10px; border-radius:6px; background:var(--settings-input-bg); border:1px solid var(--settings-border); color:inherit;" required />
+              </div>
+              <div>
+                <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Version Code</label>
+                <input type="number" id="uploadVersionCode" class="settings-input" placeholder="e.g. 6" style="width:100%; font-size:12px; padding:7px 10px; border-radius:6px; background:var(--settings-input-bg); border:1px solid var(--settings-border); color:inherit;" required />
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label style="font-size:11px; font-weight:600; display:block; margin-bottom:4px;">Release Notes</label>
+                <textarea id="uploadReleaseNotes" class="settings-input" rows="2" placeholder="What's new in this build..." style="width:100%; font-size:12px; padding:7px 10px; border-radius:6px; background:var(--settings-input-bg); border:1px solid var(--settings-border); color:inherit; resize:vertical;"></textarea>
+              </div>
+              <div style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center; margin-top:4px;">
+                <input type="file" id="uploadApkFile" accept=".apk" style="font-size:12px; flex:1;" required />
+                <button type="submit" id="uploadApkSubmitBtn" class="storage-btn primary" style="padding:7px 18px; font-size:12px; border-radius:6px; background:#34c759; color:#fff; border:none; cursor:pointer; font-weight:600;">
+                  ⬆️ Publish Update
+                </button>
+              </div>
+            </form>
+            <div id="uploadStatusMsg" style="font-size:12px; margin-top:8px; display:none;"></div>
+          </div>
+
         </div>
       </div>
 
@@ -1665,17 +1748,136 @@ export class SettingsApp extends AppWindow {
   bindAndroidUpdateControls() {
     const checkBtn = document.getElementById('androidUpdateCheckBtn');
     const downloadLink = document.getElementById('androidUpdateDownloadLink');
-    const versionEl = document.getElementById('androidUpdateVersion');
+    const downloadBtnLabel = document.getElementById('androidDownloadBtnLabel');
+    const versionBadge = document.getElementById('androidVersionBadge');
+    const codeBadge = document.getElementById('androidCodeBadge');
+    const publishedAtEl = document.getElementById('androidPublishedAt');
+    const apkSizeEl = document.getElementById('androidApkSize');
+    const downloadCountEl = document.getElementById('androidDownloadCount');
+    const sha256El = document.getElementById('androidSha256');
+    const copyHashBtn = document.getElementById('androidCopyHashBtn');
     const notesEl = document.getElementById('androidUpdateNotes');
-    const statusEl = document.getElementById('androidUpdateStatus');
+    const r2Link = document.getElementById('androidR2DownloadLink');
+    const historyContainer = document.getElementById('androidHistoryContainer');
+    const uploadForm = document.getElementById('androidUploadForm');
+    const uploadStatusMsg = document.getElementById('uploadStatusMsg');
 
-    const updateUi = (manifest, status) => {
-      if (versionEl) versionEl.textContent = manifest?.versionName ? `v${manifest.versionName}` : 'No build published';
-      if (notesEl) notesEl.textContent = manifest?.releaseNotes || 'No release notes available yet.';
-      if (statusEl) statusEl.textContent = status || 'Waiting for manifest…';
-      if (downloadLink && manifest?.versionName) {
+    let currentSha256 = '';
+
+    const formatBytes = (bytes) => {
+      if (!bytes || bytes === 0) return '0 MB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    };
+
+    const updateUi = (manifest) => {
+      if (!manifest || !manifest.versionName) {
+        if (versionBadge) versionBadge.textContent = 'No build';
+        if (codeBadge) codeBadge.textContent = 'Build #0';
+        if (notesEl) notesEl.textContent = 'No active Android release published yet. Use the publish form below or run the GitHub Action to publish a build.';
+        if (sha256El) sha256El.textContent = 'None';
+        return;
+      }
+
+      const vName = manifest.versionName || '1.0.0';
+      const vCode = manifest.versionCode || 1;
+      const targetFileName = manifest.fileName || `BusinessSuite-v${vName}.apk`;
+      currentSha256 = manifest.sha256 || '';
+
+      if (versionBadge) versionBadge.textContent = `v${vName}`;
+      if (codeBadge) codeBadge.textContent = `Build #${vCode}`;
+      if (downloadBtnLabel) downloadBtnLabel.textContent = targetFileName;
+      if (downloadLink) {
         downloadLink.href = '/api/android/update/latest';
-        downloadLink.setAttribute('download', manifest.fileName || 'latest.apk');
+        downloadLink.setAttribute('download', targetFileName);
+      }
+      if (publishedAtEl) {
+        publishedAtEl.textContent = manifest.publishedAt ? new Date(manifest.publishedAt).toLocaleDateString(undefined, {
+          month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : 'Recently';
+      }
+      if (apkSizeEl) apkSizeEl.textContent = formatBytes(manifest.fileSize);
+      if (downloadCountEl) downloadCountEl.textContent = manifest.downloadCount || 0;
+      if (sha256El) sha256El.textContent = currentSha256 || 'Pending checksum';
+      if (notesEl) notesEl.textContent = manifest.releaseNotes || 'General performance and security improvements.';
+
+      if (r2Link) {
+        if (manifest.r2DownloadUrl) {
+          r2Link.href = manifest.r2DownloadUrl;
+          r2Link.style.display = 'inline-flex';
+        } else {
+          r2Link.style.display = 'none';
+        }
+      }
+    };
+
+    const loadHistory = async () => {
+      if (!historyContainer) return;
+      try {
+        const res = await fetch('/api/android/update/history');
+        if (!res.ok) throw new Error('Failed to load version history');
+        const data = await res.json();
+        const versions = data.versions || [];
+
+        if (versions.length === 0) {
+          historyContainer.innerHTML = '<div style="text-align:center; padding:12px; color:var(--settings-text-tertiary); font-size:12px;">No archived historical versions found.</div>';
+          return;
+        }
+
+        historyContainer.innerHTML = versions.map((v, idx) => {
+          const dateStr = v.archivedAt || v.publishedAt ? new Date(v.archivedAt || v.publishedAt).toLocaleDateString() : 'Previous';
+          const sizeStr = formatBytes(v.fileSize);
+          const dlUrl = v.downloadUrl || (v.archiveFile ? `/api/android/update/archive/${encodeURIComponent(v.archiveFile)}` : null);
+
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:rgba(0,0,0,0.15); border-radius:8px; border:1px solid rgba(255,255,255,0.05); font-size:12px;">
+              <div style="flex:1; margin-right:10px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-weight:700; color:#34c759;">v${v.versionName || '1.0'}</span>
+                  <span style="font-size:10px; opacity:0.6;">(Build #${v.versionCode || 1})</span>
+                  <span style="font-size:11px; opacity:0.5; margin-left:4px;">${dateStr}</span>
+                  <span style="font-size:10px; opacity:0.5;">• ${sizeStr}</span>
+                </div>
+                <div style="font-size:11px; color:var(--settings-text-secondary); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                  ${v.releaseNotes || 'No notes'}
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                ${dlUrl ? `<a href="${dlUrl}" class="storage-cell-edit-btn" style="text-decoration:none; padding:4px 8px; font-size:11px; border-radius:4px;" title="Download this archived build">⬇️ APK</a>` : ''}
+                ${idx === 0 ? `<button class="storage-btn btn-rollback" data-version="${v.versionName}" style="padding:4px 10px; font-size:11px; border-radius:4px; background:rgba(255,59,48,0.2); color:#ff453a; border:1px solid rgba(255,59,48,0.3); cursor:pointer;">⏪ Rollback</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Wire rollback buttons
+        historyContainer.querySelectorAll('.btn-rollback').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const targetV = btn.dataset.version;
+            if (confirm(`Are you sure you want to rollback to Android App v${targetV}? This will restore the previous APK as the active build for all devices.`)) {
+              btn.disabled = true;
+              btn.textContent = 'Rolling back...';
+              try {
+                const rollRes = await fetch('/api/android/update/rollback', { method: 'POST' });
+                const rollData = await rollRes.json();
+                if (rollRes.ok) {
+                  alert(`Successfully rolled back: ${rollData.message || 'Restored previous version'}`);
+                  refresh();
+                } else {
+                  alert(`Rollback error: ${rollData.error || 'Server error'}`);
+                  btn.disabled = false;
+                  btn.textContent = '⏪ Rollback';
+                }
+              } catch (err) {
+                alert(`Network error during rollback: ${err.message}`);
+                btn.disabled = false;
+                btn.textContent = '⏪ Rollback';
+              }
+            }
+          });
+        });
+      } catch (err) {
+        historyContainer.innerHTML = `<div style="text-align:center; padding:10px; color:#ff453a; font-size:12px;">Failed to load history: ${err.message}</div>`;
       }
     };
 
@@ -1684,25 +1886,94 @@ export class SettingsApp extends AppWindow {
         const response = await fetch('/api/android/update/manifest');
         if (response.ok) {
           const manifest = await response.json();
-          updateUi(manifest, `Manifest available (${manifest.versionName || 'unknown'})`);
+          updateUi(manifest);
         } else {
-          updateUi(null, 'No Android update manifest is currently published.');
+          updateUi(null);
         }
       } catch (error) {
-        updateUi(null, `Unable to contact the update service: ${error.message}`);
+        updateUi(null);
       }
+      loadHistory();
     };
 
     if (checkBtn) {
       checkBtn.addEventListener('click', () => {
-        if (statusEl) statusEl.textContent = 'Checking backend manifest…';
-        refresh();
+        checkBtn.textContent = '⏳ Checking...';
+        refresh().finally(() => {
+          setTimeout(() => { checkBtn.textContent = '🔄 Check Updates'; }, 800);
+        });
       });
     }
 
-    if (downloadLink) {
-      downloadLink.addEventListener('click', () => {
-        if (statusEl) statusEl.textContent = 'Downloading APK from backend…';
+    if (copyHashBtn) {
+      copyHashBtn.addEventListener('click', () => {
+        if (currentSha256) {
+          navigator.clipboard.writeText(currentSha256).then(() => {
+            copyHashBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyHashBtn.textContent = '📋 Copy'; }, 1500);
+          });
+        }
+      });
+    }
+
+    // Wire manual APK Upload Form
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const vName = document.getElementById('uploadVersionName')?.value?.trim();
+        const vCode = document.getElementById('uploadVersionCode')?.value?.trim();
+        const notes = document.getElementById('uploadReleaseNotes')?.value?.trim() || 'Manual admin release';
+        const fileInput = document.getElementById('uploadApkFile');
+        const submitBtn = document.getElementById('uploadApkSubmitBtn');
+
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+          alert('Please choose an .apk file to upload.');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('apk', fileInput.files[0]);
+        formData.append('versionName', vName);
+        formData.append('versionCode', vCode);
+        formData.append('releaseNotes', notes);
+        formData.append('fileName', `BusinessSuite-v${vName}.apk`);
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Uploading & Verifying...';
+        if (uploadStatusMsg) {
+          uploadStatusMsg.style.display = 'block';
+          uploadStatusMsg.style.color = '#2997ff';
+          uploadStatusMsg.textContent = 'Computing SHA-256 and publishing to server storage...';
+        }
+
+        try {
+          const res = await fetch('/api/android/update/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const resData = await res.json();
+          if (res.ok) {
+            if (uploadStatusMsg) {
+              uploadStatusMsg.style.color = '#34c759';
+              uploadStatusMsg.textContent = `✅ Successfully published BusinessSuite-v${vName}.apk!`;
+            }
+            uploadForm.reset();
+            refresh();
+          } else {
+            if (uploadStatusMsg) {
+              uploadStatusMsg.style.color = '#ff453a';
+              uploadStatusMsg.textContent = `❌ Upload failed: ${resData.error || 'Server error'}`;
+            }
+          }
+        } catch (err) {
+          if (uploadStatusMsg) {
+            uploadStatusMsg.style.color = '#ff453a';
+            uploadStatusMsg.textContent = `❌ Network error: ${err.message}`;
+          }
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = '⬆️ Publish Update';
+        }
       });
     }
 

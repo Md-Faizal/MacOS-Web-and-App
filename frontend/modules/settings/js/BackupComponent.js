@@ -18,6 +18,7 @@ export class BackupComponent {
       r2SecretAccessKeyMasked: '',
       r2BucketName: '',
       r2CustomEndpoint: '',
+      r2ApkMirror: 'false',
       lastBackupAt: '',
       lastBackupStatus: 'idle',
       lastBackupError: ''
@@ -110,6 +111,11 @@ export class BackupComponent {
           <div class="backup-toggle-row">
             <label style="font-size: 12px; font-weight: 500;">Sync Snapshots to Cloudflare R2</label>
             <input type="checkbox" id="backupR2EnabledToggle" style="cursor: pointer; width: 16px; height: 16px;" />
+          </div>
+
+          <div class="backup-toggle-row" style="margin-top: 4px;">
+            <label style="font-size: 12px; font-weight: 500;">Mirror Android App Releases to Cloudflare R2 (Backup CDN)</label>
+            <input type="checkbox" id="backupR2ApkMirrorToggle" style="cursor: pointer; width: 16px; height: 16px;" />
           </div>
 
           <div class="backup-grid-2">
@@ -213,6 +219,8 @@ export class BackupComponent {
     if (retentionEl) retentionEl.value = this.config.retentionCount || '7';
     if (compressEl) compressEl.checked = this.config.compress !== 'false';
     if (r2EnabledEl) r2EnabledEl.checked = this.config.r2Enabled === 'true';
+    const r2ApkMirrorEl = this.container.querySelector('#backupR2ApkMirrorToggle');
+    if (r2ApkMirrorEl) r2ApkMirrorEl.checked = this.config.r2ApkMirror === 'true';
     if (r2AccountEl) r2AccountEl.value = this.config.r2AccountId || '';
     if (r2BucketEl) r2BucketEl.value = this.config.r2BucketName || '';
     if (r2AccessKeyEl) r2AccessKeyEl.value = this.config.r2AccessKeyId || '';
@@ -250,6 +258,7 @@ export class BackupComponent {
         retentionCount: this.container.querySelector('#backupRetentionSelect')?.value || '7',
         compress: this.container.querySelector('#backupCompressToggle')?.checked ? 'true' : 'false',
         r2Enabled: this.container.querySelector('#backupR2EnabledToggle')?.checked ? 'true' : 'false',
+        r2ApkMirror: this.container.querySelector('#backupR2ApkMirrorToggle')?.checked ? 'true' : 'false',
         r2AccountId: this.container.querySelector('#backupR2AccountId')?.value?.trim() || '',
         r2BucketName: this.container.querySelector('#backupR2BucketName')?.value?.trim() || '',
         r2AccessKeyId: this.container.querySelector('#backupR2AccessKeyId')?.value?.trim() || '',

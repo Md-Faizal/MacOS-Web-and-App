@@ -98,6 +98,13 @@ fun BillingDashboardScreen(
     var activeTab by remember { mutableIntStateOf(0) } // 0: Top Products, 1: Top Customers
     var selectedSubPage by rememberSaveable { mutableStateOf(BillingSubPage.DASHBOARD) }
 
+    val canCreateBill = remember(mainViewModel.sessionManager.permissionsJson, mainViewModel.sessionManager.userRole) {
+        mainViewModel.sessionManager.canCreate("billing")
+    }
+    val canEditBill = remember(mainViewModel.sessionManager.permissionsJson, mainViewModel.sessionManager.userRole) {
+        mainViewModel.sessionManager.canEdit("billing")
+    }
+
     // Industrial Standard Back Navigation: Sub-pages revert to Dashboard before app exit
     BackHandler(enabled = selectedSubPage != BillingSubPage.DASHBOARD) {
         selectedSubPage = BillingSubPage.DASHBOARD
@@ -623,13 +630,17 @@ fun BillingDashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                item { LargeActionCard("New Bill", "Create a new sales invoice", Icons.AutoMirrored.Filled.ReceiptLong, MaterialTheme.colorScheme.primaryContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("new_bill") } }
-                item { LargeActionCard("New Order", "Draft a new sales order", Icons.Default.ShoppingCart, MaterialTheme.colorScheme.secondaryContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("new_order") } }
+                if (canCreateBill) {
+                    item { LargeActionCard("New Bill", "Create a new sales invoice", Icons.AutoMirrored.Filled.ReceiptLong, MaterialTheme.colorScheme.primaryContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("new_bill") } }
+                    item { LargeActionCard("New Order", "Draft a new sales order", Icons.Default.ShoppingCart, MaterialTheme.colorScheme.secondaryContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("new_order") } }
+                }
                 item { LargeActionCard("Receive Payment", "Log an incoming payment", Icons.Default.Payments, MaterialTheme.colorScheme.tertiaryContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("payments/Payment") } }
                 item { LargeActionCard("Issue Credit Note", "Refund or adjust balance", Icons.Default.RequestQuote, MaterialTheme.colorScheme.errorContainer, marqueeEnabled = marqueeEnabled) { navController.navigate("payments/Credit Note") } }
                 item { LargeActionCard("Customer Ledger", "View full customer accounts", Icons.AutoMirrored.Filled.MenuBook, MaterialTheme.colorScheme.surfaceContainerHigh, marqueeEnabled = marqueeEnabled) { navController.navigate("ledger") } }
                 item { LargeActionCard("Transaction History", "View past bills & payments", Icons.Default.History, MaterialTheme.colorScheme.surfaceContainerHigh, marqueeEnabled = marqueeEnabled) { navController.navigate("payments/History") } }
-                item { LargeActionCard("Edit Transactions", "Modify existing records", Icons.Default.Edit, MaterialTheme.colorScheme.surfaceContainerHigh, marqueeEnabled = marqueeEnabled) { navController.navigate("edit_billing") } }
+                if (canEditBill) {
+                    item { LargeActionCard("Edit Transactions", "Modify existing records", Icons.Default.Edit, MaterialTheme.colorScheme.surfaceContainerHigh, marqueeEnabled = marqueeEnabled) { navController.navigate("edit_billing") } }
+                }
                 item(span = { GridItemSpan(2) }) {
                     VibrantPageBottomFiller(
                         title = "Operations Desk Ready",
@@ -648,7 +659,9 @@ fun BillingDashboardScreen(
 
         if (selectedSubPage == BillingSubPage.DASHBOARD) {
             AnimatedBillingSpeedDial(
-                navController = navController
+                navController = navController,
+                canCreateBill = canCreateBill,
+                canEditBill = canEditBill
             )
         }
     } // closes Box
@@ -831,7 +844,12 @@ fun formatCurrency(value: Double): String {
 }
 
 @Composable
-fun AnimatedBillingSpeedDial(navController: NavController, modifier: Modifier = Modifier) {
+fun AnimatedBillingSpeedDial(
+    navController: NavController,
+    canCreateBill: Boolean = true,
+    canEditBill: Boolean = true,
+    modifier: Modifier = Modifier
+) {
     var expandedPhase by remember { mutableIntStateOf(0) }
     var isDialOpen by remember { mutableStateOf(false) }
 
@@ -898,13 +916,15 @@ fun AnimatedBillingSpeedDial(navController: NavController, modifier: Modifier = 
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    BillingDialItem("New Order", Icons.Default.ShoppingCart) {
-                        isDialOpen = false
-                        navController.navigate("new_order")
-                    }
-                    BillingDialItem("New Bill", Icons.AutoMirrored.Filled.ReceiptLong) {
-                        isDialOpen = false
-                        navController.navigate("new_bill")
+                    if (canCreateBill) {
+                        BillingDialItem("New Order", Icons.Default.ShoppingCart) {
+                            isDialOpen = false
+                            navController.navigate("new_order")
+                        }
+                        BillingDialItem("New Bill", Icons.AutoMirrored.Filled.ReceiptLong) {
+                            isDialOpen = false
+                            navController.navigate("new_bill")
+                        }
                     }
                     BillingDialItem("New Payment", Icons.Default.Payments) {
                         isDialOpen = false
@@ -914,9 +934,11 @@ fun AnimatedBillingSpeedDial(navController: NavController, modifier: Modifier = 
                         isDialOpen = false
                         navController.navigate("payments/Credit Note")
                     }
-                    BillingDialItem("Edit Transaction", Icons.Default.Edit) {
-                        isDialOpen = false
-                        navController.navigate("edit_billing")
+                    if (canEditBill) {
+                        BillingDialItem("Edit Transaction", Icons.Default.Edit) {
+                            isDialOpen = false
+                            navController.navigate("edit_billing")
+                        }
                     }
                 }
             }

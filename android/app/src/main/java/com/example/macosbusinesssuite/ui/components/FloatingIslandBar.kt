@@ -64,6 +64,7 @@ fun FloatingDualIslandBar(
     userEmail: String = "",
     userRole: String = "user",
     serverOrigin: String = "",
+    visibleTabs: List<AppTab> = AppTab.entries,
     modifier: Modifier = Modifier
 ) {
     var isProfileExpanded by remember { mutableStateOf(false) }
@@ -272,10 +273,11 @@ fun FloatingDualIslandBar(
                                 },
                                 onDragEnd = {
                                     isDragging = false
-                                    val numTabs = AppTab.entries.size
+                                    val effectiveTabs = if (visibleTabs.isEmpty()) AppTab.entries else visibleTabs
+                                    val numTabs = effectiveTabs.size
                                     val tabWidthPx = leftIslandWidthPx / numTabs
                                     val nearestIndex = (dragOffsetPx / tabWidthPx).roundToInt().coerceIn(0, numTabs - 1)
-                                    onTabSelected(AppTab.entries[nearestIndex])
+                                    onTabSelected(effectiveTabs[nearestIndex])
                                 },
                                 onDragCancel = {
                                     isDragging = false
@@ -294,19 +296,21 @@ fun FloatingDualIslandBar(
                         )
                     )
             ) {
+                val effectiveTabs = if (visibleTabs.isEmpty()) AppTab.entries else visibleTabs
                 if (isExpanded) {
                     // EXPANDED STATE: Continuous sliding highlight pill that follows gesture & snaps on release
                     BoxWithConstraints(
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
                     ) {
                         val totalWidth = maxWidth
-                        val numTabs = AppTab.entries.size
+                        val numTabs = effectiveTabs.size
                         val tabWidth = totalWidth / numTabs
+                        val currentTabIndex = effectiveTabs.indexOf(currentTab).coerceAtLeast(0)
 
                         val targetIndex = if (isDragging && leftIslandWidthPx > 0f) {
                             (dragOffsetPx / (leftIslandWidthPx / numTabs)).coerceIn(0f, (numTabs - 1).toFloat())
                         } else {
-                            currentTab.ordinal.toFloat()
+                            currentTabIndex.toFloat()
                         }
 
                         val animatedIndex by animateFloatAsState(
@@ -335,7 +339,7 @@ fun FloatingDualIslandBar(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AppTab.entries.forEachIndexed { index, tab ->
+                            effectiveTabs.forEachIndexed { index, tab ->
                                 val isHoveredOrSelected = (animatedIndex.roundToInt() == index)
                                 val tabContentColor = if (isHoveredOrSelected) {
                                     MaterialTheme.colorScheme.onPrimaryContainer

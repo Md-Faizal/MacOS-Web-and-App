@@ -23,6 +23,20 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        create("release") {
+            val releaseKeystore = file("app-release.keystore")
+            if (releaseKeystore.exists()) {
+                storeFile = releaseKeystore
+                storePassword = project.findProperty("KEYSTORE_PASSWORD")?.toString() ?: "android"
+                keyAlias = project.findProperty("KEY_ALIAS")?.toString() ?: "androiddebugkey"
+                keyPassword = project.findProperty("KEY_PASSWORD")?.toString() ?: "android"
+            } else {
+                storeFile = file("app-debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
@@ -31,9 +45,11 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

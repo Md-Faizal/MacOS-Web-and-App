@@ -1,0 +1,149 @@
+name: 📱 Build & Deploy Android App (Business Suite)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version Name (e.g. 1.0.1)'
+        required: true
+        type: string
+        default: '1.0.0'
+      version_code:
+        description: 'Version Code (integer, e.g. 1)'
+        required: true
+        type: string
+        default: '1'
+      release_notes:
+        description: 'Release Notes / Changelog'
+        required: false
+        type: string
+        default: 'Performance improvements and bug fixes'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    name: 📦 Remote Gradle Build & VM Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: 🔧 Grant Execute Permission to Gradle Wrapper
+        run: chmod +x android/gradlew
+
+      - name: 🔨 Compile Release APK via Gradle
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            -PversionName="${{ github.event.inputs.version_name }}" \
+            -PversionCode="${{ github.event.inputs.version_code }}" \
+            --no-daemon --stacktrace
+
+      - name: 🔍 Locate Built APK & Compute Integrity
+        run: |
+          mkdir -p dist-android
+          BUILT_APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$BUILT_APK" ] || [ ! -f "$BUILT_APK" ]; then
+            echo "❌ ERROR: No release APK found in build outputs!"
+            exit 1
+          fi
+
+          VERSION_NAME="${{ github.event.inputs.version_name }}"
+          VERSION_CODE="${{ github.event.inputs.version_code }}"
+          RELEASE_NOTES="${{ github.event.inputs.release_notes }}"
+          TARGET_APK_NAME="BusinessSuite-v${VERSION_NAME}.apk"
+
+          cp "$BUILT_APK" "dist-android/${TARGET_APK_NAME}"
+          cp "$BUILT_APK" "dist-android/latest.apk"
+
+          FILE_SIZE=$(stat -c%s "dist-android/${TARGET_APK_NAME}")
+          SHA256=$(sha256sum "dist-android/${TARGET_APK_NAME}" | awk '{print $1}')
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "✅ Built APK: ${TARGET_APK_NAME} (${FILE_SIZE} bytes)"
+          echo "✅ SHA-256:   ${SHA256}"
+
+          cat <<EOF > dist-android/update-manifest.json
+          {
+            "versionCode": ${VERSION_CODE},
+            "versionName": "${VERSION_NAME}",
+            "apkUrl": "/api/android/update/latest",
+            "releaseNotes": "${RELEASE_NOTES}",
+            "publishedAt": "${PUB_DATE}",
+            "fileName": "${TARGET_APK_NAME}",
+            "sha256": "${SHA256}",
+            "fileSize": ${FILE_SIZE},
+            "minSdkVersion": 24,
+            "downloadCount": 0
+          }
+          EOF
+
+      - name: 🚀 Deploy to Ubuntu Production VM
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          REMOTE_DIR: "/home/ubuntu/MacOS-Production/backend/uploads/android-app"
+          VERSION_NAME: ${{ github.event.inputs.version_name }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_KEY" ]; then
+            echo "⚠️ SSH secrets not fully configured; skipping VM SCP deploy step."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          TARGET_APK="BusinessSuite-v${VERSION_NAME}.apk"
+
+          # 1. Ensure remote directories exist
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "mkdir -p ${REMOTE_DIR}/archive"
+
+          # 2. Upload with atomic temp files
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/${TARGET_APK}" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/${TARGET_APK}.tmp"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/latest.apk" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/latest.apk.tmp"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/update-manifest.json" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/update-manifest.json.tmp"
+
+          # 3. Atomic swap on server
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "
+            mv ${REMOTE_DIR}/${TARGET_APK}.tmp ${REMOTE_DIR}/${TARGET_APK} && \
+            mv ${REMOTE_DIR}/latest.apk.tmp ${REMOTE_DIR}/latest.apk && \
+            mv ${REMOTE_DIR}/update-manifest.json.tmp ${REMOTE_DIR}/update-manifest.json
+          "
+          echo "🎉 Successfully published ${TARGET_APK} and latest.apk to Ubuntu VM!"
+
+      - name: ☁️ Mirror to Cloudflare R2 (Backup CDN)
+        if: env.R2_BUCKET != '' && env.R2_ACCESS_KEY_ID != ''
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION_NAME: ${{ github.event.inputs.version_name }}
+        run: |
+          TARGET_APK="BusinessSuite-v${VERSION_NAME}.apk"
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          aws s3 cp "dist-android/${TARGET_APK}" "s3://${R2_BUCKET}/apk/${TARGET_APK}" --endpoint-url "$ENDPOINT"
+          aws s3 cp "dist-android/latest.apk" "s3://${R2_BUCKET}/apk/latest.apk" --endpoint-url "$ENDPOINT"
+          echo "✅ Mirrored APKs to Cloudflare R2 bucket: ${R2_BUCKET}"
+
+      - name: 💾 Upload Artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: BusinessSuite-v${{ github.event.inputs.version_name }}
+          path: dist-android/

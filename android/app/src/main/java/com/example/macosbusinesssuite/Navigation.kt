@@ -60,6 +60,15 @@ fun MainNavigation(
     val userEmail = profile?.actualEmail ?: activeUser?.identifier ?: mainViewModel.sessionManager.userEmail ?: ""
     val userRole = profile?.role ?: activeUser?.role ?: mainViewModel.sessionManager.userRole
 
+    val visibleTabs = remember(userRole, isLoggedIn, mainViewModel.sessionManager.permissionsJson) {
+        val allowed = mutableListOf<AppTab>()
+        if (mainViewModel.sessionManager.isModuleAllowed("billing")) allowed.add(AppTab.BILLING)
+        if (mainViewModel.sessionManager.isModuleAllowed("products")) allowed.add(AppTab.PRODUCTS)
+        if (mainViewModel.sessionManager.isModuleAllowed("contacts")) allowed.add(AppTab.CONTACTS)
+        if (mainViewModel.sessionManager.isModuleAllowed("analytics")) allowed.add(AppTab.ANALYTICS)
+        if (allowed.isEmpty()) listOf(AppTab.BILLING) else allowed
+    }
+
     val serverOrigin = remember(serverUrl) {
         val url = serverUrl.trimEnd('/')
         if (url.endsWith("/api")) url.removeSuffix("/api") else url
@@ -71,7 +80,13 @@ fun MainNavigation(
         ThemeMode.AUTO -> isSystemInDarkTheme()
     }
 
-    var currentTab by remember { mutableStateOf(AppTab.BILLING) }
+    var currentTab by remember { mutableStateOf(visibleTabs.firstOrNull() ?: AppTab.BILLING) }
+
+    LaunchedEffect(visibleTabs) {
+        if (currentTab !in visibleTabs) {
+            currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
+        }
+    }
     var isUpdatePageOpen by remember { mutableStateOf(false) }
     var isSettingsOpen by remember { mutableStateOf(false) }
     var isProfileOpen by remember { mutableStateOf(false) }
@@ -134,9 +149,10 @@ fun MainNavigation(
                 // Layer 0: Authenticated Dashboard (Underneath base layer, progressively revealed as lock screen disintegrates)
                 if (isLoggedIn) {
                     // Root BackHandler for tab switching and double back exit
+                    val defaultTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
                     BackHandler(enabled = !isProfileOpen && !isSettingsOpen && !isUpdatePageOpen && !isSubPageOpen && !isUnlockRevealing) {
-                        if (currentTab != AppTab.BILLING) {
-                            currentTab = AppTab.BILLING
+                        if (currentTab != defaultTab) {
+                            currentTab = defaultTab
                         } else {
                             val currentTime = System.currentTimeMillis()
                             if (currentTime - lastBackPressedTime < 2000L) {
@@ -208,7 +224,8 @@ fun MainNavigation(
                                 userName = userName,
                                 userEmail = userEmail,
                                 userRole = userRole,
-                                serverOrigin = serverOrigin
+                                serverOrigin = serverOrigin,
+                                visibleTabs = visibleTabs
                             )
                         }
                     }

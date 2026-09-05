@@ -124,6 +124,50 @@ class SessionManager(context: Context) {
         get() = prefs.getString(KEY_PERMISSIONS_JSON, null)
         set(value) = prefs.edit().putString(KEY_PERMISSIONS_JSON, value).apply()
 
+    fun getPermissionsSnapshot(): com.example.macosbusinesssuite.data.model.PermissionsSnapshot? {
+        val json = permissionsJson ?: return null
+        return try {
+            com.google.gson.Gson().fromJson(json, com.example.macosbusinesssuite.data.model.PermissionsSnapshot::class.java)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun isModuleAllowed(module: String): Boolean {
+        if (!userRole.equals("worker", ignoreCase = true)) return true
+        val snapshot = getPermissionsSnapshot() ?: return true
+        if (snapshot.isOwner) return true
+        if (snapshot.allowedApps.isNotEmpty() && !snapshot.allowedApps.contains(module)) {
+            return false
+        }
+        val modPerm = snapshot.modules[module]
+        return modPerm?.canView ?: true
+    }
+
+    fun canCreate(module: String): Boolean {
+        if (!userRole.equals("worker", ignoreCase = true)) return true
+        val snapshot = getPermissionsSnapshot() ?: return true
+        if (snapshot.isOwner) return true
+        val modPerm = snapshot.modules[module]
+        return modPerm?.canCreate ?: true
+    }
+
+    fun canEdit(module: String): Boolean {
+        if (!userRole.equals("worker", ignoreCase = true)) return true
+        val snapshot = getPermissionsSnapshot() ?: return true
+        if (snapshot.isOwner) return true
+        val modPerm = snapshot.modules[module]
+        return modPerm?.canEdit ?: true
+    }
+
+    fun canDelete(module: String): Boolean {
+        if (!userRole.equals("worker", ignoreCase = true)) return true
+        val snapshot = getPermissionsSnapshot() ?: return true
+        if (snapshot.isOwner) return true
+        val modPerm = snapshot.modules[module]
+        return modPerm?.canDelete ?: false
+    }
+
     var tokenVersion: Int
         get() = prefs.getInt(KEY_TOKEN_VERSION, 0)
         set(value) = prefs.edit().putInt(KEY_TOKEN_VERSION, value).apply()

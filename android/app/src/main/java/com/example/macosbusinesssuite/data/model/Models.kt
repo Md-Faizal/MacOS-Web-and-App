@@ -3,10 +3,31 @@ package com.example.macosbusinesssuite.data.model
 import com.google.gson.annotations.SerializedName
 
 // ==================== AUTH & SERVER ====================
+data class ModulePermission(
+    val can_view: Int = 1,
+    val can_create: Int = 1,
+    val can_edit: Int = 1,
+    val can_delete: Int = 1
+) {
+    val canView: Boolean get() = can_view == 1
+    val canCreate: Boolean get() = can_create == 1
+    val canEdit: Boolean get() = can_edit == 1
+    val canDelete: Boolean get() = can_delete == 1
+}
+
+data class PermissionsSnapshot(
+    val role: String = "owner",
+    val isOwner: Boolean = true,
+    val allowedApps: List<String> = listOf("billing", "products", "contacts", "analytics"),
+    val modules: Map<String, ModulePermission> = emptyMap(),
+    val allowedContactIds: List<Int>? = null
+)
+
 data class AuthStatusResponse(
     val success: Boolean? = true,
     val authenticated: Boolean = false,
     val user: UserProfile? = null,
+    val permissions: PermissionsSnapshot? = null,
     val passwordSet: Boolean = false,
     val hasSecurityQuestion: Boolean = false,
     val message: String? = null
@@ -24,6 +45,7 @@ data class LoginResponse(
     val success: Boolean = false,
     val message: String? = null,
     val user: UserProfile? = null,
+    val permissions: PermissionsSnapshot? = null,
     val token: String? = null,
     val refreshToken: String? = null,
     val expiresIn: Long? = null
