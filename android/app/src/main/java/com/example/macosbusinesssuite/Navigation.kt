@@ -157,8 +157,8 @@ fun MainNavigation(
                                     unlockProgress.animateTo(
                                         targetValue = 1f,
                                         animationSpec = tween(
-                                            durationMillis = 820,
-                                            easing = CubicBezierEasing(0.12f, 0.90f, 0.22f, 1.0f)
+                                            durationMillis = 1300,
+                                            easing = CubicBezierEasing(0.20f, 0.0f, 0.15f, 1.0f)
                                         )
                                     )
                                     isUnlockRevealing = false
@@ -306,11 +306,11 @@ fun MainNavigation(
                         val currentRadius = maxRadius * progress
 
                         // Sustained high-luminance alpha across screen traversal
-                        val fadeAlpha = if (progress < 0.68f) 1f else ((1f - progress) / 0.32f).coerceIn(0f, 1f)
+                        val fadeAlpha = if (progress < 0.76f) 1f else ((1f - progress) / 0.24f).coerceIn(0f, 1f)
 
-                        // 1. Initial Biometric Strobe / OLED Light Flare (first 48% of unlock)
-                        if (progress < 0.48f) {
-                            val flashProgress = progress / 0.48f
+                        // 1. Initial Biometric Strobe / OLED Light Flare (first 38% of unlock)
+                        if (progress < 0.38f) {
+                            val flashProgress = progress / 0.38f
                             val flashAlpha = (1f - flashProgress).coerceIn(0f, 1f)
                             val flashRadius = with(density) { (28f + flashProgress * 155f).dp.toPx() }
 
