@@ -2,9 +2,11 @@ package com.example.macosbusinesssuite
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Scaffold
@@ -15,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -137,8 +140,8 @@ fun MainNavigation(
                                 if (isUnlockRevealing) {
                                     val p = unlockProgress.value
                                     // Subtle organic scale expansion as the screen bursts open
-                                    scaleX = 1f + (p * 0.05f)
-                                    scaleY = 1f + (p * 0.05f)
+                                    scaleX = 1f + (p * 0.04f)
+                                    scaleY = 1f + (p * 0.04f)
                                 }
                             }
                     ) {
@@ -153,12 +156,28 @@ fun MainNavigation(
                                     unlockProgress.snapTo(0f)
                                     unlockProgress.animateTo(
                                         targetValue = 1f,
-                                        animationSpec = tween(durationMillis = 750, easing = FastOutSlowInEasing)
+                                        animationSpec = tween(
+                                            durationMillis = 820,
+                                            easing = CubicBezierEasing(0.12f, 0.90f, 0.22f, 1.0f)
+                                        )
                                     )
                                     isUnlockRevealing = false
                                 }
                             }
                         )
+
+                        // Deep AMOLED black contrast transition layer:
+                        // As the ripple bursts outward, the base dims into deep pitch-black,
+                        // creating the intense contrast of bursting from a black screen into a vibrant colorful dashboard
+                        if (isUnlockRevealing) {
+                            val p = unlockProgress.value
+                            val blackScrimAlpha = ((1f - p * 0.45f) * 0.88f).coerceIn(0f, 0.92f)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF000000).copy(alpha = blackScrimAlpha))
+                            )
+                        }
                     }
                 }
 
@@ -190,7 +209,7 @@ fun MainNavigation(
                                         val maxRadius = kotlin.math.hypot(
                                             kotlin.math.max(center.x, size.width - center.x),
                                             kotlin.math.max(center.y, size.height - center.y)
-                                        ) * 1.08f
+                                        ) * 1.12f
                                         val currentRadius = maxRadius * progress
 
                                         clip = true
@@ -272,7 +291,7 @@ fun MainNavigation(
                     }
                 }
 
-                // Layer 2: Vivid, Stock Android AOD/Lock Screen Radiant Dissipating Wavefront
+                // Layer 2: Ultra-Intense Stock Android AOD/Lock Screen Radiant Biometric Wavefront
                 if (isUnlockRevealing) {
                     val density = LocalDensity.current
                     Canvas(
@@ -283,49 +302,106 @@ fun MainNavigation(
                         val maxRadius = kotlin.math.hypot(
                             kotlin.math.max(center.x, size.width - center.x),
                             kotlin.math.max(center.y, size.height - center.y)
-                        ) * 1.08f
+                        ) * 1.12f
                         val currentRadius = maxRadius * progress
 
-                        // Intense Stock Android AOD / Lock screen radiating glow
-                        val fadeAlpha = (1f - (progress * 0.75f)).coerceIn(0f, 1f)
-                        if (fadeAlpha > 0.001f && currentRadius > 0f) {
-                            // 1. Radiant electric cyan/blue atmospheric halo around the perimeter
+                        // Sustained high-luminance alpha across screen traversal
+                        val fadeAlpha = if (progress < 0.68f) 1f else ((1f - progress) / 0.32f).coerceIn(0f, 1f)
+
+                        // 1. Initial Biometric Strobe / OLED Light Flare (first 48% of unlock)
+                        if (progress < 0.48f) {
+                            val flashProgress = progress / 0.48f
+                            val flashAlpha = (1f - flashProgress).coerceIn(0f, 1f)
+                            val flashRadius = with(density) { (28f + flashProgress * 155f).dp.toPx() }
+
                             drawCircle(
                                 brush = Brush.radialGradient(
                                     colors = listOf(
-                                        Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.40f),
-                                        Color(0xFF2979FF).copy(alpha = fadeAlpha * 0.20f),
+                                        Color.White.copy(alpha = flashAlpha * 0.98f),
+                                        Color(0xFF00E5FF).copy(alpha = flashAlpha * 0.90f),
+                                        Color(0xFF2979FF).copy(alpha = flashAlpha * 0.50f),
                                         Color.Transparent
                                     ),
                                     center = center,
-                                    radius = currentRadius + with(density) { 50.dp.toPx() }
+                                    radius = flashRadius
                                 ),
-                                radius = currentRadius + with(density) { 50.dp.toPx() },
-                                center = center
+                                radius = flashRadius,
+                                center = center,
+                                blendMode = BlendMode.Plus
+                            )
+                        }
+
+                        if (fadeAlpha > 0.001f && currentRadius > 0f) {
+                            // 2. Broad Atmospheric Color Field expanding outside the wavefront
+                            val auraRadius = currentRadius + with(density) { (55f + progress * 35f).dp.toPx() }
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    0.0f to Color.Transparent,
+                                    (currentRadius / auraRadius).coerceIn(0f, 0.95f) to Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.55f),
+                                    ((currentRadius + with(density) { 26.dp.toPx() }) / auraRadius).coerceIn(0f, 0.98f) to Color(0xFF7C4DFF).copy(alpha = fadeAlpha * 0.35f),
+                                    1.0f to Color.Transparent,
+                                    center = center,
+                                    radius = auraRadius
+                                ),
+                                radius = auraRadius,
+                                center = center,
+                                blendMode = BlendMode.Plus
                             )
 
-                            // 2. Thick luminous neon-cyan glow band directly along the boundary
+                            // 3. Inner Illuminating Wash flooding the newly revealed dashboard with vibrant light
+                            val innerGlowRadius = currentRadius
+                            val innerStartRatio = 0.76f
                             drawCircle(
-                                color = Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.85f),
-                                radius = currentRadius,
+                                brush = Brush.radialGradient(
+                                    0.0f to Color.Transparent,
+                                    innerStartRatio to Color.Transparent,
+                                    (innerStartRatio + 0.12f) to Color(0xFF00B0FF).copy(alpha = fadeAlpha * 0.45f),
+                                    1.0f to Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.75f),
+                                    center = center,
+                                    radius = innerGlowRadius
+                                ),
+                                radius = innerGlowRadius,
                                 center = center,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { (28f + progress * 20f).dp.toPx() })
+                                blendMode = BlendMode.Plus
                             )
 
-                            // 3. Electric blue inner/outer wavefront band
+                            // 4. Secondary Trailing Harmonic Echo Ring (adds depth and shockwave realism)
+                            val echoRadius = currentRadius * 0.90f
+                            if (echoRadius > 0f) {
+                                drawCircle(
+                                    color = Color(0xFF3D5AFE).copy(alpha = fadeAlpha * 0.80f),
+                                    radius = echoRadius,
+                                    center = center,
+                                    style = Stroke(width = with(density) { (15f + progress * 10f).dp.toPx() }),
+                                    blendMode = BlendMode.Plus
+                                )
+                            }
+
+                            // 5. Ultra-Thick Saturated Neon-Cyan Glow Band directly on the boundary
                             drawCircle(
-                                color = Color(0xFF448AFF).copy(alpha = fadeAlpha * 0.70f),
+                                color = Color(0xFF00E5FF).copy(alpha = fadeAlpha * 0.98f),
                                 radius = currentRadius,
                                 center = center,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { (12f + progress * 8f).dp.toPx() })
+                                style = Stroke(width = with(density) { (36f + progress * 24f).dp.toPx() }),
+                                blendMode = BlendMode.Plus
                             )
 
-                            // 4. Ultra-bright blazing white cutting edge wavefront
+                            // 6. High-Voltage Electric Blue Shockwave Core
                             drawCircle(
-                                color = Color.White.copy(alpha = fadeAlpha * 0.98f),
+                                color = Color(0xFF00B0FF).copy(alpha = fadeAlpha * 0.92f),
                                 radius = currentRadius,
                                 center = center,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 4.5.dp.toPx() })
+                                style = Stroke(width = with(density) { (18f + progress * 12f).dp.toPx() }),
+                                blendMode = BlendMode.Plus
+                            )
+
+                            // 7. Ultra-Bright Blazing White Laser Cutting Edge
+                            drawCircle(
+                                color = Color.White.copy(alpha = fadeAlpha * 0.99f),
+                                radius = currentRadius,
+                                center = center,
+                                style = Stroke(width = with(density) { 6.dp.toPx() }),
+                                blendMode = BlendMode.Plus
                             )
                         }
                     }
