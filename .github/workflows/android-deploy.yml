@@ -103,21 +103,46 @@ jobs:
 
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+
+          # Decode Base64 or raw key (matching deploy.yml)
+          if echo "$SSH_KEY" | grep -q "^LS0t"; then
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+          elif echo "$SSH_KEY" | grep -q "BEGIN"; then
+            echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          else
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key 2>/dev/null || echo "$SSH_KEY" > ~/.ssh/deploy_key
+          fi
+          # Ensure trailing newline for OpenSSL/libcrypto parser
+          sed -i -e '$a\' ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+
+          cat << 'EOF' > ~/.ssh/config
+          Host production
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          EOF
+          chmod 600 ~/.ssh/config
 
           TARGET_APK="BusinessSuite-v${VERSION_NAME}.apk"
 
           # 1. Ensure remote directories exist
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "mkdir -p ${REMOTE_DIR}/archive"
+          ssh production "mkdir -p ${REMOTE_DIR}/archive"
 
           # 2. Upload with atomic temp files
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/${TARGET_APK}" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/${TARGET_APK}.tmp"
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/latest.apk" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/latest.apk.tmp"
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "dist-android/update-manifest.json" "${SSH_USER}@${SSH_HOST}:${REMOTE_DIR}/update-manifest.json.tmp"
+          scp "dist-android/${TARGET_APK}" "production:${REMOTE_DIR}/${TARGET_APK}.tmp"
+          scp "dist-android/latest.apk" "production:${REMOTE_DIR}/latest.apk.tmp"
+          scp "dist-android/update-manifest.json" "production:${REMOTE_DIR}/update-manifest.json.tmp"
 
           # 3. Atomic swap on server
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "
+          ssh production "
             mv ${REMOTE_DIR}/${TARGET_APK}.tmp ${REMOTE_DIR}/${TARGET_APK} && \
             mv ${REMOTE_DIR}/latest.apk.tmp ${REMOTE_DIR}/latest.apk && \
             mv ${REMOTE_DIR}/update-manifest.json.tmp ${REMOTE_DIR}/update-manifest.json
