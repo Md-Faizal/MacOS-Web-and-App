@@ -35,6 +35,22 @@
 			"command": "bash deploy/ubuntu/deploy.sh",
 			"problemMatcher": [],
 			"detail": "Builds and syncs files directly from your PC to Ubuntu VM"
+		},
+		{
+			"label": "⬆️ Git Push (origin main)",
+			"type": "shell",
+			"command": "git push origin main",
+			"problemMatcher": [],
+			"group": "none",
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared",
+				"showReuseMessage": true,
+				"clear": false
+			},
+			"detail": "Pushes local commits on main branch to GitHub"
 		}
 	]
 }
