@@ -1,0 +1,479 @@
+/* ====================================================================
+   SystemLogs.css - macOS Tahoe System & Error Logs Console Styles
+   Dedicated styling for industrial-standard telemetry & log inspection
+   ==================================================================== */
+
+.systemlogs-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 20px);
+  gap: 16px;
+  animation: systemLogsFadeIn 0.25s ease-out;
+  color: var(--settings-text);
+  box-sizing: border-box;
+}
+
+@keyframes systemLogsFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   1. Telemetry Stat Cards
+   ======================================== */
+.systemlogs-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.systemlogs-stat-card {
+  background: var(--settings-sidebar-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: relative;
+  overflow: hidden;
+}
+
+.systemlogs-stat-card:hover {
+  border-color: rgba(0, 122, 255, 0.4);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.systemlogs-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.systemlogs-stat-icon.crashes {
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+}
+
+.systemlogs-stat-icon.errors {
+  background: rgba(255, 149, 0, 0.15);
+  color: #ff9500;
+}
+
+.systemlogs-stat-icon.total {
+  background: rgba(0, 122, 255, 0.15);
+  color: #007aff;
+}
+
+.systemlogs-stat-icon.resolved {
+  background: rgba(52, 199, 89, 0.15);
+  color: #34c759;
+}
+
+.systemlogs-stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.systemlogs-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.systemlogs-stat-label {
+  font-size: 11px;
+  color: var(--settings-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ========================================
+   2. Toolbar & Filter Controls
+   ======================================== */
+.systemlogs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--settings-sidebar-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.systemlogs-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.systemlogs-search-input {
+  background: var(--settings-input-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: inherit;
+  width: 180px;
+  transition: width 0.2s ease, border-color 0.2s ease;
+}
+
+.systemlogs-search-input:focus {
+  outline: none;
+  width: 230px;
+  border-color: #007aff;
+}
+
+.systemlogs-select {
+  background: var(--settings-input-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.systemlogs-select:focus {
+  outline: none;
+  border-color: #007aff;
+}
+
+.systemlogs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--settings-border);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.systemlogs-btn:hover {
+  background: var(--settings-hover-bg);
+  border-color: rgba(0, 122, 255, 0.5);
+}
+
+.systemlogs-btn.primary {
+  background: #007aff;
+  color: #ffffff;
+  border-color: #007aff;
+}
+
+.systemlogs-btn.primary:hover {
+  background: #0062cc;
+}
+
+.systemlogs-btn.danger {
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+  border-color: rgba(255, 59, 48, 0.3);
+}
+
+.systemlogs-btn.danger:hover {
+  background: #ff3b30;
+  color: #ffffff;
+}
+
+/* ========================================
+   3. Logs Table View
+   ======================================== */
+.systemlogs-table-wrapper {
+  flex: 1;
+  min-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: var(--settings-sidebar-bg);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.systemlogs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.systemlogs-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--settings-sidebar-bg);
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--settings-border);
+}
+
+.systemlogs-table th {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--settings-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.systemlogs-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  vertical-align: middle;
+}
+
+.systemlogs-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.systemlogs-row:hover {
+  background: rgba(0, 122, 255, 0.06);
+}
+
+.systemlogs-row.selected {
+  background: rgba(0, 122, 255, 0.12);
+}
+
+/* Level Badges */
+.systemlogs-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.systemlogs-badge.crash {
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff3b30;
+  border: 1px solid rgba(255, 59, 48, 0.35);
+}
+
+.systemlogs-badge.error {
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff453a;
+  border: 1px solid rgba(255, 69, 58, 0.3);
+}
+
+.systemlogs-badge.warn {
+  background: rgba(255, 159, 10, 0.15);
+  color: #ff9f0a;
+  border: 1px solid rgba(255, 159, 10, 0.3);
+}
+
+.systemlogs-badge.info {
+  background: rgba(0, 122, 255, 0.15);
+  color: #007aff;
+  border: 1px solid rgba(0, 122, 255, 0.3);
+}
+
+.systemlogs-badge.debug {
+  background: rgba(142, 142, 147, 0.15);
+  color: #8e8e93;
+  border: 1px solid rgba(142, 142, 147, 0.3);
+}
+
+/* Platform Badges */
+.systemlogs-platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Status Indicator */
+.systemlogs-status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.systemlogs-status-pill.open {
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff3b30;
+}
+
+.systemlogs-status-pill.resolved {
+  background: rgba(52, 199, 89, 0.15);
+  color: #34c759;
+}
+
+.systemlogs-status-pill.ignored {
+  background: rgba(142, 142, 147, 0.15);
+  color: #8e8e93;
+}
+
+/* ========================================
+   4. Slide-Out Detail Inspection Drawer
+   ======================================== */
+.systemlogs-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.systemlogs-modal {
+  background: var(--settings-bg, #1e1e1e);
+  border: 1px solid var(--settings-border);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 780px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.systemlogs-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--settings-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.systemlogs-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.systemlogs-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.systemlogs-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--settings-text-secondary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.systemlogs-stack-container {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: 'SF Mono', Consolas, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 240px;
+}
+
+.systemlogs-breadcrumbs-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.systemlogs-crumb-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+
+.systemlogs-crumb-time {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--settings-text-tertiary);
+  white-space: nowrap;
+}
+
+.systemlogs-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.systemlogs-telemetry-card {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--settings-border);
+  font-size: 11px;
+}
+
+.systemlogs-telemetry-card strong {
+  display: block;
+  color: var(--settings-text-secondary);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.systemlogs-modal-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--settings-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 768px) {
+  .systemlogs-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .systemlogs-telemetry-grid {
+    grid-template-columns: 1fr;
+  }
+}

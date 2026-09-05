@@ -6,6 +6,7 @@ const createRoutes = require('./routes');
 const router = express.Router();
 
 let db;
+let handlers;
 
 function initializeDatabase(globalDb) {
   try {
@@ -16,7 +17,7 @@ function initializeDatabase(globalDb) {
       throw new Error('Centralized database not initialized');
     }
 
-    const handlers = createHandlers(db);
+    handlers = createHandlers(db);
     createRoutes(router, handlers);
   } catch (error) {
     console.error('✗ Error initializing App Logs module:', error.message);
@@ -26,5 +27,8 @@ function initializeDatabase(globalDb) {
 
 module.exports = {
   router,
+  get handlers() {
+    return handlers;
+  },
   initializeDatabase
 };

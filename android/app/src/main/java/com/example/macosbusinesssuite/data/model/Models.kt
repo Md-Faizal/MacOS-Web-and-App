@@ -620,18 +620,6 @@ data class ExecutiveKPI(
     val receivables: Double = 0.0
 )
 
-// App logging payload from mobile clients
-data class AppLogRequest(
-    @SerializedName("session_id") val sessionId: String? = null,
-    @SerializedName("device_id") val deviceId: String? = null,
-    @SerializedName("user_id") val userId: String? = null,
-    @SerializedName("user_name") val userName: String? = null,
-    val level: String = "INFO",
-    val message: String = "",
-    val stack: String? = null,
-    val metadata: Map<String, String>? = null,
-    val timestamp: String? = null
-)
 
 data class SalesTrendPoint(
     val date: String = "",

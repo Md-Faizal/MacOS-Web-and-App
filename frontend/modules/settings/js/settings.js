@@ -9,6 +9,7 @@ import { StorageComponent } from './Storage.js';
 import { BackupComponent } from './BackupComponent.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
 import { AdminComponent } from './Admin.js';
+import { SystemLogsComponent } from './SystemLogs.js';
 
 export class SettingsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
@@ -32,7 +33,7 @@ export class SettingsApp extends AppWindow {
     this.sectionsOrder = [
       'profile', 'admin', 'wifi', 'bluetooth', 'network', 'energy', 
       'general', 'billing', 'accessibility', 'appearance', 'menubar', 
-      'siri', 'dock', 'displays', 'spotlight', 'wallpaper', 'systemhealth', 'android-update'
+      'siri', 'dock', 'displays', 'spotlight', 'wallpaper', 'systemhealth', 'systemlogs', 'android-update'
     ];
 
     this.settings = this.getDefaultSettings();
@@ -412,6 +413,11 @@ export class SettingsApp extends AppWindow {
           <span>System Health</span>
         </button>
 
+        <button class="settings-sidebar-item" data-section="systemlogs">
+          <span class="settings-sidebar-icon">📋</span>
+          <span>System Logs</span>
+        </button>
+
         <button class="settings-sidebar-item" data-section="android-update">
           <span class="settings-sidebar-icon">📱</span>
           <span>Android App</span>
@@ -419,6 +425,7 @@ export class SettingsApp extends AppWindow {
       </div>
 
       <!-- Settings Panels -->
+      <div class="settings-panel hidden" id="systemlogs-panel"></div>
       <div class="settings-panel" id="appearance-panel">
         <div class="appearance-placeholder">Loading Appearance...</div>
       </div>
@@ -2031,6 +2038,7 @@ export class SettingsApp extends AppWindow {
       'spotlight': 'Spotlight',
       'wallpaper': 'Wallpaper',
       'systemhealth': 'System Health',
+      'systemlogs': 'System Logs',
       'android-update': 'Android App'
     };
 
@@ -2074,6 +2082,11 @@ export class SettingsApp extends AppWindow {
           this.adminModule = new AdminComponent(panel);
         }
         this.adminModule.render();
+      } else if (section === 'systemlogs') {
+        if (!this.systemLogsModule) {
+          this.systemLogsModule = new SystemLogsComponent(panel);
+        }
+        this.systemLogsModule.render();
       } else if (section === 'appearance') {
         if (!this.appearanceModule) {
           this.appearanceModule = new AppearanceComponent(panel, this.settings, this.saveSettings.bind(this));

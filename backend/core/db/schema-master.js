@@ -406,7 +406,7 @@ CREATE TABLE IF NOT EXISTS status_checks (
   checked_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- App Logs: Remote client logs and crash reports
+-- App Logs: Remote client logs, telemetry and crash reports
 CREATE TABLE IF NOT EXISTS app_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT,
@@ -414,9 +414,15 @@ CREATE TABLE IF NOT EXISTS app_logs (
   user_id TEXT,
   user_name TEXT,
   level TEXT DEFAULT 'INFO',
+  platform TEXT DEFAULT 'android',
+  app_version TEXT,
+  os_version TEXT,
   message TEXT,
   stack TEXT,
+  breadcrumbs TEXT,
   metadata TEXT,
+  status TEXT DEFAULT 'open',
+  error_hash TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

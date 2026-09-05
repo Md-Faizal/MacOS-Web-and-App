@@ -178,9 +178,12 @@ interface ApiService {
         @Path("customerName") customerName: String
     ): Response<CustomerOutstandingResponse>
 
-    // Remote logging endpoint for mobile clients
+    // Remote logging endpoints for mobile clients
     @POST("logs/app")
     suspend fun postAppLog(@Body log: AppLogRequest): Response<ApiResponse<Unit>>
+
+    @POST("logs/batch")
+    suspend fun postAppLogBatch(@Body batch: AppLogBatchRequest): Response<ApiResponse<Unit>>
 
     @GET("android/update/manifest")
     suspend fun getAndroidUpdateManifest(): Response<AndroidUpdateManifest>

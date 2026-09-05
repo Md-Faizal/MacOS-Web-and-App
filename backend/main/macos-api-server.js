@@ -516,10 +516,10 @@ for (const route of routes) {
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else if (route.path === '/api/logs') {
-    // Allow unauthenticated POST to /api/logs/app so clients can report errors before login;
-    // protect other inspection routes with auth middleware.
+    // Allow unauthenticated POST to /api/logs/app and /api/logs/batch so clients can report errors before login / offline flush;
+    // protect all other inspection and management routes with auth middleware.
     app.use(route.path, (req, res, next) => {
-      if (req.method === 'POST' && req.path === '/app') return next();
+      if (req.method === 'POST' && (req.path === '/app' || req.path === '/batch')) return next();
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else {
@@ -539,6 +539,26 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: 'Invalid JSON in request body' });
   }
   console.error('[Server] Unhandled error:', err.message);
+
+  // Automatically log backend 500 error to app_logs for unified visibility
+  try {
+    const logsModule = require('../core/logs');
+    if (logsModule && logsModule.handlers) {
+      logsModule.handlers.insertLog({
+        level: 'ERROR',
+        platform: 'backend',
+        message: `HTTP ${err.status || 500} ${req.method} ${req.originalUrl || req.url}: ${err.message}`,
+        stack: err.stack,
+        metadata: {
+          url: req.originalUrl || req.url,
+          method: req.method,
+          ip: req.ip || req.headers['x-forwarded-for'] || null,
+          userAgent: req.headers['user-agent'] || null
+        }
+      });
+    }
+  } catch (_e) {}
+
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
