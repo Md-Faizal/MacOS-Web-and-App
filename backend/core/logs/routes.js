@@ -144,12 +144,13 @@ module.exports = function(router, handlers) {
     }
   });
 
-  // DELETE /api/logs - Purge logs
-  router.delete('/', (req, res) => {
+  // DELETE /api/logs/:id or DELETE /api/logs?id=... - Purge logs
+  const handleDelete = (req, res) => {
     try {
       const q = req.query || {};
+      const id = req.params?.id || q.id;
       const result = handlers.deleteLogs({
-        id: q.id,
+        id,
         clearResolved: q.clearResolved === 'true',
         olderThanDays: q.olderThanDays,
         all: q.all === 'true'
@@ -159,5 +160,8 @@ module.exports = function(router, handlers) {
       console.error('[Logs] Failed to delete logs:', err.message);
       res.status(500).json({ success: false, error: err.message });
     }
-  });
+  };
+
+  router.delete('/:id', handleDelete);
+  router.delete('/', handleDelete);
 };

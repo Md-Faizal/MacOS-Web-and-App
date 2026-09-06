@@ -476,9 +476,17 @@ export class SystemLogsComponent {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      if (res.ok) {
-        await Promise.all([this.fetchStats(), this.fetchLogs()]);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMsg = errData.error;
+        } catch (_) {
+          if (res.status === 404) errMsg = 'Endpoint /api/logs/:id not found (404). Please ensure the backend deployment has completed.';
+        }
+        throw new Error(errMsg);
       }
+      await Promise.all([this.fetchStats(), this.fetchLogs()]);
     } catch (err) {
       alert(`Failed to update log status: ${err.message}`);
     }
@@ -487,9 +495,17 @@ export class SystemLogsComponent {
   async deleteLog(id) {
     try {
       const res = await fetch(`/api/logs?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        await Promise.all([this.fetchStats(), this.fetchLogs()]);
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMsg = errData.error;
+        } catch (_) {
+          if (res.status === 404) errMsg = 'Endpoint /api/logs not found (404). Please ensure the backend deployment has completed.';
+        }
+        throw new Error(errMsg);
       }
+      await Promise.all([this.fetchStats(), this.fetchLogs()]);
     } catch (err) {
       alert(`Failed to delete log: ${err.message}`);
     }
@@ -499,6 +515,16 @@ export class SystemLogsComponent {
     if (confirm('Clear all resolved and ignored logs from database?')) {
       try {
         const res = await fetch('/api/logs?clearResolved=true', { method: 'DELETE' });
+        if (!res.ok) {
+          let errMsg = `HTTP ${res.status}`;
+          try {
+            const errData = await res.json();
+            if (errData?.error) errMsg = errData.error;
+          } catch (_) {
+            if (res.status === 404) errMsg = 'Endpoint /api/logs not found (404). Please ensure the backend deployment has completed.';
+          }
+          throw new Error(errMsg);
+        }
         const data = await res.json();
         alert(`Purged ${data.deletedCount || 0} resolved logs.`);
         await Promise.all([this.fetchStats(), this.fetchLogs()]);
@@ -512,6 +538,16 @@ export class SystemLogsComponent {
     if (confirm('⚠️ WARNING: Delete ALL system and error logs? This will wipe all recorded logs across all platforms.')) {
       try {
         const res = await fetch('/api/logs?all=true', { method: 'DELETE' });
+        if (!res.ok) {
+          let errMsg = `HTTP ${res.status}`;
+          try {
+            const errData = await res.json();
+            if (errData?.error) errMsg = errData.error;
+          } catch (_) {
+            if (res.status === 404) errMsg = 'Endpoint /api/logs not found (404). Please ensure the backend deployment has completed.';
+          }
+          throw new Error(errMsg);
+        }
         const data = await res.json();
         alert(`Successfully cleared ${data.deletedCount || 0} logs.`);
         await Promise.all([this.fetchStats(), this.fetchLogs()]);
