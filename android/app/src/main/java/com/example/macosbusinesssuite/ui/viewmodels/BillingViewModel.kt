@@ -570,35 +570,6 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
             tickerList.add("Top Customer: ${it.name}")
         }
         _tickerInsights.value = tickerList
-
-        // Send a lightweight remote log with computed dashboard metrics
-        try {
-            val meta = mapOf(
-                "totalBilled" to String.format(Locale.US, "%.2f", totalBilled),
-                "totalPaid" to String.format(Locale.US, "%.2f", totalPaid),
-                "billsCount" to keyMetrics.totalBillsCount.toString(),
-                "paymentsCount" to keyMetrics.paymentsCount.toString()
-            )
-            RemoteLogger.log("INFO", "Dashboard recalculated", null, meta)
-        } catch (e: Exception) {
-            Log.w("BillingViewModel", "Failed to send remote dashboard log", e)
-        }
-
-        // Send a more detailed debug sample (counts + first items + billing summary)
-        try {
-            val gson = Gson()
-            val sampleBill = allBills.firstOrNull()
-            val samplePayment = allPayments.firstOrNull()
-            val detailed = mutableMapOf<String, String>()
-            detailed["allBillsCount"] = allBills.size.toString()
-            detailed["allPaymentsCount"] = allPayments.size.toString()
-            detailed["firstBill"] = sampleBill?.let { gson.toJson(it) } ?: ""
-            detailed["firstPayment"] = samplePayment?.let { gson.toJson(it) } ?: ""
-            detailed["billingSummary"] = _billingSummary.value?.let { gson.toJson(it) } ?: ""
-            RemoteLogger.log("DEBUG", "Dashboard raw sample", null, detailed)
-        } catch (e: Exception) {
-            Log.w("BillingViewModel", "Failed to send detailed dashboard sample", e)
-        }
     }
 
     fun createBill(request: CreateBillRequest, onComplete: (Boolean, String?) -> Unit) {

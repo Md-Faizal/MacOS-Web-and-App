@@ -107,7 +107,8 @@ export class SystemLogsComponent {
           <div class="systemlogs-filter-group">
             <button class="systemlogs-btn" id="syslogRefreshBtn" title="Refresh logs">🔄 Refresh</button>
             <button class="systemlogs-btn" id="syslogExportBtn" title="Export logs">📥 Export</button>
-            <button class="systemlogs-btn danger" id="syslogPurgeBtn" title="Clear resolved logs">🗑️ Clean</button>
+            <button class="systemlogs-btn" id="syslogPurgeResolvedBtn" title="Clear resolved/ignored logs">🧹 Clear Resolved</button>
+            <button class="systemlogs-btn danger" id="syslogPurgeAllBtn" title="Purge all logs">🗑️ Clear All</button>
           </div>
         </div>
 
@@ -147,7 +148,8 @@ export class SystemLogsComponent {
     const statusSelect = this.container.querySelector('#syslogStatusSelect');
     const refreshBtn = this.container.querySelector('#syslogRefreshBtn');
     const exportBtn = this.container.querySelector('#syslogExportBtn');
-    const purgeBtn = this.container.querySelector('#syslogPurgeBtn');
+    const purgeResolvedBtn = this.container.querySelector('#syslogPurgeResolvedBtn');
+    const purgeAllBtn = this.container.querySelector('#syslogPurgeAllBtn');
 
     let debounceTimer;
     searchInput?.addEventListener('input', (e) => {
@@ -182,8 +184,12 @@ export class SystemLogsComponent {
       this.showExportMenu();
     });
 
-    purgeBtn?.addEventListener('click', () => {
+    purgeResolvedBtn?.addEventListener('click', () => {
       this.handlePurgeResolved();
+    });
+
+    purgeAllBtn?.addEventListener('click', () => {
+      this.handlePurgeAll();
     });
   }
 
@@ -265,7 +271,8 @@ export class SystemLogsComponent {
 
     tbody.innerHTML = this.logs.map(log => {
       const level = (log.level || 'INFO').toLowerCase();
-      const platformIcon = log.platform === 'android' ? '🤖' : log.platform === 'backend' ? '⚙️' : '💻';
+      const plat = (log.platform || 'android').toLowerCase();
+      const platformIcon = plat === 'android' ? '🤖' : plat === 'backend' ? '⚙️' : plat === 'pwa' ? '📱' : '💻';
       const status = log.status || 'open';
       const formattedDate = new Date(log.createdAt).toLocaleString(undefined, {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -336,10 +343,10 @@ export class SystemLogsComponent {
           <!-- Main Message Box -->
           <div>
             <div class="systemlogs-section-title">Message & Diagnostic</div>
-            <div style="font-size: 13px; font-weight: 600; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--settings-border); border-radius: 8px;">
+            <div class="systemlogs-message-box">
               ${this.escape(log.message || 'No message')}
             </div>
-            <div style="font-size: 11px; color: var(--settings-text-tertiary); margin-top: 4px;">
+            <div style="font-size: 11px; color: var(--settings-text-tertiary); margin-top: 6px;">
               Recorded: ${formattedDate} • Hash: <code>${log.errorHash || 'N/A'}</code>
             </div>
           </div>
@@ -497,6 +504,19 @@ export class SystemLogsComponent {
         await Promise.all([this.fetchStats(), this.fetchLogs()]);
       } catch (err) {
         alert(`Failed to purge logs: ${err.message}`);
+      }
+    }
+  }
+
+  async handlePurgeAll() {
+    if (confirm('⚠️ WARNING: Delete ALL system and error logs? This will wipe all recorded logs across all platforms.')) {
+      try {
+        const res = await fetch('/api/logs?all=true', { method: 'DELETE' });
+        const data = await res.json();
+        alert(`Successfully cleared ${data.deletedCount || 0} logs.`);
+        await Promise.all([this.fetchStats(), this.fetchLogs()]);
+      } catch (err) {
+        alert(`Failed to clear logs: ${err.message}`);
       }
     }
   }

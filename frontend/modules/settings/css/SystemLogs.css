@@ -1,6 +1,7 @@
 /* ====================================================================
    SystemLogs.css - macOS Tahoe System & Error Logs Console Styles
    Dedicated styling for industrial-standard telemetry & log inspection
+   Supports full Light & Dark mode themes via [data-theme] and CSS variables
    ==================================================================== */
 
 .systemlogs-container {
@@ -9,7 +10,7 @@
   height: calc(100% - 20px);
   gap: 16px;
   animation: systemLogsFadeIn 0.25s ease-out;
-  color: var(--settings-text);
+  color: var(--settings-text, #1d1d1f);
   box-sizing: border-box;
 }
 
@@ -28,8 +29,8 @@
 }
 
 .systemlogs-stat-card {
-  background: var(--settings-sidebar-bg);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-sidebar-bg, #f5f5f7);
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   padding: 12px 14px;
   display: flex;
@@ -40,6 +41,7 @@
   -webkit-backdrop-filter: blur(20px);
   position: relative;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .systemlogs-stat-card:hover {
@@ -88,11 +90,12 @@
   font-weight: 700;
   letter-spacing: -0.5px;
   line-height: 1.2;
+  color: var(--settings-text, #1d1d1f);
 }
 
 .systemlogs-stat-label {
   font-size: 11px;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary, #6e6e73);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
@@ -108,8 +111,8 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  background: var(--settings-sidebar-bg);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-sidebar-bg, #f5f5f7);
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   border-radius: 10px;
   padding: 8px 12px;
 }
@@ -122,12 +125,12 @@
 }
 
 .systemlogs-search-input {
-  background: var(--settings-input-bg);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.1));
   border-radius: 7px;
   padding: 6px 10px;
   font-size: 12px;
-  color: inherit;
+  color: var(--settings-text, #1d1d1f);
   width: 180px;
   transition: width 0.2s ease, border-color 0.2s ease;
 }
@@ -139,12 +142,12 @@
 }
 
 .systemlogs-select {
-  background: var(--settings-input-bg);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.1));
   border-radius: 7px;
   padding: 5px 8px;
   font-size: 12px;
-  color: inherit;
+  color: var(--settings-text, #1d1d1f);
   cursor: pointer;
 }
 
@@ -157,19 +160,19 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.12));
   border-radius: 7px;
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 500;
-  color: inherit;
+  color: var(--settings-text, #1d1d1f);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .systemlogs-btn:hover {
-  background: var(--settings-hover-bg);
+  background: var(--settings-hover-bg, rgba(0, 0, 0, 0.08));
   border-color: rgba(0, 122, 255, 0.5);
 }
 
@@ -184,9 +187,9 @@
 }
 
 .systemlogs-btn.danger {
-  background: rgba(255, 59, 48, 0.15);
+  background: rgba(255, 59, 48, 0.12);
   color: #ff3b30;
-  border-color: rgba(255, 59, 48, 0.3);
+  border-color: rgba(255, 59, 48, 0.25);
 }
 
 .systemlogs-btn.danger:hover {
@@ -201,9 +204,9 @@
   flex: 1;
   min-height: 280px;
   overflow-y: auto;
-  border: 1px solid var(--settings-border);
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   border-radius: 10px;
-  background: var(--settings-sidebar-bg);
+  background: var(--settings-sidebar-bg, #f5f5f7);
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
 }
@@ -218,24 +221,25 @@
 .systemlogs-table thead {
   position: sticky;
   top: 0;
-  background: var(--settings-sidebar-bg);
+  background: var(--settings-sidebar-bg, #f5f5f7);
   z-index: 2;
-  box-shadow: 0 1px 0 var(--settings-border);
+  box-shadow: 0 1px 0 var(--settings-border, rgba(0, 0, 0, 0.08));
 }
 
 .systemlogs-table th {
   padding: 8px 12px;
   font-weight: 600;
   font-size: 11px;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary, #6e6e73);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 
 .systemlogs-table td {
   padding: 9px 12px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  border-bottom: 1px solid var(--settings-row-border, rgba(0, 0, 0, 0.05));
   vertical-align: middle;
+  color: var(--settings-text, #1d1d1f);
 }
 
 .systemlogs-row {
@@ -244,11 +248,11 @@
 }
 
 .systemlogs-row:hover {
-  background: rgba(0, 122, 255, 0.06);
+  background: rgba(0, 122, 255, 0.08);
 }
 
 .systemlogs-row.selected {
-  background: rgba(0, 122, 255, 0.12);
+  background: rgba(0, 122, 255, 0.15);
 }
 
 /* Level Badges */
@@ -302,7 +306,12 @@
   font-weight: 500;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--settings-text, #1d1d1f);
+}
+
+[data-theme="dark"] .systemlogs-platform {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Status Indicator */
@@ -329,7 +338,8 @@
 }
 
 /* ========================================
-   4. Slide-Out Detail Inspection Drawer
+   4. Slide-Out Detail Inspection Modal
+   (Complete Light & Dark Mode Support)
    ======================================== */
 .systemlogs-modal-overlay {
   position: fixed;
@@ -337,13 +347,13 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 10000;
   animation: modalFadeIn 0.2s ease-out;
 }
 
@@ -353,32 +363,42 @@
 }
 
 .systemlogs-modal {
-  background: var(--settings-bg, #1e1e1e);
-  border: 1px solid var(--settings-border);
+  background: var(--settings-content-bg, #ffffff);
+  color: var(--settings-text, #1d1d1f);
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.1));
   border-radius: 14px;
   width: 90%;
   max-width: 780px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+}
+
+[data-theme="dark"] .systemlogs-modal {
+  background: #1e1e1e;
+  color: #f5f5f7;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.5);
 }
 
 .systemlogs-modal-header {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--settings-border);
+  border-bottom: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: var(--settings-sidebar-bg, #f5f5f7);
 }
 
 .systemlogs-modal-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 10px;
+  color: var(--settings-text, #1d1d1f);
 }
 
 .systemlogs-modal-body {
@@ -387,23 +407,45 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  background: var(--settings-content-bg, #ffffff);
+}
+
+[data-theme="dark"] .systemlogs-modal-body {
+  background: #1e1e1e;
 }
 
 .systemlogs-section-title {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary, #6e6e73);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
+.systemlogs-message-box {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 12px 14px;
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  color: var(--settings-text, #1d1d1f);
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .systemlogs-message-box {
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f5f7;
+}
+
+/* Light / Dark Mode Stack Trace */
 .systemlogs-stack-container {
-  background: #0d1117;
-  color: #c9d1d9;
+  background: #f6f8fa;
+  color: #24292f;
   border-radius: 8px;
   padding: 12px 14px;
   font-family: 'SF Mono', Consolas, Monaco, monospace;
@@ -411,8 +453,14 @@
   line-height: 1.5;
   overflow-x: auto;
   white-space: pre-wrap;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   max-height: 240px;
+}
+
+[data-theme="dark"] .systemlogs-stack-container {
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .systemlogs-breadcrumbs-timeline {
@@ -425,17 +473,22 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--settings-border);
+  padding: 8px 12px;
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   font-size: 11.5px;
+  color: var(--settings-text, #1d1d1f);
+}
+
+[data-theme="dark"] .systemlogs-crumb-item {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .systemlogs-crumb-time {
   font-family: monospace;
   font-size: 10px;
-  color: var(--settings-text-tertiary);
+  color: var(--settings-text-tertiary, #8e8e93);
   white-space: nowrap;
 }
 
@@ -446,27 +499,34 @@
 }
 
 .systemlogs-telemetry-card {
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--settings-input-bg, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
+  font-size: 11.5px;
+  color: var(--settings-text, #1d1d1f);
+}
+
+[data-theme="dark"] .systemlogs-telemetry-card {
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--settings-border);
-  font-size: 11px;
+  color: #f5f5f7;
 }
 
 .systemlogs-telemetry-card strong {
   display: block;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary, #6e6e73);
   font-size: 10px;
   text-transform: uppercase;
+  margin-bottom: 2px;
 }
 
 .systemlogs-modal-footer {
   padding: 12px 20px;
-  border-top: 1px solid var(--settings-border);
+  border-top: 1px solid var(--settings-border, rgba(0, 0, 0, 0.08));
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--settings-sidebar-bg, #f5f5f7);
 }
 
 @media (max-width: 768px) {
