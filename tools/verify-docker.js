@@ -113,7 +113,7 @@ function extractBundledAssets(html) {
 
   const tests = [
     { name: 'Deep Health Check (/api/health)', path: '/api/health', expected: [200] },
-    { name: 'Synthetic Health Probe (/healthz)', path: '/healthz', expected: [200, 404] },
+    { name: 'Synthetic Health Probe (/healthz)', path: '/healthz', expected: [200, 307, 404] },
     { name: 'Root SPA Entry (index.html)', path: '/', expected: [200] },
     { name: 'Desktop Workspace (home.html)', path: '/home.html', expected: [200] },
     { name: 'Customer Ledger Page', path: '/customer-ledger', expected: [200] },

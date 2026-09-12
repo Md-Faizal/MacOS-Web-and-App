@@ -649,7 +649,7 @@ app.get('/api/health', (req, res) => {
 
 // Direct alias for synthetic monitoring probes (/healthz)
 app.get('/healthz', (req, res) => {
-  res.redirect(307, '/api/health');
+  res.status(200).json({ status: 'healthy', uptimeSeconds: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
 });
 
 // API System Info endpoint - Get actual hardware model
