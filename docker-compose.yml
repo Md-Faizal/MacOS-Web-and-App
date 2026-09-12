@@ -36,9 +36,9 @@ x-macos-base: &macos-base
   healthcheck:
     test: ["CMD", "curl", "-f", "http://127.0.0.1:3001/api/health"]
     interval: 10s
-    timeout: 4s
-    retries: 3
-    start_period: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 45s
 
 services:
   # Blue Instance (Listens on port 3001)

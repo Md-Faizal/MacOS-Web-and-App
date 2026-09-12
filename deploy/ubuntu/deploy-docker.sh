@@ -57,25 +57,29 @@ docker compose -f "$COMPOSE_FILE" up -d --no-deps "macos-server-$TARGET_SLOT"
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
-MAX_RETRIES=20
+MAX_RETRIES=45
 COUNT=0
 HEALTHY=false
 
 while [ $COUNT -lt $MAX_RETRIES ]; do
-    if curl -s -f -m 3 "http://127.0.0.1:$TARGET_PORT/api/health" > /dev/null 2>&1; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "http://127.0.0.1:$TARGET_PORT/api/health" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
         HEALTHY=true
+        echo " [HTTP 200 - Healthy!]"
         break
     fi
     sleep 2
     COUNT=$((COUNT + 1))
-    echo -n "."
+    echo -n ".[$HTTP_CODE]"
 done
 echo ""
 
 if [ "$HEALTHY" != "true" ]; then
-    echo "❌ ERROR: Target container macos-server-$TARGET_SLOT failed to become healthy on port $TARGET_PORT!"
+    echo "❌ ERROR: Target container macos-server-$TARGET_SLOT failed to become healthy on port $TARGET_PORT after $((MAX_RETRIES * 2))s!"
+    echo "Last response probe from http://127.0.0.1:$TARGET_PORT/api/health:"
+    curl -v -m 5 "http://127.0.0.1:$TARGET_PORT/api/health" 2>&1 || true
     echo "Logs from macos-server-$TARGET_SLOT:"
-    docker compose -f "$COMPOSE_FILE" logs --tail 30 "macos-server-$TARGET_SLOT"
+    docker compose -f "$COMPOSE_FILE" logs --tail 40 "macos-server-$TARGET_SLOT"
     echo "Aborting switch. Live traffic remains uninterrupted on $CURRENT_ACTIVE."
     exit 1
 fi

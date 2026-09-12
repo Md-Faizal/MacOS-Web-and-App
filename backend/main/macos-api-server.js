@@ -647,6 +647,11 @@ app.get('/api/health', (req, res) => {
   res.status(isDegraded ? 503 : 200).json(responsePayload);
 });
 
+// Direct alias for synthetic monitoring probes (/healthz)
+app.get('/healthz', (req, res) => {
+  res.redirect(307, '/api/health');
+});
+
 // API System Info endpoint - Get actual hardware model
 app.get('/api/system/info', (req, res) => {
   const { exec } = require('child_process');
