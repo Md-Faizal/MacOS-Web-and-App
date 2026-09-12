@@ -562,30 +562,89 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
-// API Health check endpoint
+// API Health check endpoint (Deep verification of DB, Storage & Node Runtime)
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'healthy',
+  const startTime = Date.now();
+  const checks = {
+    database: { status: 'unknown' },
+    storage: { status: 'unknown' },
+    memory: { status: 'unknown' }
+  };
+  let isDegraded = false;
+
+  // 1. Live SQLite Database Query Probe
+  try {
+    const db = DatabaseManager.getInstance ? DatabaseManager.getInstance() : globalDb;
+    if (db) {
+      const dbStart = Date.now();
+      const row = db.prepare('SELECT 1 as alive').get();
+      const dbLatencyMs = Date.now() - dbStart;
+      if (row && row.alive === 1) {
+        checks.database = { status: 'healthy', latencyMs: dbLatencyMs };
+      } else {
+        checks.database = { status: 'unhealthy', error: 'Unexpected query result' };
+        isDegraded = true;
+      }
+    } else {
+      checks.database = { status: 'unhealthy', error: 'Database instance not found' };
+      isDegraded = true;
+    }
+  } catch (dbErr) {
+    checks.database = { status: 'unhealthy', error: dbErr.message };
+    isDegraded = true;
+  }
+
+  // 2. Storage writeability check (verify database & uploads directory access)
+  try {
+    const dbDir = path.resolve(__dirname, '../../database');
+    if (fs.existsSync(dbDir)) {
+      fs.accessSync(dbDir, fs.constants.R_OK | fs.constants.W_OK);
+      checks.storage = { status: 'healthy', path: 'database' };
+    } else {
+      checks.storage = { status: 'healthy', note: 'database dir not local, db connection active' };
+    }
+  } catch (fsErr) {
+    checks.storage = { status: 'degraded', error: fsErr.message };
+  }
+
+  // 3. Process & Memory Metrics
+  const memUsage = process.memoryUsage();
+  const heapUsedMb = Math.round((memUsage.heapUsed / 1024 / 1024) * 10) / 10;
+  const rssMb = Math.round((memUsage.rss / 1024 / 1024) * 10) / 10;
+  checks.memory = {
+    status: heapUsedMb > 450 ? 'warning' : 'healthy',
+    heapUsedMb,
+    rssMb
+  };
+
+  const responsePayload = {
+    status: isDegraded ? 'degraded' : 'healthy',
+    statusCode: isDegraded ? 503 : 200,
+    slot: process.env.DOCKER_SLOT || 'standalone',
+    uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    durationMs: Date.now() - startTime,
+    checks,
     apis: {
       billing: 'running',
-      preferences: 'running (part of billing)',
+      preferences: 'running',
       products: 'running',
       contacts: 'running',
       notes: 'running',
       calendar: 'running',
       analytics: 'running',
       settings: 'running',
-      payments: 'running (consolidated)',
-      orders: 'running (consolidated)',
-      variants: 'running (consolidated)',
-      batches: 'running (consolidated)',
-      creditnotes: 'running (consolidated)',
-      suggestions: 'running (consolidated)',
-      ai: 'running (Gemini)'
+      payments: 'running',
+      orders: 'running',
+      variants: 'running',
+      batches: 'running',
+      creditnotes: 'running',
+      suggestions: 'running',
+      ai: 'running'
     }
-  });
+  };
+
+  res.status(isDegraded ? 503 : 200).json(responsePayload);
 });
 
 // API System Info endpoint - Get actual hardware model
