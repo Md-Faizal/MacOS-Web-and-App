@@ -167,17 +167,18 @@ jobs:
           # 4. Sync files via rsync (safe sync: excludes database, uploads, wallpapers, logs, .env)
           echo "📦 Step 2: Syncing build & source files to VM via rsync..."
           rsync -avz --delete \
-            --exclude='database/*.db*' \
-            --exclude='database/backups' \
-            --exclude='backend/uploads' \
-            --exclude='CloudStorage' \
-            --exclude='Wallpapers' \
-            --exclude='logs' \
-            --exclude='tmp' \
-            --exclude='.env*' \
-            --exclude='.git' \
-            --exclude='android' \
-            --exclude='node_modules' \
+            --exclude='/database/*.db*' \
+            --exclude='/database/backups' \
+            --exclude='/backups' \
+            --exclude='/backend/uploads' \
+            --exclude='/CloudStorage' \
+            --exclude='/Wallpapers' \
+            --exclude='/logs' \
+            --exclude='/tmp' \
+            --exclude='/.env*' \
+            --exclude='/.git' \
+            --exclude='/android' \
+            --exclude='/node_modules' \
             ./ production:"$TARGET_DIR/"
 
           # 5. Remote post-sync actions (Docker Blue-Green deployment with verification)

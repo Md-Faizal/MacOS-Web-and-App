@@ -26,6 +26,21 @@ if [ -f "$NGINX_UPSTREAM_CONF" ]; then
     fi
 fi
 
+# Auto-heal: Ensure Docker bridge network interface & route are active
+BRIDGE_NET=$(docker network inspect macos-stack_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || true)
+BRIDGE_ID=$(docker network inspect macos-stack_default --format '{{.Id}}' 2>/dev/null | cut -c1-12 || true)
+if [ -n "$BRIDGE_NET" ] && [ -n "$BRIDGE_ID" ]; then
+    BRIDGE_DEV="br-$BRIDGE_ID"
+    if ip link show "$BRIDGE_DEV" >/dev/null 2>&1; then
+        sudo ip link set "$BRIDGE_DEV" up 2>/dev/null || true
+        if ! ip route | grep -q "$BRIDGE_DEV"; then
+            echo "🔧 Restoring missing bridge route for $BRIDGE_DEV ($BRIDGE_NET)..."
+            sudo ip addr add "$BRIDGE_NET/16" dev "$BRIDGE_DEV" 2>/dev/null || true
+            sudo ip link set "$BRIDGE_DEV" up 2>/dev/null || true
+        fi
+    fi
+fi
+
 # 2. Determine target idle slot
 if [ "$1" = "--target" ] && [ -n "$2" ]; then
     TARGET_SLOT="$2"
