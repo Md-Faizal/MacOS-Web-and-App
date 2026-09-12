@@ -181,7 +181,9 @@ fun ContactsScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.loadContacts()
+                if (viewModel.isLoggedIn.value && !viewModel.sessionManager.authToken.isNullOrBlank()) {
+                    viewModel.loadContacts()
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -191,7 +193,9 @@ fun ContactsScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.loadContacts()
+        if (viewModel.isLoggedIn.value && !viewModel.sessionManager.authToken.isNullOrBlank()) {
+            viewModel.loadContacts()
+        }
     }
 
     val filteredContacts = remember(contacts, searchQuery, selectedFilterTab) {

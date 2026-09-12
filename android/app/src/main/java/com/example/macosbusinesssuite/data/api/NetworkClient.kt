@@ -17,17 +17,24 @@ object NetworkClient {
 
     private var currentBaseUrl: String? = null
     private var apiService: ApiService? = null
+    private var activeOkHttpClient: OkHttpClient? = null
+    @Volatile
+    private var activeSessionManager: SessionManager? = null
 
     // Simple in-memory cookie storage for session preservation across API calls
     private val cookieStore = mutableMapOf<String, List<Cookie>>()
 
     private val cookieJar = object : CookieJar {
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            cookieStore[url.host] = cookies
+            synchronized(cookieStore) {
+                cookieStore[url.host] = cookies
+            }
         }
 
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            return cookieStore[url.host] ?: emptyList()
+            return synchronized(cookieStore) {
+                cookieStore[url.host] ?: emptyList()
+            }
         }
     }
 
@@ -42,6 +49,7 @@ object NetworkClient {
         .create()
 
     fun getService(sessionManager: SessionManager): ApiService {
+        activeSessionManager = sessionManager
         val baseUrl = sessionManager.serverUrl
 
         if (apiService == null || currentBaseUrl != baseUrl) {
@@ -55,45 +63,44 @@ object NetworkClient {
                 .cookieJar(cookieJar)
                 .addInterceptor(logging)
                 .addInterceptor { chain ->
-                    val requestBuilder = chain.request().newBuilder()
+                    val sm = activeSessionManager ?: sessionManager
+                    val request = chain.request()
+                    val path = request.url.encodedPath
 
-                    requestBuilder.addHeader("X-API-Key", "test-api-key-1234")
-                    requestBuilder.addHeader("X-Client-Platform", "android")
-                    requestBuilder.addHeader("X-App-Type", "native_android")
+                    val isPublicEndpoint = path.endsWith("/auth/login") ||
+                            path.endsWith("/auth/challenge") ||
+                            path.endsWith("/auth/challenge-question") ||
+                            path.endsWith("/auth/status") ||
+                            path.endsWith("/auth/username") ||
+                            path.endsWith("/auth/mobile/refresh") ||
+                            path.endsWith("/auth/verify-answer") ||
+                            path.endsWith("/health")
 
-                    sessionManager.authToken?.let { token ->
-                        if (token.isNotEmpty()) {
-                            requestBuilder.addHeader("Authorization", "Bearer $token")
-                        }
+                    val token = sm.authToken
+                    if (!isPublicEndpoint && token.isNullOrBlank()) {
+                        throw java.io.IOException("Request to $path aborted: No authentication token provided in session")
                     }
 
-                    val cookie = sessionManager.authCookie ?: sessionManager.authToken?.let { "auth_token=$it" }
-                    cookie?.let { c ->
-                        requestBuilder.addHeader("Cookie", c)
+                    val requestBuilder = request.newBuilder()
+                    requestBuilder.header("X-API-Key", "test-api-key-1234")
+                    requestBuilder.header("X-Client-Platform", "android")
+                    requestBuilder.header("X-App-Type", "native_android")
+
+                    if (!token.isNullOrBlank()) {
+                        requestBuilder.header("Authorization", "Bearer $token")
                     }
 
-                    val response = chain.proceed(requestBuilder.build())
-
-                    // Capture Set-Cookie headers
-                    try {
-                        val setCookieHeaders = response.headers("Set-Cookie")
-                        if (setCookieHeaders.isNotEmpty()) {
-                            sessionManager.authCookie = setCookieHeaders.joinToString("; ")
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.w("NetworkClient", "Failed to save Set-Cookie header", e)
-                    }
-
-                    response
+                    chain.proceed(requestBuilder.build())
                 }
                 .authenticator { _, response ->
                     if (response.request.url.encodedPath.endsWith("/auth/mobile/refresh")) {
                         return@authenticator null
                     }
 
-                    val refreshToken = sessionManager.refreshToken ?: return@authenticator null
+                    val sm = activeSessionManager ?: sessionManager
+                    val refreshToken = sm.refreshToken ?: return@authenticator null
                     synchronized(refreshLock) {
-                        val currentToken = sessionManager.authToken
+                        val currentToken = sm.authToken
                         val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
                         if (!currentToken.isNullOrEmpty() && requestToken != currentToken) {
                             return@synchronized response.request.newBuilder()
@@ -112,18 +119,16 @@ object NetworkClient {
                         val refreshResponse = okHttpClientForRefresh(baseUrl).newCall(refreshRequest).execute()
                         refreshResponse.use { refreshed ->
                             if (!refreshed.isSuccessful) {
-                                sessionManager.clearSession()
                                 return@synchronized null
                             }
                             val payload = JSONObject(refreshed.body?.string() ?: return@synchronized null)
                             val accessToken = payload.optString("token").takeIf { it.isNotEmpty() }
                             val replacementRefresh = payload.optString("refreshToken").takeIf { it.isNotEmpty() }
                             if (accessToken == null || replacementRefresh == null) {
-                                sessionManager.clearSession()
                                 return@synchronized null
                             }
-                            sessionManager.authToken = accessToken
-                            sessionManager.refreshToken = replacementRefresh
+                            sm.authToken = accessToken
+                            sm.refreshToken = replacementRefresh
                             response.request.newBuilder()
                                 .header("Authorization", "Bearer $accessToken")
                                 .build()
@@ -134,6 +139,8 @@ object NetworkClient {
                 .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(20, TimeUnit.SECONDS)
                 .build()
+
+            activeOkHttpClient = okHttpClient
 
             val retrofit = Retrofit.Builder()
                 .baseUrl(baseUrl)
@@ -147,9 +154,21 @@ object NetworkClient {
         return apiService!!
     }
 
+    fun clearCookies() {
+        synchronized(cookieStore) {
+            cookieStore.clear()
+        }
+    }
+
     fun resetClient() {
         apiService = null
         currentBaseUrl = null
+        activeSessionManager = null
+        clearCookies()
+        try {
+            activeOkHttpClient?.connectionPool?.evictAll()
+        } catch (_: Exception) {}
+        activeOkHttpClient = null
     }
 
     private fun okHttpClientForRefresh(baseUrl: String): OkHttpClient = OkHttpClient.Builder()

@@ -126,6 +126,19 @@ fun BillingDashboardScreen(
         }
     }
 
+    val isLoggedIn by mainViewModel.isLoggedIn.collectAsState()
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            billingViewModel.loadBillingData()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (mainViewModel.isLoggedIn.value && !mainViewModel.sessionManager.authToken.isNullOrBlank()) {
+            billingViewModel.loadBillingData()
+        }
+    }
+
     var isRefreshing by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {

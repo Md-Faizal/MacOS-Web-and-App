@@ -1100,6 +1100,7 @@ fun LoginScreen(
                                 viewModel.selectUser(user)
                                 identifierInput = user.identifier
                                 passwordInput = ""
+                                hasAutoPromptedBiometric = false
                                 currentFlowState = LoginFlowState.ACTIVE_USER_LOGIN
                                 showAccountSwitcherSheet = false
                             },

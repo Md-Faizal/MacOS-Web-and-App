@@ -21,64 +21,72 @@ class SecureTokenStore(context: Context) {
         private const val TAG_LENGTH = 128
     }
 
-    private fun key(): SecretKey {
-        val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        val existing = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-        if (existing != null) return existing
+    private fun key(): SecretKey? {
+        return try {
+            val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+            val existing = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            if (existing != null) return existing
 
-        val generator = KeyGenerator.getInstance("AES", KEYSTORE)
-        generator.init(
-            android.security.keystore.KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
-                    android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+            val generator = KeyGenerator.getInstance("AES", KEYSTORE)
+            generator.init(
+                android.security.keystore.KeyGenParameterSpec.Builder(
+                    KEY_ALIAS,
+                    android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
+                        android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
             )
-                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
+            generator.generateKey()
+        } catch (e: Exception) {
+            android.util.Log.w("SecureTokenStore", "AndroidKeyStore unavailable in current profile: ${e.localizedMessage}")
+            null
+        }
     }
 
     fun get(name: String): String? {
         val encoded = prefs.getString(name, null) ?: return null
         return try {
+            val k = key() ?: return null
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
             if (payload.size <= IV_LENGTH) return null
             val iv = payload.copyOfRange(0, IV_LENGTH)
             val ciphertext = payload.copyOfRange(IV_LENGTH, payload.size)
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_LENGTH, iv))
+            cipher.init(Cipher.DECRYPT_MODE, k, GCMParameterSpec(TAG_LENGTH, iv))
             String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         } catch (e: Exception) {
-            android.util.Log.w("SecureTokenStore", "Failed to decrypt $name, falling back to null", e)
+            android.util.Log.w("SecureTokenStore", "Failed to decrypt $name, falling back", e)
             null
         }
     }
 
-    fun put(name: String, value: String?) {
+    fun put(name: String, value: String?): Boolean {
         if (value == null) {
             prefs.edit().remove(name).apply()
-            return
+            return true
         }
-        try {
+        return try {
+            val k = key() ?: return false
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, key())
+            cipher.init(Cipher.ENCRYPT_MODE, k)
             val iv = cipher.iv
             if (iv == null || iv.isEmpty()) {
                 android.util.Log.e("SecureTokenStore", "Generated IV is null or empty")
-                return
+                return false
             }
             val ciphertext = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
             prefs.edit().putString(name, Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)).apply()
+            true
         } catch (e: Exception) {
-            android.util.Log.e("SecureTokenStore", "Failed to encrypt $name", e)
+            android.util.Log.e("SecureTokenStore", "Failed to encrypt $name with KeyStore", e)
             try {
-                // If key is in bad state, clear and recreate
                 val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
                 keyStore.deleteEntry(KEY_ALIAS)
             } catch (_: Exception) {}
+            false
         }
     }
 

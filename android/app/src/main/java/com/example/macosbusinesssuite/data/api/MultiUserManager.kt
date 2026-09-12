@@ -65,18 +65,7 @@ class MultiUserManager(private val context: Context) {
             if (raw.isNullOrBlank()) return emptyList()
             val type = object : TypeToken<List<RememberedUser>>() {}.type
             val list: List<RememberedUser> = gson.fromJson(raw, type) ?: emptyList()
-            list.map { user ->
-                val isFaizal = user.identifier.contains("faizal", ignoreCase = true) ||
-                        user.identifier.contains("fazztronic", ignoreCase = true) ||
-                        user.displayName.contains("faizal", ignoreCase = true)
-                if (isFaizal) {
-                    user.copy(role = "owner")
-                } else if (user.role.equals("owner", ignoreCase = true) || user.role.equals("admin", ignoreCase = true)) {
-                    user.copy(role = "worker")
-                } else {
-                    user
-                }
-            }.sortedByDescending { it.lastActive }
+            list.sortedByDescending { it.lastActive }
                 .distinctBy { user ->
                     val cleanId = user.identifier.trim().lowercase()
                     if (cleanId.isNotBlank()) cleanId else user.id

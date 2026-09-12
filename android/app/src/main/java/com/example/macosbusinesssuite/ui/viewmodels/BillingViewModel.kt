@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.macosbusinesssuite.data.api.ApiService
 import com.example.macosbusinesssuite.data.api.NetworkClient
 import com.example.macosbusinesssuite.data.model.*
 import com.example.macosbusinesssuite.domain.calculation.DashboardCalculator
@@ -90,7 +91,7 @@ data class OverdueReminderItem(
 class BillingViewModel(application: Application) : AndroidViewModel(application) {
 
     val sessionManager = com.example.macosbusinesssuite.data.api.SessionManager(application)
-    private val api = NetworkClient.getService(sessionManager)
+    private val api: ApiService get() = NetworkClient.getService(sessionManager)
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -152,7 +153,9 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     val tickerInsights: StateFlow<List<String>> = _tickerInsights.asStateFlow()
 
     init {
-        loadBillingData()
+        if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+            loadBillingData()
+        }
     }
 
     fun setMetricsPeriod(period: MetricsPeriod) {
@@ -164,8 +167,37 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
         _selectedSalesTrendPeriod.value = period
     }
 
+    fun clearData() {
+        _bills.value = emptyList()
+        _payments.value = emptyList()
+        _orders.value = emptyList()
+        _contacts.value = emptyList()
+        _billingSummary.value = null
+        _ledgerCustomers.value = emptyList()
+        _detailedLedger.value = null
+        _dashboardMetrics.value = DashboardMetricsState()
+        _orderMetrics.value = OrderMetricsState()
+        _receivablesAging.value = ReceivablesAging()
+        _topProducts.value = emptyList()
+        _topCustomers.value = emptyList()
+        _overdueReminders.value = emptyList()
+        _tickerInsights.value = emptyList()
+        _errorMessage.value = null
+        _isLoading.value = false
+    }
+
     fun loadBillingData(onComplete: () -> Unit = {}) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) {
+            _isLoading.value = false
+            onComplete()
+            return
+        }
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) {
+                _isLoading.value = false
+                onComplete()
+                return@launch
+            }
             _isLoading.value = true
             _errorMessage.value = null
             try {
@@ -189,7 +221,7 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                         val dataElement = if (summaryJson.isJsonObject && summaryJson.asJsonObject.has("data")) {
                             summaryJson.asJsonObject.get("data")
                         } else summaryJson
-                        _billingSummary.value = gson.fromJson(dataElement, BillingSummary::class.java)
+                        _billingSummary.value = gson.fromJson(dataElement, object : TypeToken<BillingSummary>() {}.type)
                     }
                 } catch (e: Exception) {
                     Log.e("BillingViewModel", "Error loading summary", e)

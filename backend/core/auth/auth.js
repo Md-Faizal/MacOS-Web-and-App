@@ -148,6 +148,50 @@ module.exports = function(db, permissionsHelper = null) {
      * Middleware to protect routes
      */
     authMiddleware: (req, res, next) => {
+      const isAndroidClient = (req.headers['x-app-type'] === 'native_android') ||
+                              ((req.headers['x-client-platform'] || '').toLowerCase() === 'android');
+
+      // 1. Authorization header (Bearer token) ALWAYS takes absolute priority over cookies.
+      const authHeader = req.headers.authorization;
+      const bearerToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.split(' ')[1] : null;
+
+      if (bearerToken) {
+        try {
+          const decoded = jwt.verify(bearerToken, JWT_SECRET);
+          const user = decoded.userId
+            ? db.prepare('SELECT id, role, status, token_version FROM users WHERE id = ?').get(decoded.userId)
+            : null;
+
+          if (!user || user.status !== 'active' ||
+              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) ||
+              (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
+            return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
+          }
+
+          req.user = { ...decoded, userId: user.id, id: user.id, role: user.role };
+
+          // HEARTBEAT: Update last_seen for the device if deviceId is present in token
+          if (decoded.deviceId) {
+            try {
+              db.prepare("UPDATE user_devices SET last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND user_id = ?")
+                .run(decoded.deviceId, req.user.userId);
+            } catch (err) {
+              // Non-critical, ignore
+            }
+          }
+
+          return next();
+        } catch (err) {
+          return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+        }
+      }
+
+      // Native Android requests MUST NOT fall back to ambient web cookies
+      if (isAndroidClient) {
+        return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      }
+
+      // 2. Web browser session fallback
       const serverSession = sessionService.resolve(req.cookies?.[sessionService.cookieName], req);
       if (serverSession) {
         if (serverSession.deviceId) {
@@ -166,41 +210,29 @@ module.exports = function(db, permissionsHelper = null) {
         return next();
       }
 
-      // For simplicity, we check both Cookies and Authorization header
-      const token = req.cookies?.auth_token || req.headers.authorization?.split(' ')[1];
+      // 3. Fall back to browser auth_token cookie
+      const cookieToken = req.cookies?.auth_token;
+      if (cookieToken) {
+        try {
+          const decoded = jwt.verify(cookieToken, JWT_SECRET);
+          const user = decoded.userId
+            ? db.prepare('SELECT id, role, status, token_version FROM users WHERE id = ?').get(decoded.userId)
+            : null;
 
-      if (!token) {
-        return res.status(401).json({ error: 'Unauthorized: No token provided' });
-      }
-
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = decoded.userId
-          ? db.prepare('SELECT id, role, status, token_version FROM users WHERE id = ?').get(decoded.userId)
-          : null;
-
-        if (!user || user.status !== 'active' ||
-            (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) ||
-            (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
-          return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
-        }
-
-        req.user = { ...decoded, userId: user.id, id: user.id, role: user.role };
-
-        // HEARTBEAT: Update last_seen for the device if deviceId is present in token
-        if (decoded.deviceId) {
-          try {
-            db.prepare("UPDATE user_devices SET last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND user_id = ?")
-              .run(decoded.deviceId, req.user.userId);
-          } catch (err) {
-            // Non-critical, ignore
+          if (!user || user.status !== 'active' ||
+              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) ||
+              (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
+            return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
           }
-        }
 
-        next();
-      } catch (err) {
-        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+          req.user = { ...decoded, userId: user.id, id: user.id, role: user.role };
+          return next();
+        } catch (err) {
+          return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+        }
       }
+
+      return res.status(401).json({ error: 'Unauthorized: No token provided' });
     },
 
     /**
@@ -990,8 +1022,29 @@ module.exports = function(db, permissionsHelper = null) {
     },
 
     logoutMobileSession: (req, res) => {
-      mobileSessionService.revoke(req.body?.refreshToken, 'logout');
-      auditService.record({ req, eventType: 'logout', outcome: 'success', platform: 'android' });
+      const refreshToken = req.body?.refreshToken;
+      const revoked = mobileSessionService.revoke(refreshToken, 'logout');
+      const authHeader = req.headers.authorization;
+      const bearerToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.split(' ')[1] : null;
+      let targetUserId = revoked?.userId;
+      if (!targetUserId && bearerToken) {
+        try {
+          const decoded = jwt.verify(bearerToken, JWT_SECRET);
+          targetUserId = decoded.userId;
+        } catch (_) {}
+      }
+      if (targetUserId) {
+        try {
+          db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(targetUserId);
+        } catch (e) {
+          console.warn('Failed to increment token_version on logout:', e.message);
+        }
+      }
+      auditService.record({ req, eventType: 'logout', outcome: 'success', userId: targetUserId, platform: 'android' });
+      res.clearCookie('auth_token', { path: '/' });
+      res.clearCookie('auth_session', { path: '/' });
+      res.clearCookie('macos_session', { path: '/' });
+      res.clearCookie('token', { path: '/' });
       res.json({ success: true, message: 'Mobile session revoked' });
     },
 

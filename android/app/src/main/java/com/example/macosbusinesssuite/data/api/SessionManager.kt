@@ -3,16 +3,28 @@ package com.example.macosbusinesssuite.data.api
 import android.content.Context
 import android.content.SharedPreferences
 
-class SessionManager(context: Context) {
+class SessionManager(private val context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
     private val secureTokens = SecureTokenStore(context.applicationContext)
 
     companion object {
+        @Volatile
+        private var inMemoryAuthToken: String? = null
+
+        @Volatile
+        private var inMemoryRefreshToken: String? = null
+
+        @Volatile
+        private var inMemoryAuthCookie: String? = null
+
         private const val PREF_NAME = "macos_business_suite_prefs"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_AUTH_TOKEN = "auth_token"
+        private const val KEY_AUTH_TOKEN_BACKUP = "auth_token_backup"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
+        private const val KEY_REFRESH_TOKEN_BACKUP = "refresh_token_backup"
         private const val KEY_AUTH_COOKIE = "auth_cookie"
+        private const val KEY_AUTH_COOKIE_BACKUP = "auth_cookie_backup"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_NAME = "user_name"
@@ -38,24 +50,106 @@ class SessionManager(context: Context) {
         const val DEFAULT_LOCAL_DEV_URL = "http://10.0.2.2:3002/api/"
     }
 
+    private fun obfuscate(value: String): String {
+        return try {
+            val key = "macos_salt_${context.packageName}"
+            val bytes = value.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+            val keyBytes = key.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+            val out = ByteArray(bytes.size)
+            for (i in bytes.indices) {
+                out[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            android.util.Base64.encodeToString(out, android.util.Base64.NO_WRAP)
+        } catch (_: Exception) {
+            value
+        }
+    }
+
+    private fun deobfuscate(value: String): String? {
+        return try {
+            val key = "macos_salt_${context.packageName}"
+            val keyBytes = key.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+            val bytes = android.util.Base64.decode(value, android.util.Base64.NO_WRAP)
+            val out = ByteArray(bytes.size)
+            for (i in bytes.indices) {
+                out[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+            }
+            String(out, java.nio.charset.StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     var authToken: String?
-        get() = secureTokens.get(KEY_AUTH_TOKEN) ?: prefs.getString(KEY_AUTH_TOKEN, null)?.also {
-            secureTokens.migratePlaintext(KEY_AUTH_TOKEN, it)
-            prefs.edit().remove(KEY_AUTH_TOKEN).apply()
+        get() {
+            inMemoryAuthToken?.let { return it }
+            val sec = secureTokens.get(KEY_AUTH_TOKEN)
+            if (!sec.isNullOrEmpty()) {
+                inMemoryAuthToken = sec
+                return sec
+            }
+            val backup = prefs.getString(KEY_AUTH_TOKEN_BACKUP, null)
+            if (!backup.isNullOrEmpty()) {
+                val recovered = deobfuscate(backup)
+                if (!recovered.isNullOrEmpty()) {
+                    inMemoryAuthToken = recovered
+                    return recovered
+                }
+            }
+            val legacy = prefs.getString(KEY_AUTH_TOKEN, null)
+            if (!legacy.isNullOrEmpty()) {
+                inMemoryAuthToken = legacy
+                secureTokens.put(KEY_AUTH_TOKEN, legacy)
+                prefs.edit().putString(KEY_AUTH_TOKEN_BACKUP, obfuscate(legacy)).apply()
+                return legacy
+            }
+            return null
         }
         set(value) {
-            secureTokens.put(KEY_AUTH_TOKEN, value)
-            prefs.edit().remove(KEY_AUTH_TOKEN).apply()
+            inMemoryAuthToken = value
+            if (value == null) {
+                secureTokens.put(KEY_AUTH_TOKEN, null)
+                prefs.edit().remove(KEY_AUTH_TOKEN).remove(KEY_AUTH_TOKEN_BACKUP).apply()
+            } else {
+                secureTokens.put(KEY_AUTH_TOKEN, value)
+                prefs.edit().putString(KEY_AUTH_TOKEN_BACKUP, obfuscate(value)).apply()
+            }
         }
 
     var refreshToken: String?
-        get() = secureTokens.get(KEY_REFRESH_TOKEN) ?: prefs.getString(KEY_REFRESH_TOKEN, null)?.also {
-            secureTokens.migratePlaintext(KEY_REFRESH_TOKEN, it)
-            prefs.edit().remove(KEY_REFRESH_TOKEN).apply()
+        get() {
+            inMemoryRefreshToken?.let { return it }
+            val sec = secureTokens.get(KEY_REFRESH_TOKEN)
+            if (!sec.isNullOrEmpty()) {
+                inMemoryRefreshToken = sec
+                return sec
+            }
+            val backup = prefs.getString(KEY_REFRESH_TOKEN_BACKUP, null)
+            if (!backup.isNullOrEmpty()) {
+                val recovered = deobfuscate(backup)
+                if (!recovered.isNullOrEmpty()) {
+                    inMemoryRefreshToken = recovered
+                    return recovered
+                }
+            }
+            val legacy = prefs.getString(KEY_REFRESH_TOKEN, null)
+            if (!legacy.isNullOrEmpty()) {
+                inMemoryRefreshToken = legacy
+                secureTokens.put(KEY_REFRESH_TOKEN, legacy)
+                prefs.edit().putString(KEY_REFRESH_TOKEN_BACKUP, obfuscate(legacy)).apply()
+                return legacy
+            }
+            return null
         }
         set(value) {
-            secureTokens.put(KEY_REFRESH_TOKEN, value)
-            prefs.edit().remove(KEY_REFRESH_TOKEN).apply()
+            inMemoryRefreshToken = value
+            if (value == null) {
+                secureTokens.put(KEY_REFRESH_TOKEN, null)
+                prefs.edit().remove(KEY_REFRESH_TOKEN).remove(KEY_REFRESH_TOKEN_BACKUP).apply()
+            } else {
+                secureTokens.put(KEY_REFRESH_TOKEN, value)
+                prefs.edit().putString(KEY_REFRESH_TOKEN_BACKUP, obfuscate(value)).apply()
+            }
         }
 
     var serverUrl: String
@@ -76,13 +170,39 @@ class SessionManager(context: Context) {
         }
 
     var authCookie: String?
-        get() = secureTokens.get(KEY_AUTH_COOKIE) ?: prefs.getString(KEY_AUTH_COOKIE, null)?.also {
-            secureTokens.migratePlaintext(KEY_AUTH_COOKIE, it)
-            prefs.edit().remove(KEY_AUTH_COOKIE).apply()
+        get() {
+            inMemoryAuthCookie?.let { return it }
+            val sec = secureTokens.get(KEY_AUTH_COOKIE)
+            if (!sec.isNullOrEmpty()) {
+                inMemoryAuthCookie = sec
+                return sec
+            }
+            val backup = prefs.getString(KEY_AUTH_COOKIE_BACKUP, null)
+            if (!backup.isNullOrEmpty()) {
+                val recovered = deobfuscate(backup)
+                if (!recovered.isNullOrEmpty()) {
+                    inMemoryAuthCookie = recovered
+                    return recovered
+                }
+            }
+            val legacy = prefs.getString(KEY_AUTH_COOKIE, null)
+            if (!legacy.isNullOrEmpty()) {
+                inMemoryAuthCookie = legacy
+                secureTokens.put(KEY_AUTH_COOKIE, legacy)
+                prefs.edit().putString(KEY_AUTH_COOKIE_BACKUP, obfuscate(legacy)).apply()
+                return legacy
+            }
+            return null
         }
         set(value) {
-            secureTokens.put(KEY_AUTH_COOKIE, value)
-            prefs.edit().remove(KEY_AUTH_COOKIE).apply()
+            inMemoryAuthCookie = value
+            if (value == null) {
+                secureTokens.put(KEY_AUTH_COOKIE, null)
+                prefs.edit().remove(KEY_AUTH_COOKIE).remove(KEY_AUTH_COOKIE_BACKUP).apply()
+            } else {
+                secureTokens.put(KEY_AUTH_COOKIE, value)
+                prefs.edit().putString(KEY_AUTH_COOKIE_BACKUP, obfuscate(value)).apply()
+            }
         }
 
     var isLoggedIn: Boolean
@@ -247,12 +367,17 @@ class SessionManager(context: Context) {
     }
 
     fun clearSession() {
+        inMemoryAuthToken = null
+        inMemoryRefreshToken = null
+        inMemoryAuthCookie = null
         secureTokens.clear()
         prefs.edit().apply {
             remove(KEY_AUTH_TOKEN)
+            remove(KEY_AUTH_TOKEN_BACKUP)
             remove(KEY_REFRESH_TOKEN)
+            remove(KEY_REFRESH_TOKEN_BACKUP)
             remove(KEY_AUTH_COOKIE)
-            remove(KEY_AUTH_COOKIE)
+            remove(KEY_AUTH_COOKIE_BACKUP)
             putBoolean(KEY_IS_LOGGED_IN, false)
             remove(KEY_USER_ID)
             remove(KEY_USER_NAME)
@@ -264,5 +389,6 @@ class SessionManager(context: Context) {
             remove(KEY_TOKEN_VERSION)
             apply()
         }
+        NetworkClient.resetClient()
     }
 }

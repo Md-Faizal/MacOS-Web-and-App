@@ -92,26 +92,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val users = multiUserManager.getUsers()
             var changed = false
+            val httpClient = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
             for (user in users) {
                 val token = user.savedAuthToken
                 if (!token.isNullOrBlank()) {
                     try {
-                        val tempSession = SessionManager(getApplication()).apply {
-                            authToken = token
-                        }
-                        val service = NetworkClient.getService(tempSession)
-                        val res = service.getProfile()
-                        if (res.isSuccessful && res.body()?.profile != null) {
-                            val p = res.body()!!.profile!!
-                            val realName = p.actualName ?: user.displayName
-                            val realEmail = p.actualEmail ?: user.identifier
-                            val realPicture = p.actualPicture ?: user.displayPicture
-                            if (realName != user.displayName || realEmail != user.identifier || realPicture != user.displayPicture) {
+                        val req = okhttp3.Request.Builder()
+                            .url(sessionManager.serverUrl + "auth/profile")
+                            .header("Authorization", "Bearer $token")
+                            .header("X-API-Key", "test-api-key-1234")
+                            .header("X-Client-Platform", "android")
+                            .header("X-App-Type", "native_android")
+                            .build()
+                        val res = httpClient.newCall(req).execute()
+                        res.use { resp ->
+                            if (resp.isSuccessful && resp.body != null) {
+                                val jsonStr = resp.body!!.string()
+                                val parsed = NetworkClient.customGson.fromJson(jsonStr, ProfileResponse::class.java)
+                                val p = parsed?.profile
+                                if (p != null) {
+                                    val realName = p.actualName ?: user.displayName
+                                    val realEmail = p.actualEmail ?: user.identifier
+                                    val realPicture = p.actualPicture ?: user.displayPicture
+                                    if (realName != user.displayName || realEmail != user.identifier || realPicture != user.displayPicture) {
+                                        multiUserManager.saveUser(
+                                            user.copy(
+                                                displayName = realName,
+                                                identifier = realEmail,
+                                                displayPicture = realPicture
+                                            )
+                                        )
+                                        changed = true
+                                    }
+                                }
+                            } else if (resp.code == 401) {
+                                // Token has expired or been revoked on the server for this remembered account.
+                                // Mark saved token as null for this remembered user without corrupting active session.
                                 multiUserManager.saveUser(
                                     user.copy(
-                                        displayName = realName,
-                                        identifier = realEmail,
-                                        displayPicture = realPicture
+                                        savedAuthToken = null,
+                                        savedRefreshToken = null
                                     )
                                 )
                                 changed = true
@@ -127,6 +151,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
 
     // Theme Mode State
     private val _themeMode = MutableStateFlow(ThemeMode.AUTO)
@@ -373,6 +398,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _errorMessage.value = null
             try {
+                NetworkClient.resetClient()
                 val service = NetworkClient.getService(sessionManager)
                 val response = service.login(
                     LoginRequest(
@@ -391,15 +417,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionManager.keepLoggedIn = keepLoggedIn
                     token?.let { sessionManager.authToken = it }
                     refreshToken?.let { sessionManager.refreshToken = it }
+                    sessionManager.isLoggedIn = true
 
-                    val isOwnerAccount = username.contains("faizal", ignoreCase = true) ||
-                            username.contains("fazztronic", ignoreCase = true) ||
-                            (userProfile?.email?.contains("faizal", ignoreCase = true) == true) ||
-                            (userProfile?.email?.contains("fazztronic", ignoreCase = true) == true) ||
-                            (userProfile?.actualEmail?.contains("faizal", ignoreCase = true) == true) ||
-                            (userProfile?.actualEmail?.contains("fazztronic", ignoreCase = true) == true) ||
-                            (userProfile?.username?.contains("faizal", ignoreCase = true) == true)
-                    val resolvedRole = if (isOwnerAccount) "owner" else "worker"
+                    val serverRole = userProfile?.role?.lowercase()?.trim()
+                    val resolvedRole = if (serverRole == "owner" || serverRole == "admin") {
+                        "owner"
+                    } else if (serverRole == "worker") {
+                        "worker"
+                    } else {
+                        val isOwnerAccount = username.contains("faizal", ignoreCase = true) ||
+                                username.contains("fazztronic", ignoreCase = true) ||
+                                (userProfile?.email?.contains("faizal", ignoreCase = true) == true) ||
+                                (userProfile?.email?.contains("fazztronic", ignoreCase = true) == true) ||
+                                (userProfile?.actualEmail?.contains("faizal", ignoreCase = true) == true) ||
+                                (userProfile?.actualEmail?.contains("fazztronic", ignoreCase = true) == true) ||
+                                (userProfile?.username?.contains("faizal", ignoreCase = true) == true)
+                        if (isOwnerAccount) "owner" else "worker"
+                    }
 
                     userProfile?.let {
                         sessionManager.userId = it.id
@@ -429,6 +463,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val realName = userProfile?.actualName ?: userProfile?.username ?: existing?.displayName ?: username.substringBefore('@')
                     val realEmail = userProfile?.actualEmail ?: userProfile?.email ?: existing?.identifier ?: username
                     val realPicture = userProfile?.actualPicture ?: userProfile?.avatar ?: existing?.displayPicture
+
+                    // Immediately initialize _profile with authenticated user details so UI updates instantly
+                    _profile.value = ProfileData(
+                        id = userProfile?.id,
+                        username = userProfile?.username ?: username,
+                        role = resolvedRole,
+                        fullName = realName,
+                        emailId = realEmail,
+                        email = realEmail,
+                        displayName = realName,
+                        displayEmail = realEmail,
+                        displayPicture = realPicture
+                    )
+
                     val savedUser = RememberedUser(
                         id = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36)),
                         identifier = realEmail,
@@ -464,14 +512,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _errorMessage.value = null
             try {
+                NetworkClient.resetClient()
                 // Set session credentials
                 sessionManager.userId = user.id
                 sessionManager.userName = user.displayName
                 sessionManager.userEmail = user.identifier
                 sessionManager.userRole = user.role
                 sessionManager.userStatus = "active"
-                user.savedAuthToken?.let { sessionManager.authToken = it }
-                user.savedRefreshToken?.let { sessionManager.refreshToken = it }
+                sessionManager.authToken = user.savedAuthToken
+                sessionManager.refreshToken = user.savedRefreshToken
 
                 // Try to refresh mobile session if refresh token exists
                 val refreshToken = user.savedRefreshToken
@@ -504,7 +553,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         savedRefreshToken = sessionManager.refreshToken
                     ))
                     refreshMultiUsers()
-                    loadAllData()
                     onResult(true, null)
                 } else {
                     val msg = "Biometric session expired. Please enter your password."
@@ -821,12 +869,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     service.logoutMobileSession(MobileRefreshRequest(refreshToken))
                 }
             } catch (_: Exception) {}
+
+            // WIPE stored tokens for active user in MultiUserManager so revoked tokens cannot linger
+            val activeUser = multiUserManager.getActiveUser()
+            if (activeUser != null) {
+                multiUserManager.saveUser(
+                    activeUser.copy(
+                        savedAuthToken = null,
+                        savedRefreshToken = null
+                    )
+                )
+            }
+
             sessionManager.clearSession()
             sessionManager.biometricEnabled = false
             _biometricEnabled.value = false
             _permissionsJson.value = null
-            refreshMultiUsers()
+            NetworkClient.resetClient()
+            _profile.value = null
+            _contacts.value = emptyList()
+            _products.value = emptyList()
+            _bills.value = emptyList()
+            _devices.value = emptyList()
+            _errorMessage.value = null
             _isLoggedIn.value = false
+            refreshMultiUsers()
         }
     }
 
@@ -1209,6 +1276,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadAllData() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         loadProfile()
         loadDevices()
         loadSecurityStatus()
@@ -1220,7 +1288,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== PROFILE & DEVICES ====================
     fun loadProfile() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getProfile()
@@ -1440,6 +1510,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun switchActiveUser(user: RememberedUser) {
         multiUserManager.setActiveUserId(user.id)
         refreshMultiUsers()
+
+        // Atomic teardown of prior user state
+        NetworkClient.resetClient()
+        _profile.value = null
+        _contacts.value = emptyList()
+        _products.value = emptyList()
+        _bills.value = emptyList()
+        _devices.value = emptyList()
+        _errorMessage.value = null
+
+        if (!user.savedAuthToken.isNullOrBlank()) {
+            sessionManager.userId = user.id
+            sessionManager.userName = user.displayName
+            sessionManager.userEmail = user.identifier
+            sessionManager.userRole = user.role
+            sessionManager.userStatus = "active"
+            sessionManager.authToken = user.savedAuthToken
+            sessionManager.refreshToken = user.savedRefreshToken
+            sessionManager.biometricEnabled = user.isBiometricEnabled
+
+            // Immediately populate _profile from target user credentials
+            _profile.value = ProfileData(
+                id = user.id,
+                username = user.displayName,
+                role = user.role,
+                fullName = user.displayName,
+                emailId = user.identifier,
+                email = user.identifier,
+                displayName = user.displayName,
+                displayEmail = user.identifier,
+                displayPicture = user.displayPicture
+            )
+
+            sessionManager.isLoggedIn = true
+            _isLoggedIn.value = true
+            loadAllData()
+        } else {
+            sessionManager.clearSession()
+            sessionManager.userId = user.id
+            sessionManager.userName = user.displayName
+            sessionManager.userEmail = user.identifier
+            sessionManager.userRole = user.role
+            sessionManager.biometricEnabled = user.isBiometricEnabled
+            _isLoggedIn.value = false
+        }
     }
 
     fun disconnectGoogle(onResult: (Boolean, String?) -> Unit) {
@@ -1464,7 +1579,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadDevices() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getDevices()
@@ -1501,7 +1618,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== SECURITY & AUTH ====================
     fun loadSecurityStatus() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getAuthStatus()
@@ -1516,7 +1635,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== PRODUCTS ====================
     fun loadProducts(query: String? = null) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getProducts(search = query)
@@ -1528,7 +1649,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _categories.value = catRes.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Products load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Products load error: ${e.localizedMessage}"
+                }
             }
         }
     }
@@ -1761,7 +1884,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== CONTACTS ====================
     fun loadContacts() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getContacts()
@@ -1771,11 +1896,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val listType = object : com.google.gson.reflect.TypeToken<List<Contact>>() {}.type
                     _contacts.value = array?.let { com.google.gson.Gson().fromJson(it, listType) } ?: emptyList()
                 } else {
-                    val err = res.errorBody()?.string() ?: "HTTP ${res.code()}"
-                    _errorMessage.value = "Failed to load contacts: $err"
+                    val rawErr = res.errorBody()?.string()
+                    val errMsg = try {
+                        if (!rawErr.isNullOrBlank()) {
+                            org.json.JSONObject(rawErr).optString("error", rawErr)
+                        } else null
+                    } catch (_: Exception) {
+                        rawErr
+                    } ?: "HTTP ${res.code()}"
+                    if (res.code() == 401 || !sessionManager.isLoggedIn) {
+                        android.util.Log.w("MainViewModel", "Contacts unauthorized or logged out: $errMsg")
+                    } else {
+                        _errorMessage.value = "Failed to load contacts: $errMsg"
+                    }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Contacts load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Contacts load error: ${e.localizedMessage}"
+                }
             }
         }
     }
@@ -1848,7 +1986,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== BILLING ====================
     fun loadBills() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getBills()
@@ -1876,7 +2016,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Bills load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Bills load error: ${e.localizedMessage}"
+                }
             }
         }
     }
@@ -1902,7 +2044,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ==================== ANALYTICS ====================
     fun loadAnalytics() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -1922,7 +2066,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (topCustRes.isSuccessful) _topCustomers.value = topCustRes.body() ?: emptyList()
 
             } catch (e: Exception) {
-                _errorMessage.value = "Analytics load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Analytics load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -1930,7 +2076,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadSalesDeepDive(period: String = "monthly") {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -1939,7 +2087,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _salesDeepDive.value = res.body()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Sales deep dive load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Sales deep dive load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -1947,7 +2097,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadOrderFunnel() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -1956,7 +2108,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _orderFunnel.value = res.body()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Order funnel load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Order funnel load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -1964,7 +2118,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadARAgingAndRFM() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -1977,7 +2133,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _rfmSegmentation.value = rfmRes.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Aging & RFM load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Aging & RFM load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -1985,7 +2143,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadProductVelocity() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -1998,7 +2158,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _categoryPerformance.value = catRes.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Product velocity load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Product velocity load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2006,7 +2168,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadComparativeYoY() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -2015,7 +2179,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _comparativeYoY.value = res.body()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "YoY analysis load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "YoY analysis load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2023,7 +2189,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadComparativeMoM() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -2032,7 +2200,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _comparativeMoM.value = res.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "MoM analysis load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "MoM analysis load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2040,7 +2210,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadComparativeQoQ() {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -2049,7 +2221,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _comparativeQoQ.value = res.body() ?: emptyList()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "QoQ analysis load error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "QoQ analysis load error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2057,7 +2231,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun runCustomComparison(sA: String, eA: String, sB: String, eB: String) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -2066,7 +2242,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _comparativeCustom.value = res.body()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Custom comparison error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Custom comparison error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2074,7 +2252,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadCustomerStats(customerId: String) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return@launch
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
@@ -2087,7 +2267,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _selectedCustomer.value = contactRes.body()
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Customer stats error: ${e.localizedMessage}"
+                if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
+                    _errorMessage.value = "Customer stats error: ${e.localizedMessage}"
+                }
             } finally {
                 _analyticsLoading.value = false
             }
@@ -2100,7 +2282,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshAllAnalyticsData(onComplete: () -> Unit = {}) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) {
+            onComplete()
+            return
+        }
         viewModelScope.launch {
+            if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) {
+                onComplete()
+                return@launch
+            }
             _analyticsLoading.value = true
             try {
                 loadAnalytics()

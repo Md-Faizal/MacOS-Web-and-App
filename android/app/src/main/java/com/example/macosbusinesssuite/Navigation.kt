@@ -42,12 +42,14 @@ import com.example.macosbusinesssuite.ui.screens.profile.ProfileScreen
 import com.example.macosbusinesssuite.ui.screens.server.ServerConfigScreen
 import com.example.macosbusinesssuite.ui.screens.settings.SettingsScreen
 import com.example.macosbusinesssuite.ui.theme.MacOSBusinessSuiteTheme
+import com.example.macosbusinesssuite.ui.viewmodels.BillingViewModel
 import com.example.macosbusinesssuite.ui.viewmodels.MainViewModel
 import com.example.macosbusinesssuite.ui.viewmodels.ThemeMode
 
 @Composable
 fun MainNavigation(
-    mainViewModel: MainViewModel = viewModel()
+    mainViewModel: MainViewModel = viewModel(),
+    billingViewModel: BillingViewModel = viewModel()
 ) {
     val isLoggedIn by mainViewModel.isLoggedIn.collectAsState()
     val themeMode by mainViewModel.themeMode.collectAsState()
@@ -56,10 +58,10 @@ fun MainNavigation(
     val serverUrl by mainViewModel.serverUrl.collectAsState()
     val permissionsJson by mainViewModel.permissionsJson.collectAsState()
 
-    val userPicture = profile?.actualPicture ?: activeUser?.displayPicture ?: mainViewModel.sessionManager.userPicture
-    val userName = profile?.actualName ?: activeUser?.displayName ?: mainViewModel.sessionManager.userName ?: "User"
-    val userEmail = profile?.actualEmail ?: activeUser?.identifier ?: mainViewModel.sessionManager.userEmail ?: ""
-    val userRole = profile?.role ?: activeUser?.role ?: mainViewModel.sessionManager.userRole
+    val userPicture = if (isLoggedIn) (profile?.actualPicture ?: activeUser?.displayPicture ?: mainViewModel.sessionManager.userPicture) else null
+    val userName = if (isLoggedIn) (profile?.actualName ?: activeUser?.displayName ?: mainViewModel.sessionManager.userName ?: "User") else ""
+    val userEmail = if (isLoggedIn) (profile?.actualEmail ?: activeUser?.identifier ?: mainViewModel.sessionManager.userEmail ?: "") else ""
+    val userRole = if (isLoggedIn) (profile?.role ?: activeUser?.role ?: mainViewModel.sessionManager.userRole) else "worker"
 
     val visibleTabs = remember(userRole, isLoggedIn, permissionsJson) {
         val allowed = mutableListOf<AppTab>()
@@ -82,6 +84,13 @@ fun MainNavigation(
     }
 
     var currentTab by remember { mutableStateOf(visibleTabs.firstOrNull() ?: AppTab.BILLING) }
+
+    LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn) {
+            billingViewModel.clearData()
+            currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
+        }
+    }
 
     LaunchedEffect(visibleTabs) {
         if (currentTab !in visibleTabs) {
@@ -182,6 +191,7 @@ fun MainNavigation(
                             when (tab) {
                                 AppTab.BILLING -> BillingScreen(
                                     viewModel = mainViewModel,
+                                    billingViewModel = billingViewModel,
                                     onSubPageToggle = { isSubOpen -> isSubPageOpen = isSubOpen }
                                 )
                                 AppTab.PRODUCTS -> ProductsScreen(
@@ -209,7 +219,7 @@ fun MainNavigation(
                                 onTabSelected = { tab ->
                                     currentTab = tab
                                     isNavIslandExpanded = true
-                                    if (tab == AppTab.CONTACTS) {
+                                    if (tab == AppTab.CONTACTS && isLoggedIn) {
                                         mainViewModel.loadContacts()
                                     }
                                 },
@@ -219,6 +229,7 @@ fun MainNavigation(
                                 onOpenProfile = { isProfileOpen = true },
                                 onLogout = {
                                     isUnlockRevealing = false
+                                    currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
                                     mainViewModel.logout()
                                 },
                                 userPictureUrl = userPicture,
