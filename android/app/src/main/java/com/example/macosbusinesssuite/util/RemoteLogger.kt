@@ -53,7 +53,7 @@ object RemoteLogger {
     fun init(context: Context) {
         val app = context.applicationContext
         appContext = app
-        sessionManager = SessionManager(app)
+        sessionManager = SessionManager.getInstance(app)
         enabled = sessionManager?.remoteLoggingEnabled ?: true
 
         // Attempt flush of previously pending logs on startup

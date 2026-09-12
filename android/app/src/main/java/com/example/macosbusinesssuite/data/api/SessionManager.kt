@@ -17,6 +17,15 @@ class SessionManager(private val context: Context) {
         @Volatile
         private var inMemoryAuthCookie: String? = null
 
+        @Volatile
+        private var instance: SessionManager? = null
+
+        fun getInstance(context: Context): SessionManager {
+            return instance ?: synchronized(this) {
+                instance ?: SessionManager(context.applicationContext).also { instance = it }
+            }
+        }
+
         private const val PREF_NAME = "macos_business_suite_prefs"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_AUTH_TOKEN = "auth_token"

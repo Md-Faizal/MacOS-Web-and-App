@@ -89,6 +89,8 @@ fun MainNavigation(
         if (!isLoggedIn) {
             billingViewModel.clearData()
             currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
+        } else {
+            billingViewModel.loadBillingData()
         }
     }
 

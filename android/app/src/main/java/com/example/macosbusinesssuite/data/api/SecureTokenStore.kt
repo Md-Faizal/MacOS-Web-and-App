@@ -81,11 +81,7 @@ class SecureTokenStore(context: Context) {
             prefs.edit().putString(name, Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)).apply()
             true
         } catch (e: Exception) {
-            android.util.Log.e("SecureTokenStore", "Failed to encrypt $name with KeyStore", e)
-            try {
-                val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-                keyStore.deleteEntry(KEY_ALIAS)
-            } catch (_: Exception) {}
+            android.util.Log.e("SecureTokenStore", "Failed to encrypt $name with KeyStore: ${e.localizedMessage}")
             false
         }
     }
@@ -98,9 +94,5 @@ class SecureTokenStore(context: Context) {
 
     fun clear() {
         prefs.edit().clear().apply()
-        try {
-            val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-            keyStore.deleteEntry(KEY_ALIAS)
-        } catch (_: Exception) {}
     }
 }

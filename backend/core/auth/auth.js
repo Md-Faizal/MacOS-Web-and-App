@@ -148,11 +148,11 @@ module.exports = function(db, permissionsHelper = null) {
      * Middleware to protect routes
      */
     authMiddleware: (req, res, next) => {
-      const isAndroidClient = (req.headers['x-app-type'] === 'native_android') ||
-                              ((req.headers['x-client-platform'] || '').toLowerCase() === 'android');
+      const isAndroidClient = (req.headers?.['x-app-type'] === 'native_android') ||
+                              ((req.headers?.['x-client-platform'] || '').toLowerCase() === 'android');
 
       // 1. Authorization header (Bearer token) ALWAYS takes absolute priority over cookies.
-      const authHeader = req.headers.authorization;
+      const authHeader = req.headers?.authorization;
       const bearerToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.split(' ')[1] : null;
 
       if (bearerToken) {
@@ -163,7 +163,7 @@ module.exports = function(db, permissionsHelper = null) {
             : null;
 
           if (!user || user.status !== 'active' ||
-              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) ||
+              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
               (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
             return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
           }
@@ -220,7 +220,7 @@ module.exports = function(db, permissionsHelper = null) {
             : null;
 
           if (!user || user.status !== 'active' ||
-              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== user.token_version) ||
+              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
               (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
             return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
           }
@@ -691,9 +691,9 @@ module.exports = function(db, permissionsHelper = null) {
           return res.status(401).json({ error: 'Invalid username/email or password' });
         }
 
-        const clientPlatformHeader = (req.headers['x-client-platform'] || '').toLowerCase();
+        const clientPlatformHeader = (req.headers?.['x-client-platform'] || '').toLowerCase();
         const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
-        const isAndroidApp = (clientType === 'native_android') || (deviceType && (deviceType.toLowerCase() === 'android' || deviceType.toLowerCase() === 'android app')) || (clientPlatformHeader === 'android' && !isPWA) || (req.headers['x-app-type'] === 'native_android');
+        const isAndroidApp = (clientType === 'native_android') || (deviceType && (deviceType.toLowerCase() === 'android' || deviceType.toLowerCase() === 'android app')) || (clientPlatformHeader === 'android' && !isPWA) || (req.headers?.['x-app-type'] === 'native_android');
         const isWebLogin = !isAndroidApp;
 
         const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : 'web');
@@ -747,7 +747,9 @@ module.exports = function(db, permissionsHelper = null) {
         if (isWebLogin) {
           const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType);
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
-          return res.json({ success: true, sessionId: session.sessionId, user: publicUser(user, deviceId), permissions });
+          const token = createSessionToken(user, deviceId);
+          setSessionCookie(req, res, token);
+          return res.json({ success: true, sessionId: session.sessionId, token, user: publicUser(user, deviceId), permissions });
         }
 
         if (typeof req?.get === 'function') {
@@ -1035,7 +1037,7 @@ module.exports = function(db, permissionsHelper = null) {
       }
       if (targetUserId) {
         try {
-          db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(targetUserId);
+          db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(targetUserId);
         } catch (e) {
           console.warn('Failed to increment token_version on logout:', e.message);
         }

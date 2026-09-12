@@ -90,7 +90,7 @@ data class OverdueReminderItem(
 
 class BillingViewModel(application: Application) : AndroidViewModel(application) {
 
-    val sessionManager = com.example.macosbusinesssuite.data.api.SessionManager(application)
+    val sessionManager = com.example.macosbusinesssuite.data.api.SessionManager.getInstance(application)
     private val api: ApiService get() = NetworkClient.getService(sessionManager)
 
     private val _isLoading = MutableStateFlow(false)

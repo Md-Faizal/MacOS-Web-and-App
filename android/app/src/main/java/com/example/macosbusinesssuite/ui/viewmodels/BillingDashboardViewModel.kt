@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 
 class BillingDashboardViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val sessionManager = SessionManager(application)
+    private val sessionManager = SessionManager.getInstance(application)
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 

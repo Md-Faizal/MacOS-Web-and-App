@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONObject
 import retrofit2.Retrofit
@@ -73,12 +74,20 @@ object NetworkClient {
                             path.endsWith("/auth/status") ||
                             path.endsWith("/auth/username") ||
                             path.endsWith("/auth/mobile/refresh") ||
+                            path.endsWith("/auth/mobile/logout") ||
+                            path.endsWith("/auth/logout") ||
                             path.endsWith("/auth/verify-answer") ||
                             path.endsWith("/health")
 
                     val token = sm.authToken
                     if (!isPublicEndpoint && token.isNullOrBlank()) {
-                        throw java.io.IOException("Request to $path aborted: No authentication token provided in session")
+                        return@addInterceptor okhttp3.Response.Builder()
+                            .request(request)
+                            .protocol(okhttp3.Protocol.HTTP_1_1)
+                            .code(401)
+                            .message("Unauthorized: No token provided in session")
+                            .body("{\"error\":\"Unauthorized: No token provided\"}".toResponseBody("application/json".toMediaType()))
+                            .build()
                     }
 
                     val requestBuilder = request.newBuilder()
@@ -93,7 +102,16 @@ object NetworkClient {
                     chain.proceed(requestBuilder.build())
                 }
                 .authenticator { _, response ->
-                    if (response.request.url.encodedPath.endsWith("/auth/mobile/refresh")) {
+                    val path = response.request.url.encodedPath
+                    if (path.endsWith("/auth/mobile/refresh") ||
+                        path.endsWith("/auth/mobile/logout") ||
+                        path.endsWith("/auth/logout") ||
+                        path.endsWith("/auth/login")
+                    ) {
+                        return@authenticator null
+                    }
+
+                    if (responseCount(response) >= 3) {
                         return@authenticator null
                     }
 
@@ -171,9 +189,19 @@ object NetworkClient {
         activeOkHttpClient = null
     }
 
+    private fun responseCount(response: okhttp3.Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            count++
+            prior = prior.priorResponse
+        }
+        return count
+    }
+
     private fun okHttpClientForRefresh(baseUrl: String): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 }

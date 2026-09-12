@@ -53,7 +53,7 @@ sealed class AndroidUpdateUiState {
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    val sessionManager = SessionManager(application)
+    val sessionManager = SessionManager.getInstance(application)
     val multiUserManager = MultiUserManager(application)
 
     // Multi-User state
@@ -862,38 +862,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
-        viewModelScope.launch {
-            try {
-                val service = NetworkClient.getService(sessionManager)
-                sessionManager.refreshToken?.let { refreshToken ->
-                    service.logoutMobileSession(MobileRefreshRequest(refreshToken))
-                }
-            } catch (_: Exception) {}
+        val refreshTokenToRevoke = sessionManager.refreshToken
+        val service = try { NetworkClient.getService(sessionManager) } catch (_: Exception) { null }
 
-            // WIPE stored tokens for active user in MultiUserManager so revoked tokens cannot linger
-            val activeUser = multiUserManager.getActiveUser()
-            if (activeUser != null) {
-                multiUserManager.saveUser(
-                    activeUser.copy(
-                        savedAuthToken = null,
-                        savedRefreshToken = null
-                    )
+        // WIPE stored tokens for active user in MultiUserManager so revoked tokens cannot linger
+        val activeUser = multiUserManager.getActiveUser()
+        if (activeUser != null) {
+            multiUserManager.saveUser(
+                activeUser.copy(
+                    savedAuthToken = null,
+                    savedRefreshToken = null
                 )
-            }
+            )
+        }
 
-            sessionManager.clearSession()
-            sessionManager.biometricEnabled = false
-            _biometricEnabled.value = false
-            _permissionsJson.value = null
-            NetworkClient.resetClient()
-            _profile.value = null
-            _contacts.value = emptyList()
-            _products.value = emptyList()
-            _bills.value = emptyList()
-            _devices.value = emptyList()
-            _errorMessage.value = null
-            _isLoggedIn.value = false
-            refreshMultiUsers()
+        // Immediately purge local credentials and reset UI state on Main thread
+        sessionManager.clearSession()
+        sessionManager.biometricEnabled = false
+        _biometricEnabled.value = false
+        _permissionsJson.value = null
+        NetworkClient.resetClient()
+        _profile.value = null
+        _contacts.value = emptyList()
+        _products.value = emptyList()
+        _bills.value = emptyList()
+        _devices.value = emptyList()
+        _errorMessage.value = null
+        _isLoggedIn.value = false
+        refreshMultiUsers()
+
+        // Asynchronously notify backend in fire-and-forget background job with 3-second timeout
+        if (!refreshTokenToRevoke.isNullOrBlank() && service != null) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                        service.logoutMobileSession(MobileRefreshRequest(refreshTokenToRevoke))
+                    }
+                } catch (_: Exception) {}
+            }
         }
     }
 
