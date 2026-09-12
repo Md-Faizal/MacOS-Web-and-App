@@ -34,6 +34,8 @@ import androidx.activity.compose.BackHandler
 import com.example.macosbusinesssuite.ui.components.VibrantPageBottomFiller
 import com.example.macosbusinesssuite.data.model.*
 import com.example.macosbusinesssuite.ui.components.KpiStatCard
+import com.example.macosbusinesssuite.ui.components.M3SyncStatusPill
+import com.example.macosbusinesssuite.ui.components.m3ValueChangeHighlight
 import com.example.macosbusinesssuite.ui.viewmodels.MainViewModel
 import java.text.NumberFormat
 import java.util.Locale
@@ -78,6 +80,10 @@ fun AnalyticsScreen(
     val contacts by viewModel.contacts.collectAsState()
     val selectedCustomerStats by viewModel.selectedCustomerStats.collectAsState()
     val selectedCustomer by viewModel.selectedCustomer.collectAsState()
+    val isDataCached by viewModel.isDataCached.collectAsState()
+    val isSyncingLive by viewModel.isSyncingLive.collectAsState()
+    val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
+    val changedMetricKeys by viewModel.changedMetricKeys.collectAsState()
 
     // Trigger initial data loads per view
     LaunchedEffect(selectedView) {
@@ -184,6 +190,16 @@ fun AnalyticsScreen(
                                 }
                             }
                         }
+
+                        // M3 Sync Status Pill
+                        M3SyncStatusPill(
+                            isDataCached = isDataCached,
+                            isSyncingLive = isSyncingLive,
+                            lastSyncTimestamp = lastSyncTimestamp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
                     }
                 }
 
@@ -215,7 +231,8 @@ fun AnalyticsScreen(
                         topProducts = topProducts,
                         topCustomers = topCustomers,
                         onSwitchView = { target -> selectedView = target },
-                        marqueeEnabled = marqueeEnabled
+                        marqueeEnabled = marqueeEnabled,
+                        changedMetricKeys = changedMetricKeys
                     )
                     AnalyticsView.SALES -> SalesReportsView(
                         data = salesDeepDive,
@@ -264,7 +281,8 @@ fun ExecutiveDashboardView(
     topProducts: List<TopProductItem>,
     topCustomers: List<TopCustomerItem>,
     onSwitchView: (AnalyticsView) -> Unit,
-    marqueeEnabled: Boolean = true
+    marqueeEnabled: Boolean = true,
+    changedMetricKeys: Set<String> = emptySet()
 ) {
     LazyColumn(
         modifier = Modifier
@@ -293,6 +311,7 @@ fun ExecutiveDashboardView(
                         value = formatCurrency(kpi?.totalBilled ?: kpi?.revenue ?: 0.0),
                         subtitle = "${kpi?.totalInvoices ?: kpi?.ordersCount ?: 0} invoices issued",
                         icon = Icons.Default.AttachMoney,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_revenue")),
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         marqueeEnabled = marqueeEnabled
@@ -304,6 +323,7 @@ fun ExecutiveDashboardView(
                         value = formatCurrency(kpi?.totalCollected ?: 0.0),
                         subtitle = "Net realization",
                         icon = Icons.Default.CheckCircle,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_revenue")),
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         marqueeEnabled = marqueeEnabled

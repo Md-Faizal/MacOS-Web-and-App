@@ -57,6 +57,8 @@ import com.example.macosbusinesssuite.data.model.ProductBatch
 import com.example.macosbusinesssuite.data.model.ProductVariant
 import com.example.macosbusinesssuite.ui.components.AutoCollapsingSquareFab
 import com.example.macosbusinesssuite.ui.components.PixelSearchBar
+import com.example.macosbusinesssuite.ui.components.M3SyncStatusPill
+import com.example.macosbusinesssuite.ui.components.m3ValueChangeHighlight
 import com.example.macosbusinesssuite.ui.viewmodels.MainViewModel
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -316,6 +318,10 @@ fun ProductsScreen(
     val categories by viewModel.categories.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val marqueeEnabled by viewModel.marqueeEnabled.collectAsState()
+    val isDataCached by viewModel.isDataCached.collectAsState()
+    val isSyncingLive by viewModel.isSyncingLive.collectAsState()
+    val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
+    val changedMetricKeys by viewModel.changedMetricKeys.collectAsState()
 
     var isRefreshing by remember { mutableStateOf(false) }
 
@@ -560,6 +566,16 @@ fun ProductsScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                             }
                         }
+
+                        // M3 Sync Status Pill
+                        M3SyncStatusPill(
+                            isDataCached = isDataCached,
+                            isSyncingLive = isSyncingLive,
+                            lastSyncTimestamp = lastSyncTimestamp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
                     }
                 }
 
@@ -587,7 +603,8 @@ fun ProductsScreen(
                                 selectedAlphabetLetter = selectedAlphabetLetter,
                                 onLetterSelected = { selectedAlphabetLetter = it },
                                 onProductClick = { selectedProductForDetails = it },
-                                marqueeEnabled = marqueeEnabled
+                                marqueeEnabled = marqueeEnabled,
+                                isCountChanged = changedMetricKeys.contains("products_count")
                             )
                         }
                         ProductSubPage.CATEGORIES -> {
@@ -736,7 +753,8 @@ fun ProductsCatalogView(
     selectedAlphabetLetter: String? = null,
     onLetterSelected: (String?) -> Unit = {},
     onProductClick: (Product) -> Unit,
-    marqueeEnabled: Boolean = true
+    marqueeEnabled: Boolean = true,
+    isCountChanged: Boolean = false
 ) {
     val filteredProducts = products.filter { prod ->
         val matchesSearch = prod.name.contains(searchQuery, ignoreCase = true)
@@ -830,7 +848,12 @@ fun ProductsCatalogView(
 
                     if (header == "All" || expandedGroups[header] == true) {
                         items(items) { product ->
-                            ProductCardModern(product = product, onClick = { onProductClick(product) }, marqueeEnabled = marqueeEnabled)
+                            ProductCardModern(
+                                product = product,
+                                onClick = { onProductClick(product) },
+                                marqueeEnabled = marqueeEnabled,
+                                isHighlighted = isCountChanged
+                            )
                         }
                     }
                 }
@@ -983,7 +1006,12 @@ fun VerticalAlphabetSlider(
 }
 
 @Composable
-fun ProductCardModern(product: Product, onClick: () -> Unit, marqueeEnabled: Boolean = true) {
+fun ProductCardModern(
+    product: Product,
+    onClick: () -> Unit,
+    marqueeEnabled: Boolean = true,
+    isHighlighted: Boolean = false
+) {
     val variantCount = product.variants.size
     val batchCount = product.variants.sumOf { it.batches.size }
     val countBadgeText = "${variantCount}V:${batchCount}B"
@@ -991,7 +1019,8 @@ fun ProductCardModern(product: Product, onClick: () -> Unit, marqueeEnabled: Boo
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .m3ValueChangeHighlight(isHighlighted, shape = RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow

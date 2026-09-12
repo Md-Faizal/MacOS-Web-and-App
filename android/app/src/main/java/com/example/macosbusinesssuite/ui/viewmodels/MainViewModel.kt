@@ -55,6 +55,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val sessionManager = SessionManager.getInstance(application)
     val multiUserManager = MultiUserManager(application)
+    val cacheManager = com.example.macosbusinesssuite.data.cache.UserScopedCacheManager.getInstance(application)
+
+    private val _isDataCached = MutableStateFlow(false)
+    val isDataCached: StateFlow<Boolean> = _isDataCached.asStateFlow()
+
+    private val _isSyncingLive = MutableStateFlow(false)
+    val isSyncingLive: StateFlow<Boolean> = _isSyncingLive.asStateFlow()
+
+    private val _lastSyncTimestamp = MutableStateFlow<Long?>(null)
+    val lastSyncTimestamp: StateFlow<Long?> = _lastSyncTimestamp.asStateFlow()
+
+    private val _changedMetricKeys = MutableStateFlow<Set<String>>(emptySet())
+    val changedMetricKeys: StateFlow<Set<String>> = _changedMetricKeys.asStateFlow()
+
+    fun addChangedMetric(key: String) {
+        _changedMetricKeys.value = _changedMetricKeys.value + key
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(2500L)
+            _changedMetricKeys.value = _changedMetricKeys.value - key
+        }
+    }
+
+    fun hydrateFromCache(userId: String) {
+        if (userId.isBlank()) return
+        val cachedProducts = cacheManager.getProducts(userId)
+        val cachedContacts = cacheManager.getContacts(userId)
+        val cachedBills = cacheManager.getBills(userId)
+        val cachedAnalyticsSummary = cacheManager.getAnalyticsSummary(userId)
+        val cachedKPI = cacheManager.getExecutiveKPI(userId)
+        val cachedSalesTrends = cacheManager.getSalesTrends(userId)
+        val cachedTopProducts = cacheManager.getTopProducts(userId)
+        val cachedTopCustomers = cacheManager.getTopCustomers(userId)
+
+        if (cachedProducts.isNotEmpty() || cachedContacts.isNotEmpty() || cachedBills.isNotEmpty() || cachedAnalyticsSummary != null || cachedKPI != null) {
+            _products.value = cachedProducts
+            _contacts.value = cachedContacts
+            _bills.value = cachedBills
+            if (cachedAnalyticsSummary != null) _analyticsSummary.value = cachedAnalyticsSummary
+            if (cachedKPI != null) _executiveKPI.value = cachedKPI
+            if (cachedSalesTrends.isNotEmpty()) _salesTrends.value = cachedSalesTrends
+            if (cachedTopProducts.isNotEmpty()) _topProducts.value = cachedTopProducts
+            if (cachedTopCustomers.isNotEmpty()) _topCustomers.value = cachedTopCustomers
+            _isDataCached.value = true
+            _isSyncingLive.value = true
+        }
+    }
 
     // Multi-User state
     private val _rememberedUsers = MutableStateFlow<List<RememberedUser>>(multiUserManager.getUsers())
@@ -72,6 +118,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val selected = multiUserManager.setActiveUserId(user.id)
         _activeUser.value = selected ?: user
         _rememberedUsers.value = multiUserManager.getUsers()
+        hydrateFromCache(user.id)
     }
 
     fun removeRememberedUser(idOrIdentifier: String) {
@@ -171,6 +218,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun completeLogin() {
         sessionManager.isLoggedIn = true
         _isLoggedIn.value = true
+        val uid = sessionManager.userId ?: multiUserManager.getActiveUser()?.id
+        if (!uid.isNullOrBlank()) {
+            hydrateFromCache(uid)
+        }
         loadAllData()
     }
 
@@ -490,6 +541,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     multiUserManager.saveUser(savedUser)
                     multiUserManager.setActiveUserId(savedUser.id)
                     refreshMultiUsers()
+                    hydrateFromCache(savedUser.id)
 
                     onResult(true, null, userProfile)
                 } else {
@@ -553,6 +605,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         savedRefreshToken = sessionManager.refreshToken
                     ))
                     refreshMultiUsers()
+                    hydrateFromCache(user.id)
                     onResult(true, null)
                 } else {
                     val msg = "Biometric session expired. Please enter your password."
@@ -849,6 +902,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             _permissionsJson.value = null
                         }
                         _isLoggedIn.value = true
+                        sessionManager.userId?.let { hydrateFromCache(it) }
                         loadAllData()
                     }
                     onResult(isApproved, body)
@@ -886,6 +940,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _contacts.value = emptyList()
         _products.value = emptyList()
         _bills.value = emptyList()
+        _billingSummary.value = null
+        _analyticsSummary.value = null
+        _executiveKPI.value = null
+        _salesTrends.value = emptyList()
+        _topProducts.value = emptyList()
+        _topCustomers.value = emptyList()
+        _salesDeepDive.value = null
+        _orderFunnel.value = null
+        _arAging.value = null
+        _rfmSegmentation.value = emptyList()
+        _productVelocity.value = null
+        _categoryPerformance.value = emptyList()
+        _comparativeYoY.value = null
+        _comparativeMoM.value = emptyList()
+        _comparativeQoQ.value = emptyList()
+        _isDataCached.value = false
+        _isSyncingLive.value = false
+        _lastSyncTimestamp.value = null
+        _changedMetricKeys.value = emptySet()
         _devices.value = emptyList()
         _errorMessage.value = null
         _isLoggedIn.value = false
@@ -1648,7 +1721,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val service = NetworkClient.getService(sessionManager)
                 val res = service.getProducts(search = query)
                 if (res.isSuccessful) {
-                    _products.value = res.body() ?: emptyList()
+                    val prevCount = _products.value.size
+                    val newProducts = res.body() ?: emptyList()
+                    if (_isDataCached.value && prevCount != newProducts.size) {
+                        addChangedMetric("products_count")
+                    }
+                    _products.value = newProducts
+                    val uid = sessionManager.userId
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveProducts(uid, newProducts)
+                    }
+                    _isDataCached.value = false
+                    _isSyncingLive.value = false
+                    _lastSyncTimestamp.value = System.currentTimeMillis()
                 }
                 val catRes = service.getCategories()
                 if (catRes.isSuccessful) {
@@ -1900,7 +1985,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val body = res.body()!!
                     val array = if (body.isJsonArray) body.asJsonArray else body.asJsonObject?.get("data")?.asJsonArray ?: body.asJsonObject?.get("contacts")?.asJsonArray
                     val listType = object : com.google.gson.reflect.TypeToken<List<Contact>>() {}.type
-                    _contacts.value = array?.let { com.google.gson.Gson().fromJson(it, listType) } ?: emptyList()
+                    val prevCount = _contacts.value.size
+                    val newContacts: List<Contact> = array?.let { com.google.gson.Gson().fromJson(it, listType) } ?: emptyList()
+                    if (_isDataCached.value && prevCount != newContacts.size) {
+                        addChangedMetric("contacts_count")
+                    }
+                    _contacts.value = newContacts
+                    val uid = sessionManager.userId
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveContacts(uid, newContacts)
+                    }
+                    _isDataCached.value = false
+                    _isSyncingLive.value = false
+                    _lastSyncTimestamp.value = System.currentTimeMillis()
                 } else {
                     val rawErr = res.errorBody()?.string()
                     val errMsg = try {
@@ -2003,7 +2100,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val body = res.body()
                     val array = if (body?.isJsonArray == true) body.asJsonArray else body?.asJsonObject?.get("data")?.asJsonArray ?: body?.asJsonObject?.get("transactions")?.asJsonArray
                     val listType = object : TypeToken<List<Bill>>() {}.type
-                    _bills.value = array?.let { gson.fromJson(it, listType) } ?: emptyList()
+                    val newBills: List<Bill> = array?.let { gson.fromJson(it, listType) } ?: emptyList()
+                    _bills.value = newBills
+                    val uid = sessionManager.userId
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveBills(uid, newBills)
+                    }
                 }
                 val sumRes = service.getBillingSummary()
                 if (sumRes.isSuccessful) {
@@ -2017,6 +2119,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val dataElem = obj?.get("data") ?: body
                         val summary = dataElem?.let { gson.fromJson(it, BillingSummary::class.java) }
                         _billingSummary.value = summary
+                        val uid = sessionManager.userId
+                        if (!uid.isNullOrBlank() && summary != null) {
+                            cacheManager.saveBillingSummary(uid, summary)
+                        }
                     } catch (_: Exception) {
                         _billingSummary.value = null
                     }
@@ -2056,20 +2162,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _analyticsLoading.value = true
             try {
                 val service = NetworkClient.getService(sessionManager)
+                val uid = sessionManager.userId
                 val dashRes = service.getDashboardSummary()
-                if (dashRes.isSuccessful) _analyticsSummary.value = dashRes.body()
+                if (dashRes.isSuccessful) {
+                    val newSummary = dashRes.body()
+                    if (_isDataCached.value && newSummary != null && _analyticsSummary.value != null) {
+                        if (_analyticsSummary.value?.totalRevenue != newSummary.totalRevenue) {
+                            addChangedMetric("analytics_revenue")
+                        }
+                        if (_analyticsSummary.value?.totalOrders != newSummary.totalOrders) {
+                            addChangedMetric("analytics_orders")
+                        }
+                    }
+                    _analyticsSummary.value = newSummary
+                    if (!uid.isNullOrBlank() && newSummary != null) {
+                        cacheManager.saveAnalyticsSummary(uid, newSummary)
+                    }
+                }
 
                 val kpiRes = service.getExecutiveKPI()
-                if (kpiRes.isSuccessful) _executiveKPI.value = kpiRes.body()
+                if (kpiRes.isSuccessful) {
+                    val newKPI = kpiRes.body()
+                    _executiveKPI.value = newKPI
+                    if (!uid.isNullOrBlank() && newKPI != null) {
+                        cacheManager.saveExecutiveKPI(uid, newKPI)
+                    }
+                }
 
                 val trendRes = service.getSalesTrend()
-                if (trendRes.isSuccessful) _salesTrends.value = trendRes.body() ?: emptyList()
+                if (trendRes.isSuccessful) {
+                    val trends = trendRes.body() ?: emptyList()
+                    _salesTrends.value = trends
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveSalesTrends(uid, trends)
+                    }
+                }
 
                 val topProdRes = service.getTopProducts()
-                if (topProdRes.isSuccessful) _topProducts.value = topProdRes.body() ?: emptyList()
+                if (topProdRes.isSuccessful) {
+                    val topProds = topProdRes.body() ?: emptyList()
+                    _topProducts.value = topProds
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveTopProducts(uid, topProds)
+                    }
+                }
 
                 val topCustRes = service.getTopCustomers()
-                if (topCustRes.isSuccessful) _topCustomers.value = topCustRes.body() ?: emptyList()
+                if (topCustRes.isSuccessful) {
+                    val topCusts = topCustRes.body() ?: emptyList()
+                    _topCustomers.value = topCusts
+                    if (!uid.isNullOrBlank()) {
+                        cacheManager.saveTopCustomers(uid, topCusts)
+                    }
+                }
+
+                _isDataCached.value = false
+                _isSyncingLive.value = false
+                _lastSyncTimestamp.value = System.currentTimeMillis()
 
             } catch (e: Exception) {
                 if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {

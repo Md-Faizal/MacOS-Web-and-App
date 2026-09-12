@@ -48,6 +48,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.macosbusinesssuite.data.model.Contact
 import com.example.macosbusinesssuite.ui.components.PixelSearchBar
+import com.example.macosbusinesssuite.ui.components.M3SyncStatusPill
+import com.example.macosbusinesssuite.ui.components.m3ValueChangeHighlight
 import com.example.macosbusinesssuite.ui.viewmodels.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -164,6 +166,10 @@ fun ContactsScreen(
     val contacts by viewModel.contacts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val marqueeEnabled by viewModel.marqueeEnabled.collectAsState()
+    val isDataCached by viewModel.isDataCached.collectAsState()
+    val isSyncingLive by viewModel.isSyncingLive.collectAsState()
+    val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
+    val changedMetricKeys by viewModel.changedMetricKeys.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilterTab by remember { mutableStateOf("All") }
 
@@ -345,6 +351,16 @@ fun ContactsScreen(
                                 placeholder = "Search name, phone, GSTIN...",
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            // 3. M3 Sync Status Pill
+                            M3SyncStatusPill(
+                                isDataCached = isDataCached,
+                                isSyncingLive = isSyncingLive,
+                                lastSyncTimestamp = lastSyncTimestamp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                            )
                         }
                     }
                 AnimatedContent(
@@ -481,7 +497,8 @@ fun ContactsScreen(
                                     ContactListItem(
                                         contact = contact,
                                         onClick = { selectedContactForDetails = contact },
-                                        marqueeEnabled = marqueeEnabled
+                                        marqueeEnabled = marqueeEnabled,
+                                        isHighlighted = changedMetricKeys.contains("contacts_count")
                                     )
                                 }
                             }
@@ -642,7 +659,8 @@ private fun getGradientForContact(name: String): Brush {
 fun ContactListItem(
     contact: Contact,
     onClick: () -> Unit,
-    marqueeEnabled: Boolean = true
+    marqueeEnabled: Boolean = true,
+    isHighlighted: Boolean = false
 ) {
     val initials = getInitials(contact.name)
     val avatarGradient = getGradientForContact(contact.name)
@@ -664,6 +682,7 @@ fun ContactListItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
+            .m3ValueChangeHighlight(isHighlighted, shape = RoundedCornerShape(22.dp))
     ) {
         Column(
             modifier = Modifier

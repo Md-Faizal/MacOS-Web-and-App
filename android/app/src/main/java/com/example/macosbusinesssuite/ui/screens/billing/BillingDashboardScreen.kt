@@ -49,6 +49,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import com.example.macosbusinesssuite.ui.components.VibrantPageBottomFiller
 import com.example.macosbusinesssuite.ui.components.PixelSearchBar
 import com.example.macosbusinesssuite.ui.components.KpiStatCard
+import com.example.macosbusinesssuite.ui.components.M3SyncStatusPill
+import com.example.macosbusinesssuite.ui.components.m3ValueChangeHighlight
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -94,6 +96,10 @@ fun BillingDashboardScreen(
     val payments by billingViewModel.payments.collectAsState()
     val selectedSalesTrendPeriod by billingViewModel.selectedSalesTrendPeriod.collectAsState()
     val receivablesAging by billingViewModel.receivablesAging.collectAsState()
+    val isDataCached by billingViewModel.isDataCached.collectAsState()
+    val isSyncingLive by billingViewModel.isSyncingLive.collectAsState()
+    val lastSyncTimestamp by billingViewModel.lastSyncTimestamp.collectAsState()
+    val changedCardKeys by billingViewModel.changedCardKeys.collectAsState()
 
     var activeTab by remember { mutableIntStateOf(0) } // 0: Top Products, 1: Top Customers
     var selectedSubPage by rememberSaveable { mutableStateOf(BillingSubPage.DASHBOARD) }
@@ -265,6 +271,16 @@ fun BillingDashboardScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         LiveInsightTickerBanner(insights = tickerInsights)
                     }
+
+                    // 5. M3 Sync Status Pill
+                    M3SyncStatusPill(
+                        isDataCached = isDataCached,
+                        isSyncingLive = isSyncingLive,
+                        lastSyncTimestamp = lastSyncTimestamp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    )
             }
         }
 
@@ -311,7 +327,9 @@ fun BillingDashboardScreen(
                                 subtitle = "${metrics.totalBillsCount} bills",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.AutoMirrored.Filled.TrendingUp,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("total_billed")),
                                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                 marqueeEnabled = marqueeEnabled
@@ -322,7 +340,9 @@ fun BillingDashboardScreen(
                                 subtitle = "${metrics.totalPaymentsCount} payments",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.Default.AccountBalanceWallet,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("total_collected")),
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                 marqueeEnabled = marqueeEnabled
@@ -340,7 +360,9 @@ fun BillingDashboardScreen(
                                 subtitle = "To be collected",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.Default.Schedule,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("amount_due")),
                                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                                 marqueeEnabled = marqueeEnabled
@@ -351,7 +373,9 @@ fun BillingDashboardScreen(
                                 subtitle = "Beyond 30 days",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.Default.WarningAmber,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("overdue_amount")),
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer,
                                 marqueeEnabled = marqueeEnabled

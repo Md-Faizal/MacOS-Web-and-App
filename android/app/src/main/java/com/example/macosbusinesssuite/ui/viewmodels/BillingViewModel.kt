@@ -92,6 +92,19 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
 
     val sessionManager = com.example.macosbusinesssuite.data.api.SessionManager.getInstance(application)
     private val api: ApiService get() = NetworkClient.getService(sessionManager)
+    private val cacheManager = com.example.macosbusinesssuite.data.cache.UserScopedCacheManager.getInstance(application)
+
+    private val _isDataCached = MutableStateFlow(false)
+    val isDataCached: StateFlow<Boolean> = _isDataCached.asStateFlow()
+
+    private val _isSyncingLive = MutableStateFlow(false)
+    val isSyncingLive: StateFlow<Boolean> = _isSyncingLive.asStateFlow()
+
+    private val _lastSyncTimestamp = MutableStateFlow<Long?>(null)
+    val lastSyncTimestamp: StateFlow<Long?> = _lastSyncTimestamp.asStateFlow()
+
+    private val _changedCardKeys = MutableStateFlow<Set<String>>(emptySet())
+    val changedCardKeys: StateFlow<Set<String>> = _changedCardKeys.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -153,8 +166,33 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     val tickerInsights: StateFlow<List<String>> = _tickerInsights.asStateFlow()
 
     init {
+        val uid = sessionManager.userId
+        if (!uid.isNullOrBlank()) {
+            hydrateFromCache(uid)
+        }
         if (sessionManager.isLoggedIn && !sessionManager.authToken.isNullOrBlank()) {
             loadBillingData()
+        }
+    }
+
+    fun hydrateFromCache(userId: String) {
+        if (userId.isBlank()) return
+        val cachedBills = cacheManager.getBills(userId)
+        val cachedPayments = cacheManager.getPayments(userId)
+        val cachedOrders = cacheManager.getOrders(userId)
+        val cachedContacts = cacheManager.getContacts(userId)
+        val cachedSummary = cacheManager.getBillingSummary(userId)
+
+        if (cachedBills.isNotEmpty() || cachedPayments.isNotEmpty() || cachedOrders.isNotEmpty() || cachedContacts.isNotEmpty() || cachedSummary != null) {
+            _bills.value = cachedBills
+            _payments.value = cachedPayments
+            _orders.value = cachedOrders
+            _contacts.value = cachedContacts
+            _billingSummary.value = cachedSummary
+            _isDataCached.value = true
+            _isSyncingLive.value = true
+            recalculateDashboard()
+            recalculateLedgerCustomers()
         }
     }
 
@@ -184,6 +222,10 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
         _tickerInsights.value = emptyList()
         _errorMessage.value = null
         _isLoading.value = false
+        _isDataCached.value = false
+        _isSyncingLive.value = false
+        _lastSyncTimestamp.value = null
+        _changedCardKeys.value = emptySet()
     }
 
     fun loadBillingData(onComplete: () -> Unit = {}) {
@@ -198,7 +240,14 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 onComplete()
                 return@launch
             }
+            val prevBilled = _dashboardMetrics.value.totalBilled
+            val prevCollected = _dashboardMetrics.value.totalPaid
+            val prevOutstanding = _dashboardMetrics.value.amountDue
+            val prevBillsCount = _bills.value.size
+            val prevOrdersCount = _orders.value.size
+
             _isLoading.value = true
+            _isSyncingLive.value = true
             _errorMessage.value = null
             try {
                 val gson = NetworkClient.customGson
@@ -279,10 +328,44 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
 
                 recalculateDashboard()
                 recalculateLedgerCustomers()
+
+                val currentUserId = sessionManager.userId
+                if (!currentUserId.isNullOrBlank()) {
+                    cacheManager.saveBills(currentUserId, _bills.value)
+                    cacheManager.savePayments(currentUserId, _payments.value)
+                    cacheManager.saveOrders(currentUserId, _orders.value)
+                    cacheManager.saveContacts(currentUserId, _contacts.value)
+                    _billingSummary.value?.let { cacheManager.saveBillingSummary(currentUserId, it) }
+                }
+
+                val newBilled = _dashboardMetrics.value.totalBilled
+                val newCollected = _dashboardMetrics.value.totalPaid
+                val newOutstanding = _dashboardMetrics.value.amountDue
+                val newBillsCount = _bills.value.size
+                val newOrdersCount = _orders.value.size
+
+                val changed = mutableSetOf<String>()
+                if (prevBilled != newBilled && prevBilled > 0.0) changed.add("total_billed")
+                if (prevCollected != newCollected && prevCollected > 0.0) changed.add("total_collected")
+                if (prevOutstanding != newOutstanding && prevOutstanding > 0.0) changed.add("outstanding")
+                if (prevBillsCount != newBillsCount && prevBillsCount > 0) changed.add("bills_count")
+                if (prevOrdersCount != newOrdersCount && prevOrdersCount > 0) changed.add("orders_count")
+
+                if (changed.isNotEmpty()) {
+                    _changedCardKeys.value = changed
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(2500L)
+                        _changedCardKeys.value = emptySet()
+                    }
+                }
+                _isDataCached.value = false
+                _isSyncingLive.value = false
+                _lastSyncTimestamp.value = System.currentTimeMillis()
             } catch (e: Exception) {
                 _errorMessage.value = "Network error: ${e.message}"
             } finally {
                 _isLoading.value = false
+                _isSyncingLive.value = false
                 onComplete()
             }
         }
