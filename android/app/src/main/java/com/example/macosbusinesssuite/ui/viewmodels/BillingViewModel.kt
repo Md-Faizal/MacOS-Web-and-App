@@ -175,13 +175,14 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun hydrateFromCache(userId: String) {
-        if (userId.isBlank()) return
-        val cachedBills = cacheManager.getBills(userId)
-        val cachedPayments = cacheManager.getPayments(userId)
-        val cachedOrders = cacheManager.getOrders(userId)
-        val cachedContacts = cacheManager.getContacts(userId)
-        val cachedSummary = cacheManager.getBillingSummary(userId)
+    fun hydrateFromCache(userId: String, fallbackKey: String? = null) {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
+        val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() }
+        val cachedBills = cacheManager.getBills(userId, resolvedFallback)
+        val cachedPayments = cacheManager.getPayments(userId, resolvedFallback)
+        val cachedOrders = cacheManager.getOrders(userId, resolvedFallback)
+        val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
+        val cachedSummary = cacheManager.getBillingSummary(userId, resolvedFallback)
 
         if (cachedBills.isNotEmpty() || cachedPayments.isNotEmpty() || cachedOrders.isNotEmpty() || cachedContacts.isNotEmpty() || cachedSummary != null) {
             _bills.value = cachedBills
@@ -330,12 +331,14 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 recalculateLedgerCustomers()
 
                 val currentUserId = sessionManager.userId
-                if (!currentUserId.isNullOrBlank()) {
-                    cacheManager.saveBills(currentUserId, _bills.value)
-                    cacheManager.savePayments(currentUserId, _payments.value)
-                    cacheManager.saveOrders(currentUserId, _orders.value)
-                    cacheManager.saveContacts(currentUserId, _contacts.value)
-                    _billingSummary.value?.let { cacheManager.saveBillingSummary(currentUserId, it) }
+                val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                for (tId in targetIds) {
+                    cacheManager.saveBills(tId, _bills.value)
+                    cacheManager.savePayments(tId, _payments.value)
+                    cacheManager.saveOrders(tId, _orders.value)
+                    cacheManager.saveContacts(tId, _contacts.value)
+                    _billingSummary.value?.let { cacheManager.saveBillingSummary(tId, it) }
                 }
 
                 val newBilled = _dashboardMetrics.value.totalBilled
@@ -354,7 +357,7 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 if (changed.isNotEmpty()) {
                     _changedCardKeys.value = changed
                     viewModelScope.launch {
-                        kotlinx.coroutines.delay(2500L)
+                        kotlinx.coroutines.delay(3500L)
                         _changedCardKeys.value = emptySet()
                     }
                 }

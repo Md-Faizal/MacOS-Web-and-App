@@ -90,9 +90,10 @@ fun MainNavigation(
             billingViewModel.clearData()
             currentTab = visibleTabs.firstOrNull() ?: AppTab.BILLING
         } else {
-            val uid = mainViewModel.sessionManager.userId ?: mainViewModel.activeUser.value?.id
+            val active = mainViewModel.activeUser.value
+            val uid = mainViewModel.sessionManager.userId ?: active?.id
             if (!uid.isNullOrBlank()) {
-                billingViewModel.hydrateFromCache(uid)
+                billingViewModel.hydrateFromCache(uid, active?.identifier)
             }
             billingViewModel.loadBillingData()
         }

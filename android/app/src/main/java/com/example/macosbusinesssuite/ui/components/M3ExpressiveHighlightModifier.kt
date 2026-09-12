@@ -53,7 +53,7 @@ fun Modifier.m3ValueChangeHighlight(
             transitionProgress.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(
-                    durationMillis = 1600,
+                    durationMillis = 2800,
                     easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
                 )
             )

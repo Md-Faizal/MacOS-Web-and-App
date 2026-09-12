@@ -36,8 +36,26 @@ class UserScopedCacheManager private constructor(private val context: Context) {
     }
 
     private fun getPrefs(userId: String): SharedPreferences {
-        val safeId = userId.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val safeId = userId.trim().lowercase().replace("[^a-zA-Z0-9_-]".toRegex(), "_")
         return context.getSharedPreferences("$PREF_PREFIX$safeId", Context.MODE_PRIVATE)
+    }
+
+    /**
+     * Resolves the best SharedPreferences for reading cached data.
+     * Checks the primary key first, and if not found, checks optional fallback key (e.g. email vs userId).
+     */
+    private fun getReadPrefs(primaryKey: String, fallbackKey: String? = null, requiredPrefKey: String? = null): SharedPreferences {
+        val primaryPrefs = getPrefs(primaryKey)
+        if (fallbackKey.isNullOrBlank() || fallbackKey.equals(primaryKey, ignoreCase = true)) {
+            return primaryPrefs
+        }
+        if (requiredPrefKey != null && !primaryPrefs.contains(requiredPrefKey)) {
+            val fallbackPrefs = getPrefs(fallbackKey)
+            if (fallbackPrefs.contains(requiredPrefKey)) {
+                return fallbackPrefs
+            }
+        }
+        return primaryPrefs
     }
 
     // ==================== PRODUCTS ====================
@@ -52,9 +70,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getProducts(userId: String): List<Product> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_PRODUCTS, null) ?: return emptyList()
+    fun getProducts(userId: String, fallbackKey: String? = null): List<Product> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_PRODUCTS).getString(KEY_PRODUCTS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<Product>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -75,9 +93,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getContacts(userId: String): List<Contact> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_CONTACTS, null) ?: return emptyList()
+    fun getContacts(userId: String, fallbackKey: String? = null): List<Contact> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_CONTACTS).getString(KEY_CONTACTS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<Contact>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -98,9 +116,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getBills(userId: String): List<Bill> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_BILLS, null) ?: return emptyList()
+    fun getBills(userId: String, fallbackKey: String? = null): List<Bill> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_BILLS).getString(KEY_BILLS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<Bill>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -121,9 +139,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getPayments(userId: String): List<PaymentRecord> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_PAYMENTS, null) ?: return emptyList()
+    fun getPayments(userId: String, fallbackKey: String? = null): List<PaymentRecord> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_PAYMENTS).getString(KEY_PAYMENTS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<PaymentRecord>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -144,9 +162,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getOrders(userId: String): List<OrderRecord> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_ORDERS, null) ?: return emptyList()
+    fun getOrders(userId: String, fallbackKey: String? = null): List<OrderRecord> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_ORDERS).getString(KEY_ORDERS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<OrderRecord>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -167,9 +185,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getBillingSummary(userId: String): BillingSummary? {
-        if (userId.isBlank()) return null
-        val json = getPrefs(userId).getString(KEY_BILLING_SUMMARY, null) ?: return null
+    fun getBillingSummary(userId: String, fallbackKey: String? = null): BillingSummary? {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return null
+        val json = getReadPrefs(userId, fallbackKey, KEY_BILLING_SUMMARY).getString(KEY_BILLING_SUMMARY, null) ?: return null
         return try {
             gson.fromJson(json, BillingSummary::class.java)
         } catch (_: Exception) {
@@ -249,9 +267,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getAnalyticsSummary(userId: String): AnalyticsSummary? {
-        if (userId.isBlank()) return null
-        val json = getPrefs(userId).getString(KEY_ANALYTICS_SUMMARY, null) ?: return null
+    fun getAnalyticsSummary(userId: String, fallbackKey: String? = null): AnalyticsSummary? {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return null
+        val json = getReadPrefs(userId, fallbackKey, KEY_ANALYTICS_SUMMARY).getString(KEY_ANALYTICS_SUMMARY, null) ?: return null
         return try {
             gson.fromJson(json, AnalyticsSummary::class.java)
         } catch (_: Exception) {
@@ -259,9 +277,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         }
     }
 
-    fun getExecutiveKPI(userId: String): ExecutiveKPI? {
-        if (userId.isBlank()) return null
-        val json = getPrefs(userId).getString(KEY_EXECUTIVE_KPI, null) ?: return null
+    fun getExecutiveKPI(userId: String, fallbackKey: String? = null): ExecutiveKPI? {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return null
+        val json = getReadPrefs(userId, fallbackKey, KEY_EXECUTIVE_KPI).getString(KEY_EXECUTIVE_KPI, null) ?: return null
         return try {
             gson.fromJson(json, ExecutiveKPI::class.java)
         } catch (_: Exception) {
@@ -269,9 +287,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         }
     }
 
-    fun getSalesTrends(userId: String): List<SalesTrendPoint> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_SALES_TRENDS, null) ?: return emptyList()
+    fun getSalesTrends(userId: String, fallbackKey: String? = null): List<SalesTrendPoint> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_SALES_TRENDS).getString(KEY_SALES_TRENDS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<SalesTrendPoint>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -280,9 +298,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         }
     }
 
-    fun getTopProducts(userId: String): List<TopProductItem> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_TOP_PRODUCTS, null) ?: return emptyList()
+    fun getTopProducts(userId: String, fallbackKey: String? = null): List<TopProductItem> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_TOP_PRODUCTS).getString(KEY_TOP_PRODUCTS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<TopProductItem>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -291,9 +309,9 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         }
     }
 
-    fun getTopCustomers(userId: String): List<TopCustomerItem> {
-        if (userId.isBlank()) return emptyList()
-        val json = getPrefs(userId).getString(KEY_TOP_CUSTOMERS, null) ?: return emptyList()
+    fun getTopCustomers(userId: String, fallbackKey: String? = null): List<TopCustomerItem> {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return emptyList()
+        val json = getReadPrefs(userId, fallbackKey, KEY_TOP_CUSTOMERS).getString(KEY_TOP_CUSTOMERS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<TopCustomerItem>>() {}.type
             gson.fromJson(json, type) ?: emptyList()

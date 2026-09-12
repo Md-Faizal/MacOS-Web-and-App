@@ -72,21 +72,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addChangedMetric(key: String) {
         _changedMetricKeys.value = _changedMetricKeys.value + key
         viewModelScope.launch {
-            kotlinx.coroutines.delay(2500L)
+            kotlinx.coroutines.delay(3500L)
             _changedMetricKeys.value = _changedMetricKeys.value - key
         }
     }
 
-    fun hydrateFromCache(userId: String) {
-        if (userId.isBlank()) return
-        val cachedProducts = cacheManager.getProducts(userId)
-        val cachedContacts = cacheManager.getContacts(userId)
-        val cachedBills = cacheManager.getBills(userId)
-        val cachedAnalyticsSummary = cacheManager.getAnalyticsSummary(userId)
-        val cachedKPI = cacheManager.getExecutiveKPI(userId)
-        val cachedSalesTrends = cacheManager.getSalesTrends(userId)
-        val cachedTopProducts = cacheManager.getTopProducts(userId)
-        val cachedTopCustomers = cacheManager.getTopCustomers(userId)
+    fun hydrateFromCache(userId: String, fallbackKey: String? = null) {
+        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
+        val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() } ?: multiUserManager.getUsers().find { it.id == userId }?.identifier
+        val cachedProducts = cacheManager.getProducts(userId, resolvedFallback)
+        val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
+        val cachedBills = cacheManager.getBills(userId, resolvedFallback)
+        val cachedAnalyticsSummary = cacheManager.getAnalyticsSummary(userId, resolvedFallback)
+        val cachedKPI = cacheManager.getExecutiveKPI(userId, resolvedFallback)
+        val cachedSalesTrends = cacheManager.getSalesTrends(userId, resolvedFallback)
+        val cachedTopProducts = cacheManager.getTopProducts(userId, resolvedFallback)
+        val cachedTopCustomers = cacheManager.getTopCustomers(userId, resolvedFallback)
 
         if (cachedProducts.isNotEmpty() || cachedContacts.isNotEmpty() || cachedBills.isNotEmpty() || cachedAnalyticsSummary != null || cachedKPI != null) {
             _products.value = cachedProducts
@@ -132,6 +133,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        // Cold-start safety: ensure active user credentials and userId are loaded into sessionManager
+        val active = multiUserManager.getActiveUser()
+        if (active != null) {
+            if (sessionManager.userId.isNullOrBlank()) {
+                sessionManager.userId = active.id
+            }
+            if (sessionManager.userName.isNullOrBlank()) {
+                sessionManager.userName = active.displayName
+            }
+            if (sessionManager.userEmail.isNullOrBlank()) {
+                sessionManager.userEmail = active.identifier
+            }
+            if (sessionManager.userRole.isBlank() || sessionManager.userRole == "worker") {
+                sessionManager.userRole = active.role
+            }
+            if (!active.displayPicture.isNullOrBlank() && sessionManager.userPicture.isNullOrBlank()) {
+                sessionManager.userPicture = active.displayPicture
+            }
+            // Prime cache for immediate instant display
+            hydrateFromCache(active.id, active.identifier)
+        }
         syncRememberedUsers()
     }
 
@@ -216,11 +238,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val permissionsJson: StateFlow<String?> = _permissionsJson.asStateFlow()
 
     fun completeLogin() {
+        val active = multiUserManager.getActiveUser()
+        if (sessionManager.userId.isNullOrBlank() && active != null) {
+            sessionManager.userId = active.id
+        }
         sessionManager.isLoggedIn = true
         _isLoggedIn.value = true
-        val uid = sessionManager.userId ?: multiUserManager.getActiveUser()?.id
+        val uid = sessionManager.userId ?: active?.id
         if (!uid.isNullOrBlank()) {
-            hydrateFromCache(uid)
+            hydrateFromCache(uid, active?.identifier)
         }
         loadAllData()
     }
@@ -528,20 +554,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         displayPicture = realPicture
                     )
 
+                    val targetUserId = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36))
+                    sessionManager.userId = targetUserId
+
                     val savedUser = RememberedUser(
-                        id = userProfile?.id ?: existing?.id ?: ("usr_" + System.currentTimeMillis().toString(36)),
+                        id = targetUserId,
                         identifier = realEmail,
                         displayName = realName,
                         displayPicture = realPicture,
                         role = resolvedRole,
                         isBiometricEnabled = isBio,
-                        savedAuthToken = if (keepLoggedIn) token else null,
-                        savedRefreshToken = if (keepLoggedIn) refreshToken else null
+                        savedAuthToken = if (keepLoggedIn || existing != null) (token ?: existing?.savedAuthToken) else null,
+                        savedRefreshToken = if (keepLoggedIn || existing != null) (refreshToken ?: existing?.savedRefreshToken) else null
                     )
                     multiUserManager.saveUser(savedUser)
                     multiUserManager.setActiveUserId(savedUser.id)
                     refreshMultiUsers()
-                    hydrateFromCache(savedUser.id)
+                    hydrateFromCache(savedUser.id, savedUser.identifier)
 
                     onResult(true, null, userProfile)
                 } else {
@@ -605,7 +634,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         savedRefreshToken = sessionManager.refreshToken
                     ))
                     refreshMultiUsers()
-                    hydrateFromCache(user.id)
+                    hydrateFromCache(user.id, user.identifier)
                     onResult(true, null)
                 } else {
                     val msg = "Biometric session expired. Please enter your password."
@@ -1727,9 +1756,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         addChangedMetric("products_count")
                     }
                     _products.value = newProducts
-                    val uid = sessionManager.userId
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveProducts(uid, newProducts)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveProducts(tId, newProducts)
                     }
                     _isDataCached.value = false
                     _isSyncingLive.value = false
@@ -1991,9 +2022,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         addChangedMetric("contacts_count")
                     }
                     _contacts.value = newContacts
-                    val uid = sessionManager.userId
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveContacts(uid, newContacts)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveContacts(tId, newContacts)
                     }
                     _isDataCached.value = false
                     _isSyncingLive.value = false
@@ -2102,9 +2135,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val listType = object : TypeToken<List<Bill>>() {}.type
                     val newBills: List<Bill> = array?.let { gson.fromJson(it, listType) } ?: emptyList()
                     _bills.value = newBills
-                    val uid = sessionManager.userId
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveBills(uid, newBills)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveBills(tId, newBills)
                     }
                 }
                 val sumRes = service.getBillingSummary()
@@ -2119,9 +2154,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val dataElem = obj?.get("data") ?: body
                         val summary = dataElem?.let { gson.fromJson(it, BillingSummary::class.java) }
                         _billingSummary.value = summary
-                        val uid = sessionManager.userId
-                        if (!uid.isNullOrBlank() && summary != null) {
-                            cacheManager.saveBillingSummary(uid, summary)
+                        val currentUserId = sessionManager.userId
+                        val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                        val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                        if (summary != null) {
+                            for (tId in targetIds) {
+                                cacheManager.saveBillingSummary(tId, summary)
+                            }
                         }
                     } catch (_: Exception) {
                         _billingSummary.value = null
@@ -2175,8 +2214,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     _analyticsSummary.value = newSummary
-                    if (!uid.isNullOrBlank() && newSummary != null) {
-                        cacheManager.saveAnalyticsSummary(uid, newSummary)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    if (newSummary != null) {
+                        for (tId in targetIds) {
+                            cacheManager.saveAnalyticsSummary(tId, newSummary)
+                        }
                     }
                 }
 
@@ -2184,8 +2228,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (kpiRes.isSuccessful) {
                     val newKPI = kpiRes.body()
                     _executiveKPI.value = newKPI
-                    if (!uid.isNullOrBlank() && newKPI != null) {
-                        cacheManager.saveExecutiveKPI(uid, newKPI)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    if (newKPI != null) {
+                        for (tId in targetIds) {
+                            cacheManager.saveExecutiveKPI(tId, newKPI)
+                        }
                     }
                 }
 
@@ -2193,8 +2242,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (trendRes.isSuccessful) {
                     val trends = trendRes.body() ?: emptyList()
                     _salesTrends.value = trends
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveSalesTrends(uid, trends)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveSalesTrends(tId, trends)
                     }
                 }
 
@@ -2202,8 +2254,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (topProdRes.isSuccessful) {
                     val topProds = topProdRes.body() ?: emptyList()
                     _topProducts.value = topProds
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveTopProducts(uid, topProds)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveTopProducts(tId, topProds)
                     }
                 }
 
@@ -2211,8 +2266,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (topCustRes.isSuccessful) {
                     val topCusts = topCustRes.body() ?: emptyList()
                     _topCustomers.value = topCusts
-                    if (!uid.isNullOrBlank()) {
-                        cacheManager.saveTopCustomers(uid, topCusts)
+                    val currentUserId = sessionManager.userId
+                    val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
+                    val targetIds = listOfNotNull(currentUserId, currentEmail).distinct()
+                    for (tId in targetIds) {
+                        cacheManager.saveTopCustomers(tId, topCusts)
                     }
                 }
 
