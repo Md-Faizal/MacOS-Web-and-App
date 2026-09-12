@@ -1,6 +1,6 @@
 {
   "name": "macos-website-api",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "API for MacOS website - handles wallpaper management",
   "main": "backend/main/macos-api-server.js",
   "scripts": {
