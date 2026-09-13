@@ -832,7 +832,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun googleWorkerLogin(idToken: String, onResult: (Boolean, String?, Map<String, Any?>?) -> Unit) {
+    fun googleWorkerLogin(
+        idToken: String,
+        linkPassword: String? = null,
+        onResult: (Boolean, String?, Map<String, Any?>?) -> Unit
+    ) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
@@ -842,7 +846,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     GoogleWorkerLoginRequest(
                         idToken = idToken,
                         deviceName = android.os.Build.MODEL,
-                        deviceType = "Android"
+                        deviceType = "Android",
+                        linkPassword = linkPassword
                     )
                 )
                 if (response.isSuccessful && response.body() != null) {
@@ -870,23 +875,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             sessionManager.userPicture = it["picture"] as? String
                         }
                         onResult(true, null, body)
+                    } else if (status == "pending") {
+                        // Pending approval is a valid intermediate state, not an error
+                        onResult(true, null, body)
                     } else {
                         val msg = (body["message"] as? String)
                             ?: (body["error"] as? String)
-                            ?: "Account is pending approval or inactive."
+                            ?: "Account is inactive or suspended."
                         _errorMessage.value = msg
                         onResult(false, msg, body)
                     }
                 } else {
                     val errorBody = try { response.errorBody()?.string() } catch (e: Exception) { null }
-                    val msg = if (!errorBody.isNullOrBlank() && errorBody.contains("\"message\":")) {
-                        try {
-                            com.google.gson.JsonParser.parseString(errorBody).asJsonObject.get("message")?.asString
-                        } catch (e: Exception) { null }
-                    } else null
-                    val finalMsg = msg ?: "Google sign-in failed. Please try again."
-                    _errorMessage.value = finalMsg
-                    onResult(false, finalMsg, null)
+                    val errMap = try {
+                        if (!errorBody.isNullOrBlank()) {
+                            val mapType = object : TypeToken<Map<String, Any?>>() {}.type
+                            Gson().fromJson<Map<String, Any?>>(errorBody, mapType)
+                        } else null
+                    } catch (_: Exception) { null }
+
+                    if (errMap != null && (response.code() == 409 || errMap["requiresLinking"] == true)) {
+                        val linkMsg = (errMap["message"] as? String)
+                            ?: (errMap["error"] as? String)
+                            ?: "Enter your existing local password once to link this Google account."
+                        onResult(false, linkMsg, errMap)
+                    } else {
+                        val msg = (errMap?.get("message") as? String)
+                            ?: (errMap?.get("error") as? String)
+                            ?: "Google sign-in failed. Please try again."
+                        _errorMessage.value = msg
+                        onResult(false, msg, errMap)
+                    }
                 }
             } catch (e: Exception) {
                 val msg = "Connection error: ${e.localizedMessage ?: e.message}"

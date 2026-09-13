@@ -94,6 +94,22 @@ private enum class PostLoginModalType {
     WORKER_DISMISS_CONFIRMATION
 }
 
+private fun decodeBase64Qr(dataUrl: String?): ImageBitmap? {
+    if (dataUrl.isNullOrBlank()) return null
+    return try {
+        val base64Data = if (dataUrl.contains(",")) {
+            dataUrl.substringAfter(",")
+        } else {
+            dataUrl
+        }
+        val decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+        bitmap?.asImageBitmap()
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
@@ -164,11 +180,21 @@ fun LoginScreen(
     var workerConfirmPasswordInput by remember { mutableStateOf("") }
     var workerSecurityQuestion by remember { mutableStateOf("") }
     var workerSecurityAnswer by remember { mutableStateOf("") }
+    var workerSecurityQuestionError by remember { mutableStateOf<String?>(null) }
+    var workerGoogleEmail by remember { mutableStateOf<String?>(null) }
 
     // Pending Worker state
     var isPendingApproval by remember { mutableStateOf(false) }
     var pendingInviteCode by remember { mutableStateOf("") }
+    var pendingInviteQr by remember { mutableStateOf<String?>(null) }
     var pendingWorkerName by remember { mutableStateOf("") }
+    var pendingGoogleIdToken by remember { mutableStateOf<String?>(null) }
+    var pendingGoogleEmail by remember { mutableStateOf<String?>(null) }
+
+    // Owner link modal state (409 account linking)
+    var showOwnerLinkDialog by remember { mutableStateOf(false) }
+    var ownerLinkPasswordInput by remember { mutableStateOf("") }
+    var ownerLinkErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // Account removal dialog state
     var userPendingRemoval by remember { mutableStateOf<RememberedUser?>(null) }
@@ -177,22 +203,6 @@ fun LoginScreen(
     LaunchedEffect(activeUser) {
         if (activeUser != null) {
             identifierInput = activeUser!!.identifier
-        }
-    }
-
-    // Auto-poll approval status when pending
-    LaunchedEffect(isPendingApproval, pendingInviteCode) {
-        if (isPendingApproval && pendingInviteCode.isNotEmpty()) {
-            while (isPendingApproval) {
-                delay(4000)
-                viewModel.checkWorkerStatus(pendingInviteCode, null) { approved, _ ->
-                    if (approved) {
-                        isPendingApproval = false
-                        pendingInviteCode = ""
-                        onLoginSuccess(lastClickPosition)
-                    }
-                }
-            }
         }
     }
 
@@ -273,7 +283,9 @@ fun LoginScreen(
                 (!email.isNullOrBlank() && viewModel.multiUserManager.isPromptDismissed("worker_password", email))
 
         if (profile?.role == "worker" && !hasLocalAccount && !isWorkerPasswordDismissed) {
+            workerGoogleEmail = email ?: identifier
             workerIdentifierInput = email ?: identifier
+            workerSecurityQuestionError = null
             activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS
             return
         }
@@ -299,49 +311,111 @@ fun LoginScreen(
         }
     }
 
+    // Google Sign In Worker Login Logic
+    fun performGoogleWorkerLogin(idToken: String, linkPassword: String? = null) {
+        viewModel.googleWorkerLogin(idToken, linkPassword) { success, msg, body ->
+            if (body != null && body["requiresLinking"] == true) {
+                pendingGoogleIdToken = idToken
+                pendingGoogleEmail = body["email"] as? String
+                ownerLinkPasswordInput = ""
+                ownerLinkErrorMessage = msg ?: "Enter your existing local password once to link this Google account."
+                showOwnerLinkDialog = true
+                return@googleWorkerLogin
+            }
+
+            if (success && body != null) {
+                val status = body["status"] as? String ?: "active"
+                if (status == "pending") {
+                    pendingGoogleIdToken = idToken
+                    val rawCode = body["inviteCode"]?.toString() ?: ""
+                    pendingInviteCode = if (rawCode.length > 8) rawCode.take(6).uppercase() else rawCode
+                    pendingInviteQr = body["inviteQr"] as? String
+                    val userObj = body["user"] as? Map<*, *>
+                    pendingWorkerName = (userObj?.get("name") as? String)
+                        ?: (userObj?.get("fullName") as? String)
+                        ?: (body["googleName"] as? String)
+                        ?: ""
+                    isPendingApproval = true
+                    showOwnerLinkDialog = false
+                    return@googleWorkerLogin
+                }
+
+                // Normal active login
+                showOwnerLinkDialog = false
+                val userObj = body["user"] as? Map<*, *>
+                val email = userObj?.get("email") as? String ?: pendingGoogleEmail ?: ""
+                val role = body["role"] as? String ?: "worker"
+                val id = userObj?.get("id") as? String ?: ""
+                val name = (userObj?.get("name") as? String) ?: (userObj?.get("fullName") as? String) ?: "Google User"
+                val picture = userObj?.get("picture") as? String
+                val hasLocalPassword = (userObj?.get("hasLocalPassword") as? Boolean)
+                    ?: (userObj?.get("has_local_password") as? Boolean)
+                    ?: false
+
+                workerGoogleEmail = email
+
+                val userProfile = UserProfile(
+                    id = id,
+                    email = email,
+                    username = name,
+                    avatar = picture,
+                    role = role,
+                    hasLocalPassword = hasLocalPassword
+                )
+                if (keepLoggedIn && email.isNotBlank()) {
+                    viewModel.saveRememberedProfile(
+                        identifier = email,
+                        displayName = name,
+                        displayPicture = picture,
+                        role = role,
+                        isBiometricEnabled = false
+                    )
+                }
+                handlePostLoginOnboarding(email, userProfile, isPasswordLogin = false)
+            } else {
+                triggerShake()
+                if (!msg.isNullOrBlank()) {
+                    if (showOwnerLinkDialog) {
+                        ownerLinkErrorMessage = msg
+                    } else {
+                        viewModel.setErrorMessage(msg)
+                    }
+                }
+            }
+        }
+    }
+
+    // Auto-poll approval status when pending
+    LaunchedEffect(isPendingApproval, pendingInviteCode) {
+        if (isPendingApproval && pendingInviteCode.isNotEmpty()) {
+            while (isPendingApproval) {
+                delay(4000)
+                viewModel.checkWorkerStatus(pendingInviteCode, null) { approved, _ ->
+                    if (approved) {
+                        isPendingApproval = false
+                        val tokenToReuse = pendingGoogleIdToken
+                        pendingInviteCode = ""
+                        pendingInviteQr = null
+                        if (tokenToReuse != null) {
+                            performGoogleWorkerLogin(tokenToReuse)
+                        } else {
+                            viewModel.setErrorMessage("Your access was approved! Please sign in with Google to continue.")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Google Sign In Handler
     fun handleGoogleSignIn() {
         coroutineScope.launch {
             viewModel.setErrorMessage(null)
             val result = googleAuthHelper.signInWithGoogle()
             result.onSuccess { credential ->
-                viewModel.googleWorkerLogin(credential.idToken) { success, msg, body ->
-                    if (success && body != null) {
-                        val userObj = body["user"] as? Map<*, *>
-                        val email = userObj?.get("email") as? String ?: credential.id
-                        val role = body["role"] as? String ?: "worker"
-                        val id = userObj?.get("id") as? String ?: credential.id
-                        val name = userObj?.get("name") as? String ?: "Google User"
-                        val picture = userObj?.get("picture") as? String
-                        val hasLocalPassword = (userObj?.get("hasLocalPassword") as? Boolean)
-                            ?: (userObj?.get("has_local_password") as? Boolean)
-                            ?: false
-
-                        val userProfile = UserProfile(
-                            id = id,
-                            email = email,
-                            username = name,
-                            avatar = picture,
-                            role = role,
-                            hasLocalPassword = hasLocalPassword
-                        )
-                        if (keepLoggedIn) {
-                            viewModel.saveRememberedProfile(
-                                identifier = email,
-                                displayName = name,
-                                displayPicture = picture,
-                                role = role,
-                                isBiometricEnabled = false
-                            )
-                        }
-                        handlePostLoginOnboarding(email, userProfile, isPasswordLogin = false)
-                    } else {
-                        triggerShake()
-                        if (!msg.isNullOrBlank()) {
-                            viewModel.setErrorMessage(msg)
-                        }
-                    }
-                }
+                pendingGoogleIdToken = credential.idToken
+                pendingGoogleEmail = credential.id
+                performGoogleWorkerLogin(credential.idToken)
             }.onFailure { exception ->
                 if (exception !is GetCredentialCancellationException) {
                     val errMsg = exception.localizedMessage ?: "Google Sign-In failed"
@@ -490,9 +564,12 @@ fun LoginScreen(
                 PendingApprovalView(
                     pendingWorkerName = pendingWorkerName,
                     pendingInviteCode = pendingInviteCode,
+                    pendingInviteQr = pendingInviteQr,
                     onBack = {
                         isPendingApproval = false
                         pendingInviteCode = ""
+                        pendingInviteQr = null
+                        pendingGoogleIdToken = null
                     }
                 )
             }
@@ -962,8 +1039,13 @@ fun LoginScreen(
                 onPasswordChange = { workerPasswordInput = it },
                 confirmPassword = workerConfirmPasswordInput,
                 onConfirmPasswordChange = { workerConfirmPasswordInput = it },
+                googleEmail = workerGoogleEmail,
+                onCheckUsername = { uname, callback ->
+                    viewModel.checkUsernameAvailability(uname, callback)
+                },
                 onContinue = { origin ->
                     if (origin != null) lastClickPosition = origin
+                    workerSecurityQuestionError = null
                     activePostLoginModal = PostLoginModalType.WORKER_SECURITY_QUESTION
                 },
                 onSkip = { origin ->
@@ -976,9 +1058,16 @@ fun LoginScreen(
         if (activePostLoginModal == PostLoginModalType.WORKER_SECURITY_QUESTION) {
             WorkerSecurityQuestionDialog(
                 question = workerSecurityQuestion,
-                onQuestionChange = { workerSecurityQuestion = it },
+                onQuestionChange = {
+                    workerSecurityQuestion = it
+                    workerSecurityQuestionError = null
+                },
                 answer = workerSecurityAnswer,
-                onAnswerChange = { workerSecurityAnswer = it },
+                onAnswerChange = {
+                    workerSecurityAnswer = it
+                    workerSecurityQuestionError = null
+                },
+                errorMessage = workerSecurityQuestionError,
                 isLoading = isLoading,
                 onSave = {
                     viewModel.updateWorkerCredentials(
@@ -987,13 +1076,19 @@ fun LoginScreen(
                         password = workerPasswordInput,
                         question = workerSecurityQuestion,
                         answer = workerSecurityAnswer
-                    ) { success, _ ->
+                    ) { success, errMsg ->
                         if (success) {
+                            workerSecurityQuestionError = null
                             proceedToBiometricOrSuccess()
+                        } else {
+                            workerSecurityQuestionError = errMsg ?: "Unable to save credentials. Please try again."
                         }
                     }
                 },
-                onBack = { activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS }
+                onBack = {
+                    workerSecurityQuestionError = null
+                    activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS
+                }
             )
         }
 
@@ -1009,6 +1104,30 @@ fun LoginScreen(
                     proceedToBiometricOrSuccess(origin)
                 },
                 onClose = { activePostLoginModal = PostLoginModalType.WORKER_LOCAL_CREDENTIALS }
+            )
+        }
+
+        if (showOwnerLinkDialog) {
+            OwnerLinkRequiredDialog(
+                email = pendingGoogleEmail,
+                password = ownerLinkPasswordInput,
+                onPasswordChange = {
+                    ownerLinkPasswordInput = it
+                    ownerLinkErrorMessage = null
+                },
+                errorMessage = ownerLinkErrorMessage,
+                isLoading = isLoading,
+                onLink = {
+                    val token = pendingGoogleIdToken
+                    if (token != null) {
+                        performGoogleWorkerLogin(token, ownerLinkPasswordInput)
+                    }
+                },
+                onCancel = {
+                    showOwnerLinkDialog = false
+                    ownerLinkPasswordInput = ""
+                    ownerLinkErrorMessage = null
+                }
             )
         }
 
@@ -2094,8 +2213,11 @@ private fun GoogleSignInButton(
 private fun PendingApprovalView(
     pendingWorkerName: String,
     pendingInviteCode: String,
+    pendingInviteQr: String? = null,
     onBack: () -> Unit
 ) {
+    val qrBitmap = remember(pendingInviteQr) { decodeBase64Qr(pendingInviteQr) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -2106,36 +2228,54 @@ private fun PendingApprovalView(
         Surface(
             color = MaterialTheme.colorScheme.tertiaryContainer,
             shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.size(88.dp)
+            modifier = Modifier.size(80.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.HourglassEmpty,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(40.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Text(
             text = "Approval Pending",
-            style = MaterialTheme.typography.headlineLarge,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = if (pendingWorkerName.isNotEmpty()) "Hello $pendingWorkerName" else "Welcome to MacOS Suite",
+            text = if (pendingWorkerName.isNotEmpty()) "Hello $pendingWorkerName" else "Welcome to OmniFlow ERP",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (qrBitmap != null) {
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Image(
+                    bitmap = qrBitmap,
+                    contentDescription = "Access QR Code",
+                    modifier = Modifier
+                        .size(170.dp)
+                        .padding(12.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
 
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -2144,7 +2284,7 @@ private fun PendingApprovalView(
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(20.dp)
             ) {
                 Text(
                     text = "YOUR ACCESS INVITE CODE",
@@ -2154,11 +2294,11 @@ private fun PendingApprovalView(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = pendingInviteCode,
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.primary,
@@ -3210,11 +3350,68 @@ private fun WorkerCredentialDialog(
     onPasswordChange: (String) -> Unit,
     confirmPassword: String,
     onConfirmPasswordChange: (String) -> Unit,
+    googleEmail: String? = null,
+    onCheckUsername: (String, (Boolean, String?) -> Unit) -> Unit,
     onContinue: (Offset?) -> Unit,
     onSkip: (Offset?) -> Unit
 ) {
     var skipBtnPos by remember { mutableStateOf<Offset?>(null) }
     var continueBtnPos by remember { mutableStateOf<Offset?>(null) }
+
+    var useGoogleEmail by remember { mutableStateOf(!googleEmail.isNullOrBlank()) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    var usernameCheckStatus by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var isCheckingUsername by remember { mutableStateOf(false) }
+
+    // Sync identifier when type or checkbox changes
+    LaunchedEffect(identifierType, useGoogleEmail) {
+        if (identifierType == "email") {
+            if (useGoogleEmail && !googleEmail.isNullOrBlank()) {
+                onIdentifierChange(googleEmail)
+            }
+        } else {
+            if (identifier == googleEmail && !googleEmail.isNullOrBlank()) {
+                onIdentifierChange(googleEmail.substringBefore("@"))
+            }
+        }
+    }
+
+    // Debounce username availability check
+    LaunchedEffect(identifier, identifierType) {
+        if (identifierType == "username") {
+            val trimmed = identifier.trim()
+            if (trimmed.isEmpty()) {
+                usernameCheckStatus = null
+                isCheckingUsername = false
+            } else if (trimmed.length < 3) {
+                usernameCheckStatus = Pair(false, "Must be at least 3 characters")
+                isCheckingUsername = false
+            } else if (!trimmed.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+                usernameCheckStatus = Pair(false, "Letters, numbers, underscores only")
+                isCheckingUsername = false
+            } else {
+                isCheckingUsername = true
+                usernameCheckStatus = null
+                delay(280)
+                onCheckUsername(trimmed) { available, msg ->
+                    isCheckingUsername = false
+                    usernameCheckStatus = if (available) {
+                        Pair(true, msg ?: "Username available")
+                    } else {
+                        Pair(false, msg ?: "Username taken")
+                    }
+                }
+            }
+        } else {
+            usernameCheckStatus = null
+            isCheckingUsername = false
+        }
+    }
+
+    val isUsernameValid = identifierType != "username" || (identifier.trim().length >= 3 && usernameCheckStatus?.first != false)
+    val isPasswordValid = password.isNotEmpty() && password == confirmPassword
+    val canContinue = identifier.isNotBlank() && isUsernameValid && isPasswordValid
 
     Dialog(
         onDismissRequest = { onSkip(skipBtnPos) },
@@ -3262,6 +3459,7 @@ private fun WorkerCredentialDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Identifier Type Switcher
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3304,38 +3502,134 @@ private fun WorkerCredentialDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Identifier Input
                 OutlinedTextField(
                     value = identifier,
                     onValueChange = onIdentifierChange,
+                    readOnly = identifierType == "email" && useGoogleEmail && !googleEmail.isNullOrBlank(),
                     label = { Text(if (identifierType == "email") "Email Address" else "Username") },
+                    placeholder = { Text(if (identifierType == "email") "name@example.com" else "e.g. john_doe") },
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Google Email Checkbox for Email Mode
+                if (identifierType == "email" && !googleEmail.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                useGoogleEmail = !useGoogleEmail
+                                if (useGoogleEmail) {
+                                    onIdentifierChange(googleEmail)
+                                }
+                            }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Checkbox(
+                            checked = useGoogleEmail,
+                            onCheckedChange = { checked ->
+                                useGoogleEmail = checked
+                                if (checked) {
+                                    onIdentifierChange(googleEmail)
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Use same as Google email",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Live Username Status
+                if (identifierType == "username") {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (isCheckingUsername) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Checking availability...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else if (usernameCheckStatus != null) {
+                        val (available, msg) = usernameCheckStatus!!
+                        Text(
+                            text = if (available) "✓ $msg" else "✗ $msg",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = if (available) Color(0xFF30D158) else Color(0xFFFF453A),
+                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Password Field
                 OutlinedTextField(
                     value = password,
                     onValueChange = onPasswordChange,
                     label = { Text("Password") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                            )
+                        }
+                    },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Confirm Password Field
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = onConfirmPasswordChange,
                     label = { Text("Confirm Password") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                imageVector = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password"
+                            )
+                        }
+                    },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (password.isNotEmpty() && confirmPassword.isNotEmpty() && password != confirmPassword) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "✗ Passwords do not match",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFFF453A),
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -3360,7 +3654,7 @@ private fun WorkerCredentialDialog(
 
                     Button(
                         onClick = { onContinue(continueBtnPos) },
-                        enabled = identifier.isNotBlank() && password.isNotBlank() && password == confirmPassword,
+                        enabled = canContinue,
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
@@ -3385,6 +3679,7 @@ private fun WorkerSecurityQuestionDialog(
     onQuestionChange: (String) -> Unit,
     answer: String,
     onAnswerChange: (String) -> Unit,
+    errorMessage: String? = null,
     isLoading: Boolean,
     onSave: () -> Unit,
     onBack: () -> Unit
@@ -3444,6 +3739,23 @@ private fun WorkerSecurityQuestionDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -3610,6 +3922,149 @@ private fun WorkerDismissDialog(
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text("Not Now", maxLines = 1, softWrap = false)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OwnerLinkRequiredDialog(
+    email: String?,
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    errorMessage: String?,
+    isLoading: Boolean,
+    onLink: () -> Unit,
+    onCancel: () -> Unit
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = CircleShape,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Link,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Link Google Account",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "An account with ${email ?: "this email"} already exists. Enter your existing local password once to link your Google login.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("Local Account Password") },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Cancel", maxLines = 1, softWrap = false)
+                    }
+
+                    Button(
+                        onClick = onLink,
+                        enabled = password.isNotBlank() && !isLoading,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("Link & Sign In", maxLines = 1, softWrap = false)
+                        }
+                    }
                 }
             }
         }

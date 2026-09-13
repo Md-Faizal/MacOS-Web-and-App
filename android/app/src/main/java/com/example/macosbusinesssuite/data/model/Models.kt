@@ -59,7 +59,8 @@ data class GoogleWorkerLoginRequest(
     val idToken: String,
     val deviceName: String? = null,
     val deviceType: String? = "Android",
-    val clientType: String? = "native_android"
+    val clientType: String? = "native_android",
+    val linkPassword: String? = null
 )
 
 

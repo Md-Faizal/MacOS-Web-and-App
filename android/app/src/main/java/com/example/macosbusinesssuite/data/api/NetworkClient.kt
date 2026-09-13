@@ -69,6 +69,9 @@ object NetworkClient {
                     val path = request.url.encodedPath
 
                     val isPublicEndpoint = path.endsWith("/auth/login") ||
+                            path.endsWith("/auth/google/worker-login") ||
+                            path.endsWith("/auth/worker/status") ||
+                            path.endsWith("/auth/check-username") ||
                             path.endsWith("/auth/challenge") ||
                             path.endsWith("/auth/challenge-question") ||
                             path.endsWith("/auth/status") ||
