@@ -77,31 +77,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun hydrateFromCache(userId: String, fallbackKey: String? = null) {
-        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
-        val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() } ?: multiUserManager.getUsers().find { it.id == userId }?.identifier
-        val cachedProducts = cacheManager.getProducts(userId, resolvedFallback)
-        val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
-        val cachedBills = cacheManager.getBills(userId, resolvedFallback)
-        val cachedAnalyticsSummary = cacheManager.getAnalyticsSummary(userId, resolvedFallback)
-        val cachedKPI = cacheManager.getExecutiveKPI(userId, resolvedFallback)
-        val cachedSalesTrends = cacheManager.getSalesTrends(userId, resolvedFallback)
-        val cachedTopProducts = cacheManager.getTopProducts(userId, resolvedFallback)
-        val cachedTopCustomers = cacheManager.getTopCustomers(userId, resolvedFallback)
 
-        if (cachedProducts.isNotEmpty() || cachedContacts.isNotEmpty() || cachedBills.isNotEmpty() || cachedAnalyticsSummary != null || cachedKPI != null) {
-            _products.value = cachedProducts
-            _contacts.value = cachedContacts
-            _bills.value = cachedBills
-            if (cachedAnalyticsSummary != null) _analyticsSummary.value = cachedAnalyticsSummary
-            if (cachedKPI != null) _executiveKPI.value = cachedKPI
-            if (cachedSalesTrends.isNotEmpty()) _salesTrends.value = cachedSalesTrends
-            if (cachedTopProducts.isNotEmpty()) _topProducts.value = cachedTopProducts
-            if (cachedTopCustomers.isNotEmpty()) _topCustomers.value = cachedTopCustomers
-            _isDataCached.value = true
-            _isSyncingLive.value = true
-        }
-    }
 
     // Multi-User state
     private val _rememberedUsers = MutableStateFlow<List<RememberedUser>>(multiUserManager.getUsers())
@@ -132,30 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshMultiUsers()
     }
 
-    init {
-        // Cold-start safety: ensure active user credentials and userId are loaded into sessionManager
-        val active = multiUserManager.getActiveUser()
-        if (active != null) {
-            if (sessionManager.userId.isNullOrBlank()) {
-                sessionManager.userId = active.id
-            }
-            if (sessionManager.userName.isNullOrBlank()) {
-                sessionManager.userName = active.displayName
-            }
-            if (sessionManager.userEmail.isNullOrBlank()) {
-                sessionManager.userEmail = active.identifier
-            }
-            if (sessionManager.userRole.isBlank() || sessionManager.userRole == "worker") {
-                sessionManager.userRole = active.role
-            }
-            if (!active.displayPicture.isNullOrBlank() && sessionManager.userPicture.isNullOrBlank()) {
-                sessionManager.userPicture = active.displayPicture
-            }
-            // Prime cache for immediate instant display
-            hydrateFromCache(active.id, active.identifier)
-        }
-        syncRememberedUsers()
-    }
+
 
     fun syncRememberedUsers() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -397,7 +350,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val UPDATE_PREFS_NAME = "android_update_prefs"
     private val KEY_LAST_UPDATE_CHECK = "last_update_check_ms"
 
+    fun hydrateFromCache(userId: String, fallbackKey: String? = null) {
+        try {
+            if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
+            val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() } ?: multiUserManager.getUsers().find { it.id == userId }?.identifier
+            val cachedProducts = cacheManager.getProducts(userId, resolvedFallback)
+            val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
+            val cachedBills = cacheManager.getBills(userId, resolvedFallback)
+            val cachedAnalyticsSummary = cacheManager.getAnalyticsSummary(userId, resolvedFallback)
+            val cachedKPI = cacheManager.getExecutiveKPI(userId, resolvedFallback)
+            val cachedSalesTrends = cacheManager.getSalesTrends(userId, resolvedFallback)
+            val cachedTopProducts = cacheManager.getTopProducts(userId, resolvedFallback)
+            val cachedTopCustomers = cacheManager.getTopCustomers(userId, resolvedFallback)
+
+            if (cachedProducts.isNotEmpty() || cachedContacts.isNotEmpty() || cachedBills.isNotEmpty() || cachedAnalyticsSummary != null || cachedKPI != null) {
+                _products.value = cachedProducts
+                _contacts.value = cachedContacts
+                _bills.value = cachedBills
+                if (cachedAnalyticsSummary != null) _analyticsSummary.value = cachedAnalyticsSummary
+                if (cachedKPI != null) _executiveKPI.value = cachedKPI
+                if (cachedSalesTrends.isNotEmpty()) _salesTrends.value = cachedSalesTrends
+                if (cachedTopProducts.isNotEmpty()) _topProducts.value = cachedTopProducts
+                if (cachedTopCustomers.isNotEmpty()) _topCustomers.value = cachedTopCustomers
+                _isDataCached.value = true
+                _isSyncingLive.value = true
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainViewModel", "Error hydrating from cache", e)
+        }
+    }
+
     init {
+        // Cold-start safety: ensure active user credentials and userId are loaded into sessionManager
+        val active = multiUserManager.getActiveUser()
+        if (active != null) {
+            if (sessionManager.userId.isNullOrBlank()) {
+                sessionManager.userId = active.id
+            }
+            if (sessionManager.userName.isNullOrBlank()) {
+                sessionManager.userName = active.displayName
+            }
+            if (sessionManager.userEmail.isNullOrBlank()) {
+                sessionManager.userEmail = active.identifier
+            }
+            if (sessionManager.userRole.isBlank() || sessionManager.userRole == "worker") {
+                sessionManager.userRole = active.role
+            }
+            if (!active.displayPicture.isNullOrBlank() && sessionManager.userPicture.isNullOrBlank()) {
+                sessionManager.userPicture = active.displayPicture
+            }
+            // Prime cache safely for immediate instant display
+            hydrateFromCache(active.id, active.identifier)
+        }
+        syncRememberedUsers()
+
         // Populate profile immediately from cached user data for instant zero-latency rendering
         val cachedUser = multiUserManager.getActiveUser()
         if (cachedUser != null) {

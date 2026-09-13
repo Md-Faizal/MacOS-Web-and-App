@@ -143,6 +143,9 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedSalesTrendPeriod = MutableStateFlow(SalesTrendPeriod.MONTHLY)
     val selectedSalesTrendPeriod: StateFlow<SalesTrendPeriod> = _selectedSalesTrendPeriod.asStateFlow()
 
+    // Search Query State
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     // Dynamic Computed Dashboard State
     private val _dashboardMetrics = MutableStateFlow(DashboardMetricsState())
     val dashboardMetrics: StateFlow<DashboardMetricsState> = _dashboardMetrics.asStateFlow()
@@ -176,24 +179,28 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun hydrateFromCache(userId: String, fallbackKey: String? = null) {
-        if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
-        val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() }
-        val cachedBills = cacheManager.getBills(userId, resolvedFallback)
-        val cachedPayments = cacheManager.getPayments(userId, resolvedFallback)
-        val cachedOrders = cacheManager.getOrders(userId, resolvedFallback)
-        val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
-        val cachedSummary = cacheManager.getBillingSummary(userId, resolvedFallback)
+        try {
+            if (userId.isBlank() && fallbackKey.isNullOrBlank()) return
+            val resolvedFallback = fallbackKey ?: sessionManager.userEmail?.takeIf { it.isNotBlank() }
+            val cachedBills = cacheManager.getBills(userId, resolvedFallback)
+            val cachedPayments = cacheManager.getPayments(userId, resolvedFallback)
+            val cachedOrders = cacheManager.getOrders(userId, resolvedFallback)
+            val cachedContacts = cacheManager.getContacts(userId, resolvedFallback)
+            val cachedSummary = cacheManager.getBillingSummary(userId, resolvedFallback)
 
-        if (cachedBills.isNotEmpty() || cachedPayments.isNotEmpty() || cachedOrders.isNotEmpty() || cachedContacts.isNotEmpty() || cachedSummary != null) {
-            _bills.value = cachedBills
-            _payments.value = cachedPayments
-            _orders.value = cachedOrders
-            _contacts.value = cachedContacts
-            _billingSummary.value = cachedSummary
-            _isDataCached.value = true
-            _isSyncingLive.value = true
-            recalculateDashboard()
-            recalculateLedgerCustomers()
+            if (cachedBills.isNotEmpty() || cachedPayments.isNotEmpty() || cachedOrders.isNotEmpty() || cachedContacts.isNotEmpty() || cachedSummary != null) {
+                _bills.value = cachedBills
+                _payments.value = cachedPayments
+                _orders.value = cachedOrders
+                _contacts.value = cachedContacts
+                _billingSummary.value = cachedSummary
+                _isDataCached.value = true
+                _isSyncingLive.value = true
+                recalculateDashboard()
+                recalculateLedgerCustomers()
+            }
+        } catch (e: Exception) {
+            Log.e("BillingViewModel", "Error hydrating from cache", e)
         }
     }
 
@@ -432,9 +439,6 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
         _ledgerCustomers.value = mergedMap.values.sortedBy { it.customerName.lowercase() }
     }
 
-    // Search Query State
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
