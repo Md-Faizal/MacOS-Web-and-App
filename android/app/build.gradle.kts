@@ -8,7 +8,7 @@ android {
     namespace = "com.example.macosbusinesssuite"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.macosbusinesssuite"
+        applicationId = "com.omniflow.erp"
         minSdk = 24
         targetSdk = 36
         val providedVersionCode = (project.findProperty("versionCode") ?: "1").toString().trim()
