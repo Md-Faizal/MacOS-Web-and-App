@@ -323,7 +323,7 @@ fun ExecutiveDashboardView(
                         value = formatCurrency(kpi?.totalCollected ?: 0.0),
                         subtitle = "Net realization",
                         icon = Icons.Default.CheckCircle,
-                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_revenue")),
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_collected") || changedMetricKeys.contains("analytics_revenue")),
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         marqueeEnabled = marqueeEnabled
@@ -344,6 +344,7 @@ fun ExecutiveDashboardView(
                         value = formatCurrency(kpi?.totalReceivables ?: kpi?.receivables ?: 0.0),
                         subtitle = "Outstanding credit",
                         icon = Icons.Default.Warning,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_receivables")),
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         marqueeEnabled = marqueeEnabled
@@ -355,6 +356,7 @@ fun ExecutiveDashboardView(
                         value = formatCurrency(kpi?.totalCreditNotes ?: 0.0),
                         subtitle = "Returns & adjustments",
                         icon = Icons.Default.Receipt,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_credit_notes")),
                         containerColor = Color(0xFFFEF3C7),
                         contentColor = Color(0xFF92400E),
                         marqueeEnabled = marqueeEnabled
@@ -375,6 +377,7 @@ fun ExecutiveDashboardView(
                         value = "${kpi?.collectionRatePercent ?: 0.0}%",
                         subtitle = "Realization efficiency",
                         icon = Icons.Default.Speed,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_collection_rate")),
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                         marqueeEnabled = marqueeEnabled
@@ -386,6 +389,7 @@ fun ExecutiveDashboardView(
                         value = "${kpi?.totalCustomers ?: kpi?.activeCustomers ?: 0}",
                         subtitle = "Registered accounts",
                         icon = Icons.Default.People,
+                        modifier = Modifier.m3ValueChangeHighlight(changedMetricKeys.contains("analytics_active_customers")),
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         marqueeEnabled = marqueeEnabled
@@ -478,7 +482,9 @@ fun ExecutiveDashboardView(
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .m3ValueChangeHighlight(changedMetricKeys.contains("analytics_top_products"), shape = RoundedCornerShape(12.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -538,7 +544,9 @@ fun ExecutiveDashboardView(
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .m3ValueChangeHighlight(changedMetricKeys.contains("analytics_top_customers"), shape = RoundedCornerShape(12.dp))
                 ) {
                     Row(
                         modifier = Modifier

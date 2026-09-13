@@ -393,7 +393,9 @@ fun BillingDashboardScreen(
                                 subtitle = "Unique customers",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.Default.People,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("active_customers")),
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 contentColor = MaterialTheme.colorScheme.onSurface,
                                 marqueeEnabled = marqueeEnabled
@@ -404,7 +406,9 @@ fun BillingDashboardScreen(
                                 subtitle = "Payment ratio",
                                 rangeText = metrics.rangeText,
                                 icon = Icons.Default.PieChart,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .m3ValueChangeHighlight(changedCardKeys.contains("collection_rate")),
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 contentColor = MaterialTheme.colorScheme.onSurface,
                                 marqueeEnabled = marqueeEnabled
@@ -434,7 +438,10 @@ fun BillingDashboardScreen(
 
                 // 3.1 Order Metrics Summary
                 item {
-                    OrderMetricsSummaryCard(orderMetrics = orderMetrics)
+                    OrderMetricsSummaryCard(
+                        orderMetrics = orderMetrics,
+                        isHighlighted = changedCardKeys.contains("order_metrics")
+                    )
                 }
 
                 // 4. Payment Methods Split Donut Chart
@@ -450,7 +457,9 @@ fun BillingDashboardScreen(
                 // Order Stage Pipeline Summary (Added throughput context)
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .m3ValueChangeHighlight(changedCardKeys.contains("order_pipeline"), shape = RoundedCornerShape(20.dp)),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
@@ -539,7 +548,9 @@ fun BillingDashboardScreen(
                 // Top Performers (Products & Customers)
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .m3ValueChangeHighlight(changedCardKeys.contains("top_performers"), shape = RoundedCornerShape(20.dp)),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
@@ -1311,9 +1322,14 @@ fun OrderThroughputDonutCard(orderMetrics: OrderMetricsState) {
 }
 
 @Composable
-fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
+fun OrderMetricsSummaryCard(
+    orderMetrics: OrderMetricsState,
+    isHighlighted: Boolean = false
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .m3ValueChangeHighlight(isHighlighted, shape = RoundedCornerShape(20.dp)),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
     ) {
@@ -1332,13 +1348,15 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
                     title = "Total Orders",
                     value = orderMetrics.totalOrders.toString(),
                     subtitle = "Issued",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
                 SummaryMetricCard(
                     title = "Fulfilled",
                     value = orderMetrics.fulfilledOrdersCount.toString(),
                     subtitle = "Completed",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
             }
 
@@ -1347,13 +1365,15 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
                     title = "Pending",
                     value = orderMetrics.pendingOrdersCount.toString(),
                     subtitle = "In pipeline",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
                 SummaryMetricCard(
                     title = "Delivered",
                     value = orderMetrics.totalDeliveredQty.toString(),
                     subtitle = "Qty",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
             }
 
@@ -1362,13 +1382,15 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
                     title = "Paid on Orders",
                     value = "₹${formatCurrency(orderMetrics.totalPaidOnOrders)}",
                     subtitle = "Settled",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
                 SummaryMetricCard(
                     title = "Order Value",
                     value = "₹${formatCurrency(orderMetrics.totalOrderedValue)}",
                     subtitle = "Total",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
             }
 
@@ -1377,13 +1399,15 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
                     title = "Fulfillment Ratio",
                     value = "${String.format(Locale.getDefault(), "%.1f", orderMetrics.fulfillmentQtyRatio)}%",
                     subtitle = "Items ratio",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
                 SummaryMetricCard(
                     title = "Settlement Ratio",
                     value = "${String.format(Locale.getDefault(), "%.1f", orderMetrics.settlementPaidRatio)}%",
                     subtitle = "Payment ratio",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
             }
 
@@ -1393,13 +1417,15 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
                     title = "Unsettled Value",
                     value = "₹${formatCurrency(unsettled)}",
                     subtitle = "Pending receivables",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
                 SummaryMetricCard(
                     title = "Fulfillment Speed",
                     value = orderMetrics.fulfillmentSpeedDaysText,
                     subtitle = "Avg delivery time",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isHighlighted = isHighlighted
                 )
             }
         }
@@ -1407,9 +1433,16 @@ fun OrderMetricsSummaryCard(orderMetrics: OrderMetricsState) {
 }
 
 @Composable
-fun SummaryMetricCard(title: String, value: String, subtitle: String, modifier: Modifier = Modifier) {
+fun SummaryMetricCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    isHighlighted: Boolean = false
+) {
     Column(
         modifier = modifier
+            .m3ValueChangeHighlight(isHighlighted, shape = RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
             .padding(12.dp)
     ) {

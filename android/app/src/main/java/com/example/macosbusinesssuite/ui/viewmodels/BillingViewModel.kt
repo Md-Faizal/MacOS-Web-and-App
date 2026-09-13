@@ -251,8 +251,15 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
             val prevBilled = _dashboardMetrics.value.totalBilled
             val prevCollected = _dashboardMetrics.value.totalPaid
             val prevOutstanding = _dashboardMetrics.value.amountDue
+            val prevOverdue = _dashboardMetrics.value.overdueAmount
+            val prevActiveCustomers = _dashboardMetrics.value.activeCustomersCount
+            val prevCollectionRate = _dashboardMetrics.value.collectionRatePercent
             val prevBillsCount = _bills.value.size
             val prevOrdersCount = _orders.value.size
+            val prevTotalOrders = _orderMetrics.value.totalOrders
+            val prevOrderDeliveredVal = _orderMetrics.value.totalDeliveredValue
+            val prevTopProducts = _topProducts.value
+            val prevTopCustomers = _topCustomers.value
 
             _isLoading.value = true
             _isSyncingLive.value = true
@@ -351,15 +358,36 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 val newBilled = _dashboardMetrics.value.totalBilled
                 val newCollected = _dashboardMetrics.value.totalPaid
                 val newOutstanding = _dashboardMetrics.value.amountDue
+                val newOverdue = _dashboardMetrics.value.overdueAmount
+                val newActiveCustomers = _dashboardMetrics.value.activeCustomersCount
+                val newCollectionRate = _dashboardMetrics.value.collectionRatePercent
                 val newBillsCount = _bills.value.size
                 val newOrdersCount = _orders.value.size
+                val newTotalOrders = _orderMetrics.value.totalOrders
+                val newOrderDeliveredVal = _orderMetrics.value.totalDeliveredValue
+                val newTopProducts = _topProducts.value
+                val newTopCustomers = _topCustomers.value
 
                 val changed = mutableSetOf<String>()
                 if (prevBilled != newBilled && prevBilled > 0.0) changed.add("total_billed")
                 if (prevCollected != newCollected && prevCollected > 0.0) changed.add("total_collected")
-                if (prevOutstanding != newOutstanding && prevOutstanding > 0.0) changed.add("outstanding")
+                if (prevOutstanding != newOutstanding && prevOutstanding > 0.0) {
+                    changed.add("outstanding")
+                    changed.add("amount_due")
+                }
+                if (prevOverdue != newOverdue && prevOverdue > 0.0) changed.add("overdue_amount")
+                if (prevActiveCustomers != newActiveCustomers && prevActiveCustomers > 0) changed.add("active_customers")
+                if (prevCollectionRate != newCollectionRate && prevCollectionRate > 0.0) changed.add("collection_rate")
                 if (prevBillsCount != newBillsCount && prevBillsCount > 0) changed.add("bills_count")
                 if (prevOrdersCount != newOrdersCount && prevOrdersCount > 0) changed.add("orders_count")
+                if (prevTotalOrders != newTotalOrders && prevTotalOrders > 0) {
+                    changed.add("order_metrics")
+                    changed.add("order_pipeline")
+                } else if (prevOrderDeliveredVal != newOrderDeliveredVal && prevOrderDeliveredVal > 0.0) {
+                    changed.add("order_metrics")
+                }
+                if (prevTopProducts.isNotEmpty() && prevTopProducts != newTopProducts) changed.add("top_performers")
+                if (prevTopCustomers.isNotEmpty() && prevTopCustomers != newTopCustomers) changed.add("top_performers")
 
                 if (changed.isNotEmpty()) {
                     _changedCardKeys.value = changed

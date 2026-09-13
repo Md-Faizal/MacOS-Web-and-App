@@ -2233,6 +2233,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val kpiRes = service.getExecutiveKPI()
                 if (kpiRes.isSuccessful) {
                     val newKPI = kpiRes.body()
+                    if (_isDataCached.value && newKPI != null && _executiveKPI.value != null) {
+                        val oldKPI = _executiveKPI.value!!
+                        val oldRev = oldKPI.totalBilled.takeIf { it > 0.0 } ?: oldKPI.revenue
+                        val newRev = newKPI.totalBilled.takeIf { it > 0.0 } ?: newKPI.revenue
+                        if (oldRev != newRev && oldRev > 0.0) {
+                            addChangedMetric("analytics_revenue")
+                        }
+                        val oldCollected = oldKPI.totalCollected
+                        val newCollected = newKPI.totalCollected
+                        if (oldCollected != newCollected && oldCollected > 0.0) {
+                            addChangedMetric("analytics_collected")
+                        }
+                        val oldRec = oldKPI.totalReceivables.takeIf { it > 0.0 } ?: oldKPI.receivables
+                        val newRec = newKPI.totalReceivables.takeIf { it > 0.0 } ?: newKPI.receivables
+                        if (oldRec != newRec && oldRec > 0.0) {
+                            addChangedMetric("analytics_receivables")
+                        }
+                        if (oldKPI.totalCreditNotes != newKPI.totalCreditNotes && oldKPI.totalCreditNotes > 0.0) {
+                            addChangedMetric("analytics_credit_notes")
+                        }
+                        if (oldKPI.collectionRatePercent != newKPI.collectionRatePercent && oldKPI.collectionRatePercent > 0.0) {
+                            addChangedMetric("analytics_collection_rate")
+                        }
+                        val oldCust = oldKPI.totalCustomers.takeIf { it > 0 } ?: oldKPI.activeCustomers
+                        val newCust = newKPI.totalCustomers.takeIf { it > 0 } ?: newKPI.activeCustomers
+                        if (oldCust != newCust && oldCust > 0) {
+                            addChangedMetric("analytics_active_customers")
+                        }
+                    }
                     _executiveKPI.value = newKPI
                     val currentUserId = sessionManager.userId
                     val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
@@ -2259,6 +2288,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val topProdRes = service.getTopProducts()
                 if (topProdRes.isSuccessful) {
                     val topProds = topProdRes.body() ?: emptyList()
+                    if (_isDataCached.value && _topProducts.value.isNotEmpty() && _topProducts.value != topProds) {
+                        addChangedMetric("analytics_top_products")
+                    }
                     _topProducts.value = topProds
                     val currentUserId = sessionManager.userId
                     val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
@@ -2271,6 +2303,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val topCustRes = service.getTopCustomers()
                 if (topCustRes.isSuccessful) {
                     val topCusts = topCustRes.body() ?: emptyList()
+                    if (_isDataCached.value && _topCustomers.value.isNotEmpty() && _topCustomers.value != topCusts) {
+                        addChangedMetric("analytics_top_customers")
+                    }
                     _topCustomers.value = topCusts
                     val currentUserId = sessionManager.userId
                     val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
