@@ -24,7 +24,7 @@ interface ApiService {
     suspend fun logoutMobileSession(@Body request: MobileRefreshRequest): Response<ApiResponse<Unit>>
 
     @POST("auth/google/worker-login")
-    suspend fun googleWorkerLogin(@Body request: Map<String, Any?>): Response<Map<String, Any?>>
+    suspend fun googleWorkerLogin(@Body request: GoogleWorkerLoginRequest): Response<com.google.gson.JsonObject>
 
     @GET("auth/worker/status")
     suspend fun checkWorkerStatus(
@@ -32,7 +32,7 @@ interface ApiService {
         @Query("email") email: String? = null,
         @Query("platform") platform: String? = null,
         @Query("deviceName") deviceName: String? = null
-    ): Response<Map<String, Any?>>
+    ): Response<com.google.gson.JsonObject>
 
     @POST("auth/logout")
     suspend fun logout(): Response<ApiResponse<Unit>>

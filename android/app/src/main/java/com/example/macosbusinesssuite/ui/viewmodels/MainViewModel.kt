@@ -839,14 +839,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val service = NetworkClient.getService(sessionManager)
                 val response = service.googleWorkerLogin(
-                    mapOf(
-                        "idToken" to idToken,
-                        "deviceName" to android.os.Build.MODEL,
-                        "deviceType" to "Android"
+                    GoogleWorkerLoginRequest(
+                        idToken = idToken,
+                        deviceName = android.os.Build.MODEL,
+                        deviceType = "Android"
                     )
                 )
                 if (response.isSuccessful && response.body() != null) {
-                    val body = response.body()!!
+                    val jsonObject = response.body()!!
+                    val mapType = object : TypeToken<Map<String, Any?>>() {}.type
+                    val body: Map<String, Any?> = Gson().fromJson(jsonObject, mapType) ?: emptyMap()
+
                     val status = body["status"] as? String ?: "pending"
                     if (status == "active") {
                         val token = body["token"] as? String
@@ -906,7 +909,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     deviceName = android.os.Build.MODEL
                 )
                 if (response.isSuccessful && response.body() != null) {
-                    val body = response.body()!!
+                    val jsonObject = response.body()!!
+                    val mapType = object : TypeToken<Map<String, Any?>>() {}.type
+                    val body: Map<String, Any?> = Gson().fromJson(jsonObject, mapType) ?: emptyMap()
+
                     val isApproved = body["approved"] == true || body["status"] == "active"
                     if (isApproved) {
                         val token = body["token"] as? String

@@ -55,6 +55,14 @@ data class MobileRefreshRequest(
     val refreshToken: String
 )
 
+data class GoogleWorkerLoginRequest(
+    val idToken: String,
+    val deviceName: String? = null,
+    val deviceType: String? = "Android",
+    val clientType: String? = "native_android"
+)
+
+
 data class UserProfile(
     val id: String? = null,
     val username: String? = null,
