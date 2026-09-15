@@ -69,6 +69,9 @@
   <link rel="stylesheet" href="/shared/connectivity.css">
   <link rel="stylesheet" href="/styles/auth/lockscreen.css">
   <link rel="stylesheet" href="/styles/auth/modals.css">
+
+  <!-- MacOS Cursor -->
+  <link rel="stylesheet" href="/shared/macos-cursor.css">
 </head>
 
 <body data-unlock-state="locked">
@@ -579,6 +582,9 @@
       if (!navigator.onLine) showToast('No connection', 'offline', 3000);
     })();
   </script>
+
+  <!-- MacOS Cursor Engine -->
+  <script src="/shared/macos-cursor.js" defer></script>
 </body>
 
 </html>
