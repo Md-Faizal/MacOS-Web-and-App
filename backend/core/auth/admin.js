@@ -398,6 +398,116 @@ module.exports = function(db) {
     res.json({ logs });
   };
 
+  const getAccountsGraph = (req, res) => {
+    try {
+      // Query all users (both owner and workers)
+      const allUsers = db.prepare(`
+        SELECT u.id, u.username, u.full_name, u.email, u.google_id, u.google_email, u.google_name, u.google_picture,
+               u.role, u.status, u.invite_code, u.created_at, u.last_login,
+               (SELECT d.client_type FROM user_devices d WHERE d.user_id = u.id ORDER BY d.last_seen DESC LIMIT 1) as last_client_type,
+               (SELECT d.device_type FROM user_devices d WHERE d.user_id = u.id ORDER BY d.last_seen DESC LIMIT 1) as last_device_type,
+               (SELECT a.platform FROM activity_log a WHERE a.user_id = u.id ORDER BY a.created_at DESC LIMIT 1) as last_platform
+        FROM users u
+        ORDER BY 
+          CASE u.role 
+            WHEN 'owner' THEN 0 
+            ELSE 1 
+          END,
+          CASE u.status
+            WHEN 'active' THEN 0
+            WHEN 'pending' THEN 1
+            WHEN 'pending_deletion' THEN 2
+            WHEN 'suspended' THEN 3
+            ELSE 4
+          END,
+          u.created_at ASC
+      `).all();
+
+      // Query all identities
+      let identities = [];
+      try {
+        identities = db.prepare(`
+          SELECT id, user_id, provider, provider_user_id, provider_email, is_verified, created_at
+          FROM user_identities
+        `).all();
+      } catch (_) {}
+
+      // Query all user_permissions
+      let permissions = [];
+      try {
+        permissions = db.prepare(`
+          SELECT user_id, module, can_view, can_create, can_edit, can_delete
+          FROM user_permissions
+        `).all();
+      } catch (_) {}
+
+      // Query contact access counts
+      let contactAccess = [];
+      try {
+        contactAccess = db.prepare(`
+          SELECT user_id, count(contact_id) as shared_contact_count
+          FROM user_contact_access
+          GROUP BY user_id
+        `).all();
+      } catch (_) {}
+
+      // Also fetch auth_credentials if present (for legacy admin check)
+      let legacyCredentials = [];
+      try {
+        legacyCredentials = db.prepare(`
+          SELECT id, user_role, updated_at FROM auth_credentials
+        `).all();
+      } catch (_) {}
+
+      // Detect unlinked / orphan credentials
+      let orphanIdentities = [];
+      try {
+        orphanIdentities = db.prepare(`
+          SELECT id, user_id, provider, provider_user_id, provider_email, created_at
+          FROM user_identities
+          WHERE user_id NOT IN (SELECT id FROM users)
+        `).all();
+      } catch (_) {}
+
+      let orphanLegacyCredentials = [];
+      try {
+        orphanLegacyCredentials = db.prepare(`
+          SELECT id, user_role, updated_at
+          FROM auth_credentials
+          WHERE id NOT IN (SELECT id FROM users) AND id NOT IN (SELECT username FROM users)
+        `).all();
+      } catch (_) {}
+
+      let unresolvedConflicts = [];
+      try {
+        unresolvedConflicts = db.prepare(`
+          SELECT id, provider, identity_key, provider_email, user_id, status, details, detected_at
+          FROM auth_identity_conflicts
+          WHERE status = 'unresolved'
+        `).all();
+      } catch (_) {}
+
+      res.json({
+        users: allUsers,
+        identities,
+        permissions,
+        contactAccess,
+        legacyCredentials,
+        unlinkedCredentials: {
+          orphanIdentities,
+          orphanLegacyCredentials,
+          unresolvedConflicts,
+          totalUnlinked: orphanIdentities.length + orphanLegacyCredentials.length + unresolvedConflicts.length
+        },
+        modules: MODULES,
+        defaultWorkerApps: DEFAULT_WORKER_APPS
+      });
+    } catch (err) {
+      console.error('getAccountsGraph error:', err);
+      res.status(500).json({ error: 'Failed to retrieve accounts graph data' });
+    }
+  };
+
   return { 
     ownerOnly, 
     listUsers, 
@@ -410,6 +520,7 @@ module.exports = function(db) {
     getPermissions,
     updateUserPermissions,
     deleteUser,
-    getAuditLogs
+    getAuditLogs,
+    getAccountsGraph
   };
 };

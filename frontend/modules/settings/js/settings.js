@@ -8,7 +8,7 @@ import { AppearanceComponent } from './Appearance.js';
 import { StorageComponent } from './Storage.js';
 import { BackupComponent } from './BackupComponent.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
-import { AdminComponent } from './Admin.js';
+import { WorkerAccessComponent as AdminComponent } from './workers/WorkerAccessComponent.js';
 import { SystemLogsComponent } from './SystemLogs.js';
 
 export class SettingsApp extends AppWindow {

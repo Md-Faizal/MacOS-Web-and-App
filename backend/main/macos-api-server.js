@@ -415,6 +415,7 @@ app.put('/api/admin/users/:userId/permissions', authModule.authMiddleware, admin
 app.delete('/api/admin/users/:userId', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.deleteUser);
 app.get('/api/admin/users/:userId/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
 app.get('/api/admin/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
+app.get('/api/admin/accounts-graph', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAccountsGraph);
 app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
