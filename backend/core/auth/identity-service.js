@@ -48,9 +48,30 @@ function createIdentityService(db) {
     }
 
     const userIds = [...matches.keys()];
-    const targetUser = userIds.length === 1
-      ? db.prepare('SELECT * FROM users WHERE id = ?').get(userIds[0])
-      : null;
+    
+    // Resolve targetUser, prioritizing active/pending accounts over archived/deleted ones
+    let targetUser = null;
+    let resolvedUserIds = userIds;
+
+    if (userIds.length === 1) {
+      targetUser = db.prepare('SELECT * FROM users WHERE id = ?').get(userIds[0]);
+    } else if (userIds.length > 1) {
+      const allMatchedUsers = userIds
+        .map(id => db.prepare('SELECT * FROM users WHERE id = ?').get(id))
+        .filter(Boolean);
+
+      const activeUsers = allMatchedUsers.filter(u => u.status !== 'deleted');
+      if (activeUsers.length === 1) {
+        // Exactly one active/pending user matches; ignore archived deleted records
+        targetUser = activeUsers[0];
+        resolvedUserIds = [targetUser.id];
+      } else if (activeUsers.length === 0 && allMatchedUsers.length > 0) {
+        // All matches are deleted accounts; pick the most recently updated/created one to re-activate
+        allMatchedUsers.sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+        targetUser = allMatchedUsers[0];
+        resolvedUserIds = [targetUser.id];
+      }
+    }
 
     return {
       provider,
@@ -58,7 +79,7 @@ function createIdentityService(db) {
       providerEmail: normalizedProviderEmail,
       canonical,
       targetUser,
-      userIds,
+      userIds: resolvedUserIds,
       matches: Object.fromEntries(matches)
     };
   };
