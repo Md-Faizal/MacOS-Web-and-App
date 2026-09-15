@@ -53,6 +53,9 @@ export class SettingsApp extends AppWindow {
   }
 
   close() {
+    if (this.adminModule?.destroy) {
+      this.adminModule.destroy();
+    }
     super.close();
   }
 
@@ -70,6 +73,9 @@ export class SettingsApp extends AppWindow {
               if (node === appWindow) {
                 console.log('[Settings] Cleaning up wallpaper resources');
                 this.cleanupWallpapers();
+                if (this.adminModule?.destroy) {
+                  this.adminModule.destroy();
+                }
                 observer.disconnect();
               }
             });

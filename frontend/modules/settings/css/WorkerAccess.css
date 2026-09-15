@@ -290,6 +290,504 @@
 }
 
 /* ==========================================================================
+   PORTAL & OVERLAY
+   ========================================================================== */
+.worker-access-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000000;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color: var(--wa-text-primary);
+}
+
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: var(--wa-modal-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 10000000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.admin-modal-overlay.show {
+  display: flex;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Sub-modals stacked on top */
+#contactPickerModal.admin-modal-overlay,
+#appFunctionalSettingsModal.admin-modal-overlay {
+  z-index: 10000010;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+#workerHistoryModal.admin-modal-overlay {
+  z-index: 10000020;
+}
+
+/* ==========================================================================
+   MODAL DIALOG SHELL
+   ========================================================================== */
+.admin-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(88vh, 680px);
+  background: var(--wa-modal-bg);
+  border: 1px solid var(--wa-modal-border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px var(--wa-modal-border),
+    0 8px 32px rgba(0, 0, 0, 0.18),
+    0 32px 80px rgba(0, 0, 0, 0.28);
+  transform: scale(0.96) translateY(10px);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  margin: auto;
+}
+
+[data-theme="dark"] .admin-modal {
+  box-shadow:
+    0 0 0 1px var(--wa-modal-border),
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 32px 80px rgba(0, 0, 0, 0.65);
+}
+
+.admin-modal-overlay.show .admin-modal {
+  transform: scale(1) translateY(0);
+}
+
+/* ==========================================================================
+   MODAL HEADER
+   ========================================================================== */
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--wa-card-border);
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.modal-header-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--wa-text-primary);
+  line-height: 1.2;
+}
+
+/* Explicit dark-mode contrast guarantee */
+[data-theme="dark"] .modal-title,
+[data-theme="dark"] .app-toggle-title {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .modal-subtitle {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Status select inline with title */
+.modal-status-inline {
+  display: inline-flex;
+  align-items: center;
+}
+
+.modal-status-select {
+  appearance: auto;
+  padding: 2px 6px 2px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  height: 22px;
+  border-radius: 20px;
+  background: var(--wa-success-bg);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: var(--wa-success);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.modal-status-select option[value="suspended"] {
+  color: var(--wa-text-primary);
+}
+
+.modal-status-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--wa-accent-glow);
+}
+
+.modal-subtitle {
+  font-size: 12px;
+  color: var(--wa-text-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Close button — macOS circle style */
+.modal-close-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(120, 120, 128, 0.18);
+  color: var(--wa-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  padding: 0;
+  margin-top: 1px;
+}
+
+.modal-close-btn:hover {
+  background: rgba(255, 59, 48, 0.2);
+  color: var(--wa-danger);
+}
+
+[data-theme="dark"] .modal-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .modal-close-btn:hover {
+  background: rgba(255, 69, 58, 0.3);
+  color: #ff453a;
+}
+
+/* ==========================================================================
+   MODAL BODY
+   ========================================================================== */
+.modal-body {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  width: 100%;
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.modal-body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+
+/* ==========================================================================
+   SECTION BAR (label + preset pills)
+   ========================================================================== */
+.modal-section-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.modal-section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--wa-text-muted);
+}
+
+.modal-preset-pills {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.preset-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--wa-card-border);
+  background: var(--wa-card-bg);
+  color: var(--wa-text-secondary);
+  transition: all 0.15s ease;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.preset-pill:hover {
+  background: var(--wa-accent);
+  border-color: var(--wa-accent);
+  color: #fff;
+}
+
+/* ==========================================================================
+   MODAL FOOTER
+   ========================================================================== */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--wa-card-border);
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.modal-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Modal buttons */
+.modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  letter-spacing: -0.1px;
+}
+
+.modal-btn-primary {
+  background: var(--wa-accent);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(var(--wa-accent-rgb), 0.35);
+}
+
+.modal-btn-primary:hover {
+  opacity: 0.88;
+  box-shadow: 0 4px 14px rgba(var(--wa-accent-rgb), 0.45);
+}
+
+.modal-btn-ghost {
+  background: var(--wa-card-bg);
+  color: var(--wa-text-primary);
+  border: 1px solid var(--wa-card-border);
+}
+
+.modal-btn-ghost:hover {
+  background: var(--wa-card-hover-bg);
+  border-color: var(--wa-card-hover-border);
+}
+
+.modal-btn-danger {
+  background: var(--wa-danger-bg);
+  color: var(--wa-danger);
+  border: 1px solid rgba(var(--wa-danger-rgb, 255,59,48), 0.25);
+}
+
+.modal-btn-danger:hover {
+  background: var(--wa-danger);
+  color: #ffffff;
+  border-color: var(--wa-danger);
+}
+
+/* Empty state */
+.modal-empty-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--wa-text-muted);
+  font-size: 12px;
+}
+
+/* ==========================================================================
+   APP TOGGLE GRID & CARDS
+   ========================================================================== */
+.apps-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app-toggle-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  background: var(--wa-card-bg);
+  border: 1.5px solid var(--wa-card-border);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+  min-height: 46px;
+  overflow: hidden;
+}
+
+.app-toggle-card:hover {
+  background: var(--wa-card-hover-bg);
+  border-color: var(--wa-card-hover-border);
+}
+
+.app-toggle-card.active {
+  background: var(--wa-accent-glow);
+  border-color: var(--wa-accent);
+  box-shadow: 0 0 0 1px var(--wa-accent);
+}
+
+.app-toggle-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.app-toggle-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-toggle-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--wa-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-toggle-desc {
+  font-size: 10.5px;
+  color: var(--wa-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.app-card-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--wa-accent-glow);
+  color: var(--wa-accent);
+  border: 1px solid rgba(var(--wa-accent-rgb), 0.3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.app-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* Configure arrow button */
+.app-configure-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1.5px solid var(--wa-card-border);
+  background: var(--wa-card-bg);
+  color: var(--wa-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.app-configure-btn:hover {
+  background: var(--wa-accent);
+  border-color: var(--wa-accent);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(var(--wa-accent-rgb), 0.4);
+}
+
+/* Toggle switch */
+.app-toggle-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 18px;
+  border-radius: 18px;
+  background: rgba(120, 120, 128, 0.28);
+  transition: background 0.2s ease;
+}
+
+.app-toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-toggle-card.active .app-toggle-switch,
+.app-toggle-switch.active {
+  background: var(--wa-accent);
+}
+
+.app-toggle-card.active .app-toggle-switch::after,
+.app-toggle-switch.active::after {
+  transform: translateX(14px);
+}
+
+/* ==========================================================================
    WORKER CARDS & GRID
    ========================================================================== */
 .worker-grid {
@@ -573,279 +1071,74 @@
   display: inline-block;
 }
 
-/* ==========================================================================
-   MODALS
-   ========================================================================== */
-.admin-modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--wa-modal-overlay);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  opacity: 0;
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 20px;
-}
-
-.admin-modal-overlay.show {
-  display: flex;
-  opacity: 1;
-}
-
-.admin-modal {
-  background: var(--wa-modal-bg);
-  border: 1px solid var(--wa-modal-border);
-  border-radius: 16px;
-  box-shadow: var(--wa-shadow-md), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  width: 100%;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transform: scale(0.96);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.admin-modal-overlay.show .admin-modal {
-  transform: scale(1);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 18px 24px;
-  border-bottom: 1px solid var(--wa-card-border);
-  flex-shrink: 0;
-}
-
-.modal-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--wa-text-primary);
-}
-
-.modal-close {
-  background: transparent;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--wa-text-muted);
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  background: var(--wa-card-hover-bg);
-  color: var(--wa-text-primary);
-}
-
-.modal-body {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 24px;
-  border-top: 1px solid var(--wa-card-border);
-  background: rgba(0, 0, 0, 0.02);
-  flex-shrink: 0;
-}
-
-[data-theme="dark"] .modal-footer {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-/* ==========================================================================
-   APP TOGGLE GRID & CARDS (Permissions Modal)
-   ========================================================================== */
-.apps-toggle-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-@media (max-width: 600px) {
-  .apps-toggle-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.app-toggle-card {
-  background: var(--wa-card-bg);
-  border: 1px solid var(--wa-card-border);
-  border-radius: 10px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.app-toggle-card:hover {
-  background: var(--wa-card-hover-bg);
-  border-color: var(--wa-card-hover-border);
-}
-
-.app-toggle-card.active {
-  border-color: var(--wa-accent);
-  background: var(--wa-accent-glow);
-}
-
-.app-toggle-icon {
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.app-toggle-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.app-toggle-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--wa-text-primary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.app-toggle-desc {
-  font-size: 11px;
-  color: var(--wa-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-card-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--wa-accent-glow);
-  color: var(--wa-accent);
-  border: 1px solid rgba(var(--wa-accent-rgb), 0.3);
-}
-
-.app-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.app-configure-btn {
-  background: var(--wa-card-bg);
-  border: 1px solid var(--wa-card-border);
-  color: var(--wa-text-muted);
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.app-configure-btn:hover {
-  background: var(--wa-accent);
-  color: #ffffff;
-  border-color: var(--wa-accent);
-}
-
-.app-toggle-switch {
-  width: 36px;
-  height: 20px;
-  border-radius: 20px;
-  background: rgba(120, 120, 128, 0.32);
-  position: relative;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.app-toggle-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.app-toggle-card.active .app-toggle-switch,
-.app-toggle-switch.active {
-  background: var(--wa-accent);
-}
-
-.app-toggle-card.active .app-toggle-switch::after,
-.app-toggle-switch.active::after {
-  transform: translateX(16px);
-}
-
-/* Preset pills in modal */
-.btn-preset-pill {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--wa-card-border);
-  background: var(--wa-card-bg);
-  color: var(--wa-text-secondary);
-  transition: all 0.15s ease;
-}
-
-.btn-preset-pill:hover {
-  background: var(--wa-card-hover-bg);
-  color: var(--wa-text-primary);
-}
 
 /* ==========================================================================
    CONTACT PICKER SUB-MODAL
    ========================================================================== */
+.contact-search-row {
+  margin-bottom: 8px;
+}
+
+.modal-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--wa-input-bg);
+  border: 1px solid var(--wa-input-border);
+  color: var(--wa-input-text);
+  font-size: 12.5px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modal-search-input:focus {
+  outline: none;
+  border-color: var(--wa-accent);
+  box-shadow: 0 0 0 3px var(--wa-accent-glow);
+}
+
+.modal-search-input::placeholder {
+  color: var(--wa-text-muted);
+}
+
+.contact-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.contact-count-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wa-accent);
+}
+
 .contact-picker-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 380px;
+  gap: 3px;
+  max-height: 280px;
   overflow-y: auto;
   border: 1px solid var(--wa-card-border);
   border-radius: 10px;
-  padding: 6px;
+  padding: 4px;
   background: var(--wa-card-bg);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+
+.contact-picker-list::-webkit-scrollbar { display: none; }
 
 .contact-picker-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.12s ease;
   border: 1px solid transparent;
 }
 
@@ -859,19 +1152,20 @@
 }
 
 .contact-checkbox {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   accent-color: var(--wa-accent);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .contact-avatar {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--wa-accent-glow);
   color: var(--wa-accent);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -890,14 +1184,15 @@
   color: var(--wa-text-primary);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  line-height: 1.25;
 }
 
 .contact-type-tag {
   font-size: 9.5px;
   font-weight: 600;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 20px;
   background: rgba(120, 120, 128, 0.15);
   color: var(--wa-text-muted);
 }
@@ -905,7 +1200,7 @@
 .badge-excluded {
   font-size: 9.5px;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 20px;
   background: var(--wa-danger-bg);
   color: var(--wa-danger);
 }
@@ -916,6 +1211,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* Functional options list */
+.functional-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ==========================================================================
@@ -1003,10 +1306,24 @@
   line-height: 1.4;
 }
 
+.lifecycle-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lifecycle-timeline::-webkit-scrollbar {
+  display: none;
+}
+
 .lifecycle-audit-item {
   display: flex;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: var(--wa-card-bg);
   border-radius: 6px;
   font-size: 11px;

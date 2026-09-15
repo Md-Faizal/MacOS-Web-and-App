@@ -22,6 +22,7 @@ export class WorkerAccessComponent {
     this.currentTab = 'workers';
     this.workerFilter = 'all';
     this.eventSource = null;
+    this.portalContainer = null;
 
     // Sub-views
     this.workersListView = new WorkersListView(this);
@@ -226,123 +227,12 @@ export class WorkerAccessComponent {
             </div>
           </div>
         </div>
-
-        <!-- Worker Edit Modal -->
-        <div id="workerEditModal" class="admin-modal-overlay">
-          <div class="admin-modal" style="max-width: 620px;">
-            <div class="modal-header">
-              <div>
-                <h3 class="modal-title" id="modalWorkerName">Edit Worker</h3>
-                <div id="modalWorkerEmails" style="font-size:12px; color:var(--wa-text-muted); margin-top:3px;"></div>
-              </div>
-              <button class="modal-close" id="closeModalBtn">×</button>
-            </div>
-            <div class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Account Status</label>
-                <select id="modalWorkerStatus" class="form-input">
-                  <option value="active">Active (Access Granted)</option>
-                  <option value="suspended">Suspended (Access Revoked)</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                  <label class="form-label" style="margin-bottom:0;">App Permissions & Functional Overrides</label>
-                  <div style="display:flex; gap:6px;">
-                    <button type="button" class="btn-preset-pill" id="btnPresetDefault">Default (4 Apps)</button>
-                    <button type="button" class="btn-preset-pill" id="btnSelectAllApps">Select All</button>
-                    <button type="button" class="btn-preset-pill" id="btnClearAllApps">Clear</button>
-                  </div>
-                </div>
-                <p style="font-size:11.5px; color:var(--wa-text-muted); margin-bottom:10px;">Select which applications will render on this worker's home desktop, and click ➔ on any app to configure granular functional rules or shared contacts.</p>
-                <div class="apps-toggle-grid" id="modalAppsToggleGrid"></div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-danger" id="modalDeleteBtn" style="margin-right: auto;">Delete Worker</button>
-              <button class="btn-secondary" id="modalCancelBtn">Cancel</button>
-              <button class="btn-primary" id="modalSaveBtn">Save Changes</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Contact Picker Sub-Modal -->
-        <div id="contactPickerModal" class="admin-modal-overlay" style="z-index: 110;">
-          <div class="admin-modal" style="max-width: 580px; max-height: 85vh;">
-            <div class="modal-header">
-              <div>
-                <h3 class="modal-title">Shared Contacts</h3>
-                <p style="font-size: 11px; color:var(--wa-text-muted); margin: 2px 0 0 0;" id="contactPickerSubtitle">Select customers shared with this worker</p>
-              </div>
-              <button class="modal-close" id="closeContactPickerBtn">×</button>
-            </div>
-            <div class="modal-body" style="padding: 16px 20px;">
-              <div style="margin-bottom: 12px;">
-                <input class="form-input contact-picker-search" id="contactPickerSearch" placeholder="🔍 Search customers by name, phone, email, GSTIN...">
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 11.5px;">
-                <div style="font-weight: 700; color: var(--wa-accent);" id="contactSelectionSummary">0 Selected</div>
-                <div style="display: flex; gap: 8px;">
-                  <button type="button" class="btn-preset-pill" id="btnSelectAllContacts">Select All</button>
-                  <button type="button" class="btn-preset-pill" id="btnClearAllContacts">Clear All</button>
-                </div>
-              </div>
-              <div class="contact-picker-list" id="contactPickerList">
-                <div style="text-align: center; padding: 24px; color: var(--wa-text-muted);">Loading contacts...</div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-primary" id="btnApplyContacts">Done</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Per-App Functional Settings Sub-Modal -->
-        <div id="appFunctionalSettingsModal" class="admin-modal-overlay" style="z-index: 110;">
-          <div class="admin-modal" style="max-width: 520px;">
-            <div class="modal-header">
-              <div>
-                <h3 class="modal-title" id="appFunctionalTitle">App Permissions</h3>
-                <p style="font-size: 11px; color:var(--wa-text-muted); margin: 2px 0 0 0;">Configure granular business rules for this worker</p>
-              </div>
-              <button class="modal-close" id="closeFunctionalModalBtn">×</button>
-            </div>
-            <div class="modal-body" style="padding: 16px 20px;">
-              <div id="appFunctionalOptionsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-primary" id="btnApplyFunctionalSettings">Done</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Worker Lifecycle History Modal -->
-        <div id="workerHistoryModal" class="admin-modal-overlay" style="z-index: 120;">
-          <div class="admin-modal" style="max-width: 560px; max-height: 85vh;">
-            <div class="modal-header">
-              <div>
-                <h3 class="modal-title" id="workerHistoryModalTitle">Lifecycle History</h3>
-                <p style="font-size: 11px; color:var(--wa-text-muted); margin: 2px 0 0 0;" id="workerHistoryModalSubtitle">Audit events and timeline</p>
-              </div>
-              <button class="modal-close" id="closeWorkerHistoryBtn">×</button>
-            </div>
-            <div class="modal-body" style="padding: 16px 20px;">
-              <div id="workerHistoryTimeline" class="lifecycle-timeline" style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;">
-                <div style="text-align: center; padding: 24px; color: var(--wa-text-muted);">Loading history...</div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-primary" id="btnCloseWorkerHistory">Close</button>
-            </div>
-          </div>
-        </div>
-
       </div>
     `;
 
+    this.portalContainer = this.mountModalsPortal();
     this.setupListeners();
-    this.modals.setupListeners(this.container);
+    this.modals.setupListeners(this.portalContainer, this.container);
     await this.refresh();
 
     // Setup realtime event stream
@@ -351,6 +241,159 @@ export class WorkerAccessComponent {
       this.eventSource = new EventSource('/api/realtime/events');
       this.eventSource.onmessage = () => this.refresh(false);
     } catch (_) {}
+  }
+
+  mountModalsPortal() {
+    let portal = document.getElementById('workerAccessModalsPortal');
+    if (!portal) {
+      portal = document.createElement('div');
+      portal.id = 'workerAccessModalsPortal';
+      portal.className = 'worker-access-portal';
+      document.body.appendChild(portal);
+    }
+
+    portal.innerHTML = `
+      <!-- Worker Edit Modal -->
+      <div id="workerEditModal" class="admin-modal-overlay">
+        <div class="admin-modal" style="max-width: 660px;">
+
+          <!-- Header -->
+          <div class="modal-header">
+            <div class="modal-header-left">
+              <div class="modal-title-row">
+                <h3 class="modal-title" id="modalWorkerName">Edit Worker</h3>
+                <div class="modal-status-inline" id="modalStatusInline">
+                  <select id="modalWorkerStatus" class="modal-status-select">
+                    <option value="active">● Active</option>
+                    <option value="suspended">○ Suspended</option>
+                  </select>
+                </div>
+              </div>
+              <p class="modal-subtitle" id="modalWorkerEmails"></p>
+            </div>
+            <button class="modal-close-btn" id="closeModalBtn" title="Close (Esc)" aria-label="Close">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Body -->
+          <div class="modal-body">
+            <div class="modal-section-bar">
+              <span class="modal-section-label">App Permissions &amp; Overrides</span>
+              <div class="modal-preset-pills">
+                <button type="button" class="preset-pill" id="btnPresetDefault">Default (4)</button>
+                <button type="button" class="preset-pill" id="btnSelectAllApps">All</button>
+                <button type="button" class="preset-pill" id="btnClearAllApps">Clear</button>
+              </div>
+            </div>
+            <div class="apps-toggle-grid" id="modalAppsToggleGrid"></div>
+          </div>
+
+          <!-- Footer -->
+          <div class="modal-footer">
+            <button class="modal-btn modal-btn-danger" id="modalDeleteBtn">Delete Worker</button>
+            <div class="modal-footer-actions">
+              <button class="modal-btn modal-btn-ghost" id="modalCancelBtn">Cancel</button>
+              <button class="modal-btn modal-btn-primary" id="modalSaveBtn">Save Changes</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Contact Picker Sub-Modal -->
+      <div id="contactPickerModal" class="admin-modal-overlay">
+        <div class="admin-modal" style="max-width: 520px;">
+          <div class="modal-header">
+            <div class="modal-header-left">
+              <h3 class="modal-title">Shared Contacts</h3>
+              <p class="modal-subtitle" id="contactPickerSubtitle">Select customers visible to this worker</p>
+            </div>
+            <button class="modal-close-btn" id="closeContactPickerBtn" aria-label="Close">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="contact-search-row">
+              <input class="modal-search-input" id="contactPickerSearch" placeholder="Search by name, phone, email, GSTIN…">
+            </div>
+            <div class="contact-controls-row">
+              <span class="contact-count-badge" id="contactSelectionSummary">0 Selected</span>
+              <div class="modal-preset-pills">
+                <button type="button" class="preset-pill" id="btnSelectAllContacts">Select All</button>
+                <button type="button" class="preset-pill" id="btnClearAllContacts">Clear</button>
+              </div>
+            </div>
+            <div class="contact-picker-list" id="contactPickerList">
+              <div class="modal-empty-state">Loading contacts…</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <div class="modal-footer-actions" style="margin-left: auto;">
+              <button class="modal-btn modal-btn-primary" id="btnApplyContacts">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-App Functional Settings Sub-Modal -->
+      <div id="appFunctionalSettingsModal" class="admin-modal-overlay">
+        <div class="admin-modal" style="max-width: 480px;">
+          <div class="modal-header">
+            <div class="modal-header-left">
+              <h3 class="modal-title" id="appFunctionalTitle">App Settings</h3>
+              <p class="modal-subtitle">Configure granular business rules for this worker</p>
+            </div>
+            <button class="modal-close-btn" id="closeFunctionalModalBtn" aria-label="Close">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="appFunctionalOptionsList" class="functional-options-list"></div>
+          </div>
+          <div class="modal-footer">
+            <div class="modal-footer-actions" style="margin-left: auto;">
+              <button class="modal-btn modal-btn-primary" id="btnApplyFunctionalSettings">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Worker Lifecycle History Modal -->
+      <div id="workerHistoryModal" class="admin-modal-overlay">
+        <div class="admin-modal" style="max-width: 520px;">
+          <div class="modal-header">
+            <div class="modal-header-left">
+              <h3 class="modal-title" id="workerHistoryModalTitle">Lifecycle History</h3>
+              <p class="modal-subtitle" id="workerHistoryModalSubtitle">Audit events and timeline</p>
+            </div>
+            <button class="modal-close-btn" id="closeWorkerHistoryBtn" aria-label="Close">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+                <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="workerHistoryTimeline" class="lifecycle-timeline">
+              <div class="modal-empty-state">Loading history…</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <div class="modal-footer-actions" style="margin-left: auto;">
+              <button class="modal-btn modal-btn-primary" id="btnCloseWorkerHistory">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return portal;
   }
 
   setupListeners() {
@@ -508,11 +551,11 @@ export class WorkerAccessComponent {
   }
 
   openWorkerEditModal(userId, isPending = false) {
-    this.modals.openWorkerEditModal(this.container, userId, isPending);
+    this.modals.openWorkerEditModal(this.portalContainer || document, userId, isPending);
   }
 
   openWorkerHistoryModal(userId) {
-    this.modals.openWorkerHistoryModal(this.container, userId);
+    this.modals.openWorkerHistoryModal(this.portalContainer || document, userId);
   }
 
   async changeWorkerStatus(userId, status) {
@@ -583,6 +626,18 @@ export class WorkerAccessComponent {
     } catch (err) {
       console.error('Deny request error:', err);
       alert(err.message || 'Failed to deny request');
+    }
+  }
+
+  destroy() {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+    const portal = document.getElementById('workerAccessModalsPortal');
+    if (portal) {
+      portal.remove();
+      this.portalContainer = null;
     }
   }
 }

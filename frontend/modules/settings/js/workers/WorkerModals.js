@@ -14,27 +14,47 @@ export class WorkerModals {
     this.selectedContactIds = [];
     this.functionalOverrides = {};
     this.allContacts = [];
+    this.portalRoot = null;
+    this.mainContainer = null;
+    this._onKeyDown = null;
+  }
+
+  getRoot(container) {
+    if (container && container.querySelector && container.querySelector('#workerEditModal')) {
+      return container;
+    }
+    return this.portalRoot || document.getElementById('workerAccessModalsPortal') || document;
+  }
+
+  getMain(container) {
+    if (this.mainContainer) return this.mainContainer;
+    if (this.coordinator?.container) return this.coordinator.container;
+    return container || document;
   }
 
   // Bind top-level modal events
-  setupListeners(container) {
+  setupListeners(portalElement, mainContainer) {
+    const root = portalElement || document.getElementById('workerAccessModalsPortal') || document;
+    this.portalRoot = root;
+    this.mainContainer = mainContainer || this.coordinator?.container || document;
+
     // Edit Modal close buttons
     const closeModal = () => {
-      container.querySelector('#workerEditModal')?.classList.remove('show');
+      root.querySelector('#workerEditModal')?.classList.remove('show');
       this.editingUserId = null;
     };
-    container.querySelector('#closeModalBtn')?.addEventListener('click', closeModal);
-    container.querySelector('#modalCancelBtn')?.addEventListener('click', closeModal);
+    root.querySelector('#closeModalBtn')?.addEventListener('click', closeModal);
+    root.querySelector('#modalCancelBtn')?.addEventListener('click', closeModal);
 
     // Save Changes button
-    container.querySelector('#modalSaveBtn')?.addEventListener('click', async () => {
+    root.querySelector('#modalSaveBtn')?.addEventListener('click', async () => {
       if (!this.editingUserId) return;
-      await this.saveWorkerPermissions(container, this.editingUserId);
+      await this.saveWorkerPermissions(root, this.editingUserId);
       closeModal();
     });
 
     // Delete / Deny button
-    container.querySelector('#modalDeleteBtn')?.addEventListener('click', async () => {
+    root.querySelector('#modalDeleteBtn')?.addEventListener('click', async () => {
       if (!this.editingUserId) return;
       if (this.isApproving) {
         if (confirm('Are you sure you want to deny this access request?')) {
@@ -50,32 +70,78 @@ export class WorkerModals {
     });
 
     // Status change listener
-    container.querySelector('#modalWorkerStatus')?.addEventListener('change', async (e) => {
+    root.querySelector('#modalWorkerStatus')?.addEventListener('change', async (e) => {
       if (!this.editingUserId) return;
       await this.coordinator.changeWorkerStatus(this.editingUserId, e.target.value);
     });
 
     // Contact Picker Sub-Modal close
     const closeContactPicker = () => {
-      container.querySelector('#contactPickerModal')?.classList.remove('show');
-      this.updateContactsBadge(container);
+      root.querySelector('#contactPickerModal')?.classList.remove('show');
+      this.updateContactsBadge(root);
     };
-    container.querySelector('#closeContactPickerBtn')?.addEventListener('click', closeContactPicker);
-    container.querySelector('#btnApplyContacts')?.addEventListener('click', closeContactPicker);
+    root.querySelector('#closeContactPickerBtn')?.addEventListener('click', closeContactPicker);
+    root.querySelector('#btnApplyContacts')?.addEventListener('click', closeContactPicker);
 
     // Functional Settings Sub-Modal close
     const closeFunctionalModal = () => {
-      container.querySelector('#appFunctionalSettingsModal')?.classList.remove('show');
+      root.querySelector('#appFunctionalSettingsModal')?.classList.remove('show');
     };
-    container.querySelector('#closeFunctionalModalBtn')?.addEventListener('click', closeFunctionalModal);
-    container.querySelector('#btnApplyFunctionalSettings')?.addEventListener('click', closeFunctionalModal);
+    root.querySelector('#closeFunctionalModalBtn')?.addEventListener('click', closeFunctionalModal);
+    root.querySelector('#btnApplyFunctionalSettings')?.addEventListener('click', closeFunctionalModal);
 
     // Worker Lifecycle History Sub-Modal close
     const closeHistoryModal = () => {
-      container.querySelector('#workerHistoryModal')?.classList.remove('show');
+      root.querySelector('#workerHistoryModal')?.classList.remove('show');
     };
-    container.querySelector('#closeWorkerHistoryBtn')?.addEventListener('click', closeHistoryModal);
-    container.querySelector('#btnCloseWorkerHistory')?.addEventListener('click', closeHistoryModal);
+    root.querySelector('#closeWorkerHistoryBtn')?.addEventListener('click', closeHistoryModal);
+    root.querySelector('#btnCloseWorkerHistory')?.addEventListener('click', closeHistoryModal);
+
+    // Backdrop click dismissal for all modal overlays
+    root.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          overlay.classList.remove('show');
+          if (overlay.id === 'workerEditModal') {
+            this.editingUserId = null;
+          } else if (overlay.id === 'contactPickerModal') {
+            this.updateContactsBadge(root);
+          }
+        }
+      });
+    });
+
+    // Global Escape key listener to close top-most active dialog
+    if (this._onKeyDown) {
+      window.removeEventListener('keydown', this._onKeyDown);
+    }
+    this._onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        const contactPicker = root.querySelector('#contactPickerModal.show');
+        if (contactPicker) {
+          contactPicker.classList.remove('show');
+          this.updateContactsBadge(root);
+          return;
+        }
+        const functionalModal = root.querySelector('#appFunctionalSettingsModal.show');
+        if (functionalModal) {
+          functionalModal.classList.remove('show');
+          return;
+        }
+        const editModal = root.querySelector('#workerEditModal.show');
+        if (editModal) {
+          editModal.classList.remove('show');
+          this.editingUserId = null;
+          return;
+        }
+        const historyModal = root.querySelector('#workerHistoryModal.show');
+        if (historyModal) {
+          historyModal.classList.remove('show');
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', this._onKeyDown);
   }
 
   async openWorkerEditModal(container, userId, isPending = false) {
@@ -84,15 +150,16 @@ export class WorkerModals {
     const user = this.coordinator.users.find(u => u.id === userId);
     if (!user) return;
 
-    const modal = container.querySelector('#workerEditModal');
-    const titleEl = container.querySelector('#modalWorkerName');
+    const root = this.getRoot(container);
+    const modal = root.querySelector('#workerEditModal');
+    const titleEl = root.querySelector('#modalWorkerName');
     if (titleEl) {
       titleEl.textContent = isPending 
         ? `Approve ${user.full_name || user.google_email || user.username}` 
         : `Edit ${user.full_name || user.google_email || user.username}`;
     }
 
-    const emailSubEl = container.querySelector('#modalWorkerEmails');
+    const emailSubEl = root.querySelector('#modalWorkerEmails');
     if (emailSubEl) {
       const userLocal = user.email;
       const userGoogle = user.google_email;
@@ -113,12 +180,15 @@ export class WorkerModals {
       }
     }
 
-    const statusSelect = container.querySelector('#modalWorkerStatus');
-    const deleteBtn = container.querySelector('#modalDeleteBtn');
-    const saveBtn = container.querySelector('#modalSaveBtn');
+    const statusSelect = root.querySelector('#modalWorkerStatus');
+    const deleteBtn = root.querySelector('#modalDeleteBtn');
+    const saveBtn = root.querySelector('#modalSaveBtn');
 
     if (isPending) {
-      if (statusSelect) statusSelect.parentElement.style.display = 'none';
+      if (statusSelect) {
+        const parent = statusSelect.closest('.modal-status-inline') || statusSelect.parentElement;
+        if (parent) parent.style.display = 'none';
+      }
       if (saveBtn) saveBtn.textContent = 'Approve Worker';
       if (deleteBtn) {
         deleteBtn.style.display = 'block';
@@ -126,7 +196,8 @@ export class WorkerModals {
       }
     } else {
       if (statusSelect) {
-        statusSelect.parentElement.style.display = 'block';
+        const parent = statusSelect.closest('.modal-status-inline') || statusSelect.parentElement;
+        if (parent) parent.style.display = 'inline-flex';
         statusSelect.value = user.status;
       }
       if (saveBtn) saveBtn.textContent = 'Save Changes';
@@ -158,7 +229,7 @@ export class WorkerModals {
     }
 
     // Render modern App Permissions Grid
-    const grid = container.querySelector('#modalAppsToggleGrid');
+    const grid = root.querySelector('#modalAppsToggleGrid');
     grid.innerHTML = this.coordinator.APP_LIST.map(app => {
       const isActive = allowedApps.includes(app.id);
       const isContacts = app.id === 'contacts';
@@ -194,15 +265,15 @@ export class WorkerModals {
         e.stopPropagation();
         const appId = btn.dataset.appId;
         if (appId === 'contacts') {
-          this.openContactPickerModal(container);
+          this.openContactPickerModal(root);
         } else {
-          this.openAppFunctionalSettingsModal(container, appId);
+          this.openAppFunctionalSettingsModal(root, appId);
         }
       });
     });
 
     // Preset buttons
-    container.querySelector('#btnPresetDefault').onclick = () => {
+    root.querySelector('#btnPresetDefault').onclick = () => {
       grid.querySelectorAll('.app-toggle-card').forEach(card => {
         if (this.coordinator.DEFAULT_APPS.includes(card.dataset.appId)) {
           card.classList.add('active');
@@ -212,11 +283,11 @@ export class WorkerModals {
       });
     };
 
-    container.querySelector('#btnSelectAllApps').onclick = () => {
+    root.querySelector('#btnSelectAllApps').onclick = () => {
       grid.querySelectorAll('.app-toggle-card').forEach(card => card.classList.add('active'));
     };
 
-    container.querySelector('#btnClearAllApps').onclick = () => {
+    root.querySelector('#btnClearAllApps').onclick = () => {
       grid.querySelectorAll('.app-toggle-card').forEach(card => card.classList.remove('active'));
     };
 
@@ -224,8 +295,10 @@ export class WorkerModals {
   }
 
   async saveWorkerPermissions(container, userId) {
-    const grid = container.querySelector('#modalAppsToggleGrid');
-    const allowedApps = Array.from(grid.querySelectorAll('.app-toggle-card.active')).map(c => c.dataset.appId);
+    const root = this.getRoot(container);
+    const main = this.getMain(container);
+    const grid = root.querySelector('#modalAppsToggleGrid');
+    const allowedApps = Array.from(grid?.querySelectorAll('.app-toggle-card.active') || []).map(c => c.dataset.appId);
 
     const payload = { 
       allowedApps, 
@@ -239,7 +312,7 @@ export class WorkerModals {
     if (this.isApproving) {
       endpoint = `/api/admin/users/${userId}/approve`;
       method = 'POST';
-      const codeInput = container.querySelector('#adminApprovalCode');
+      const codeInput = main.querySelector('#adminApprovalCode') || document.querySelector('#adminApprovalCode');
       const code = codeInput ? codeInput.value.trim() : '';
       const user = this.coordinator.users.find(u => u.id === userId);
       if (code && user?.invite_code && code.toUpperCase() !== String(user.invite_code).toUpperCase()) {
@@ -267,7 +340,8 @@ export class WorkerModals {
   }
 
   updateContactsBadge(container) {
-    const badge = container.querySelector('#contactsCountBadge');
+    const root = this.getRoot(container);
+    const badge = root.querySelector('#contactsCountBadge');
     if (badge) {
       const count = this.selectedContactIds.length;
       badge.textContent = count > 0 ? `${count} shared` : 'Private';
@@ -275,6 +349,7 @@ export class WorkerModals {
   }
 
   async openContactPickerModal(container) {
+    const root = this.getRoot(container);
     if (!this.allContacts || this.allContacts.length === 0) {
       try {
         const res = await fetch('/api/contacts');
@@ -287,10 +362,10 @@ export class WorkerModals {
       }
     }
 
-    const modal = container.querySelector('#contactPickerModal');
-    const searchInput = container.querySelector('#contactPickerSearch');
-    const list = container.querySelector('#contactPickerList');
-    const summary = container.querySelector('#contactSelectionSummary');
+    const modal = root.querySelector('#contactPickerModal');
+    const searchInput = root.querySelector('#contactPickerSearch');
+    const list = root.querySelector('#contactPickerList');
+    const summary = root.querySelector('#contactSelectionSummary');
 
     if (searchInput) searchInput.value = '';
 
@@ -353,28 +428,35 @@ export class WorkerModals {
       };
     }
 
-    container.querySelector('#btnSelectAllContacts').onclick = () => {
-      this.selectedContactIds = this.allContacts.map(c => c.id);
-      renderList(this.allContacts);
-    };
+    const btnSelectAll = root.querySelector('#btnSelectAllContacts');
+    if (btnSelectAll) {
+      btnSelectAll.onclick = () => {
+        this.selectedContactIds = this.allContacts.map(c => c.id);
+        renderList(this.allContacts);
+      };
+    }
 
-    container.querySelector('#btnClearAllContacts').onclick = () => {
-      this.selectedContactIds = [];
-      renderList(this.allContacts);
-    };
+    const btnClearAll = root.querySelector('#btnClearAllContacts');
+    if (btnClearAll) {
+      btnClearAll.onclick = () => {
+        this.selectedContactIds = [];
+        renderList(this.allContacts);
+      };
+    }
 
     renderList(this.allContacts);
-    modal.classList.add('show');
+    modal?.classList.add('show');
   }
 
   openAppFunctionalSettingsModal(container, appId) {
+    const root = this.getRoot(container);
     const app = this.coordinator.APP_LIST.find(a => a.id === appId);
     if (!app || !app.options || app.options.length === 0) return;
 
-    const modal = container.querySelector('#appFunctionalSettingsModal');
-    const titleEl = container.querySelector('#appFunctionalTitle');
+    const modal = root.querySelector('#appFunctionalSettingsModal');
+    const titleEl = root.querySelector('#appFunctionalTitle');
     if (titleEl) titleEl.textContent = `${app.name} Functional Overrides`;
-    const list = container.querySelector('#appFunctionalOptionsList');
+    const list = root.querySelector('#appFunctionalOptionsList');
 
     if (!this.functionalOverrides[appId]) {
       this.functionalOverrides[appId] = {};
@@ -406,17 +488,18 @@ export class WorkerModals {
       });
     });
 
-    modal.classList.add('show');
+    modal?.classList.add('show');
   }
 
   async openWorkerHistoryModal(container, userId) {
-    const modal = container.querySelector('#workerHistoryModal');
+    const root = this.getRoot(container);
+    const modal = root.querySelector('#workerHistoryModal');
     if (!modal) return;
 
     let user = this.coordinator.users.find(u => u.id === userId) || {};
-    const titleEl = container.querySelector('#workerHistoryModalTitle');
-    const subtitleEl = container.querySelector('#workerHistoryModalSubtitle');
-    const timelineEl = container.querySelector('#workerHistoryTimeline');
+    const titleEl = root.querySelector('#workerHistoryModalTitle');
+    const subtitleEl = root.querySelector('#workerHistoryModalSubtitle');
+    const timelineEl = root.querySelector('#workerHistoryTimeline');
 
     if (titleEl) titleEl.textContent = `Lifecycle: ${user.full_name || user.google_email || user.username || 'Worker'}`;
     if (subtitleEl) subtitleEl.textContent = user.google_email || user.email || 'Audit Records and Lifecycle Timeline';
