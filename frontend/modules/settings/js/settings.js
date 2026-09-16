@@ -2145,7 +2145,8 @@ export class SettingsApp extends AppWindow {
       liquidGlass: saved.liquidGlass || 'clear',
       'sidebar-size': saved['sidebar-size'] || 'medium',
       'tint-wallpaper': saved['tint-wallpaper'] !== undefined ? saved['tint-wallpaper'] : true,
-      'dock-magnification': saved['dock-magnification'] !== undefined ? saved['dock-magnification'] : true
+      'dock-magnification': saved['dock-magnification'] !== undefined ? saved['dock-magnification'] : true,
+      'dock-auto-hide': saved['dock-auto-hide'] !== undefined ? saved['dock-auto-hide'] : false
     };
   }
 

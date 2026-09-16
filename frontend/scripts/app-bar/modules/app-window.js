@@ -182,6 +182,7 @@ class AppWindow {
     // Store reference to this instance on the window element for easy access
     if (this.window) {
       this.window.__appInstance = this;
+      this.window.dataset.windowState = this.windowState;
     }
   }
 
@@ -973,6 +974,7 @@ class AppWindow {
     this.window.style.transform = 'none';
     this.windowState = 'tiled-left';
     this.constrainWindowToViewport();
+    this.updateAppBarIconState();
   }
 
   tileRight() {
@@ -1000,6 +1002,7 @@ class AppWindow {
     this.window.style.transform = 'none';
     this.windowState = 'tiled-right';
     this.constrainWindowToViewport();
+    this.updateAppBarIconState();
   }
 
   tileTop() {
@@ -1027,6 +1030,7 @@ class AppWindow {
     this.window.style.transform = 'none';
     this.windowState = 'tiled-top';
     this.constrainWindowToViewport();
+    this.updateAppBarIconState();
   }
 
   tileBottom() {
@@ -1054,13 +1058,21 @@ class AppWindow {
     this.window.style.transform = 'none';
     this.windowState = 'tiled-bottom';
     this.constrainWindowToViewport();
+    this.updateAppBarIconState();
   }
 
   tileFullscreen() {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const topBarHeight = 44;
-    const dockHeight = 80;
+    
+    let isDockHidden = false;
+    try {
+      const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+      isDockHidden = saved['dock-auto-hide'] === true;
+    } catch (e) {}
+    
+    const dockHeight = isDockHidden ? 0 : 80;
     const margin = 10;
     
     if (this.windowState !== 'maximized') {
@@ -1081,6 +1093,7 @@ class AppWindow {
     this.window.style.transform = 'none';
     this.windowState = 'maximized';
     this.constrainWindowToViewport();
+    this.updateAppBarIconState();
   }
 
   tileTopLeft() {
@@ -2518,6 +2531,7 @@ class AppWindow {
       this.window.style.width = (vw - margin * 2) + 'px';
       this.window.style.height = (vh - topBarHeight - dockHeight - margin) + 'px';
       this.constrainWindowToViewport();
+      this.updateAppBarIconState();
     }
   }
 
@@ -2562,6 +2576,10 @@ class AppWindow {
   }
 
   updateAppBarIconState() {
+    if (this.window) {
+      this.window.classList.toggle('maximized', this.windowState === 'maximized');
+      this.window.dataset.windowState = this.windowState;
+    }
     const icons = this.findAllAppBarIcons();
     icons.forEach(icon => {
       if (this.windowState === 'minimized') {

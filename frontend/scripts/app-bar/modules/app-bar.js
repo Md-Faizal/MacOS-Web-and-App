@@ -321,6 +321,9 @@ function initializeDock() {
   let leaveDebounceTimer = null;
 
   dockContainer.addEventListener('pointerenter', () => {
+    const dockWrapper = dockContainer.parentElement;
+    if (dockWrapper && dockWrapper.classList.contains('dock-hidden')) return;
+
     clearTimeout(leaveDebounceTimer);
     isDockHovered = true;
     isMouseInDockZone = true;
@@ -328,12 +331,7 @@ function initializeDock() {
       clearTimeout(dockHideTimer);
       dockHideTimer = null;
     }
-    const dockWrapper = dockContainer.parentElement;
     dockWrapper.style.setProperty('--lg-mouse-active', '1');
-    // Reveal dock if auto-hiding
-    if (dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
-      revealDock();
-    }
   });
 
   dockContainer.addEventListener('pointerleave', (e) => {
@@ -459,6 +457,64 @@ function initializeDock() {
     }
   }
 
+  // Robust check to determine if the pointer is resting on or adjacent to an app window
+  function isPointerOverOrAdjacentToAppWindow(clientX, clientY, target) {
+    // 1. Direct hit-test on event target
+    if (target && target.closest && target.closest('.app-window')) {
+      return true;
+    }
+
+    // 2. Upward vertical probe to span the 10px viewport margin
+    // Maximized/tiled app windows have margin: 10px, stopping at window.innerHeight - 10px.
+    // When the pointer hits the bottom edge (innerHeight - 4px), probing 25px above
+    // directly samples into the app window body.
+    const probeY = Math.max(0, clientY - 25);
+    const elementsAbove = document.elementsFromPoint ? document.elementsFromPoint(clientX, probeY) : [document.elementFromPoint(clientX, probeY)];
+    for (const el of elementsAbove) {
+      if (el && el.closest && el.closest('.app-window')) {
+        return true;
+      }
+    }
+
+    // 3. Inspect visible app windows in the DOM
+    const visibleWindows = document.querySelectorAll('.app-window');
+    for (const win of visibleWindows) {
+      // Skip minimized or hidden windows
+      if (win.style.display === 'none' || win.offsetParent === null) continue;
+
+      const appInstance = win.__appInstance;
+      const isMaximized = (appInstance && appInstance.windowState === 'maximized') ||
+                          win.classList.contains('maximized') ||
+                          win.dataset.windowState === 'maximized';
+      const isBottomTiled = appInstance && (
+        appInstance.windowState === 'tiled-bottom' ||
+        appInstance.windowState === 'tiled-bottom-left' ||
+        appInstance.windowState === 'tiled-bottom-right'
+      );
+
+      // If any window is currently being resized or dragged, bypass auto-reveal
+      if (win.classList.contains('resizing') || (appInstance && (appInstance.isDragging || appInstance.isResizing))) {
+        return true;
+      }
+
+      // If an app is maximized, it occupies the full viewport; auto-reveal is completely bypassed
+      if (isMaximized) {
+        return true;
+      }
+
+      // For windows extending near the bottom, check if clientX is within horizontal boundaries
+      const rect = win.getBoundingClientRect();
+      if (clientX >= rect.left && clientX <= rect.right) {
+        // If window extends into bottom zone (within 80px of screen bottom)
+        if (isBottomTiled || rect.bottom >= window.innerHeight - 80) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   // Window-level mouse tracking for authentic macOS dock reveal and hide behavior
   window.addEventListener('mousemove', (e) => {
     if (!dockWrapper) return;
@@ -474,11 +530,23 @@ function initializeDock() {
 
     // 2. If dock is currently hidden:
     if (isHidden) {
-      // macOS constraint: User pushes cursor firmly against the bottom screen edge
+      const overAppWindow = isPointerOverOrAdjacentToAppWindow(e.clientX, e.clientY, e.target);
+
+      // If pointer is resting on or adjacent to an app window (such as a maximized or full-screen app),
+      // completely bypass auto-reveal so dock never mistakenly springs up while working
+      if (overAppWindow) {
+        if (edgeRevealTimer) {
+          clearTimeout(edgeRevealTimer);
+          edgeRevealTimer = null;
+        }
+        return;
+      }
+
+      // macOS constraint: User pushes cursor firmly against the bottom screen edge (on open desktop)
       if (e.clientY >= window.innerHeight - 4) {
         if (!edgeRevealTimer) {
-          // macOS hesitation threshold (~180ms) prevents accidental reveals
-          edgeRevealTimer = setTimeout(revealDock, 180);
+          // macOS hesitation threshold (~200ms) prevents accidental reveals
+          edgeRevealTimer = setTimeout(revealDock, 200);
         }
       } else {
         if (edgeRevealTimer) {
@@ -554,9 +622,10 @@ function initializeDock() {
     touchEdgeStartY = touch.clientY;
     touchEdgeStartX = touch.clientX;
 
-    // Reveal dock on touch near bottom edge (within 35px) when auto-hidden
+    // Reveal dock on touch near bottom edge (within 35px) when auto-hidden, unless over an app window
     if (isAutoHideEnabled() && dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
-      if (touchEdgeStartY >= window.innerHeight - 35) {
+      const overAppWindow = isPointerOverOrAdjacentToAppWindow(touchEdgeStartX, touchEdgeStartY, e.target);
+      if (!overAppWindow && touchEdgeStartY >= window.innerHeight - 35) {
         revealDock();
       }
     }
@@ -578,9 +647,10 @@ function initializeDock() {
     const touch = e.touches[0];
     const deltaY = touch.clientY - touchEdgeStartY;
 
-    // Swiping up from the bottom edge reveals dock
+    // Swiping up from the bottom edge reveals dock, unless over an app window
     if (isAutoHideEnabled() && dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
-      if (touchEdgeStartY >= window.innerHeight - 45 && deltaY < -12) {
+      const overAppWindow = isPointerOverOrAdjacentToAppWindow(touch.clientX, touch.clientY, e.target);
+      if (!overAppWindow && touchEdgeStartY >= window.innerHeight - 45 && deltaY < -12) {
         revealDock();
       }
     }
@@ -950,8 +1020,8 @@ function initializeDock() {
     // Add Recent app to slot 9 (only for unpinned apps)
     const recentSlot = document.getElementById('dock-slot-recent');
     let recentAppId = localStorage.getItem(RECENT_APP_KEY);
-    // Don't show Settings or apps already pinned in appOrder in the recent slot
-    if (recentAppId === 'settings' || appOrder.includes(recentAppId)) {
+    // Don't show Settings in the recent slot
+    if (recentAppId === 'settings') {
       recentAppId = null;
     }
     if (recentAppId) {
@@ -973,14 +1043,19 @@ function initializeDock() {
   function updateEmptySlotVisibility() {
     setTimeout(() => {
       const hasScroll = dockContainer.scrollWidth > dockContainer.clientWidth;
-      const emptySlots = Array.from(document.querySelectorAll('.dock-slot:empty'));
+      // Exclude special slots (settings, recent) from the empty-slot hide/show logic
+      const emptySlots = Array.from(document.querySelectorAll('.dock-slot:empty')).filter(slot =>
+        slot.id !== 'dock-slot-settings' && slot.id !== 'dock-slot-recent'
+      );
       
       if (hasScroll) {
         // If scrolling is needed, hide empty slots
         emptySlots.forEach(slot => slot.classList.add('hidden'));
+        dockWrapper.classList.add('dock-scrolling');
       } else {
         // If there's space, show empty slots
         emptySlots.forEach(slot => slot.classList.remove('hidden'));
+        dockWrapper.classList.remove('dock-scrolling');
       }
     }, 0);
   }

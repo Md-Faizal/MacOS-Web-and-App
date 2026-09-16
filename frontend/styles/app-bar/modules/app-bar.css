@@ -56,12 +56,47 @@
   overflow: visible;
 }
 
-/* Auto-hide: slide the whole container completely off the bottom of the screen */
+/* Auto-hide: slide the whole container completely off the bottom of the screen (accounting for -100px dock pop-out margin) */
 .dock-container.dock-hidden {
-  transform: translate3d(-50%, calc(100% + 15px), 0);
-  pointer-events: none;
+  transform: translate3d(-50%, calc(100% + 120px), 0) !important;
+  pointer-events: none !important;
+  visibility: hidden;
 }
 
+.dock-container.dock-hidden * {
+  pointer-events: none !important;
+}
+
+/* ===== DARK MODE TINT ===== */
+[data-theme="dark"] .dock-container {
+  background:
+    radial-gradient(
+      180px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      rgba(255, 255, 255, calc(0.08 * var(--lg-mouse-active, 0))),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.04) 25%,
+      rgba(255, 255, 255, 0.02) 50%,
+      rgba(255, 255, 255, 0.04) 75%,
+      rgba(255, 255, 255, 0.08) 100%
+    ),
+    rgba(28, 28, 30, 0.62);
+
+  border-color: rgba(255, 255, 255, 0.13);
+
+  box-shadow:
+    0 20px 48px -8px rgba(0, 0, 0, 0.65),
+    0 8px 24px -4px rgba(0, 0, 0, 0.45),
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1.5px 1.5px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -4px 10px 0 rgba(0, 0, 0, 0.25),
+    inset 0 0 22px 0 rgba(255, 255, 255, 0.04),
+    inset 1.5px 0 3px 0 rgba(120, 180, 255, 0.15),
+    inset -1.5px 0 3px 0 rgba(255, 140, 180, 0.10);
+}
 /* ===== DOCK ===== 
    Faithfully inspired by Kyant's AndroidLiquidGlass-kmp:
    - Vibrancy + Backdrop Blur (8px - 28px)
@@ -78,8 +113,7 @@
   flex-wrap: nowrap;
   
   /* Scroll support moved here */
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 
@@ -89,20 +123,25 @@
   padding-top: 100px;
   margin-top: -100px; /* Offset to align perfectly inside the 72px container */
   padding-bottom: 0.3rem;
-  padding-left: 0.45rem;
-  padding-right: 0.45rem;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
   box-sizing: border-box;
-  
-  /* SVG Mask: Opaque rectangle at the top for magnification pop-out, and opaque rounded-rectangle at the bottom matching the glass capsule */
-  mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
-  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
 
-  pointer-events: auto; /* Catch clicks for dock items */
+  pointer-events: none; /* Only actual dock items and slots should catch pointer events */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: manipulation;
 }
+
+/* Apply SVG mask only when dock is overflowing (scrolling) to allow unclipped hover pop-outs on large screens */
+.dock-scrolling .dock {
+  overflow-x: auto;
+  overflow-y: hidden;
+  mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
+}
+
 
 /* Secondary lens layer over dock for chromatic dispersion highlight */
 .dock-container::before {
