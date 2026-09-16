@@ -1,41 +1,64 @@
 /* ===== DOCK CONTAINER STYLES ===== */
 .dock-container {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: auto;
-  min-height: 85px;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  width: max-content;
+  max-width: calc(100vw - 1rem);
+  height: 72px; /* Base height of capsule */
   display: flex;
-  align-items: flex-end;
-  /* Safe centering for scrolling */
-  justify-content: flex-start;
-  padding: 100px 0.5rem 0.5rem; /* Extra top padding so elevated icons are not clipped */
+  box-sizing: border-box;
+  
   /* Keep the dock on top of all app windows */
   z-index: 1000000;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.1) 100%);
+  
   /* Allow pointer events to pass through empty dock area for window resizing */
   pointer-events: none;
   
-  /* Scroll support */
-  overflow-x: auto;
-  overflow-y: hidden; /* Clips only at the top of the 100px padding, which is safe */
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-
   /* Auto-hide support with authentic macOS spring/ease curve */
-  transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
+  transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.3s cubic-bezier(0.2, 1, 0.2, 1), background 0.3s cubic-bezier(0.2, 1, 0.2, 1), border-color 0.3s cubic-bezier(0.2, 1, 0.2, 1);
+  animation: slideInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 
-.dock-container::before,
-.dock-container::after {
-  content: '';
-  flex: 1; /* Pushes the dock to the center when there's extra space */
+  /* Glass background styles moved here */
+  border-radius: 26px;
+  background: 
+    radial-gradient(
+      180px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      rgba(255, 255, 255, calc(0.18 * var(--lg-mouse-active, 0))),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.28) 0%,
+      rgba(255, 255, 255, 0.08) 25%,
+      rgba(255, 255, 255, 0.04) 50%,
+      rgba(255, 255, 255, 0.09) 75%,
+      rgba(255, 255, 255, 0.22) 100%
+    ),
+    rgba(255, 255, 255, 0.12);
+
+  backdrop-filter: blur(28px) saturate(190%) brightness(108%) contrast(105%);
+  will-change: transform, backdrop-filter;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+
+  box-shadow: 
+    0 20px 48px -8px rgba(0, 0, 0, 0.42),
+    0 8px 24px -4px rgba(0, 0, 0, 0.28),
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1.5px 1.5px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -4px 10px 0 rgba(0, 0, 0, 0.15),
+    inset 0 0 22px 0 rgba(255, 255, 255, 0.18),
+    inset 1.5px 0 3px 0 rgba(140, 200, 255, 0.3),
+    inset -1.5px 0 3px 0 rgba(255, 170, 200, 0.25);
+
+  /* MUST be visible so the icons in .dock can pop out! */
+  overflow: visible;
 }
 
 /* Auto-hide: slide the whole container completely off the bottom of the screen */
 .dock-container.dock-hidden {
-  transform: translateY(calc(100% + 15px));
+  transform: translate3d(-50%, calc(100% + 15px), 0);
   pointer-events: none;
 }
 
@@ -48,88 +71,41 @@
    - Dynamic interactive mouse highlight gradient tracking
 */
 .dock {
-  --lg-refract-angle: 135deg;
-  --lg-mouse-x: 50%;
-  --lg-mouse-y: 50%;
-  --lg-mouse-active: 0;
-
-  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end; /* Items sit at the bottom */
   justify-content: flex-start;
   gap: 2px;
   flex-wrap: nowrap;
-  /* Important: NO overflow hidden/auto here, to let icons pop out into container's padding */
-  overflow: visible;
   
-  width: auto;
-  max-width: max-content; /* Let it grow to its content width for scrolling */
+  /* Scroll support moved here */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+
+  /* Pop-out padding trick */
+  width: 100%; /* Take full width of container */
+  height: 172px; /* 72px (base) + 100px (padding) */
+  padding-top: 100px;
+  margin-top: -100px; /* Offset to align perfectly inside the 72px container */
+  padding-bottom: 0.3rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
   box-sizing: border-box;
-  height: auto;
-  min-height: 72px;
-  border-radius: 26px;
+  
+  /* SVG Mask: Opaque rectangle at the top for magnification pop-out, and opaque rounded-rectangle at the bottom matching the glass capsule */
+  mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100%" height="100" fill="white"/><rect x="0" y="100" width="100%" height="72" rx="26" fill="white"/></svg>');
 
-  /* Layer 1: Vibrancy & Base Tint (Kyant onDrawSurface containerColor) */
-  background: 
-    /* Interactive Highlight following pointer (Kyant InteractiveHighlight shader) */
-    radial-gradient(
-      180px circle at var(--lg-mouse-x) var(--lg-mouse-y),
-      rgba(255, 255, 255, calc(0.18 * var(--lg-mouse-active))),
-      transparent 70%
-    ),
-    /* Kyant Rounded Rect Refraction Dispersion gradient simulation */
-    linear-gradient(
-      var(--lg-refract-angle),
-      rgba(255, 255, 255, 0.28) 0%,
-      rgba(255, 255, 255, 0.08) 25%,
-      rgba(255, 255, 255, 0.04) 50%,
-      rgba(255, 255, 255, 0.09) 75%,
-      rgba(255, 255, 255, 0.22) 100%
-    ),
-    /* Vibrancy baseline */
-    rgba(255, 255, 255, 0.12);
-
-  /* Backdrop blur with increased saturation & vibrancy (Kyant vibrancy + blur) */
-  backdrop-filter: blur(28px) saturate(190%) brightness(108%) contrast(105%);
-  /* Force hardware acceleration for Safari / WebKit so blur strength renders consistently */
-  transform: translate3d(0, 0, 0);
-  will-change: transform, backdrop-filter;
-
-  /* Border / Specular Rim Highlight (Kyant Highlight.Default + Plain rim) */
-  border: 1px solid rgba(255, 255, 255, 0.42);
-
-  /* Kyant Shadow + InnerShadow combination:
-     1. Drop shadow: 0 16px 36px rgba(0, 0, 0, 0.35)
-     2. Diffused ambient: 0 4px 16px rgba(0, 0, 0, 0.2)
-     3. Specular top rim (Highlight.Default angle 45deg): inset 0 1.5px 1px rgba(255, 255, 255, 0.85)
-     4. Inner refraction shadow (InnerShadow radius 8dp, alpha 0.18): inset 0 -2px 6px rgba(0, 0, 0, 0.18)
-     5. Inner soft lens glow: inset 0 0 18px rgba(255, 255, 255, 0.22)
-     6. Chromatic edge refraction: inset 1px 0 2px rgba(180, 220, 255, 0.35), inset -1px 0 2px rgba(255, 200, 220, 0.35)
-  */
-  box-shadow: 
-    0 20px 48px -8px rgba(0, 0, 0, 0.42),
-    0 8px 24px -4px rgba(0, 0, 0, 0.28),
-    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1.5px 1.5px 0 rgba(255, 255, 255, 0.3),
-    inset 0 -4px 10px 0 rgba(0, 0, 0, 0.15),
-    inset 0 0 22px 0 rgba(255, 255, 255, 0.18),
-    inset 1.5px 0 3px 0 rgba(140, 200, 255, 0.3),
-    inset -1.5px 0 3px 0 rgba(255, 170, 200, 0.25);
-
-  padding: 0.3rem 0.45rem;
-  animation: slideInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto; /* Catch clicks for dock items */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: manipulation;
-  transition: box-shadow 0.3s cubic-bezier(0.2, 1, 0.2, 1),
-              background 0.3s cubic-bezier(0.2, 1, 0.2, 1),
-              border-color 0.3s cubic-bezier(0.2, 1, 0.2, 1),
-              transform 0.3s cubic-bezier(0.2, 1, 0.2, 1);
 }
 
 /* Secondary lens layer over dock for chromatic dispersion highlight */
-.dock::before {
+.dock-container::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -149,7 +125,7 @@
 }
 
 /* Kyant InteractiveHighlight lens reflection beam */
-.dock::after {
+.dock-container::after {
   content: '';
   position: absolute;
   inset: 0;

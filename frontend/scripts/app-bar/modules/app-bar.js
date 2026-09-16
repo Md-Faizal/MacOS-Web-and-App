@@ -328,7 +328,8 @@ function initializeDock() {
       clearTimeout(dockHideTimer);
       dockHideTimer = null;
     }
-    dockContainer.style.setProperty('--lg-mouse-active', '1');
+    const dockWrapper = dockContainer.parentElement;
+    dockWrapper.style.setProperty('--lg-mouse-active', '1');
     // Reveal dock if auto-hiding
     if (dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
       revealDock();
@@ -343,7 +344,8 @@ function initializeDock() {
     }
     leaveDebounceTimer = setTimeout(() => {
       isDockHovered = false;
-      dockContainer.style.setProperty('--lg-mouse-active', '0');
+      const dockWrapper = dockContainer.parentElement;
+      dockWrapper.style.setProperty('--lg-mouse-active', '0');
       if (dockRafId) cancelAnimationFrame(dockRafId);
       resetDockMagnification();
       hideDockTooltip();
@@ -365,15 +367,16 @@ function initializeDock() {
     const rect = dockContainer.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    dockContainer.style.setProperty('--lg-mouse-x', `${x}px`);
-    dockContainer.style.setProperty('--lg-mouse-y', `${y}px`);
-    dockContainer.style.setProperty('--lg-mouse-active', '1');
+    const dockWrapper = dockContainer.parentElement;
+    dockWrapper.style.setProperty('--lg-mouse-x', `${x}px`);
+    dockWrapper.style.setProperty('--lg-mouse-y', `${y}px`);
+    dockWrapper.style.setProperty('--lg-mouse-active', '1');
 
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
     const rad = Math.atan2(y - centerY, x - centerX);
     const deg = (rad * 180 / Math.PI + 90);
-    dockContainer.style.setProperty('--lg-refract-angle', `${deg.toFixed(1)}deg`);
+    dockWrapper.style.setProperty('--lg-refract-angle', `${deg.toFixed(1)}deg`);
 
     if (isMagnificationEnabled()) {
       if (dockRafId) cancelAnimationFrame(dockRafId);

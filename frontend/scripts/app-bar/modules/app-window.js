@@ -2502,7 +2502,14 @@ class AppWindow {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const topBarHeight = 44;
-      const dockHeight = 80;
+      
+      let isDockHidden = false;
+      try {
+        const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+        isDockHidden = saved['dock-auto-hide'] === true;
+      } catch (e) {}
+      
+      const dockHeight = isDockHidden ? 0 : 80;
       const margin = 10;
       
       this.window.style.transform = 'none';
