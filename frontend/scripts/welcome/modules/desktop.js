@@ -936,12 +936,18 @@ export class DesktopManager {
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
       isLongPressing = false;
+      isMobileDragging = false;
+      if (touchTimer) clearTimeout(touchTimer);
       touchTimer = setTimeout(() => {
         isLongPressing = true;
         shortcutEl.style.transform = 'scale(1.05)';
         if (!shortcut.isWidget) shortcutEl.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
         deleteBtn.style.opacity = '1';
         deleteBtn.classList.add('visible');
+        // Provide haptic feedback if supported
+        if (navigator.vibrate) {
+          try { navigator.vibrate(40); } catch (_) {}
+        }
         touchTimer = null;
       }, 500);
     }, { passive: true });
@@ -951,13 +957,23 @@ export class DesktopManager {
         const moveX = e.touches[0].clientX - touchStartX;
         const moveY = e.touches[0].clientY - touchStartY;
         const dist = Math.sqrt(moveX * moveX + moveY * moveY);
-        if (dist > 10) {
-          if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
-          if (!isLongPressing && !isMobileDragging) {
-            isMobileDragging = true;
-            shortcutEl.style.opacity = '0.6';
+
+        // If not yet long-pressed, movement cancels the long press timer (e.g. scrolling/swiping)
+        if (!isLongPressing) {
+          if (dist > 10 && touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
           }
+          return;
         }
+
+        // Only after an intentional long press and hold can dragging occur
+        if (!isMobileDragging && dist > 5) {
+          isMobileDragging = true;
+          shortcutEl.style.opacity = '0.6';
+          shortcutEl.style.zIndex = '999';
+        }
+
         if (isMobileDragging) {
           e.preventDefault();
           const t = e.touches[0];
@@ -986,6 +1002,7 @@ export class DesktopManager {
         shortcutEl.style.left = shortcut.x + 'px';
         shortcutEl.style.top = shortcut.y + 'px';
         shortcutEl.style.opacity = '1';
+        shortcutEl.style.zIndex = '';
         this.saveShortcuts();
         isMobileDragging = false;
       } else if (!isLongPressing && !deleteBtn.contains(e.target)) {

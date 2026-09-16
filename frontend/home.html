@@ -49,6 +49,25 @@
           localStorage.setItem('macos_theme', data.theme);
           applyResolvedTheme(data.theme);
         }
+        if (data) {
+          const current = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+          const updated = { ...current };
+          if (data['dock-magnification'] !== undefined) updated['dock-magnification'] = data['dock-magnification'];
+          if (data['dock-auto-hide'] !== undefined) updated['dock-auto-hide'] = data['dock-auto-hide'];
+          localStorage.setItem('settingsAppData', JSON.stringify(updated));
+
+          if (data.appBarOrder && Array.isArray(data.appBarOrder)) {
+            localStorage.setItem('appBarOrder', JSON.stringify(data.appBarOrder));
+          }
+
+          window.dispatchEvent(new CustomEvent('dock-settings-changed', {
+            detail: {
+              'dock-auto-hide': updated['dock-auto-hide'],
+              'dock-magnification': updated['dock-magnification'],
+              'appBarOrder': data.appBarOrder
+            }
+          }));
+        }
       }).catch(() => {});
     })();
   </script>

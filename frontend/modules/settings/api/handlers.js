@@ -50,8 +50,8 @@ module.exports = function(db) {
         if (!settings) {
           console.log(`[Settings] No settings found for device ${deviceId}, creating defaults...`);
           const insertStmt = db.prepare(`
-            INSERT INTO Settings (device_id, appearance, accent_color, highlight_color, icon_style, liquid_glass, sidebar_icon_size, tint_wallpaper)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Settings (device_id, appearance, accent_color, highlight_color, icon_style, liquid_glass, sidebar_icon_size, tint_wallpaper, dock_magnification, dock_auto_hide)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
           `);
           insertStmt.run(deviceId, 'auto', 'blue', 'blue', 'default', 'clear', 'medium', 1);
           settings = db.prepare('SELECT * FROM Settings WHERE device_id = ?').get(deviceId);
@@ -66,7 +66,10 @@ module.exports = function(db) {
           liquidGlass: settings.liquid_glass,
           'sidebar-size': settings.sidebar_icon_size,
           'tint-wallpaper': !!settings.tint_wallpaper,
-          showWorkerBadges: settings.show_worker_badges !== undefined && settings.show_worker_badges !== null ? Boolean(settings.show_worker_badges) : true
+          showWorkerBadges: settings.show_worker_badges !== undefined && settings.show_worker_badges !== null ? Boolean(settings.show_worker_badges) : true,
+          'dock-magnification': settings.dock_magnification !== undefined && settings.dock_magnification !== null ? Boolean(settings.dock_magnification) : true,
+          'dock-auto-hide': settings.dock_auto_hide !== undefined && settings.dock_auto_hide !== null ? Boolean(settings.dock_auto_hide) : false,
+          'appBarOrder': settings.dock_apps_order ? (() => { try { return JSON.parse(settings.dock_apps_order); } catch (e) { return null; } })() : null
         };
         
         res.json(result);
@@ -107,14 +110,24 @@ module.exports = function(db) {
           'sidebar-size': 'sidebar_icon_size',
           'tint-wallpaper': 'tint_wallpaper',
           'showWorkerBadges': 'show_worker_badges',
-          'show_worker_badges': 'show_worker_badges'
+          'show_worker_badges': 'show_worker_badges',
+          'dock-magnification': 'dock_magnification',
+          'dock_magnification': 'dock_magnification',
+          'dock-auto-hide': 'dock_auto_hide',
+          'dock_auto_hide': 'dock_auto_hide',
+          'appBarOrder': 'dock_apps_order',
+          'dock_apps_order': 'dock_apps_order'
         };
 
         const columnName = keyMap[setting_key];
         if (!columnName) return res.status(400).json({ error: `Invalid setting key: ${setting_key}` });
 
         let value = setting_value;
-        if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges') value = value ? 1 : 0;
+        if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges' || columnName === 'dock_magnification' || columnName === 'dock_auto_hide') {
+          value = value ? 1 : 0;
+        } else if (columnName === 'dock_apps_order' && typeof value === 'object') {
+          value = JSON.stringify(value);
+        }
 
         const stmt = db.prepare(`
           UPDATE Settings SET ${columnName} = ?, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?
@@ -167,7 +180,13 @@ module.exports = function(db) {
           'sidebar-size': 'sidebar_icon_size',
           'tint-wallpaper': 'tint_wallpaper',
           'showWorkerBadges': 'show_worker_badges',
-          'show_worker_badges': 'show_worker_badges'
+          'show_worker_badges': 'show_worker_badges',
+          'dock-magnification': 'dock_magnification',
+          'dock_magnification': 'dock_magnification',
+          'dock-auto-hide': 'dock_auto_hide',
+          'dock_auto_hide': 'dock_auto_hide',
+          'appBarOrder': 'dock_apps_order',
+          'dock_apps_order': 'dock_apps_order'
         };
 
         const updates = [];
@@ -178,7 +197,11 @@ module.exports = function(db) {
           if (columnName) {
             updates.push(`${columnName} = ?`);
             let finalValue = value;
-            if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges') finalValue = value ? 1 : 0;
+            if (columnName === 'tint_wallpaper' || columnName === 'show_worker_badges' || columnName === 'dock_magnification' || columnName === 'dock_auto_hide') {
+              finalValue = value ? 1 : 0;
+            } else if (columnName === 'dock_apps_order' && typeof value === 'object') {
+              finalValue = JSON.stringify(value);
+            }
             values.push(finalValue);
           }
         });

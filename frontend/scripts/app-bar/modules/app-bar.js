@@ -166,8 +166,434 @@ function initializeDock() {
     handleSwipe();
   }, false);
 
-  // Mouse drag (for desktop)
+  // Kyant AndroidLiquidGlass InteractiveHighlight & Dynamic Refraction Angle Tracker
+  // Authentic macOS Dock Magnification Engine
+  let isDockHovered = false;
+  let dockRafId = null;
+
+  // Check if magnification is enabled (default: true)
+  function isMagnificationEnabled() {
+    // Touch screens don't have true hover states — avoid wave distortion during taps/swipes
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      return false;
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+      // Default to true if never set
+      return saved['dock-magnification'] !== false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function resetDockMagnification() {
+    dockContainer.classList.remove('dock-magnifying');
+    const icons = dockContainer.querySelectorAll('.dock-icon');
+    icons.forEach(icon => {
+      icon.style.transform = '';
+      icon.style.filter = '';
+      icon.style.zIndex = '';
+      const item = icon.closest('.dock-item');
+      if (item) item.style.zIndex = '';
+      const slot = icon.closest('.dock-slot');
+      if (slot) slot.style.zIndex = '';
+    });
+    hideDockTooltip();
+  }
+
+  // dockContainer IS the .dock pill (#dockContainer).
+  // Its parent .dock-container is the outer fixed wrapper.
+  const dockWrapper = dockContainer.parentElement; // .dock-container
+
+  // ===== MACOS FLOATING DOCK TOOLTIP =====
+  // Appended directly to document.body so it is never trapped by backdrop-filter or transform containing blocks
+  let dockTooltip = document.getElementById('macos-dock-tooltip');
+  if (!dockTooltip) {
+    dockTooltip = document.createElement('div');
+    dockTooltip.id = 'macos-dock-tooltip';
+    document.body.appendChild(dockTooltip);
+  }
+
+  let activeTooltipItem = null;
+  let touchTooltipTimer = null;
+
+  function updateTooltipPosition(icon) {
+    if (!dockTooltip || !icon) return;
+    const rect = icon.getBoundingClientRect();
+    // rect includes current CSS transforms (magnification scale and lift translateY)
+    dockTooltip.style.left = `${Math.round(rect.left + rect.width / 2)}px`;
+    dockTooltip.style.top  = `${Math.round(rect.top - 12)}px`;
+  }
+
+  function showDockTooltip(item) {
+    if (!item || !dockTooltip) return;
+    if (dockWrapper && dockWrapper.classList.contains('dock-hidden')) return;
+
+    const labelEl = item.querySelector('.dock-label');
+    const appName = item.getAttribute('data-app-name') || (labelEl ? labelEl.textContent.trim() : '');
+    if (!appName) return;
+
+    const icon = item.querySelector('.dock-icon');
+    if (!icon) return;
+
+    dockTooltip.textContent = appName;
+    activeTooltipItem = item;
+    updateTooltipPosition(icon);
+    dockTooltip.classList.add('visible');
+
+    // On touch devices, automatically hide the tooltip after a short duration so it does not linger
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      clearTimeout(touchTooltipTimer);
+      touchTooltipTimer = setTimeout(hideDockTooltip, 1500);
+    }
+  }
+
+  function hideDockTooltip() {
+    if (!dockTooltip) return;
+    dockTooltip.classList.remove('visible');
+    activeTooltipItem = null;
+    clearTimeout(touchTooltipTimer);
+  }
+
+  function applyDockMagnification(pointerX) {
+    dockContainer.classList.add('dock-magnifying');
+    const items = dockContainer.querySelectorAll('.dock-slot:not(:empty) .dock-icon');
+    const MAX_SCALE = 1.62; // Bold macOS pop-out magnification
+    const MAX_LIFT = -24;   // Clear 24px pop-out above dock
+    const INFLUENCE_RADIUS = 145; // Smooth Gaussian wave spread
+
+    let closestIcon = null;
+    let minDistance = Infinity;
+
+    items.forEach(icon => {
+      const rect = icon.getBoundingClientRect();
+      const iconCenterX = rect.left + rect.width / 2;
+      const dist = Math.abs(pointerX - iconCenterX);
+
+      const dockItem = icon.closest('.dock-item');
+      const dockSlot = icon.closest('.dock-slot');
+
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIcon = icon;
+      }
+
+      if (dist < INFLUENCE_RADIUS) {
+        // Cosine bell curve for smooth Apple-like falloff
+        const normDist = dist / INFLUENCE_RADIUS;
+        const factor = 0.5 * (1 + Math.cos(normDist * Math.PI)); // 1.0 at center, 0.0 at edge
+        const scale = 1 + (MAX_SCALE - 1) * factor;
+        const lift = MAX_LIFT * factor;
+
+        // Z-Index elevation: Closest icon receives up to z-index 150 to pop above neighboring icons & dock
+        const zIndexVal = Math.round(10 + factor * 140);
+        icon.style.zIndex = zIndexVal;
+        if (dockItem) dockItem.style.zIndex = zIndexVal;
+        if (dockSlot) dockSlot.style.zIndex = zIndexVal;
+
+        icon.style.transform = `scale(${scale.toFixed(3)}) translateY(${lift.toFixed(1)}px)`;
+        icon.style.filter = `drop-shadow(0 ${(12 * factor).toFixed(1)}px ${(18 * factor).toFixed(1)}px rgba(0, 0, 0, ${(0.42 * factor).toFixed(2)}))`;
+      } else {
+        icon.style.transform = 'scale(1) translateY(0)';
+        icon.style.filter = '';
+        icon.style.zIndex = '';
+        if (dockItem) dockItem.style.zIndex = '';
+        if (dockSlot) dockSlot.style.zIndex = '';
+      }
+    });
+
+    // Update floating tooltip above the peaked/hovered icon
+    if (closestIcon && minDistance < 55) {
+      const closestItem = closestIcon.closest('.dock-item');
+      if (closestItem) {
+        if (activeTooltipItem !== closestItem) {
+          showDockTooltip(closestItem);
+        } else {
+          updateTooltipPosition(closestIcon);
+        }
+      }
+    } else {
+      hideDockTooltip();
+    }
+  }
+
+  // ===== MAGNIFICATION / HOVER =====
+  let leaveDebounceTimer = null;
+
+  dockContainer.addEventListener('pointerenter', () => {
+    clearTimeout(leaveDebounceTimer);
+    isDockHovered = true;
+    isMouseInDockZone = true;
+    if (dockHideTimer) {
+      clearTimeout(dockHideTimer);
+      dockHideTimer = null;
+    }
+    dockContainer.style.setProperty('--lg-mouse-active', '1');
+    // Reveal dock if auto-hiding
+    if (dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
+      revealDock();
+    }
+  });
+
+  dockContainer.addEventListener('pointerleave', (e) => {
+    // If mouse left through the bottom into screen edge margin, it is still within the dock zone
+    if (e.clientY >= window.innerHeight - 10) {
+      isMouseInDockZone = true;
+      return;
+    }
+    leaveDebounceTimer = setTimeout(() => {
+      isDockHovered = false;
+      dockContainer.style.setProperty('--lg-mouse-active', '0');
+      if (dockRafId) cancelAnimationFrame(dockRafId);
+      resetDockMagnification();
+      hideDockTooltip();
+    }, 50);
+  });
+
+  dockContainer.addEventListener('pointermove', (e) => {
+    // On touch devices or touch pointers, let native scrolling and touch gestures handle interaction
+    if (e.pointerType === 'touch') return;
+
+    clearTimeout(leaveDebounceTimer);
+    isDockHovered = true;
+    isMouseInDockZone = true;
+    if (dockHideTimer) {
+      clearTimeout(dockHideTimer);
+      dockHideTimer = null;
+    }
+
+    const rect = dockContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    dockContainer.style.setProperty('--lg-mouse-x', `${x}px`);
+    dockContainer.style.setProperty('--lg-mouse-y', `${y}px`);
+    dockContainer.style.setProperty('--lg-mouse-active', '1');
+
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rad = Math.atan2(y - centerY, x - centerX);
+    const deg = (rad * 180 / Math.PI + 90);
+    dockContainer.style.setProperty('--lg-refract-angle', `${deg.toFixed(1)}deg`);
+
+    if (isMagnificationEnabled()) {
+      if (dockRafId) cancelAnimationFrame(dockRafId);
+      dockRafId = requestAnimationFrame(() => {
+        applyDockMagnification(e.clientX);
+      });
+    } else {
+      // Magnification disabled — add dock-magnifying on dockContainer itself
+      dockContainer.classList.add('dock-magnifying');
+      const item = e.target.closest('.dock-item');
+      if (item) {
+        showDockTooltip(item);
+      } else {
+        hideDockTooltip();
+      }
+    }
+  });
+
+  // Pointer enter/leave on dock items when magnification is off
+  dockContainer.addEventListener('pointerover', (e) => {
+    if (!isMagnificationEnabled()) {
+      const item = e.target.closest('.dock-item');
+      if (item) showDockTooltip(item);
+    }
+  });
+
+  dockContainer.addEventListener('pointerout', (e) => {
+    if (!isMagnificationEnabled()) {
+      if (!e.relatedTarget || !e.relatedTarget.closest('.dock-item')) {
+        hideDockTooltip();
+      }
+    }
+  });
+
+  // ===== MACOS DOCK AUTO-HIDE ENGINE =====
+  let edgeRevealTimer = null;
+  let dockHideTimer = null;
+  let isMouseInDockZone = false;
   let isMouseDown = false;
+
+  function isAutoHideEnabled() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+      return saved['dock-auto-hide'] === true;
+    } catch (e) { return false; }
+  }
+
+  function revealDock() {
+    if (!dockWrapper) return;
+    dockWrapper.classList.remove('dock-hidden');
+    if (edgeRevealTimer) {
+      clearTimeout(edgeRevealTimer);
+      edgeRevealTimer = null;
+    }
+  }
+
+  function hideDock() {
+    if (!dockWrapper || !isAutoHideEnabled()) return;
+    // macOS Constraint: Never hide while cursor is in the dock zone or dragging an item
+    if (isMouseInDockZone) return;
+    if (dockContainer.querySelector('.dragging') || isMouseDown) return;
+
+    dockWrapper.classList.add('dock-hidden');
+    hideDockTooltip();
+    resetDockMagnification();
+    if (dockHideTimer) {
+      clearTimeout(dockHideTimer);
+      dockHideTimer = null;
+    }
+  }
+
+  function applyAutoHide() {
+    if (!dockWrapper) return;
+    if (isAutoHideEnabled()) {
+      if (!isMouseInDockZone && !isDockHovered) {
+        hideDock();
+      }
+    } else {
+      revealDock();
+    }
+  }
+
+  // Window-level mouse tracking for authentic macOS dock reveal and hide behavior
+  window.addEventListener('mousemove', (e) => {
+    if (!dockWrapper) return;
+
+    const autoHide = isAutoHideEnabled();
+    const isHidden = dockWrapper.classList.contains('dock-hidden');
+
+    // 1. If auto-hide is disabled, keep dock visible
+    if (!autoHide) {
+      if (isHidden) revealDock();
+      return;
+    }
+
+    // 2. If dock is currently hidden:
+    if (isHidden) {
+      // macOS constraint: User pushes cursor firmly against the bottom screen edge
+      if (e.clientY >= window.innerHeight - 4) {
+        if (!edgeRevealTimer) {
+          // macOS hesitation threshold (~180ms) prevents accidental reveals
+          edgeRevealTimer = setTimeout(revealDock, 180);
+        }
+      } else {
+        if (edgeRevealTimer) {
+          clearTimeout(edgeRevealTimer);
+          edgeRevealTimer = null;
+        }
+      }
+      return;
+    }
+
+    // 3. If dock is currently visible:
+    const dockRect = dockContainer.getBoundingClientRect();
+    // Dock interactive zone spans:
+    // - from 24px above the dock (covers lifted/scaled magnified icons)
+    // - down to the very bottom of the screen (no bottom-edge gap flicker!)
+    // - with 40px horizontal margin
+    const inZone = (
+      e.clientY >= dockRect.top - 24 &&
+      e.clientY <= window.innerHeight &&
+      e.clientX >= dockRect.left - 40 &&
+      e.clientX <= dockRect.right + 40
+    );
+
+    if (inZone) {
+      isMouseInDockZone = true;
+      if (dockHideTimer) {
+        clearTimeout(dockHideTimer);
+        dockHideTimer = null;
+      }
+    } else {
+      isMouseInDockZone = false;
+      // macOS constraint: Grace period delay (~500ms) before sliding down
+      if (!dockHideTimer) {
+        dockHideTimer = setTimeout(hideDock, 500);
+      }
+    }
+  });
+
+  setTimeout(applyAutoHide, 300);
+
+  // React in real-time when dock settings change from the Settings app or server sync
+  window.addEventListener('dock-settings-changed', (e) => {
+    const { detail } = e;
+    if ('dock-auto-hide' in detail) {
+      applyAutoHide();
+    }
+    if ('dock-magnification' in detail && !detail['dock-magnification']) {
+      resetDockMagnification();
+    }
+    if (detail.appBarOrder && Array.isArray(detail.appBarOrder)) {
+      appOrder = [...detail.appBarOrder];
+      renderApps();
+    }
+  });
+
+  function syncAppOrderToServer(order) {
+    try {
+      fetch('/api/settings/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appBarOrder: order })
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  // ===== TOUCH GESTURES FOR MOBILE / TABLET DOCK =====
+  let touchEdgeStartY = 0;
+  let touchEdgeStartX = 0;
+
+  window.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchEdgeStartY = touch.clientY;
+    touchEdgeStartX = touch.clientX;
+
+    // Reveal dock on touch near bottom edge (within 35px) when auto-hidden
+    if (isAutoHideEnabled() && dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
+      if (touchEdgeStartY >= window.innerHeight - 35) {
+        revealDock();
+      }
+    }
+
+    // When dock is visible and auto-hide is enabled: tap outside dock hides it
+    if (isAutoHideEnabled() && dockWrapper && !dockWrapper.classList.contains('dock-hidden')) {
+      if (!e.target.closest('#dockContainer')) {
+        setTimeout(() => {
+          if (!isMouseInDockZone && !dockContainer.querySelector('.dragging')) {
+            hideDock();
+          }
+        }, 350);
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - touchEdgeStartY;
+
+    // Swiping up from the bottom edge reveals dock
+    if (isAutoHideEnabled() && dockWrapper && dockWrapper.classList.contains('dock-hidden')) {
+      if (touchEdgeStartY >= window.innerHeight - 45 && deltaY < -12) {
+        revealDock();
+      }
+    }
+  }, { passive: true });
+
+  // Handle device orientation changes (mobile / tablet rotation)
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      updateEmptySlotVisibility();
+      if (dockRafId) cancelAnimationFrame(dockRafId);
+      resetDockMagnification();
+      hideDockTooltip();
+    }, 200);
+  });
+
+  // Mouse drag (for desktop)
   let mouseStartX = 0;
   let scrollLeft = 0;
 
@@ -198,6 +624,17 @@ function initializeDock() {
     const walk = (x - mouseStartX) * 1; // Sensitivity
     dockContainer.scrollLeft = scrollLeft - walk;
   });
+
+  // Wheel listener to support horizontal scrolling smoothly
+  dockContainer.addEventListener('wheel', (e) => {
+    if (dockContainer.scrollWidth > dockContainer.clientWidth) {
+      // Horizontal scroll support for vertical mouse wheels or trackpad swipes
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (delta !== 0) {
+        dockContainer.scrollLeft += delta;
+      }
+    }
+  }, { passive: true });
 
   // Monitor container resize and update empty slot visibility
   const resizeObserver = new ResizeObserver(() => {
@@ -426,8 +863,9 @@ function initializeDock() {
         
         appOrder[targetSlotIndex] = appId; // Move dragged app to target slot
         
-        // Save to localStorage
+        // Save to localStorage and sync to server
         localStorage.setItem(STORAGE_KEY, JSON.stringify(appOrder));
+        syncAppOrderToServer(appOrder);
 
         // Re-render apps
         renderApps();
@@ -487,6 +925,7 @@ function initializeDock() {
     if (settingsAppObj) {
       const settingsApp = document.createElement('a');
       settingsApp.className = 'dock-item';
+      settingsApp.setAttribute('data-app-name', settingsAppObj.name);
       settingsApp.href = '#';
       settingsApp.draggable = false; // Settings icon is non-draggable
       settingsApp.innerHTML = `
@@ -497,6 +936,7 @@ function initializeDock() {
       `;
       settingsApp.addEventListener('click', (e) => {
         e.preventDefault();
+        hideDockTooltip();
         settingsAppObj.action();
       });
       // Prevent drag start on settings icon
@@ -545,6 +985,7 @@ function initializeDock() {
   function createAppElement(app) {
     const appElement = document.createElement('a');
     appElement.className = 'dock-item';
+    appElement.setAttribute('data-app-name', app.name);
     if (openApps.has(app.id)) {
       appElement.classList.add('active');
       if (minimizedApps.has(app.id)) {
@@ -591,7 +1032,14 @@ function initializeDock() {
     
     appElement.addEventListener('click', (e) => {
       e.preventDefault();
+      hideDockTooltip();
       
+      // Authentic macOS dock launch bounce effect
+      appElement.classList.add('bouncing');
+      setTimeout(() => {
+        appElement.classList.remove('bouncing');
+      }, 1300);
+
       // If app is already open, bring it to front instead of creating new instance
       if (openApps.has(app.id)) {
         const appInstance = window[`current${app.id.charAt(0).toUpperCase() + app.id.slice(1)}App`];
@@ -779,6 +1227,7 @@ function initializeDock() {
             }
             appOrder[slotIndex] = appId;
             localStorage.setItem(STORAGE_KEY, JSON.stringify(appOrder));
+            syncAppOrderToServer(appOrder);
             renderApps();
             // swap animation
             if (targetApp) {
@@ -820,7 +1269,7 @@ function initializeDock() {
     });
   }
 
-  // Initial render
+  // Initial render (label listeners are attached inside renderApps)
   renderApps();
 }
 

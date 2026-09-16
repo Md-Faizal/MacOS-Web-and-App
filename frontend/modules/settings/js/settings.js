@@ -658,10 +658,16 @@ export class SettingsApp extends AppWindow {
 
       <div class="settings-panel hidden" id="dock-panel">
         <div class="settings-section">
-          <div class="settings-section-title">Desktop & Dock</div>
+          <div class="settings-section-title">Desktop &amp; Dock</div>
           <div class="settings-toggle">
             <div class="toggle-label">Automatically hide and show the Dock</div>
             <button class="toggle-switch" data-toggle="dock-auto-hide">
+              <div class="toggle-switch-knob"></div>
+            </button>
+          </div>
+          <div class="settings-toggle">
+            <div class="toggle-label">Magnification</div>
+            <button class="toggle-switch active" data-toggle="dock-magnification">
               <div class="toggle-switch-knob"></div>
             </button>
           </div>
@@ -1038,7 +1044,21 @@ export class SettingsApp extends AppWindow {
         const toggleName = toggle.getAttribute('data-toggle');
         this.settings[toggleName] = toggle.classList.contains('active');
         this.saveSettings();
+        // Notify the dock in real-time for dock-related settings
+        if (toggleName === 'dock-auto-hide' || toggleName === 'dock-magnification') {
+          window.dispatchEvent(new CustomEvent('dock-settings-changed', { detail: { [toggleName]: this.settings[toggleName] } }));
+        }
       });
+
+      // Initialize toggle state from saved settings
+      const toggleName = toggle.getAttribute('data-toggle');
+      if (toggleName && this.settings[toggleName] !== undefined) {
+        if (this.settings[toggleName]) {
+          toggle.classList.add('active');
+        } else {
+          toggle.classList.remove('active');
+        }
+      }
     });
 
     // Add Wallpaper button
@@ -2124,7 +2144,8 @@ export class SettingsApp extends AppWindow {
       iconStyle: saved.iconStyle || 'default',
       liquidGlass: saved.liquidGlass || 'clear',
       'sidebar-size': saved['sidebar-size'] || 'medium',
-      'tint-wallpaper': saved['tint-wallpaper'] !== undefined ? saved['tint-wallpaper'] : true
+      'tint-wallpaper': saved['tint-wallpaper'] !== undefined ? saved['tint-wallpaper'] : true,
+      'dock-magnification': saved['dock-magnification'] !== undefined ? saved['dock-magnification'] : true
     };
   }
 
@@ -2138,7 +2159,19 @@ export class SettingsApp extends AppWindow {
         if (this.settings.theme) {
           localStorage.setItem('macos_theme', this.settings.theme);
         }
+        if (data.appBarOrder && Array.isArray(data.appBarOrder)) {
+          localStorage.setItem('appBarOrder', JSON.stringify(data.appBarOrder));
+        }
         this.applyTheme();
+        
+        // Notify dock of any server settings update
+        window.dispatchEvent(new CustomEvent('dock-settings-changed', {
+          detail: {
+            'dock-auto-hide': this.settings['dock-auto-hide'],
+            'dock-magnification': this.settings['dock-magnification'],
+            'appBarOrder': data.appBarOrder
+          }
+        }));
         
         // Update UI if appearance module is loaded
         if (this.appearanceModule) {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Recent App Tracker
  * Tracks the most recently opened app and displays it next to the Apple logo
  */
@@ -73,8 +73,8 @@ class RecentAppTracker {
       // Fallback: try to find and click the app bar item by name
       const appBarItems = document.querySelectorAll('.app-bar-item, .dock-item');
       for (let item of appBarItems) {
-        const label = item.querySelector('.app-bar-label, .dock-label');
-        if (label && label.textContent.trim() === this.recentApp.name) {
+        const appName = item.getAttribute('data-app-name') || item.querySelector('.app-bar-label, .dock-label')?.textContent?.trim();
+        if (appName === this.recentApp.name) {
           item.click();
           break;
         }
