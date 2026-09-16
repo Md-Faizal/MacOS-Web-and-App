@@ -1,11 +1,12 @@
 /* ============================================================
-   MacOS Cursor  ·  ful1e5/apple_cursor Edition  v3.1
+   MacOS Cursor  ·  Industrial Standard Edition  v4.0
    
    Fixes:
-     • Cursor is always white (SVG color rewrite on fetch)
-     • No auto-hide (cursor stays visible always)
-     • Authentic macOS click effect (subtle 0.94× squeeze only)
-     • Correct left/right click behaviour
+     • 100% Offline & Synchronous (Embedded pre-compiled SVG assets)
+     • Decoupled from RAF: zero-latency direct transform tracking
+     • Robust NaN math protection for DevTools & debugger resilience
+     • Edge & right-click context menu visibility guarantee
+     • Transparent pointer-events pass-through
    ============================================================ */
 
 /* ── Kill the OS cursor everywhere ── */
@@ -22,7 +23,7 @@
   left: 0;
   width: 32px;
   height: 32px;
-  pointer-events: none;
+  pointer-events: none !important;
   user-select: none;
   z-index: 2147483647;
   will-change: transform;
@@ -45,7 +46,7 @@
   display: block;
   -webkit-user-drag: none;
   user-drag: none;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 /* ── Wait cursor: rotate the whole element ── */
@@ -66,7 +67,7 @@
   height: 5px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.65);
-  pointer-events: none;
+  pointer-events: none !important;
   z-index: 2147483646;
   will-change: transform;
   transform: translate(-50%, -50%);
@@ -92,7 +93,7 @@
   height: 22px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.45);
-  pointer-events: none;
+  pointer-events: none !important;
   z-index: 2147483645;
   transform: translate(-50%, -50%) scale(0.4);
   opacity: 0;

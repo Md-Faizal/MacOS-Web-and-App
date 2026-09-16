@@ -455,9 +455,11 @@
 /* ===== DOCK SLOT DIVIDER ===== */
 .dock-slot-divider {
   width: 1px;
-  height: 48px;
+  height: 42px;
   background: rgba(255, 255, 255, 0.3);
   margin: 0 0.35rem;
+  margin-bottom: 11px;
+  align-self: flex-end;
   flex-shrink: 0;
   transition: all 0.3s ease;
 }

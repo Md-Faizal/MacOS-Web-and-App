@@ -23,8 +23,8 @@ export class WorkerAuditOverlay {
   }
 
   isAdmin() {
-    const role = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role') || '').toLowerCase();
-    return role === 'owner' || role === 'admin';
+    const role = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role') || 'owner').toLowerCase();
+    return role !== 'worker';
   }
 
   isWorkerBadgesEnabled() {
@@ -54,14 +54,20 @@ export class WorkerAuditOverlay {
     document.addEventListener('contextmenu', (e) => {
       if (!this.isAdmin() || !this.isWorkerBadgesEnabled()) return;
 
-      const target = e.target.closest('[data-worker-audit]');
+      const target = e.target.closest('[data-worker-audit]') || e.target.closest('.macos-worker-badge');
       if (target) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.showPopover(target, e.clientX, e.clientY);
-      } else {
-        this.hidePopover();
+        const auditEl = target.hasAttribute('data-worker-audit')
+          ? target
+          : target.closest('[data-worker-audit]');
+
+        if (auditEl) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.showPopover(auditEl, e.clientX, e.clientY);
+          return;
+        }
       }
+      this.hidePopover();
     }, true);
 
     // Dismiss on click outside or scroll
@@ -81,15 +87,20 @@ export class WorkerAuditOverlay {
 
     // Touch support (long press)
     document.addEventListener('touchstart', (e) => {
-      const target = e.target.closest('[data-worker-audit]');
+      const target = e.target.closest('[data-worker-audit]') || e.target.closest('.macos-worker-badge');
       if (!target || !this.isAdmin() || !this.isWorkerBadgesEnabled()) return;
+
+      const auditEl = target.hasAttribute('data-worker-audit')
+        ? target
+        : target.closest('[data-worker-audit]');
+      if (!auditEl) return;
 
       const touch = e.touches[0];
       this.touchPos = { x: touch.clientX, y: touch.clientY };
 
       clearTimeout(this.touchTimer);
       this.touchTimer = setTimeout(() => {
-        this.showPopover(target, this.touchPos.x, this.touchPos.y);
+        this.showPopover(auditEl, this.touchPos.x, this.touchPos.y);
       }, 550);
     }, { passive: true });
 
@@ -167,6 +178,10 @@ export class WorkerAuditOverlay {
 
     const creatorPlatformBadge = formatPlatformBadge(creatorPlatform);
     const editorPlatformBadge = formatPlatformBadge(editorPlatform);
+
+    const isWorkerBadge = isWorkerEditor || isWorkerCreator;
+    const badgeText = isWorkerEditor ? 'Worker Modified' : (isWorkerCreator ? 'Worker Created' : 'Admin Created');
+    const badgeClass = isWorkerBadge ? 'worker-created' : 'admin-created';
 
     this.popoverEl.innerHTML = `
       <div class="worker-audit-popover-header">

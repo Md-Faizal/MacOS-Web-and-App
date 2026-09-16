@@ -1,3 +1,5 @@
+import { WorkerAuditOverlay } from '/shared/worker-audit-overlay.js';
+
 /**
  * Shared Worker Badges Utility for Admin Views
  */
@@ -86,4 +88,9 @@ if (typeof window !== 'undefined') {
   window.isWorkerBadgesEnabled = isWorkerBadgesEnabled;
   window.renderWorkerBadge = renderWorkerBadge;
   window.escapeWorkerBadgeHtml = escapeHtml;
+  try {
+    if (typeof WorkerAuditOverlay !== 'undefined') {
+      WorkerAuditOverlay.init();
+    }
+  } catch (_) {}
 }

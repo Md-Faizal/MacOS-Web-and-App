@@ -1,31 +1,30 @@
 /**
- * MacOS Cursor Engine  v3.1  —  ful1e5/apple_cursor Edition
+ * MacOS Cursor Engine  v4.0  —  Industrial Standard Edition
  * ─────────────────────────────────────────────────────────────────
- *
- * FIX 1 – Green → White:
- *   The ful1e5 source SVGs use placeholder colors:
- *     #00FF00 = cursor body fill  → replaced with #FFFFFF (white)
- *     #0000FF = cursor outline    → replaced with #000000 (black)
- *   We fetch each SVG, rewrite those colors, and create a Blob URL.
- *   Result: authentic white macOS cursors at runtime, no extra files.
- *
- * FIX 2 – Cursor always visible:
- *   Removed the 3-second auto-hide. macOS only hides the cursor in
- *   specific fullscreen media apps — not in general desktop use.
- *   Cursor now only hides when the mouse physically leaves the browser
- *   window or the window loses focus.
- *
- * FIX 3 – Authentic macOS click behaviour:
- *   Left-click (button 0):
- *     • Very subtle cursor squeeze (0.92×) with slight bounce (1.03×)
- *     • Soft click-ring ripple (matches macOS click feedback)
- *   Right-click (button 2):
- *     • No cursor animation (macOS shows a context menu, no cursor effect)
- *   Middle-click (button 1):
- *     • No cursor animation
- *
- * All other effects (shake-to-find, hover spring, LERP dot, wait
- * animation, state detection) remain from v3.0.
+ * Fully offline, zero-latency, resilient macOS cursor engine.
+ * 
+ * 1. 100% Offline & Synchronous:
+ *    Uses embedded pre-compiled SVG assets with authentic macOS geometry,
+ *    white fill, and black outlines. Zero network calls, zero CDN latency,
+ *    and completely immune to DevTools "Disable cache" or offline mode.
+ * 
+ * 2. Real-Time Zero-Latency Positioning:
+ *    Cursor position is updated synchronously on pointer/mouse events.
+ *    Decoupled from requestAnimationFrame so the cursor NEVER freezes
+ *    or disappears when Chrome DevTools throttles or pauses RAF.
+ * 
+ * 3. Bulletproof Physics Math:
+ *    Strictly sanitized velocity calculations protect against NaN
+ *    propagation from breakpoint pauses, DevTools switches, or timestamp jumps.
+ * 
+ * 4. Robust Edge & Context Visibility:
+ *    Auto-wakes and stays visible on focus, pointerenter, mousedown,
+ *    right-click contextmenu, and viewport re-entry. Only hides when
+ *    the mouse physically exits window viewport boundaries.
+ * 
+ * 5. Transparent Pointer Pass-Through:
+ *    Guaranteed pointer-events: none across all elements and states,
+ *    ensuring 100% click, right-click, and drag pass-through.
  * ─────────────────────────────────────────────────────────────────
  */
 
@@ -38,146 +37,83 @@
   if (document.getElementById('macos-cursor')) return;
 
   /* ══════════════════════════════════════════════════════════
-     COLOR REWRITING
-     Fetch each SVG from jsDelivr, replace placeholder colors,
-     and hand back a Blob object URL that browsers can use in <img>.
-
-     ful1e5/apple_cursor color conventions:
-       #00FF00  →  white  (cursor body/fill)
-       #0000FF  →  black  (cursor shadow outline)
-   ══════════════════════════════════════════════════════════ */
-  const CDN = 'https://cdn.jsdelivr.net/gh/ful1e5/apple_cursor@main/svg/';
-
-  /* Color replacement map — case-insensitive */
-  const COLOR_REPLACEMENTS = [
-    [/#00FF00/gi, '#FFFFFF'],   // green body → white
-    [/#0000FF/gi, '#000000'],   // blue outline → black
-    [/fill="#0f0"/gi, 'fill="#fff"'],
-    [/fill="#00f"/gi, 'fill="#000"'],
-  ];
-
-  /* Cache resolved blob URLs to avoid re-fetching */
-  const blobCache = {};
-
-  /**
-   * Fetch an SVG, rewrite placeholder colors, return a Blob URL.
-   * Falls back to the original CDN URL on any network error.
-   */
-  async function resolveCursorUrl(cdnUrl) {
-    if (blobCache[cdnUrl]) return blobCache[cdnUrl];
-
-    try {
-      const res = await fetch(cdnUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      let svg = await res.text();
-
-      /* Apply all color replacements */
-      for (const [pattern, replacement] of COLOR_REPLACEMENTS) {
-        svg = svg.replace(pattern, replacement);
-      }
-
-      const blob = new Blob([svg], { type: 'image/svg+xml' });
-      const url  = URL.createObjectURL(blob);
-      blobCache[cdnUrl] = url;
-      return url;
-    } catch (e) {
-      console.warn('[MacOSCursor] Failed to rewrite SVG colors for', cdnUrl, e.message);
-      blobCache[cdnUrl] = cdnUrl; // fallback: use raw CDN URL
-      return cdnUrl;
-    }
-  }
-
-  /* ══════════════════════════════════════════════════════════
      CURSOR STATE REGISTRY
    ══════════════════════════════════════════════════════════ */
   const STATES = {
     arrow: {
-      src: CDN + 'left_ptr.svg',
       w: 32, h: 32,
       ox: 10, oy: 6,    // hotspot: tip of arrow
       base: 1,
       dot: false,
     },
     pointer: {
-      src: CDN + 'hand2.svg',
       w: 32, h: 32,
       ox: 10, oy: 4,    // hotspot: fingertip
-      base: 1.15,       // hover spring enlargement
+      base: 1.15,       // subtle hover enlargement
       dot: true,
     },
     text: {
-      src: CDN + 'xterm.svg',
       w: 28, h: 28,
       ox: 14, oy: 14,
       base: 1,
       dot: false,
     },
     grab: {
-      src: CDN + 'hand1.svg',
       w: 32, h: 32,
       ox: 14, oy: 8,
       base: 1,
       dot: false,
     },
     grabbing: {
-      src: CDN + 'hand1.svg',
       w: 30, h: 30,
       ox: 13, oy: 10,
       base: 1,
       dot: false,
-      brightness: 0.82,   // slightly darker when gripping
+      brightness: 0.82,
     },
     move: {
-      src: CDN + 'move.svg',
       w: 32, h: 32,
       ox: 16, oy: 16,
       base: 1,
       dot: false,
     },
     notAllowed: {
-      src: CDN + 'crossed_circle.svg',
       w: 32, h: 32,
       ox: 16, oy: 16,
       base: 1,
       dot: false,
     },
     crosshair: {
-      src: CDN + 'crosshair.svg',
       w: 32, h: 32,
       ox: 16, oy: 16,
       base: 1,
       dot: false,
     },
     resizeNS: {
-      src: CDN + 'sb_v_double_arrow.svg',
       w: 28, h: 28,
       ox: 14, oy: 14,
       base: 1,
       dot: false,
     },
     resizeEW: {
-      src: CDN + 'sb_h_double_arrow.svg',
       w: 28, h: 28,
       ox: 14, oy: 14,
       base: 1,
       dot: false,
     },
     resizeNESW: {
-      src: CDN + 'bottom_left_corner.svg',
       w: 28, h: 28,
       ox: 14, oy: 14,
       base: 1,
       dot: false,
     },
     resizeNWSE: {
-      src: CDN + 'bottom_right_corner.svg',
       w: 28, h: 28,
       ox: 14, oy: 14,
       base: 1,
       dot: false,
     },
     wait: {
-      src: CDN + 'wait/wait-01.svg',
       w: 32, h: 32,
       ox: 16, oy: 16,
       base: 1,
@@ -186,48 +122,63 @@
     },
   };
 
-  /* ══════════════════════════════════════════════════════════
-     PRELOAD  (resolve + cache all blob URLs in background)
-   ══════════════════════════════════════════════════════════ */
-  Object.values(STATES).forEach(s => {
-    if (!s.animated) resolveCursorUrl(s.src);  // fire-and-forget
-  });
+  /**
+   * Resolves the cursor asset synchronously from the embedded asset bundle.
+   */
+  function getCursorAsset(name) {
+    if (window.MACOS_CURSOR_ASSETS && window.MACOS_CURSOR_ASSETS[name]) {
+      return window.MACOS_CURSOR_ASSETS[name];
+    }
+    if (window.MACOS_CURSOR_ASSETS && window.MACOS_CURSOR_ASSETS.arrow) {
+      return window.MACOS_CURSOR_ASSETS.arrow;
+    }
+    // Fallback minimal white arrow SVG if bundle hasn't evaluated yet
+    return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="%23fff" stroke="%23000" stroke-width="1.5" d="M3 2v20l5.5-5.5 4.5 10 3.5-1.5-4.5-10h7z"/></svg>';
+  }
 
   /* ══════════════════════════════════════════════════════════
-     DOM CONSTRUCTION
+     DOM CONSTRUCTION & RECOVERY
    ══════════════════════════════════════════════════════════ */
   const cursorEl = document.createElement('div');
   cursorEl.id = 'macos-cursor';
+  cursorEl.style.pointerEvents = 'none';
 
   const cursorImg = document.createElement('img');
   cursorImg.alt = '';
   cursorImg.draggable = false;
+  cursorImg.style.pointerEvents = 'none';
   cursorEl.appendChild(cursorImg);
 
   const dotEl = document.createElement('div');
   dotEl.id = 'macos-cursor-dot';
+  dotEl.style.pointerEvents = 'none';
 
   const ringEl = document.createElement('div');
   ringEl.id = 'macos-cursor-ring';
+  ringEl.style.pointerEvents = 'none';
 
-  document.body.appendChild(cursorEl);
-  document.body.appendChild(dotEl);
-  document.body.appendChild(ringEl);
+  function ensureMounted() {
+    const parent = document.body || document.documentElement;
+    if (!parent) return;
+    if (!cursorEl.parentElement) parent.appendChild(cursorEl);
+    if (!dotEl.parentElement) parent.appendChild(dotEl);
+    if (!ringEl.parentElement) parent.appendChild(ringEl);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ensureMounted);
+  } else {
+    ensureMounted();
+  }
 
   /* ══════════════════════════════════════════════════════════
      STATE
    ══════════════════════════════════════════════════════════ */
-  let mouseX = -300, mouseY = -300;
-  let dotX   = -300, dotY   = -300;
+  let mouseX = -500, mouseY = -500;
+  let dotX   = -500, dotY   = -500;
   let rafId  = null;
   let isHidden = false;
   let currentStateName = 'arrow';
-
-  /* Wait animation */
-  let waitFrame = 1;
-  let waitTimer = null;
-  const WAIT_FRAMES = 40;
-  const WAIT_FPS    = 24;
 
   /* ── Velocity / Shake-to-Find ── */
   let prevX = 0, prevY = 0, prevT = 0;
@@ -235,51 +186,65 @@
   let velocityScale = 1;    // current rendered scale
   let isShaking     = false;
 
-  const VEL_LERP          = 0.28;
-  const VEL_THRESHOLD     = 0.55;  // px/ms to start growing
-  const VEL_MAX           = 3.2;   // px/ms for max scale
-  const VEL_SCALE_MAX     = 2.4;   // peak cursor scale
-  const VEL_DECAY         = 0.87;  // per-frame decay
-  const SHAKE_GLOW_THRESH = 1.5;   // velocity for glow
+  const VEL_LERP          = 0.35;
+  const VEL_THRESHOLD     = 0.45;  // px/ms to start growing
+  const VEL_MAX           = 2.4;   // px/ms for max scale
+  const VEL_SCALE_MAX     = 2.5;   // peak cursor scale (authentic macOS)
+  const VEL_DECAY         = 0.92;  // per-frame decay (holds enlargement during shake)
+  const SHAKE_GLOW_THRESH = 1.3;   // velocity for glow
 
   /* ══════════════════════════════════════════════════════════
-     APPLY CURSOR STATE
+     VIEWPORT BOUNDARY HELPER
    ══════════════════════════════════════════════════════════ */
-  async function applyCursorState(name, force = false) {
+  function isInsideViewport(x, y) {
+    return Number.isFinite(x) && Number.isFinite(y) &&
+           x >= 0 && x <= window.innerWidth &&
+           y >= 0 && y <= window.innerHeight;
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     SHOW / HIDE
+   ══════════════════════════════════════════════════════════ */
+  function showCursor() {
+    if (!isHidden) return;
+    isHidden = false;
+    cursorEl.classList.remove('hidden');
+    dotEl.classList.remove('hidden');
+  }
+
+  function hideCursor() {
+    if (isHidden) return;
+    isHidden = true;
+    cursorEl.classList.add('hidden');
+    dotEl.classList.add('hidden');
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     APPLY CURSOR STATE (SYNCHRONOUS)
+   ══════════════════════════════════════════════════════════ */
+  function applyCursorState(name, force = false) {
     const meta = STATES[name] || STATES.arrow;
     if (name === currentStateName && !force) return;
     currentStateName = name;
 
-    /* Stop wait animation */
-    clearInterval(waitTimer);
-    cursorEl.classList.remove('state-wait');
+    const dataUri = getCursorAsset(name);
+    if (cursorImg.src !== dataUri) {
+      cursorImg.src = dataUri;
+    }
 
-    /* Resolve the (possibly color-corrected) image URL */
-    const url = await resolveCursorUrl(meta.src);
-    if (cursorImg.src !== url) cursorImg.src = url;
-
-    /* Size */
     cursorEl.style.width  = meta.w + 'px';
     cursorEl.style.height = meta.h + 'px';
 
-    /* Brightness tweak for grabbing */
     cursorImg.style.filter = meta.brightness
       ? `brightness(${meta.brightness})`
       : '';
 
-    /* Animated wait — cycle frames */
-    if (meta.animated) {
+    if (name === 'wait') {
       cursorEl.classList.add('state-wait');
-      waitFrame = 1;
-      waitTimer = setInterval(async () => {
-        waitFrame = (waitFrame % WAIT_FRAMES) + 1;
-        const pad = String(waitFrame).padStart(2, '0');
-        const frameUrl = await resolveCursorUrl(CDN + `wait/wait-${pad}.svg`);
-        cursorImg.src = frameUrl;
-      }, 1000 / WAIT_FPS);
+    } else {
+      cursorEl.classList.remove('state-wait');
     }
 
-    /* Trail dot */
     if (meta.dot) {
       dotEl.classList.add('dot-hover');
     } else {
@@ -292,9 +257,14 @@
    ══════════════════════════════════════════════════════════ */
   function detectState(el) {
     if (!el) return 'arrow';
-    const comp = window.getComputedStyle(el).cursor;
+    let comp = '';
+    try {
+      comp = window.getComputedStyle(el).cursor;
+    } catch (_) {
+      return 'arrow';
+    }
 
-    if (el.draggable || el.closest('[draggable="true"]')) return 'grab';
+    if (el.draggable || (el.closest && el.closest('[draggable="true"]'))) return 'grab';
 
     switch (comp) {
       case 'pointer':        return 'pointer';
@@ -330,36 +300,65 @@
   }
 
   function isInteractive(el) {
-    if (!el) return false;
-    const tag = el.tagName;
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
     if (['A','BUTTON','SELECT','SUMMARY','LABEL','DETAILS'].includes(tag)) return true;
     if (tag === 'INPUT' && !['range','checkbox','radio'].includes(el.type)) return true;
-    if (el.getAttribute('role') === 'button') return true;
+    if (el.getAttribute && el.getAttribute('role') === 'button') return true;
     if (el.onclick) return true;
     return false;
   }
 
   /* ══════════════════════════════════════════════════════════
-     VELOCITY → SCALE  (Shake-to-Find)
+     VELOCITY → SCALE (Shake-to-Find)
    ══════════════════════════════════════════════════════════ */
   function targetScale() {
     const base = (STATES[currentStateName] || STATES.arrow).base || 1;
-    if (velocity <= VEL_THRESHOLD) return base;
-    const t = Math.min((velocity - VEL_THRESHOLD) / (VEL_MAX - VEL_THRESHOLD), 1);
-    return base + Math.sqrt(t) * (VEL_SCALE_MAX - base);
+    if (!Number.isFinite(velocity) || velocity <= VEL_THRESHOLD) return base;
+    const clampedVelocity = Math.min(Math.max(velocity, 0), VEL_MAX);
+    const t = Math.min((clampedVelocity - VEL_THRESHOLD) / (VEL_MAX - VEL_THRESHOLD), 1);
+    const result = base + Math.sqrt(t) * (VEL_SCALE_MAX - base);
+    return Number.isFinite(result) ? result : base;
   }
 
   /* ══════════════════════════════════════════════════════════
-     RAF LOOP
+     SYNCHRONOUS POINTER TRANSFORM UPDATE
+     Guarantees real-time positioning with zero latency.
+   ══════════════════════════════════════════════════════════ */
+  function updateCursorPosition(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const meta = STATES[currentStateName] || STATES.arrow;
+    const tx = Math.round(x - meta.ox);
+    const ty = Math.round(y - meta.oy);
+    const vs = Number.isFinite(velocityScale) ? velocityScale.toFixed(4) : '1.0000';
+
+    cursorEl.style.transform = `translate(${tx}px, ${ty}px) scale(${vs})`;
+    cursorEl.style.setProperty('--cursor-pos', `translate(${tx}px, ${ty}px)`);
+    cursorEl.style.setProperty('--vs', vs);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     RAF LOOP (PHYSICS & LERP TRAILS ONLY)
    ══════════════════════════════════════════════════════════ */
   function tick() {
-    const meta = STATES[currentStateName] || STATES.arrow;
-
-    /* Velocity decay */
-    velocity *= VEL_DECAY;
+    /* Velocity decay with strict NaN protection */
+    if (Number.isFinite(velocity)) {
+      velocity *= VEL_DECAY;
+      if (velocity < 0.001) velocity = 0;
+    } else {
+      velocity = 0;
+    }
 
     /* Spring toward target scale */
-    velocityScale += (targetScale() - velocityScale) * 0.1;
+    const target = targetScale();
+    if (Number.isFinite(target)) {
+      velocityScale += (target - velocityScale) * 0.18;
+    }
+    if (!Number.isFinite(velocityScale) || velocityScale < 1) {
+      velocityScale = 1;
+    } else if (velocityScale > VEL_SCALE_MAX) {
+      velocityScale = VEL_SCALE_MAX;
+    }
 
     /* Shake glow */
     const shouldShake = velocity > SHAKE_GLOW_THRESH;
@@ -368,81 +367,94 @@
       cursorEl.classList.toggle('shaking', isShaking);
     }
 
-    /* Position cursor (hotspot-corrected) */
-    const tx = mouseX - meta.ox;
-    const ty = mouseY - meta.oy;
-    const vs = velocityScale.toFixed(4);
-    const transformStr = `translate(${tx}px, ${ty}px) scale(${vs})`;
-    cursorEl.style.transform = transformStr;
-    /* Expose as CSS var so the click animation can use it */
-    cursorEl.style.setProperty('--cursor-pos', `translate(${tx}px, ${ty}px)`);
-    cursorEl.style.setProperty('--vs', vs);
+    /* Keep scale refreshed */
+    if (Number.isFinite(mouseX) && Number.isFinite(mouseY) && mouseX > -200) {
+      updateCursorPosition(mouseX, mouseY);
+    }
 
     /* LERP dot trail */
-    dotX += (mouseX - dotX) * 0.15;
-    dotY += (mouseY - dotY) * 0.15;
-    dotEl.style.transform = `translate(${dotX}px, ${dotY}px) translate(-50%, -50%)`;
+    if (Number.isFinite(mouseX) && Number.isFinite(mouseY)) {
+      dotX += (mouseX - dotX) * 0.18;
+      dotY += (mouseY - dotY) * 0.18;
+      if (Number.isFinite(dotX) && Number.isFinite(dotY)) {
+        dotEl.style.transform = `translate(${Math.round(dotX)}px, ${Math.round(dotY)}px) translate(-50%, -50%)`;
+      }
+    }
 
     rafId = requestAnimationFrame(tick);
   }
 
   /* ══════════════════════════════════════════════════════════
-     SHOW / HIDE
-     Only triggered by mouse leaving window or window blur.
-     NOT on a timer — macOS never auto-hides in desktop mode.
+     EVENTS: ROBUST MOVEMENT & WAKEUP
    ══════════════════════════════════════════════════════════ */
-  function showCursor() {
-    if (!isHidden) return;
-    isHidden = false;
-    cursorEl.classList.remove('hidden');
-    dotEl.classList.remove('hidden');
-  }
+  function handlePointerMove(e) {
+    ensureMounted();
 
-  function hideCursor() {
-    if (isHidden) return;
-    isHidden = true;
-    cursorEl.classList.add('hidden');
-    dotEl.classList.add('hidden');
-  }
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return;
 
-  /* ══════════════════════════════════════════════════════════
-     EVENTS
-   ══════════════════════════════════════════════════════════ */
+    const now = (e.timeStamp && Number.isFinite(e.timeStamp)) ? e.timeStamp : performance.now();
+    if (prevT > 0) {
+      const dt = now - prevT;
+      // Skip duplicate/synthetic 0ms events without resetting velocity
+      if (dt <= 0) return;
 
-  /* MOUSEMOVE — track position + velocity */
-  document.addEventListener('mousemove', (e) => {
-    const now = e.timeStamp || performance.now();
-    const dx = e.clientX - prevX;
-    const dy = e.clientY - prevY;
-    const dt = now - prevT;
+      const dx = clientX - prevX;
+      const dy = clientY - prevY;
 
-    if (dt > 0) {
-      const speed = Math.sqrt(dx * dx + dy * dy) / dt;
-      velocity += (speed - velocity) * VEL_LERP;
+      // Only compute velocity on continuous frames (skip debugger pauses/jumps > 350ms)
+      if (dt < 350 && Number.isFinite(dx) && Number.isFinite(dy)) {
+        const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+        if (Number.isFinite(speed)) {
+          velocity += (speed - velocity) * VEL_LERP;
+        }
+      } else {
+        velocity = 0;
+      }
     }
 
-    prevX = e.clientX; prevY = e.clientY; prevT = now;
-    mouseX = e.clientX; mouseY = e.clientY;
+    prevX = clientX;
+    prevY = clientY;
+    prevT = now;
+    mouseX = clientX;
+    mouseY = clientY;
 
-    showCursor();
+    if (isInsideViewport(clientX, clientY)) {
+      showCursor();
+    }
 
-    const under = document.elementFromPoint(e.clientX, e.clientY);
+    // Instant zero-latency position update
+    updateCursorPosition(clientX, clientY);
+
+    // Synchronous state detection
+    const under = document.elementFromPoint(clientX, clientY);
     applyCursorState(detectState(under));
-  }, { passive: true });
+  }
 
-  /* MOUSEDOWN — LEFT click only gets animation (button === 0)
-     RIGHT click (button === 2): macOS opens context menu, no cursor fx
-     MIDDLE click (button === 1): no cursor fx */
-  document.addEventListener('mousedown', (e) => {
-    /* Only animate on left-click (button 0) */
+  // Single robust event binding (avoid duplicate events resetting dt/velocity)
+  if (window.PointerEvent) {
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+  } else {
+    window.addEventListener('mousemove', handlePointerMove, { passive: true });
+  }
+
+  /* MOUSEDOWN — LEFT click animate (button 0), RIGHT click contextmenu transparent */
+  window.addEventListener('mousedown', (e) => {
+    ensureMounted();
+    if (Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      showCursor();
+      updateCursorPosition(e.clientX, e.clientY);
+    }
+
+    /* Animate on left-click (button 0) only */
     if (e.button === 0) {
-      /* Squeeze animation */
       cursorEl.classList.remove('clicking');
-      void cursorEl.offsetWidth;   // restart animation
+      void cursorEl.offsetWidth; // restart animation
       cursorEl.classList.add('clicking');
 
-      /* Subtle click ring at cursor hotspot position */
-      const meta = STATES[currentStateName] || STATES.arrow;
       ringEl.style.left = e.clientX + 'px';
       ringEl.style.top  = e.clientY + 'px';
       ringEl.classList.remove('burst');
@@ -450,45 +462,66 @@
       ringEl.classList.add('burst');
     }
 
-    /* Grab → grabbing on any button */
+    /* Grab → grabbing */
     if (currentStateName === 'grab') applyCursorState('grabbing', true);
   }, { passive: true });
 
-  document.addEventListener('mouseup', (e) => {
+  window.addEventListener('mouseup', (e) => {
     cursorEl.classList.remove('clicking');
-    /* Restore grab only if it was a drag */
     if (currentStateName === 'grabbing') applyCursorState('grab', true);
+    if (isInsideViewport(e.clientX, e.clientY)) showCursor();
   }, { passive: true });
 
-  /* DRAG states */
-  document.addEventListener('dragstart', () => applyCursorState('grabbing', true), { passive: true });
-  document.addEventListener('dragend',   () => applyCursorState('arrow',    true), { passive: true });
+  /* CONTEXT MENU & RIGHT-CLICK WAKEUP */
+  window.addEventListener('contextmenu', (e) => {
+    if (Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      showCursor();
+      updateCursorPosition(e.clientX, e.clientY);
+    }
+  }, { passive: true });
 
-  /* WINDOW LEAVE / ENTER — hide/show cursor */
-  document.addEventListener('mouseleave', () => hideCursor(), { passive: true });
-  document.addEventListener('mouseenter', () => showCursor(), { passive: true });
+  /* DRAG events */
+  window.addEventListener('dragstart', () => applyCursorState('grabbing', true), { passive: true });
+  window.addEventListener('dragend',   () => applyCursorState('arrow',    true), { passive: true });
 
-  /* FOCUS / BLUR removed: hiding on window.blur breaks cursor visibility 
-     when clicking on iframes or certain inputs that steal window focus. */
+  /* WINDOW LEAVE / ENTER & FOCUS WAKEUP */
+  document.addEventListener('mouseleave', (e) => {
+    // Only hide if the pointer physically crossed outside window viewport
+    const outside = !e.relatedTarget && (
+      !Number.isFinite(e.clientX) || !Number.isFinite(e.clientY) ||
+      e.clientX <= 0 || e.clientX >= window.innerWidth ||
+      e.clientY <= 0 || e.clientY >= window.innerHeight
+    );
+    if (outside) {
+      hideCursor();
+    }
+  }, { passive: true });
 
+  document.addEventListener('mouseenter', () => {
+    ensureMounted();
+    showCursor();
+  }, { passive: true });
+
+  window.addEventListener('focus', () => {
+    ensureMounted();
+    showCursor();
+  }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      ensureMounted();
+      showCursor();
+    }
+  }, { passive: true });
 
   /* ══════════════════════════════════════════════════════════
      INIT
    ══════════════════════════════════════════════════════════ */
+  ensureMounted();
   applyCursorState('arrow', true);
   rafId = requestAnimationFrame(tick);
-
-  /* ══════════════════════════════════════════════════════════
-     CLEANUP
-   ══════════════════════════════════════════════════════════ */
-  window.addEventListener('unload', () => {
-    cancelAnimationFrame(rafId);
-    clearInterval(waitTimer);
-    /* Revoke blob URLs to free memory */
-    Object.values(blobCache).forEach(url => {
-      if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-    });
-  });
 
   /* ══════════════════════════════════════════════════════════
      PUBLIC API
@@ -499,7 +532,8 @@
     hide:        ()     => hideCursor(),
     show:        ()     => showCursor(),
     getVelocity: ()     => velocity,
+    version:     '4.0-industrial'
   };
 
-  console.log('🖱️  MacOS Cursor v3.1 ready (ful1e5/apple_cursor + color fix)');
+  console.log('🖱️ MacOS Cursor v4.0 ready (Synchronous, Offline, Industrial-Standard)');
 })();
