@@ -468,9 +468,9 @@
   document.addEventListener('mouseleave', () => hideCursor(), { passive: true });
   document.addEventListener('mouseenter', () => showCursor(), { passive: true });
 
-  /* FOCUS / BLUR */
-  window.addEventListener('blur',  () => hideCursor(),  { passive: true });
-  window.addEventListener('focus', () => showCursor(),  { passive: true });
+  /* FOCUS / BLUR removed: hiding on window.blur breaks cursor visibility 
+     when clicking on iframes or certain inputs that steal window focus. */
+
 
   /* ══════════════════════════════════════════════════════════
      INIT
