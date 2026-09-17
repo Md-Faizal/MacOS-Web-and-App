@@ -1,0 +1,22 @@
+{
+  "id": "tahoe-day",
+  "name": "Tahoe Day",
+  "category": "Landscape",
+  "type": "video",
+  "description": "Beautiful Lake Tahoe during the day with natural lighting",
+  "tags": [
+    "lake",
+    "tahoe",
+    "mountains",
+    "water",
+    "daylight"
+  ],
+  "resolution": "4K 60fps Aerial",
+  "author": "Apple Aerials",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/tahoe-day/Tahoe-day.light.mp4",
+  "variantPath": null,
+  "hasDarkVariant": false,
+  "thumbnail": "/storage/wallpapers/builtin/tahoe-day/thumbnail.webp",
+  "created_at": "2026-09-17T11:59:15.169Z"
+}

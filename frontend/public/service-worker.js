@@ -94,8 +94,16 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api/profile/') ||
     url.pathname === '/api/health' ||
     url.pathname.startsWith('/api/ws') ||
-    url.pathname.startsWith('/api/sse')
+    url.pathname.startsWith('/api/sse') ||
+    url.pathname.endsWith('.mp4') ||
+    url.pathname.endsWith('.mov') ||
+    url.pathname.endsWith('.webm')
   ) {
+    return;
+  }
+
+  // Bypass cache if force=true is present
+  if (url.searchParams.get('force') === 'true') {
     return;
   }
 
@@ -132,88 +140,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Videos: Aggressive Cache-First (cache locally for instant playback)
-  const isVideo = url.pathname.endsWith('.mp4') || 
-                  url.pathname.endsWith('.mov') || 
-                  url.pathname.endsWith('.webm');
-  
-  if (isVideo) {
-    event.respondWith(
-      caches.open(VIDEO_CACHE).then((cache) => {
-        return cache.match(request).then((cachedResponse) => {
-          if (cachedResponse) {
-            console.log(`[SW] 🎬 VIDEO CACHE HIT - ${url.pathname} - Instant playback from storage`);
-            return cachedResponse;
-          }
+  const isVideo = false; // Bypassed entirely above, handled natively by browser to prevent Range 206 caching errors
 
-          console.log(`[SW] 🎬 VIDEO NOT CACHED - Downloading: ${url.pathname}`);
-          
-          // Download video with proper CORS and timeout handling
-          return fetch(request, { 
-            signal: AbortSignal.timeout(60000),  // 60s timeout for larger files
-            method: 'GET',
-            mode: 'cors',
-            credentials: 'same-origin'
-          })
-            .then((networkResponse) => {
-              // Validate response before caching - allow 200 and 206
-              if (!networkResponse || (networkResponse.status !== 200 && networkResponse.status !== 206)) {
-                console.warn(`[SW] 🎬 Invalid response status: ${networkResponse?.status}`);
-                return networkResponse;
-              }
-              
-              const contentType = networkResponse.headers.get('content-type') || '';
-              // Strict check to avoid caching HTML as video (common in 404 fallbacks)
-              if (!contentType.includes('video') && !url.pathname.match(/\.(mp4|webm|mov)$/i)) {
-                console.warn(`[SW] 🎬 Not a video file: ${contentType}`);
-                return networkResponse;
-              }
-              
-              const contentLength = networkResponse.headers.get('content-length') || 0;
-              console.log(`[SW] 🎬 VIDEO RECEIVED - Status: ${networkResponse.status} - Size: ${Math.round(contentLength / 1024 / 1024)}MB - ${url.pathname}`);
-              
-              // Cache the response for future use - ONLY if it's a full 200 response
-              // Cache API does not support storing 206 Partial Content
-              try {
-                if (networkResponse.status === 200) {
-                  cache.put(request, networkResponse.clone())
-                    .then(() => {
-                      console.log(`[SW] 🎬 ✓ STORED IN CACHE - ${url.pathname} - Next load will be instant!`);
-                    })
-                    .catch(err => {
-                      console.warn(`[SW] 🎬 Failed to cache video: ${err.message} - Will stream on next view`);
-                    });
-                } else {
-                    console.log(`[SW] 🎬 206 Partial Content - Returning without caching: ${url.pathname}`);
-                }
-              } catch (err) {
-                console.error(`[SW] 🎬 Cache put error: ${err.message}`);
-              }
-              
-              return networkResponse;
-            })
-            .catch((err) => {
-              console.error(`[SW] 🎬 NETWORK ERROR: ${err.message} - ${url.pathname}`);
-              
-              // Try to return cached version if network fails
-              return cache.match(request).then(cachedResponse => {
-                if (cachedResponse) {
-                  console.log(`[SW] 🎬 RECOVERED - Using cached version: ${url.pathname}`);
-                  return cachedResponse;
-                }
-                return new Response('Video not available offline', { status: 503 });
-              });
-            });
-        });
-      }).catch(err => {
-        console.error(`[SW] 🎬 Cache open error: ${err.message}`);
-        // Fallback: return network response without caching
-        return fetch(request).catch(() => 
-          new Response('Video not available', { status: 503 })
-        );
-      })
-    );
-    return;
-  }
 
   // Images: Cache-First (try cache first, fetch if needed)
   if (request.destination === 'image' || url.pathname.includes('/Images/')) {

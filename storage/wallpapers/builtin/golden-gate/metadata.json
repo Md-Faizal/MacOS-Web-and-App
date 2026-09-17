@@ -1,0 +1,23 @@
+{
+  "id": "golden-gate",
+  "name": "Golden Gate",
+  "description": "Iconic Golden Gate Bridge spanning the San Francisco Bay with sunset and night views",
+  "category": "Landscape",
+  "tags": [
+    "landscape",
+    "san francisco",
+    "california",
+    "bridge"
+  ],
+  "type": "static",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/golden-gate/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/golden-gate/dark.jpg",
+  "hasDarkVariant": true,
+  "thumbnail": "/storage/wallpapers/builtin/golden-gate/thumbnail.webp",
+  "author": "Apple Design Studio",
+  "lightName": "Golden Gate Sunset",
+  "darkName": "Golden Gate Night",
+  "resolution": "4K Ultra HD",
+  "isCustom": false
+}

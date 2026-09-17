@@ -1,0 +1,20 @@
+{
+  "id": "cyber-matrix-pulse",
+  "name": "New York Night",
+  "description": "Futuristic glowing neon aesthetic with ambient motion loops",
+  "category": "Cityscape",
+  "tags": [
+    "dynamic",
+    "cyberpunk",
+    "neon",
+    "urban"
+  ],
+  "type": "video",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/cyber-matrix-pulse/media.mp4",
+  "variantPath": null,
+  "thumbnail": "/storage/wallpapers/builtin/cyber-matrix-pulse/thumbnail.webp",
+  "author": "macOS Dynamic Studio",
+  "resolution": "1080p 60fps",
+  "isCustom": false
+}

@@ -57,13 +57,17 @@ const serverAll = http.createServer((req, res) => {
   if (url.match(/^(assets|Assets)\/Wallpaper\/Static\/tahoe-beach\/tahoe-beach\.light\.jpg$/i) || 
       url.match(/^(assets|Assets)\/Images\/Wallpaper\/Static\/tahoe-beach\/tahoe-beach\.light\.jpg$/i)) {
     res.writeHead(200, { 'Content-Type': 'image/jpeg' });
-    filePath = path.join(__dirname, 'Wallpapers/Static/tahoe-beach/tahoe-beach.light.jpg');
+    filePath = path.join(__dirname, 'storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg');
     fs.createReadStream(filePath).pipe(res);
     return;
   } 
   
+  // Handle storage/ requests directly
+  if (url.startsWith('storage/')) {
+    filePath = path.join(__dirname, url);
+  }
   // 2. Handle /Assets/Wallpaper/... or /assets/Wallpaper/... requests
-  if (url.match(/^(assets|Assets)\/Wallpaper\/.*\.(jpg|jpeg|png|gif|svg|webp|ico|avif)$/i)) {
+  else if (url.match(/^(assets|Assets)\/Wallpaper\/.*\.(jpg|jpeg|png|gif|svg|webp|ico|avif)$/i)) {
     const relativePath = url.replace(/^(assets|Assets)\/Wallpaper\//i, '');
     filePath = path.join(__dirname, 'Wallpapers', relativePath);
   }

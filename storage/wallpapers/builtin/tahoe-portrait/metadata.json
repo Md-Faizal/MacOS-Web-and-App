@@ -1,0 +1,23 @@
+{
+  "id": "tahoe-portrait",
+  "name": "Tahoe Portrait",
+  "category": "Landscape",
+  "type": "video",
+  "description": "Portrait-oriented views of Lake Tahoe's beautiful scenery",
+  "tags": [
+    "portrait",
+    "tahoe",
+    "mountains",
+    "vertical",
+    "light",
+    "dark"
+  ],
+  "resolution": "4K 60fps Aerial",
+  "author": "Apple Aerials",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/tahoe-portrait/tahoe-portrait.light.mov",
+  "variantPath": "/storage/wallpapers/builtin/tahoe-portrait/tahoe-portrait.dark.mov",
+  "hasDarkVariant": true,
+  "thumbnail": "/storage/wallpapers/builtin/tahoe-portrait/thumbnail.webp",
+  "created_at": "2026-09-17T11:59:16.427Z"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "tahoe-landscape",
+  "name": "Tahoe Landscape",
+  "category": "Landscape",
+  "type": "video",
+  "description": "Scenic landscape views of Lake Tahoe with natural transitions",
+  "tags": [
+    "landscape",
+    "tahoe",
+    "mountains",
+    "scenery",
+    "light",
+    "dark"
+  ],
+  "resolution": "4K 60fps Aerial",
+  "author": "Apple Aerials",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/tahoe-landscape/tahoe-landscape.light.mp4",
+  "variantPath": "/storage/wallpapers/builtin/tahoe-landscape/tahoe-landscape.dark.mp4",
+  "hasDarkVariant": true,
+  "thumbnail": "/storage/wallpapers/builtin/tahoe-landscape/thumbnail.webp",
+  "created_at": "2026-09-17T11:59:15.397Z"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "sequoia-dawn",
+  "name": "Sequoia Sunrise",
+  "description": "Breathtaking sunrise over the California Sequoia mountains",
+  "category": "Landscape",
+  "tags": [
+    "sequoia",
+    "mountain",
+    "nature",
+    "official",
+    "apple"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/sequoia-dawn/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/sequoia-dawn/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/sequoia-dawn/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio",
+  "lightName": "Sequoia Sunrise",
+  "darkName": "Sequoia Midnight"
+}

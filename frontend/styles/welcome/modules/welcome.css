@@ -22,11 +22,9 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg') !important;
-  background-size: cover !important;
-  background-position: center !important;
-  background-attachment: fixed !important;
+  background: transparent !important;
   z-index: -1;
+  pointer-events: none;
 }
 
 /* ========== MAIN CONTAINER ========== */

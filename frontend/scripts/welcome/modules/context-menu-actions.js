@@ -229,34 +229,30 @@ class ChangeWallpaperAction {
   }
 
   openSettingsWallpaperSection() {
-    // Check if SettingsApp class exists
-    if (typeof SettingsApp === 'undefined') {
-      console.warn('SettingsApp not available yet');
+    if (typeof AppWindow !== 'undefined' && typeof window.SettingsApp !== 'undefined') {
+      const settingsApp = AppWindow.launchApp('settings', window.SettingsApp, 'settingsAppContainer', {
+        params: { section: 'wallpaper' }
+      });
+      if (settingsApp && typeof settingsApp.switchSection === 'function') {
+        settingsApp.switchSection('wallpaper');
+        settingsApp.bringToFront?.();
+      }
       return;
     }
 
-    // Get or create the settings app
+    // Fallback direct instantiation
     let settingsApp = window.currentSettingsApp;
     const container = document.getElementById('settingsAppContainer');
 
     if (!settingsApp || !container || container.children.length === 0) {
-      // Create new settings app instance
-      settingsApp = new SettingsApp('settingsAppContainer', {
-        onClose: () => {
-          console.log('Settings app closed');
-        }
-      });
+      if (typeof window.SettingsApp !== 'undefined') {
+        settingsApp = new window.SettingsApp('settingsAppContainer');
+      }
     }
 
-    // Switch to wallpaper section
     if (settingsApp && typeof settingsApp.switchSection === 'function') {
       settingsApp.switchSection('wallpaper');
-      
-      // Bring the settings window to focus
-      const appWindow = document.querySelector('[data-appid="settings"]');
-      if (appWindow) {
-        appWindow.parentElement.style.zIndex = '10000';
-      }
+      settingsApp.bringToFront?.();
     }
   }
 }

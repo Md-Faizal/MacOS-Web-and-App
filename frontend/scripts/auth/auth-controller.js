@@ -205,7 +205,7 @@ export class AuthController {
         }
       } catch (e) {}
     };
-    img.src = '/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg';
+    img.src = '/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg';
   }
 
   /* --------------------------------------------------------------------------

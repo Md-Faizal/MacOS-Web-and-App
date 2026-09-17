@@ -1,0 +1,19 @@
+{
+  "id": "monterey-glow",
+  "name": "macOS Monterey Glow",
+  "description": "Deep violet and sunset marine topography",
+  "category": "official",
+  "tags": [
+    "monterey",
+    "purple",
+    "neon",
+    "ocean",
+    "official"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/monterey-glow/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/monterey-glow/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/monterey-glow/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio"
+}

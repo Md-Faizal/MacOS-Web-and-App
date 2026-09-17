@@ -209,13 +209,25 @@ app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOptions));
 
-// Serve large wallpaper assets from root to keep them out of frontend build
-const wallpaperPath = path.join(__dirname, '../../Wallpapers');
-app.use('/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
-app.use('/Assets/Wallpaper', express.static(wallpaperPath, staticOptions));
-app.use('/api/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
-app.use('/assets/wallpaper', express.static(wallpaperPath, staticOptions));
-app.use('/api/assets/wallpaper', express.static(wallpaperPath, staticOptions));
+// Serve modern storage hierarchy (wallpapers, uploads, generated assets)
+const storagePath = path.join(__dirname, '../../storage');
+app.use('/storage', express.static(storagePath, staticOptions));
+
+// Legacy Wallpaper fallback routing (/assets/Wallpaper/* or /Assets/Wallpaper/*)
+app.use(['/assets/Wallpaper', '/Assets/Wallpaper'], (req, res, next) => {
+  const parts = req.path.split('/').filter(Boolean);
+  if (parts.length >= 2) {
+    const folder = parts[parts.length - 2];
+    const filename = parts[parts.length - 1];
+    const candidatePath = path.join(__dirname, '../../storage/wallpapers/builtin', folder, filename);
+    if (fs.existsSync(candidatePath)) {
+      const ext = path.extname(candidatePath).toLowerCase();
+      if (mimeTypes[ext]) res.setHeader('Content-Type', mimeTypes[ext]);
+      return res.sendFile(candidatePath);
+    }
+  }
+  next();
+});
 
 // CORS (configurable)
 // Use comma-separated origins, e.g.:
@@ -521,6 +533,14 @@ for (const route of routes) {
     // protect all other inspection and management routes with auth middleware.
     app.use(route.path, (req, res, next) => {
       if (req.method === 'POST' && (req.path === '/app' || req.path === '/batch')) return next();
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
+  } else if (route.path === '/api/wallpapers') {
+    // Allow unauthenticated access to wallpapers, marketplace, custom uploads, delete, and share toggle
+    app.use(route.path, (req, res, next) => {
+      if (req.method === 'GET' || req.method === 'DELETE' || req.method === 'PATCH' || req.path === '/marketplace/install' || req.path === '/upload' || req.path.endsWith('/share')) {
+        return next();
+      }
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else {

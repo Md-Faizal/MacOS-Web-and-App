@@ -10,6 +10,7 @@ import { BackupComponent } from './BackupComponent.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
 import { WorkerAccessComponent as AdminComponent } from './workers/WorkerAccessComponent.js';
 import { SystemLogsComponent } from './SystemLogs.js';
+import { WallpaperComponent } from './WallpaperComponent.js';
 
 export class SettingsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
@@ -119,9 +120,11 @@ export class SettingsApp extends AppWindow {
           this.switchSection('profile');
         }
 
-        // Lock to Light mode for worker
-        this.settings.theme = 'light';
-        this.applyTheme();
+        // Lock to Light mode for worker only if not already light
+        if (this.settings.theme !== 'light' || document.documentElement.getAttribute('data-theme') !== 'light') {
+          this.settings.theme = 'light';
+          this.applyTheme();
+        }
 
         // Re-scope Android App controls for worker
         this.bindAndroidUpdateControls();
@@ -408,7 +411,13 @@ export class SettingsApp extends AppWindow {
         </button>
 
         <button class="settings-sidebar-item" data-section="wallpaper">
-          <span class="settings-sidebar-icon">🖼️</span>
+          <span class="settings-sidebar-icon" style="display:inline-flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <rect width="24" height="24" rx="6" fill="#007aff"/>
+              <circle cx="12" cy="12" r="6" stroke="#ffffff" stroke-width="1.8" stroke-dasharray="3 2" fill="none"/>
+              <circle cx="12" cy="12" r="2.5" fill="#ffffff"/>
+            </svg>
+          </span>
           <span>Wallpaper</span>
         </button>
 
@@ -947,77 +956,8 @@ export class SettingsApp extends AppWindow {
         </div>
       </div>
 
-      <div class="settings-panel hidden" id="wallpaper-panel">
-        <div class="settings-section">
-          <!-- Wallpaper Header with Preview and Controls -->
-          <div class="wallpaper-header">
-            <div class="wallpaper-preview-container">
-              <div class="current-wallpaper-preview" id="currentWallpaperPreview">
-                <span class="preview-placeholder">No wallpaper selected</span>
-              </div>
-              <div class="current-wallpaper-info" id="currentWallpaperInfo">
-                <div class="wallpaper-name">Select a wallpaper</div>
-              </div>
-            </div>
-            
-            <div class="wallpaper-variant-selector">
-              <div class="variant-label">Variant</div>
-              <div class="variant-buttons">
-                <button class="variant-btn active" data-variant="automatic" id="variantAutomatic">Automatic</button>
-                <button class="variant-btn" data-variant="light" id="variantLight">Light</button>
-                <button class="variant-btn" data-variant="dark" id="variantDark">Dark</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-section-title">Wallpaper</div>
-          
-          <!-- Add Wallpaper Button -->
-          <div class="add-wallpaper-container">
-            <button class="add-wallpaper-btn" id="addWallpaperBtn">
-              <span class="add-wallpaper-icon">+</span>
-              <span class="add-wallpaper-text">Add Wallpaper</span>
-            </button>
-          </div>
-
-          <!-- Custom Wallpapers Grid -->
-          <div class="wallpaper-category">
-            <div class="wallpaper-category-title">My Wallpapers</div>
-            <div class="wallpaper-grid" id="customWallpaperGrid">
-              <div class="wallpaper-section"></div>
-            </div>
-          </div>
-
-          <!-- Wallpaper Options -->
-          <div class="wallpaper-options">
-            <div class="wallpaper-option-group">
-              <label class="option-label">Loop Transition</label>
-              <select id="loopTransition" class="wallpaper-select">
-                <option value="none">None</option>
-                <option value="frost" selected>Frost Effect</option>
-                <option value="fade">Fade</option>
-                <option value="dissolve">Dissolve</option>
-              </select>
-            </div>
-
-            <div class="wallpaper-option-group">
-              <label class="option-label">Playback Speed</label>
-              <div class="speed-slider-container">
-                <span class="speed-label">0.5x</span>
-                <input type="range" id="playbackSpeed" class="wallpaper-slider" min="0.5" max="2" step="0.25" value="1" />
-                <span class="speed-label">2x</span>
-              </div>
-              <div class="speed-value" id="speedValue">Normal (1x)</div>
-            </div>
-
-            <div class="wallpaper-option-group">
-              <label class="settings-label">
-                <input type="checkbox" id="autoSwitchWallpaper" class="wallpaper-checkbox" />
-                <span>Auto-switch wallpaper daily</span>
-              </label>
-            </div>
-          </div>
-        </div>
+      <div class="settings-panel hidden" id="wallpaper-panel" style="height: 100%;">
+        <!-- Rendered dynamically by WallpaperComponent -->
       </div>
     `;
 
@@ -1327,311 +1267,12 @@ export class SettingsApp extends AppWindow {
   }
 
   loadWallpapers() {
-    const customGrid = document.getElementById('customWallpaperGrid');
-    
-    if (!customGrid) {
-      console.error('customWallpaperGrid element not found in DOM');
-      return;
-    }
-
-    // Check if already loaded to prevent unnecessary reloads
-    if (customGrid.dataset.wallpapersLoaded === 'true') {
-      console.log('[Wallpaper] Grid already loaded, skipping reload');
-      return;
-    }
-
-    // Show loading state
-    customGrid.innerHTML = '<div class="loading-message">Loading wallpapers...</div>';
-
-    try {
-      console.log('[Wallpaper] Loading wallpapers from API...');
-      
-      // Load wallpapers from API (built-in)
-      this.getWallpapersFromAPI().then((apiWallpapers) => {
-        console.log('[Wallpaper] API returned ' + apiWallpapers.length + ' wallpapers');
-        
-        const allWallpapers = apiWallpapers;
-        
-        console.log('[Wallpaper] Total: ' + allWallpapers.length + ' wallpapers');
-        
-        if (allWallpapers.length === 0) {
-          console.warn('No wallpapers found from API');
-          customGrid.innerHTML = '<div class="empty-wallpaper-message">No wallpapers available. Check your Assets folder!</div>';
-          return;
-        }
-
-        customGrid.innerHTML = '';
-
-        // Separate by type
-        const dynamicWallpapers = allWallpapers.filter(w => w.type === 'video');
-        const staticWallpapers = allWallpapers.filter(w => w.type === 'image');
-
-        console.log('[Wallpaper] Dynamic: ' + dynamicWallpapers.length + ', Static: ' + staticWallpapers.length);
-
-        // Add dynamic section
-        if (dynamicWallpapers.length > 0) {
-          const dynamicSection = document.createElement('div');
-          dynamicSection.className = 'wallpaper-section';
-          dynamicSection.innerHTML = '<div class="wallpaper-section-title">Dynamic Wallpapers</div>';
-          const dynamicGridDiv = document.createElement('div');
-          dynamicGridDiv.className = 'wallpaper-grid-items';
-          
-          dynamicWallpapers.forEach((wallpaper, index) => {
-            const item = this.createWallpaperItem(wallpaper);
-            dynamicGridDiv.appendChild(item);
-            
-            // The new WallpaperEngine handles on-demand loading naturally
-          });
-          
-          dynamicSection.appendChild(dynamicGridDiv);
-          customGrid.appendChild(dynamicSection);
-        }
-
-        // Add static section
-        if (staticWallpapers.length > 0) {
-          const staticSection = document.createElement('div');
-          staticSection.className = 'wallpaper-section';
-          staticSection.innerHTML = '<div class="wallpaper-section-title">Static Wallpapers</div>';
-          const staticGridDiv = document.createElement('div');
-          staticGridDiv.className = 'wallpaper-grid-items';
-          
-          staticWallpapers.forEach(wallpaper => {
-            const item = this.createWallpaperItem(wallpaper);
-            staticGridDiv.appendChild(item);
-          });
-          
-          staticSection.appendChild(staticGridDiv);
-          customGrid.appendChild(staticSection);
-        }
-
-        // Mark grid as loaded to prevent future reloads
-        customGrid.dataset.wallpapersLoaded = 'true';
-
-        // Setup variant selector
-        this.setupVariantSelector();
-        
-        // Load the current wallpaper from localStorage
-        const saved = localStorage.getItem('selectedWallpaper');
-        if (saved) {
-          try {
-            const wallpaperData = JSON.parse(saved);
-            const savedWallpaper = allWallpapers.find(w => w.name === wallpaperData.name);
-            if (savedWallpaper) {
-              const wallpaperItem = document.querySelector(`[data-wallpaper="${wallpaperData.name}"]`);
-              if (wallpaperItem) {
-                this.selectWallpaper(savedWallpaper, wallpaperItem);
-                return;
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to load saved wallpaper from localStorage:', e);
-          }
-        }
-        
-        // If no saved wallpaper, select the first one
-        if (allWallpapers.length > 0) {
-          const firstWallpaper = allWallpapers[0];
-          const firstItem = document.querySelector('.wallpaper-item');
-          if (firstItem) {
-            this.selectWallpaper(firstWallpaper, firstItem);
-          }
-        }
-      }).catch((error) => {
-        console.error('[Wallpaper] Error loading wallpapers:', error);
-        customGrid.innerHTML = '<div class="error-message">Error loading wallpapers: ' + error.message + '</div>';
-      });
-    } catch (error) {
-      console.error('Error loading wallpapers:', error);
-      customGrid.innerHTML = `<div class="error-message">Error loading wallpapers: ${error.message}</div>`;
-    }
-  }
-
-  setupVariantSelector() {
-    const variantButtons = document.querySelectorAll('.variant-btn');
-    variantButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        // For now, variants are handled at wallpaper selection time
-        // This can be extended later if needed
-      });
-    });
-  }
-
-  createWallpaperItem(wallpaper) {
-    try {
-      const item = document.createElement('div');
-      item.className = 'wallpaper-item';
-      item.setAttribute('data-wallpaper', wallpaper.name);
-      item.setAttribute('data-id', wallpaper.id);
-
-      // Check if this is the current wallpaper
-      if (this.settings.currentWallpaper === wallpaper.name) {
-        item.classList.add('active');
+    const panel = document.getElementById('wallpaper-panel');
+    if (panel) {
+      if (!this.wallpaperModule) {
+        this.wallpaperModule = new WallpaperComponent(panel, this.settings, this.saveSettings.bind(this));
       }
-
-      // Check if this wallpaper has light and dark variants
-      const hasVariants = wallpaper.variantPath && wallpaper.tags?.includes('dark');
-
-      // Create media container - will be populated on hover/touch
-      const mediaContainer = document.createElement('div');
-      mediaContainer.className = 'wallpaper-item-media';
-      mediaContainer.setAttribute('data-wallpaper-id', wallpaper.id);
-      mediaContainer.setAttribute('data-media-path', wallpaper.path);
-      mediaContainer.setAttribute('data-media-type', wallpaper.type);
-      if (hasVariants) {
-        mediaContainer.setAttribute('data-variant-path', wallpaper.variantPath);
-      }
-      mediaContainer.style.cursor = 'pointer';
-      mediaContainer.style.position = 'relative';
-
-      // Use primary media as default display if possible
-      const thumbContainer = document.createElement('div');
-      thumbContainer.className = 'wallpaper-thumb-container';
-      thumbContainer.style.cssText = `
-        width: 100%;
-        height: 100%;
-        background: #2a2a2a;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-      `;
-      
-      if (wallpaper.type !== 'video' && wallpaper.path) {
-        // Load actual image as preview for static wallpapers
-        const thumbImg = document.createElement('img');
-        thumbImg.src = window.wallpaperEngine ? window.wallpaperEngine.normalizePath(wallpaper.thumbnail, wallpaper) : wallpaper.thumbnail;
-        thumbImg.alt = wallpaper.name;
-        thumbImg.style.cssText = 'width: 100%; height: 100%; object-fit: cover; display: block;';
-        thumbImg.loading = 'lazy';
-        thumbContainer.appendChild(thumbImg);
-      } else {
-        // Fallback gradient for videos or missing paths (streaming manager will populate on hover)
-        thumbContainer.style.background = 'linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%)';
-      }
-
-      // Add "Hover to Play" indicator for dynamic wallpapers
-      if (wallpaper.type === 'video') {
-        const playIndicator = document.createElement('div');
-        playIndicator.style.cssText = `
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 56px;
-          height: 56px;
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-          transition: all 0.3s ease;
-          z-index: 10;
-        `;
-
-        const playIcon = document.createElement('div');
-        playIcon.style.cssText = `
-          width: 0;
-          height: 0;
-          border-left: 12px solid white;
-          border-top: 8px solid transparent;
-          border-bottom: 8px solid transparent;
-          margin-left: 4px;
-        `;
-        playIndicator.appendChild(playIcon);
-        thumbContainer.appendChild(playIndicator);
-
-        // Show hint text on hover
-        const hintText = document.createElement('div');
-        hintText.style.cssText = `
-          position: absolute;
-          bottom: 12px;
-          left: 50%;
-          transform: translateX(-50%);
-          background: rgba(0, 0, 0, 0.6);
-          color: white;
-          padding: 6px 12px;
-          border-radius: 4px;
-          font-size: 12px;
-          white-space: nowrap;
-          opacity: 0;
-          transition: opacity 0.3s ease;
-          pointer-events: none;
-          z-index: 11;
-        `;
-        hintText.textContent = 'Hover to play';
-        thumbContainer.appendChild(hintText);
-
-        // Show/hide hint on interaction
-        mediaContainer.addEventListener('mouseenter', () => {
-          hintText.style.opacity = '1';
-          playIndicator.style.background = 'rgba(255, 255, 255, 0.4)';
-          playIndicator.style.transform = 'translate(-50%, -50%) scale(1.1)';
-        });
-
-        mediaContainer.addEventListener('mouseleave', () => {
-          hintText.style.opacity = '0';
-          playIndicator.style.background = 'rgba(255, 255, 255, 0.2)';
-          playIndicator.style.transform = 'translate(-50%, -50%) scale(1)';
-        });
-
-        // Touch feedback
-        mediaContainer.addEventListener('touchstart', () => {
-          hintText.textContent = 'Playing...';
-          hintText.style.opacity = '1';
-        });
-      }
-
-      mediaContainer.appendChild(thumbContainer);
-      item.appendChild(mediaContainer);
-
-      // Add label
-      const label = document.createElement('div');
-      label.className = 'wallpaper-item-label';
-      label.textContent = wallpaper.name;
-      if (hasVariants) {
-        label.textContent += ' (Light & Dark)';
-      }
-      item.appendChild(label);
-
-      // Click handler - apply wallpaper
-      item.addEventListener('click', async () => {
-        console.log('[Wallpaper] Selected:', wallpaper.name);
-        await this.selectWallpaper(wallpaper, item);
-      });
-
-      return item;
-    } catch (error) {
-      console.error('Error creating wallpaper item:', error);
-      const errorItem = document.createElement('div');
-      errorItem.className = 'wallpaper-item-error';
-      errorItem.textContent = 'Error loading ' + (wallpaper.name || 'wallpaper');
-      return errorItem;
-    }
-  }
-
-  async selectWallpaper(wallpaper, itemElement) {
-    try {
-      // Update UI active state
-      document.querySelectorAll('.wallpaper-item').forEach(el => el.classList.remove('active'));
-      itemElement?.classList.add('active');
-
-      // Update currentWallpaper in local settings
-      this.settings.currentWallpaper = wallpaper.name;
-
-      // Use the Unified Wallpaper Engine to apply change globally (persists and syncs)
-      if (window.wallpaperEngine) {
-        await window.wallpaperEngine.setWallpaper(wallpaper);
-      }
-
-      // Update preview UI
-      const previewInfo = document.getElementById('currentWallpaperInfo');
-      if (previewInfo) {
-        previewInfo.innerHTML = `<div class="wallpaper-name">${wallpaper.name}</div>`;
-      }
-    } catch (error) {
-      console.error('Error selecting wallpaper:', error);
+      this.wallpaperModule.render();
     }
   }
 
@@ -2117,9 +1758,11 @@ export class SettingsApp extends AppWindow {
         if (!this.appearanceModule) {
           this.appearanceModule = new AppearanceComponent(panel, this.settings, this.saveSettings.bind(this));
         }
-        this.appearanceModule.render();
       } else if (section === 'wallpaper') {
-        this.loadWallpapers();
+        if (!this.wallpaperModule) {
+          this.wallpaperModule = new WallpaperComponent(panel, this.settings, this.saveSettings.bind(this));
+        }
+        this.wallpaperModule.render();
       } else if (section === 'billing') {
         if (!this.billingModule) {
           this.billingModule = new BillingSettingsComponent(panel);
@@ -2203,6 +1846,9 @@ export class SettingsApp extends AppWindow {
       appWindow.setAttribute('data-theme', resolvedTheme);
     }
 
+    const currentDocTheme = document.documentElement.getAttribute('data-theme');
+    const themeChanged = currentDocTheme !== resolvedTheme;
+
     // Apply globally to root and body
     document.documentElement.setAttribute('data-theme', resolvedTheme);
     document.documentElement.setAttribute('data-macos-theme', resolvedTheme);
@@ -2211,10 +1857,12 @@ export class SettingsApp extends AppWindow {
     // Save active theme identifier
     localStorage.setItem('macos_theme', rawTheme);
 
-    // Dispatch global event for widgets and open apps
-    window.dispatchEvent(new CustomEvent('macos-theme-changed', {
-      detail: { theme: rawTheme, resolvedTheme }
-    }));
+    // Only dispatch global event if the theme actually changed
+    if (themeChanged) {
+      window.dispatchEvent(new CustomEvent('macos-theme-changed', {
+        detail: { theme: rawTheme, resolvedTheme }
+      }));
+    }
   }
 
   setupThemeAutoListener() {

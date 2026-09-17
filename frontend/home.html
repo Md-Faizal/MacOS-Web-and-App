@@ -817,8 +817,11 @@
        TOP BAR - SYSTEM STATUS & CONTROLS
        ======================================== -->
   
-  <!-- Wallpaper Background - Backup hardcoded wallpaper -->
-  <div id="wallpaperBackground" style="background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg');"></div>
+  <!-- Wallpaper Background Engine Container -->
+  <div id="wallpaperBackground">
+    <div id="wallpaper-layer-a" class="wallpaper-layer" style="z-index: 1;"></div>
+    <div id="wallpaper-layer-b" class="wallpaper-layer" style="z-index: 0;"></div>
+  </div>
 
   <!-- Top Bar Container -->
   <div class="top-bar">

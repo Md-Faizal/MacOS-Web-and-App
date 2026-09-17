@@ -20,8 +20,8 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, '/api')
         },
-        // Proxy large wallpapers from root storage during development
-        '/assets/Wallpaper': {
+        // Proxy clean wallpaper storage hierarchy during development
+        '/storage': {
           target: env.VITE_API_TARGET || 'http://localhost:3002',
           changeOrigin: true
         }

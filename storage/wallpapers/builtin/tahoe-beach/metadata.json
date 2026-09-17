@@ -1,0 +1,22 @@
+{
+  "id": "tahoe-beach",
+  "name": "Tahoe Beach",
+  "category": "Landscape",
+  "type": "static",
+  "description": "Beautiful sandy beach at Lake Tahoe with crystal clear water",
+  "tags": [
+    "beach",
+    "sand",
+    "water",
+    "tahoe",
+    "light"
+  ],
+  "resolution": "4K Ultra HD",
+  "author": "Apple Aerials",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg",
+  "variantPath": null,
+  "hasDarkVariant": false,
+  "thumbnail": "/storage/wallpapers/builtin/tahoe-beach/thumbnail.webp",
+  "created_at": "2026-09-17T11:59:13.128Z"
+}

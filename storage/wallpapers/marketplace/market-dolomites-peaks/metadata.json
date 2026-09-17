@@ -1,0 +1,23 @@
+{
+  "id": "market-dolomites-peaks",
+  "name": "Alpine Dolomites Glow",
+  "category": "nature",
+  "type": "static",
+  "resolution": "4K (3840x2160)",
+  "sizeMb": "6.1 MB",
+  "author": "Elena Rossi",
+  "description": "Majestic jagged dolomite spires bathed in alpine alpenglow.",
+  "tags": [
+    "dolomites",
+    "alps",
+    "mountains",
+    "peaks",
+    "nature"
+  ],
+  "thumbnail": "/storage/wallpapers/marketplace/market-dolomites-peaks/thumbnail.webp",
+  "previewUrl": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=85",
+  "downloadUrl": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=3840&q=90",
+  "source": "marketplace",
+  "path": "/storage/wallpapers/marketplace/market-dolomites-peaks/media.jpg",
+  "installed_at": "2026-09-17T06:58:45.003Z"
+}

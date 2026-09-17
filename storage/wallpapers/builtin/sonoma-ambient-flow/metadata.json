@@ -1,0 +1,20 @@
+{
+  "id": "sonoma-ambient-flow",
+  "name": "Sonoma Ambient Flow",
+  "description": "Ambient flowing coastal gradient with dynamic light pulse",
+  "category": "Landscape",
+  "tags": [
+    "dynamic",
+    "gradient",
+    "sonoma",
+    "abstract"
+  ],
+  "type": "video",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/sonoma-ambient-flow/media.mp4",
+  "variantPath": null,
+  "thumbnail": "/storage/wallpapers/builtin/sonoma-ambient-flow/thumbnail.webp",
+  "author": "macOS Dynamic Studio",
+  "resolution": "1080p 60fps",
+  "isCustom": false
+}

@@ -1,0 +1,20 @@
+{
+  "id": "midnight-aurora",
+  "name": "Antarctica's Southern Lights",
+  "description": "Breathtaking looping arctic aurora borealis with gentle cosmic wave movement",
+  "category": "Earth",
+  "tags": [
+    "dynamic",
+    "nature",
+    "aurora",
+    "space"
+  ],
+  "type": "video",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/midnight-aurora/media.mp4",
+  "variantPath": null,
+  "thumbnail": "/storage/wallpapers/builtin/midnight-aurora/thumbnail.webp",
+  "author": "macOS Dynamic Studio",
+  "resolution": "1080p 60fps",
+  "isCustom": false
+}

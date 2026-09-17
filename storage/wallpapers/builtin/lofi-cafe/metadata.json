@@ -1,0 +1,19 @@
+{
+  "id": "lofi-cafe",
+  "name": "Lo-Fi Rain & Coffee",
+  "description": "Calm ambient aesthetic rainy afternoon at a quiet coffee shop",
+  "category": "minimalist",
+  "tags": [
+    "lofi",
+    "chill",
+    "rain",
+    "cozy",
+    "aesthetic"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/lofi-cafe/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/lofi-cafe/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/lofi-cafe/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio"
+}

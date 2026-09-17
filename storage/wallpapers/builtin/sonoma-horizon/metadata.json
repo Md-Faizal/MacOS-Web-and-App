@@ -1,0 +1,21 @@
+{
+  "id": "sonoma-horizon",
+  "name": "Sonoma Horizon",
+  "description": "Lush rolling green hills beneath tranquil morning skies",
+  "category": "Landscape",
+  "tags": [
+    "sonoma",
+    "hills",
+    "green",
+    "official",
+    "apple"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/sonoma-horizon/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/sonoma-horizon/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/sonoma-horizon/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio",
+  "lightName": "Sonoma Horizon",
+  "darkName": "Sonoma Night"
+}

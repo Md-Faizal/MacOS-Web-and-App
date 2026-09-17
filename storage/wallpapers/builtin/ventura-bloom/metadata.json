@@ -1,0 +1,19 @@
+{
+  "id": "ventura-bloom",
+  "name": "macOS Ventura Bloom",
+  "description": "Dynamic gradient sculptural curves with radiant depth",
+  "category": "abstract",
+  "tags": [
+    "ventura",
+    "abstract",
+    "colors",
+    "official",
+    "apple"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/ventura-bloom/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/ventura-bloom/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/ventura-bloom/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio"
+}

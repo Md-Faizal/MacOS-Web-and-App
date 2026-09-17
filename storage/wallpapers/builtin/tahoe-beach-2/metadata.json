@@ -1,0 +1,22 @@
+{
+  "id": "tahoe-beach-2",
+  "name": "Tahoe Beach 2",
+  "category": "Landscape",
+  "type": "static",
+  "description": "Alternative beach view of Lake Tahoe with scenic surroundings",
+  "tags": [
+    "beach",
+    "tahoe",
+    "coastal",
+    "scenic",
+    "light"
+  ],
+  "resolution": "4K Ultra HD",
+  "author": "Apple Aerials",
+  "source": "builtin",
+  "path": "/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg",
+  "variantPath": null,
+  "hasDarkVariant": false,
+  "thumbnail": "/storage/wallpapers/builtin/tahoe-beach-2/thumbnail.webp",
+  "created_at": "2026-09-17T11:59:13.272Z"
+}

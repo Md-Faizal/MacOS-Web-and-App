@@ -1,0 +1,21 @@
+{
+  "id": "cyberpunk-neon",
+  "name": "Tokyo Neon",
+  "description": "Electric neon rain-soaked cyberpunk metropolis",
+  "category": "Cityscape",
+  "tags": [
+    "cyberpunk",
+    "neon",
+    "city",
+    "night",
+    "tokyo"
+  ],
+  "type": "static",
+  "path": "/storage/wallpapers/builtin/cyberpunk-neon/light.jpg",
+  "variantPath": "/storage/wallpapers/builtin/cyberpunk-neon/dark.jpg",
+  "thumbnail": "/storage/wallpapers/builtin/cyberpunk-neon/thumbnail.webp",
+  "isCustom": false,
+  "author": "Apple Design Studio",
+  "lightName": "Tokyo Day",
+  "darkName": "Tokyo Night"
+}
