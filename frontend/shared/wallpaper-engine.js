@@ -61,7 +61,10 @@ class WallpaperEngine {
     const saved = this.getSelected();
     const wpToApply = saved || this.DEFAULT_WP;
     
-    await this.applyWallpaper(wpToApply, { immediate: true, skipSync: true });
+    // Retrieve the user's selected variant, defaulting to 'auto'
+    const savedVariant = localStorage.getItem('macos_wallpaper_variant') || 'auto';
+    
+    await this.applyWallpaper(wpToApply, { immediate: true, skipSync: true, variant: savedVariant });
     this.initialized = true;
     console.log('[WallpaperEngine] ✅ Ready & 60fps Butter Smooth');
   }

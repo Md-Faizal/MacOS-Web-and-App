@@ -1,0 +1,74 @@
+/* ============================================================
+   macOS Sonoma / Sequoia Screensaver Styles
+   Industrial-Grade Dynamic Desktop Fade Out
+   ============================================================ */
+
+/* Top-level screensaver state applied to document.body */
+body.screensaver-active {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  overflow: hidden !important;
+}
+
+/* Hide OS cursor during screensaver */
+body.screensaver-active #macos-cursor {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Transition and fade out all UI chrome and applications */
+body.screensaver-active .top-bar,
+body.screensaver-active .dock-container,
+body.screensaver-active .app-window,
+body.screensaver-active .desktop-widgets-panel,
+body.screensaver-active .desktop-context-menu,
+body.screensaver-active #desktopWidgetsContainer,
+body.screensaver-active #desktopWidgets,
+body.screensaver-active .desktop-area,
+body.screensaver-active .desktop-shortcuts,
+body.screensaver-active .desktop-shortcut,
+body.screensaver-active .time-date-container,
+body.screensaver-active #notesAppContainer,
+body.screensaver-active #analyticsAppContainer,
+body.screensaver-active #cloudAppContainer,
+body.screensaver-active #settingsContainer,
+body.screensaver-active #billingAppContainer,
+body.screensaver-active #calendarAppContainer,
+body.screensaver-active #calculatorAppContainer,
+body.screensaver-active #settingsAppContainer,
+body.screensaver-active #contactsAppContainer,
+body.screensaver-active #launchpadAppContainer,
+body.screensaver-active #productAppContainer,
+body.screensaver-active #aiVisionAppContainer,
+body.screensaver-active #wpModalPortal,
+body.screensaver-active .search-panel,
+body.screensaver-active .quick-settings-menu,
+body.screensaver-active .system-indicator,
+body.screensaver-active .worker-audit-overlay,
+body.screensaver-active .status-indicator {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Smooth transition for normal state when waking up */
+.top-bar,
+.dock-container,
+.app-window,
+.desktop-widgets-panel,
+.desktop-context-menu,
+.time-date-container,
+.desktop-area {
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Ensure Wallpaper Background remains 100% visible behind everything */
+#wallpaperBackground {
+  transition: filter 0.85s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Optional subtle cinematic treatment while screensaver is active */
+body.screensaver-active #wallpaperBackground {
+  filter: brightness(1.02) contrast(1.02);
+}

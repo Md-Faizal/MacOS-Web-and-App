@@ -47,8 +47,11 @@ export class WallpaperComponent {
         <!-- Top Active Wallpaper Hero Box -->
         <div class="wp-hero-container" id="wpHeroBox">
           <div class="wp-hero-left">
-            <div class="wp-hero-thumb-wrap" id="wpHeroThumbWrap">
+            <div class="wp-hero-thumb-wrap" id="wpHeroThumbWrap" role="button" tabindex="0" title="Click to preview screen saver">
               <div class="wp-hero-media" id="wpHeroMedia"></div>
+              <div class="wp-hero-preview-badge" id="wpHeroPreviewBadge">
+                <span>Preview</span>
+              </div>
             </div>
           </div>
 
@@ -95,6 +98,9 @@ export class WallpaperComponent {
 
         <!-- Add Photo Sheet Modal Container -->
         <div id="wpModalPortal"></div>
+
+        <!-- Context Menu Container -->
+        <div id="wpContextMenu" class="wp-context-menu hidden"></div>
       </div>
     `;
 
@@ -416,9 +422,30 @@ export class WallpaperComponent {
       });
     }
 
-    // 2. Action Buttons: Add Photo...
+    // 2. Action Buttons: Screen Saver... & Add Photo...
+    const screenSaverBtn = this.container.querySelector('#wpScreenSaverBtn');
+    if (screenSaverBtn) screenSaverBtn.onclick = () => this.openScreenSaverModal();
+
     const addPhotoBtn = this.container.querySelector('#wpAddPhotoBtn');
     if (addPhotoBtn) addPhotoBtn.onclick = () => this.openAddPhotoModal();
+
+    // 2a. Live Preview Click triggers Screensaver Preview
+    const heroThumbWrap = this.container.querySelector('#wpHeroThumbWrap');
+    if (heroThumbWrap) {
+      const triggerPreview = (e) => {
+        e.stopPropagation();
+        if (window.screensaverManager) {
+          window.screensaverManager.preview(e);
+        }
+      };
+      heroThumbWrap.addEventListener('click', triggerPreview);
+      heroThumbWrap.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          triggerPreview(e);
+        }
+      });
+    }
 
     // 2b. Playback Speed Slider
     const speedSlider = this.container.querySelector('#wpSpeedSlider');
@@ -491,6 +518,64 @@ export class WallpaperComponent {
         return;
       }
     });
+
+    // 4. Right-Click Context Menu
+    const contextMenu = this.container.querySelector('#wpContextMenu');
+    
+    this.container.addEventListener('contextmenu', (e) => {
+      const card = e.target.closest('.wp-card');
+      if (card && !card.classList.contains('wp-add-photo-card')) {
+        e.preventDefault();
+        
+        const id = card.dataset.id;
+        const target = this.installedWallpapers.find(w => w.id === id) ||
+                       (this.marketplaceWallpapers || []).find(w => w.id === id);
+        if (!target) return;
+
+        // Populate context menu
+        contextMenu.innerHTML = `
+          <div class="wp-context-menu-item" data-action="manage" data-id="${target.id}">Edit Details...</div>
+          ${target.isCustom ? `
+            <div class="wp-context-menu-divider"></div>
+            <div class="wp-context-menu-item" data-action="toggle-share" data-id="${target.id}">${target.isShared ? 'Make Private' : 'Share with Community'}</div>
+            <div class="wp-context-menu-item danger" data-action="delete" data-id="${target.id}">Delete Wallpaper</div>
+          ` : ''}
+        `;
+
+        // Position menu
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.top = `${e.clientY}px`;
+        contextMenu.classList.remove('hidden');
+      }
+    });
+
+    // Close context menu on any click
+    document.addEventListener('click', (e) => {
+      if (contextMenu && !contextMenu.classList.contains('hidden')) {
+        contextMenu.classList.add('hidden');
+      }
+    });
+
+    // Handle context menu actions
+    if (contextMenu) {
+      contextMenu.addEventListener('click', (e) => {
+        const item = e.target.closest('.wp-context-menu-item');
+        if (!item) return;
+        
+        const action = item.dataset.action;
+        const id = item.dataset.id;
+        
+        if (action === 'manage') {
+          const target = this.installedWallpapers.find(w => w.id === id) ||
+                         (this.marketplaceWallpapers || []).find(w => w.id === id);
+          if (target) this.openManageWallpaperModal(target);
+        } else if (action === 'toggle-share') {
+          this.toggleSharing(id);
+        } else if (action === 'delete') {
+          this.deleteCustomWallpaper(id);
+        }
+      });
+    }
   }
 
   async selectWallpaper(wallpaper) {
@@ -674,6 +759,80 @@ export class WallpaperComponent {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Changes';
       }
+    };
+  }
+
+  /**
+   * macOS Native Sheet Modal for Screen Saver Settings & Preview
+   */
+  openScreenSaverModal() {
+    const portal = this.container.querySelector('#wpModalPortal');
+    if (!portal) return;
+
+    const currentTimeout = window.screensaverManager ? window.screensaverManager.getTimeoutMinutes() : 5;
+
+    portal.innerHTML = `
+      <div class="wp-modal-backdrop" id="wpScreenSaverBackdrop">
+        <div class="wp-sheet-dialog">
+          <div class="wp-sheet-header">
+            <div>
+              <h3 class="wp-sheet-title">Screen Saver</h3>
+              <p class="wp-sheet-subtitle">Automatically conceal windows and display desktop wallpaper when inactive</p>
+            </div>
+            <button class="wp-sheet-close" id="wpScreenSaverCloseBtn">✕</button>
+          </div>
+
+          <div class="wp-sheet-body">
+            <div class="wp-sheet-field">
+              <label class="wp-sheet-label">Start Screen Saver when inactive for</label>
+              <select id="wpScreenSaverTimeout" class="wp-macos-select">
+                <option value="1" ${currentTimeout === 1 ? 'selected' : ''}>1 Minute</option>
+                <option value="2" ${currentTimeout === 2 ? 'selected' : ''}>2 Minutes</option>
+                <option value="5" ${currentTimeout === 5 ? 'selected' : ''}>5 Minutes</option>
+                <option value="10" ${currentTimeout === 10 ? 'selected' : ''}>10 Minutes</option>
+                <option value="20" ${currentTimeout === 20 ? 'selected' : ''}>20 Minutes</option>
+                <option value="0" ${currentTimeout === 0 ? 'selected' : ''}>Never</option>
+              </select>
+            </div>
+
+            <div style="margin-top: 14px; padding: 14px; background: var(--settings-hover-bg); border-radius: 8px; font-size: 12px; color: var(--settings-text-secondary); line-height: 1.5;">
+              <strong style="color: var(--settings-text); display: block; margin-bottom: 4px;">Dynamic Desktop Screen Saver:</strong>
+              When activated, all open applications, the Dock, and the Menu Bar gently fade away leaving only your current desktop wallpaper playing smoothly. Moving the mouse or typing any key wakes up your desktop instantly.
+            </div>
+
+            <div class="wp-sheet-actions" style="margin-top: 20px;">
+              <button type="button" class="wp-pill-btn" id="wpPreviewScreenSaverBtn">Preview Screen Saver</button>
+              <div style="flex: 1;"></div>
+              <button type="button" class="wp-pill-btn wp-btn-blue" id="wpSaveScreenSaverBtn">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const close = () => { portal.innerHTML = ''; };
+    const backdrop = portal.querySelector('#wpScreenSaverBackdrop');
+    const closeBtn = portal.querySelector('#wpScreenSaverCloseBtn');
+    const saveBtn = portal.querySelector('#wpSaveScreenSaverBtn');
+    const previewBtn = portal.querySelector('#wpPreviewScreenSaverBtn');
+    const timeoutSelect = portal.querySelector('#wpScreenSaverTimeout');
+
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+    closeBtn.onclick = close;
+
+    previewBtn.onclick = () => {
+      close();
+      if (window.screensaverManager) {
+        window.screensaverManager.preview();
+      }
+    };
+
+    saveBtn.onclick = () => {
+      const minutes = parseInt(timeoutSelect.value, 10);
+      if (window.screensaverManager) {
+        window.screensaverManager.setTimeoutMinutes(minutes);
+      }
+      close();
     };
   }
 
@@ -949,6 +1108,39 @@ export class WallpaperComponent {
           background: #000;
           box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
           position: relative;
+          cursor: pointer;
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .wp-hero-thumb-wrap:hover {
+          transform: scale(1.02);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+        }
+
+        /* macOS Native "Preview" Hover Pill */
+        .wp-hero-preview-badge {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%) scale(0.92);
+          background: rgba(20, 20, 25, 0.72);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 20px;
+          padding: 5px 14px;
+          color: #ffffff;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          z-index: 5;
+        }
+        .wp-hero-thumb-wrap:hover .wp-hero-preview-badge {
+          opacity: 1;
+          transform: translate(-50%, -50%) scale(1);
         }
 
         .wp-hero-media, .wp-hero-img {
@@ -1575,6 +1767,67 @@ export class WallpaperComponent {
         :root[data-theme="light"] .wp-sheet-footer,
         [data-theme="light"] .wp-sheet-footer {
           border-top-color: rgba(0, 0, 0, 0.08);
+        }
+
+        .wp-context-menu {
+          position: fixed;
+          background: rgba(30, 30, 30, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          padding: 5px;
+          min-width: 200px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+          z-index: 9999;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .wp-context-menu.hidden {
+          display: none;
+        }
+
+        .wp-context-menu-item {
+          padding: 6px 12px;
+          color: #ffffff;
+          font-size: 13px;
+          border-radius: 4px;
+          cursor: default;
+          user-select: none;
+        }
+
+        .wp-context-menu-item:hover {
+          background: #007aff;
+          color: #ffffff !important;
+        }
+
+        .wp-context-menu-item.danger:hover {
+          background: #ff3b30;
+          color: #ffffff !important;
+        }
+
+        .wp-context-menu-divider {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 4px 0;
+        }
+
+        :root[data-theme="light"] .wp-context-menu,
+        [data-theme="light"] .wp-context-menu {
+          background: rgba(245, 245, 247, 0.85);
+          border-color: rgba(0, 0, 0, 0.15);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        :root[data-theme="light"] .wp-context-menu-item,
+        [data-theme="light"] .wp-context-menu-item {
+          color: #1d1d1f;
+        }
+        
+        :root[data-theme="light"] .wp-context-menu-divider,
+        [data-theme="light"] .wp-context-menu-divider {
+          background: rgba(0, 0, 0, 0.1);
         }
 
         .wp-loading-spinner {
