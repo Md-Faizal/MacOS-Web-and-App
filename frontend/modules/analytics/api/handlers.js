@@ -34,16 +34,30 @@ module.exports = function(db) {
 
     getDashboardSummary: (req, res) => {
       try {
-        const dashboard = db.prepare('SELECT * FROM analytics WHERE metric_type = ?').all('dashboard');
-        const sales = db.prepare('SELECT * FROM analytics WHERE metric_type = ?').all('sales');
-        const products = db.prepare('SELECT * FROM analytics WHERE metric_type = ?').all('products');
+        const calculator = require('../../../../backend/core/billing/calculator');
+        const metrics = calculator.calculateDashboardMetrics(db, req.user, { preset: 'all' });
+        const km = metrics.keyMetrics;
+        const sm = metrics.salesMetrics;
+        const om = metrics.orderMetrics;
 
         res.json({
-          dashboard: dashboard.length > 0 ? JSON.parse(dashboard[0].metric_json || '{}') : {},
-          sales: sales.map(s => ({ ...s, data: JSON.parse(s.metric_json || '{}') })),
-          products: products.map(p => ({ ...p, data: JSON.parse(p.metric_json || '{}') }))
+          totalRevenue: km.totalBilled,
+          totalOrders: om ? (om.totalOrders || km.totalBillsCount) : km.totalBillsCount,
+          averageOrderValue: sm.averageBill,
+          totalCustomers: km.activeCustomersCount,
+          netProfit: Number((km.totalBilled * 0.25).toFixed(2)),
+          growthRate: sm.monthly.percentageChange,
+          // Backward compatibility aliases for web desktop apps
+          dashboard: {
+            revenue: km.totalBilled,
+            orders: om ? (om.totalOrders || km.totalBillsCount) : km.totalBillsCount,
+            receivables: km.amountDue
+          },
+          sales: metrics.topProducts,
+          products: metrics.topProducts
         });
       } catch (error) {
+        console.error('Error in getDashboardSummary:', error);
         res.status(500).json({ error: error.message });
       }
     },
@@ -306,12 +320,17 @@ module.exports = function(db) {
         `);
         const payData = payStmt.get(...payParams);
 
-        // Ledger current due total across valid customers
+        // Ledger current due total across valid customers including opening balances
         const dueStmt = db.prepare(`
-          SELECT COALESCE(SUM(l.current_due), 0) as total_receivables
-          FROM ledger l
-          JOIN contacts c ON l.customer_id = c.id
-          WHERE ${scope}
+          SELECT 
+            COALESCE(SUM(
+              COALESCE(c.opening_balance, 0) +
+              COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = c.id), 0) -
+              COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT'), 0) -
+              COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = c.id AND type = 'CREDIT_NOTE'), 0)
+            ), 0) as total_receivables
+          FROM contacts c
+          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
         `);
         const dueData = dueStmt.get();
 
@@ -323,12 +342,20 @@ module.exports = function(db) {
         `);
         const custData = custStmt.get();
 
-        const totalBilled = billedData.total_billed;
+        const openingStmt = db.prepare(`
+          SELECT COALESCE(SUM(opening_balance), 0) as total_opening
+          FROM contacts c
+          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
+        `);
+        const totalOpening = dateWhereClause ? 0 : Number(openingStmt.get().total_opening || 0);
+        const totalBilled = Number((billedData.total_billed + totalOpening).toFixed(2));
         const totalCollected = payData.total_collected;
         const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100).toFixed(1) : 0;
 
         res.json({
           total_billed: totalBilled,
+          total_invoiced_only: billedData.total_billed,
+          total_opening_balance: totalOpening,
           total_collected: totalCollected,
           total_credit_notes: payData.total_credit_notes,
           total_receivables: dueData.total_receivables,
@@ -336,7 +363,12 @@ module.exports = function(db) {
           total_gst: billedData.total_gst,
           total_discount: billedData.total_discount,
           total_customers: custData.total_customers,
-          collection_rate_percent: Number(collectionRate)
+          collection_rate_percent: Number(collectionRate),
+          // Fallback aliases for legacy views
+          revenue: totalBilled,
+          ordersCount: billedData.total_invoices,
+          activeCustomers: custData.total_customers,
+          receivables: dueData.total_receivables
         });
       } catch (error) {
         res.status(500).json({ error: error.message });

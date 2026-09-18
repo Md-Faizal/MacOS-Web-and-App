@@ -472,7 +472,7 @@ data class CustomerOutstandingResponse(
 )
 
 data class NextReferenceResponse(
-    @SerializedName("reference_number") val referenceNumber: String = ""
+    @SerializedName("reference_number", alternate = ["order_number", "next_reference", "referenceNumber"]) val referenceNumber: String = ""
 )
 
 data class LedgerCustomer(

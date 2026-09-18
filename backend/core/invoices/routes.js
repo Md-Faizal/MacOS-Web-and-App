@@ -53,6 +53,10 @@ module.exports = function(router, invoiceHandlers, paymentHandlers) {
 
   // Get customer outstanding amount and stats
   router.get('/customers/outstanding', paymentHandlers.getCustomerOutstanding);
+  router.get('/customers/:customerName/outstanding', (req, res) => {
+    req.query.customer_name = req.params.customerName;
+    return paymentHandlers.getCustomerOutstanding(req, res);
+  });
 
   // Recalculate ledger from invoices and payments tables
   router.post('/ledger/recalculate', paymentHandlers.recalculateLedger);

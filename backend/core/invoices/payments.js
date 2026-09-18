@@ -644,9 +644,10 @@ module.exports = function(db) {
         let opening_balance = 0;
         
         if (customer_name && !customer_id) {
-          const customer = db.prepare('SELECT id, opening_balance FROM contacts WHERE name = ?').get(customer_name);
+          const customer = db.prepare('SELECT id, opening_balance FROM contacts WHERE name = ? OR id = ?').get(customer_name, customer_name);
           if (!customer) {
             return res.json({
+              customer_id: null,
               total_invoiced: 0,
               total_paid: 0,
               total_credited: 0,
@@ -705,6 +706,7 @@ module.exports = function(db) {
         const partial_bills = Math.min(outstanding_bills_count, total_bills);
 
         res.json({
+          customer_id: cust_id,
           total_invoiced,
           total_paid,
           total_credited,

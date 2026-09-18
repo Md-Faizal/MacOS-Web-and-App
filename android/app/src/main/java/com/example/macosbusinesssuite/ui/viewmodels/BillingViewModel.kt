@@ -1195,8 +1195,23 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                     else -> null
                 }
                 if (response != null && response.isSuccessful && response.body() != null) {
-                    val bytes = response.body()!!.bytes()
-                    onResult(bytes, null)
+                    val rawBytes = response.body()!!.bytes()
+                    val decodedBytes = if (rawBytes.isNotEmpty() && rawBytes[0] == '{'.code.toByte()) {
+                        try {
+                            val jsonStr = String(rawBytes, Charsets.UTF_8)
+                            val obj = com.google.gson.JsonParser.parseString(jsonStr).asJsonObject
+                            if (obj.has("pdf")) {
+                                android.util.Base64.decode(obj.get("pdf").asString, android.util.Base64.DEFAULT)
+                            } else {
+                                rawBytes
+                            }
+                        } catch (_: Exception) {
+                            rawBytes
+                        }
+                    } else {
+                        rawBytes
+                    }
+                    onResult(decodedBytes, null)
                 } else {
                     onResult(null, "Failed to generate PDF")
                 }

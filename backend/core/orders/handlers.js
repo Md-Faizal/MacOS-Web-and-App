@@ -514,7 +514,8 @@ module.exports = function(db) {
         
         res.json({
           success: true,
-          order_number: nextRef
+          order_number: nextRef,
+          reference_number: nextRef
         });
       } catch (error) {
         console.error('Error getting next order number:', error);

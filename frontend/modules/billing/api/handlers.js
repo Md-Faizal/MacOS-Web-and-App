@@ -1726,6 +1726,16 @@ module.exports = function(db) {
         const serial = getAnnualSerialNumber(db, invoice.id);
         const dateStr = formatDateStr(invoice.invoice_date || invoice.created_at);
         const fileName = `${serial}.Invoice ${dateStr}`;
+
+        const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
+                          req.get('x-app-type') === 'native_android' ||
+                          (req.get('accept') || '').includes('application/pdf');
+
+        if (isAndroid) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+          return res.send(pdfData);
+        }
         
         res.json({
           pdf: pdfData.toString('base64'),
@@ -1874,6 +1884,16 @@ module.exports = function(db) {
         const docPrefix = isCreditNote ? 'Credit Note' : 'Payment';
         const dateStr = paymentRecord ? paymentRecord.created_at : null;
         const fileName = `${docPrefix} ${formatDateStr(dateStr)}`;
+
+        const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
+                          req.get('x-app-type') === 'native_android' ||
+                          (req.get('accept') || '').includes('application/pdf');
+
+        if (isAndroid) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+          return res.send(pdfBuffer);
+        }
         
         res.json({
           pdf: pdfBuffer.toString('base64'),
