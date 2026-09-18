@@ -63,7 +63,9 @@ COPY frontend/ ./frontend/
 
 # Create required mount point directories with fallback files
 RUN mkdir -p database database/backups CloudStorage Wallpapers backend/uploads logs \
-    && chown -R node:node /app
+    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive \
+    && chown -R node:node /app \
+    && chmod -R 777 /app/storage /app/logs /app/backend/uploads /app/CloudStorage /app/Wallpapers 2>/dev/null || true
 
 # Switch to non-root user for security
 USER node

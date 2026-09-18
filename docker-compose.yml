@@ -18,6 +18,7 @@ x-macos-base: &macos-base
     - ./database:/app/database
     - ./CloudStorage:/app/CloudStorage
     - ./Wallpapers:/app/Wallpapers
+    - ./storage:/app/storage
     - ./backend/uploads:/app/backend/uploads
     - ./backend:/app/backend
     - ./frontend:/app/frontend

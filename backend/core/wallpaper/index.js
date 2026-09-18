@@ -9,12 +9,18 @@ const router = express.Router();
 
 // Configure multer for custom wallpaper uploads (temp storage before processing)
 const uploadDir = path.join(__dirname, '../../../storage/temp_uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+let activeUploadDir = uploadDir;
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[Wallpaper] Warning: Could not create uploadDir, using os.tmpdir():', err.message);
+  activeUploadDir = require('os').tmpdir();
 }
 
 const upload = multer({
-  dest: uploadDir,
+  dest: activeUploadDir,
   limits: { fileSize: 60 * 1024 * 1024 }, // 60MB limit
   fileFilter: (req, file, cb) => {
     const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.webm'];

@@ -17,10 +17,14 @@ const MARKETPLACE_DIR = path.join(STORAGE_ROOT, 'marketplace');
 const CUSTOM_DIR = path.join(STORAGE_ROOT, 'custom');
 const MANIFEST_FILE = path.join(STORAGE_ROOT, 'manifest.json');
 
-// Ensure base directories exist
+// Ensure base directories exist safely without throwing during module load
 [STORAGE_ROOT, BUILTIN_DIR, MARKETPLACE_DIR, CUSTOM_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (err) {
+    console.warn(`[Wallpaper Storage] Warning: Could not create directory ${dir}:`, err.message);
   }
 });
 

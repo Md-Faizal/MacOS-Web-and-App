@@ -153,9 +153,9 @@ jobs:
           echo "Timestamp: $TIMESTAMP"
           echo "======================================================"
 
-          # 2. Automated Remote Database Snapshot
-          echo "🛡️ Step 1: Taking remote SQLite safety snapshot..."
-          ssh production "mkdir -p $TARGET_DIR/database/backups && if [ -f $TARGET_DIR/database/MacOS.db ]; then cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db && echo '✅ Database safely backed up to database/backups/MacOS_backup_${TIMESTAMP}.db'; else echo '⚠️ No existing database file found to backup.'; fi"
+          # 2. Automated Remote Database Snapshot & Directory Permissions
+          echo "🛡️ Step 1: Taking remote SQLite safety snapshot & ensuring directory permissions..."
+          ssh production "mkdir -p $TARGET_DIR/database/backups $TARGET_DIR/storage/wallpapers/builtin $TARGET_DIR/storage/wallpapers/marketplace $TARGET_DIR/storage/wallpapers/custom $TARGET_DIR/storage/temp_uploads $TARGET_DIR/storage/android-updates/archive && chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true && if [ -f $TARGET_DIR/database/MacOS.db ]; then cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db && echo '✅ Database safely backed up to database/backups/MacOS_backup_${TIMESTAMP}.db'; else echo '⚠️ No existing database file found to backup.'; fi"
 
           # 3. Check Dry Run
           if [ "$DRY_RUN" = "true" ]; then
@@ -173,6 +173,9 @@ jobs:
             --exclude='/backend/uploads' \
             --exclude='/CloudStorage' \
             --exclude='/Wallpapers' \
+            --exclude='/storage/wallpapers/custom' \
+            --exclude='/storage/temp_uploads' \
+            --exclude='/storage/android-updates' \
             --exclude='/logs' \
             --exclude='/tmp' \
             --exclude='/.env*' \

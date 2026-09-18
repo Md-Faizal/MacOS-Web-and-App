@@ -11,16 +11,24 @@ const manifestPath = path.join(uploadDir, 'update-manifest.json');
 const apkPath = path.join(uploadDir, 'latest.apk');
 const historyPath = path.join(uploadDir, 'version-history.json');
 
-// Ensure directories exist
-fs.mkdirSync(uploadDir, { recursive: true });
-fs.mkdirSync(archiveDir, { recursive: true });
+// Ensure directories exist safely
+try {
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+} catch (err) {
+  console.warn('[Android Updates] Warning: Could not create directories:', err.message);
+}
 
 // ─── Multer Configuration ───────────────────────────────────────────────────
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
+    try {
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    } catch (e) {
+      cb(null, require('os').tmpdir());
+    }
   },
   filename: (req, file, cb) => {
     // Upload to temp file first, then rename atomically

@@ -65,6 +65,12 @@ fi
 echo "📍 Current Active Slot: $CURRENT_ACTIVE"
 echo "🎯 Deploying to Slot:   $TARGET_SLOT (Port: $TARGET_PORT)"
 
+# 2.5 Ensure all required host directories exist with open permissions before container mount
+echo "📁 Ensuring host data and storage directories exist..."
+mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
+    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive
+chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
+
 # 3. Clean up any stopped/stale container for target slot and start fresh
 docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
 echo "📦 Starting container macos-server-$TARGET_SLOT..."
