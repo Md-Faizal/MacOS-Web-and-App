@@ -419,6 +419,99 @@ data class UpdateBillRequest(
     @SerializedName("products") val products: List<BillItem>? = null
 )
 
+data class CalculateBillItemRequest(
+    @SerializedName("product_id") val productId: String? = null,
+    @SerializedName("product_name") val productName: String? = null,
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("batch_id") val batchId: String? = null,
+    @SerializedName("pack_value") val packValue: String? = null,
+    @SerializedName("pack_type") val packType: String? = null,
+    @SerializedName("batch_no") val batchNo: String? = null,
+    @SerializedName("exp_date") val expDate: String? = null,
+    @SerializedName("qty") val qty: Double = 1.0,
+    @SerializedName("rate") val rate: Double = 0.0,
+    @SerializedName("mrp") val mrp: Double? = null,
+    @SerializedName("disc1") val disc1: Double = 0.0,
+    @SerializedName("disc2") val disc2: Double = 0.0,
+    @SerializedName("gst_percent") val gstPercent: Double = 0.0,
+    @SerializedName("gst_reverse") val gstReverse: Boolean = false,
+    @SerializedName("scheme") val scheme: String? = null
+)
+
+data class CalculateBillRequest(
+    @SerializedName("customer_id") val customerId: String? = null,
+    @SerializedName("customer_name") val customerName: String? = null,
+    @SerializedName("items") val items: List<CalculateBillItemRequest> = emptyList(),
+    @SerializedName("round_off_enabled") val roundOffEnabled: Boolean = true,
+    @SerializedName("invoice_date") val invoiceDate: String? = null
+)
+
+data class CalculateBillCustomerInfo(
+    val id: Long? = null,
+    val name: String? = null,
+    val phone: String? = null,
+    @SerializedName("opening_balance") val openingBalance: Double = 0.0,
+    @SerializedName("previous_due") val previousDue: Double = 0.0,
+    @SerializedName("current_due") val currentDue: Double = 0.0
+)
+
+data class CalculatedServerItem(
+    val index: Int = 0,
+    @SerializedName("product_id") val productId: String? = null,
+    @SerializedName("product_name") val productName: String = "",
+    @SerializedName("variant_id") val variantId: String? = null,
+    @SerializedName("batch_id") val batchId: String? = null,
+    @SerializedName("pack_value") val packValue: String? = null,
+    @SerializedName("pack_type") val packType: String? = null,
+    @SerializedName("batch_no") val batchNo: String? = null,
+    @SerializedName("exp_date") val expDate: String? = null,
+    val scheme: String? = null,
+    val free: Int = 0,
+    val rate: Double = 0.0,
+    @SerializedName("discounted_rate") val discountedRate: Double = 0.0,
+    val qty: Double = 1.0,
+    val amount: Double = 0.0,
+    @SerializedName("discount_1_percent") val discount1Percent: Double = 0.0,
+    @SerializedName("discount_1_amount") val discount1Amount: Double = 0.0,
+    @SerializedName("discount_2_percent") val discount2Percent: Double = 0.0,
+    @SerializedName("discount_2_amount") val discount2Amount: Double = 0.0,
+    @SerializedName("gst_percent") val gstPercent: Double = 0.0,
+    @SerializedName("gst_amount") val gstAmount: Double = 0.0,
+    @SerializedName("sgst_amount") val sgstAmount: Double = 0.0,
+    @SerializedName("cgst_amount") val cgstAmount: Double = 0.0,
+    @SerializedName("final_amount") val finalAmount: Double = 0.0,
+    @SerializedName("gst_reverse") val gstReverse: Boolean = false
+)
+
+data class CalculateBillSummary(
+    val subtotal: Double = 0.0,
+    @SerializedName("total_amount") val totalAmount: Double = 0.0,
+    @SerializedName("total_discount") val totalDiscount: Double = 0.0,
+    @SerializedName("total_gst") val totalGst: Double = 0.0,
+    @SerializedName("total_sgst") val totalSgst: Double = 0.0,
+    @SerializedName("total_cgst") val totalCgst: Double = 0.0,
+    @SerializedName("round_off") val roundOff: Double = 0.0,
+    @SerializedName("grand_total") val grandTotal: Double = 0.0
+)
+
+data class CalculateBillResponse(
+    val success: Boolean = false,
+    val customer: CalculateBillCustomerInfo? = null,
+    val items: List<CalculatedServerItem> = emptyList(),
+    val summary: CalculateBillSummary = CalculateBillSummary(),
+    @SerializedName("previous_due") val previousDue: Double = 0.0,
+    @SerializedName("projected_due") val projectedDue: Double = 0.0
+)
+
+data class ConvertOrderResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    @SerializedName("invoice_id") val invoiceId: Long? = null,
+    @SerializedName("invoice_no") val invoiceNo: String? = null,
+    @SerializedName("grand_total") val grandTotal: Double = 0.0,
+    @SerializedName("order_id") val orderId: String? = null
+)
+
 data class CustomerPreference(
     val customerName: String,
     val productName: String,

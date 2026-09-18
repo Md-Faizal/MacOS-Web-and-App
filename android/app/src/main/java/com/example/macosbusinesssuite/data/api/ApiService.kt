@@ -205,6 +205,9 @@ interface ApiService {
     @GET("android/update/health")
     suspend fun getAndroidUpdateHealth(): Response<Map<String, Any>>
 
+    @POST("billing/calculate")
+    suspend fun calculateBill(@Body request: CalculateBillRequest): Response<CalculateBillResponse>
+
     @POST("billing")
     suspend fun createBill(@Body request: CreateBillRequest): Response<Bill>
 
@@ -249,6 +252,9 @@ interface ApiService {
 
     @GET("billing/orders/next-number")
     suspend fun getNextOrderNumber(): Response<NextReferenceResponse>
+
+    @POST("billing/orders/{id}/convert-to-invoice")
+    suspend fun convertOrderToInvoice(@Path("id") id: String): Response<ConvertOrderResponse>
 
     // PDF Preview & Export Endpoints
     @POST("billing/preview-invoice-pdf")

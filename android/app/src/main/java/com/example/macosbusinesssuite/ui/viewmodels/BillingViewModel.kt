@@ -125,6 +125,9 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
 
+    private val _products = MutableStateFlow<List<Product>>(emptyList())
+    val products: StateFlow<List<Product>> = _products.asStateFlow()
+
     private val _billingSummary = MutableStateFlow<BillingSummary?>(null)
     val billingSummary: StateFlow<BillingSummary?> = _billingSummary.asStateFlow()
 
@@ -379,6 +382,16 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                     }
                 } catch (e: Exception) {
                     Log.e("BillingViewModel", "Error loading contacts", e)
+                }
+
+                // 4b. Products
+                try {
+                    val prodResp = api.getProducts()
+                    if (prodResp.isSuccessful && prodResp.body() != null) {
+                        _products.value = prodResp.body()!!
+                    }
+                } catch (e: Exception) {
+                    Log.e("BillingViewModel", "Error loading products", e)
                 }
 
                 // 5. Payments
@@ -822,6 +835,81 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 onComplete(false, e.message)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun calculateBill(request: CalculateBillRequest, onResult: (CalculateBillResponse?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = api.calculateBill(request)
+                if (response.isSuccessful) {
+                    onResult(response.body())
+                } else {
+                    onResult(null)
+                }
+            } catch (e: Exception) {
+                Log.e("BillingViewModel", "Error calculating bill on server", e)
+                onResult(null)
+            }
+        }
+    }
+
+    fun convertOrderToInvoice(orderId: String, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = api.convertOrderToInvoice(orderId)
+                if (response.isSuccessful) {
+                    loadBillingData()
+                    val msg = response.body()?.message ?: "Order converted to invoice"
+                    onComplete(true, msg)
+                } else {
+                    val err = response.errorBody()?.string() ?: "Failed to convert order"
+                    onComplete(false, err)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "Network error converting order")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateBill(billId: String, request: UpdateBillRequest, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = api.updateBill(billId, request)
+                if (response.isSuccessful) {
+                    loadBillingData()
+                    onResult(true, "Bill updated successfully")
+                } else {
+                    onResult(false, "Failed to update bill")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Network error updating bill")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updatePayment(paymentId: String, request: Map<String, Any>, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val response = api.updatePayment(paymentId, request)
+                if (response.isSuccessful) {
+                    loadBillingData()
+                    onResult(true, "Payment updated successfully")
+                } else {
+                    onResult(false, "Failed to update payment")
+                }
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Network error updating payment")
             } finally {
                 _isLoading.value = false
             }

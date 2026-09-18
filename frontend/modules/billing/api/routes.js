@@ -28,6 +28,8 @@ module.exports = function(router, handlers) {
   router.post('/public/export-invoice-pdf', handlers.exportInvoicePDF); // POST /api/billing/public/export-invoice-pdf - Public export PDF
 
   // ============= BILLS/INVOICES =============
+  router.post('/calculate', handlers.calculateBill); // POST /api/billing/calculate - Authoritative calculation engine
+  router.post('/orders/:id/convert-to-invoice', handlers.convertOrderToInvoice); // POST /api/billing/orders/:id/convert-to-invoice - Server order fulfillment
   router.post('/', handlers.createBill);           // POST /api/billing - Create bill
   router.get('/', handlers.getBills);              // GET /api/billing - List bills
   router.get('/summary', handlers.getBillingSummary); // GET /api/billing/summary - Billing summary

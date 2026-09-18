@@ -1,4 +1,5 @@
 const BillCalculator = require('../../../shared/bill-calculator');
+const calculator = require('../../../../backend/core/billing/calculator');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -321,9 +322,30 @@ module.exports = function(db) {
   }
 
   return {
+    // ============= SERVER-AUTHORITATIVE CALCULATION =============
+
+    // Authoritative bill calculation endpoint for Web and Mobile clients
+    calculateBill: (req, res) => {
+      try {
+        const items = req.body.items || req.body.products || [];
+        const result = calculator.calculateBillItemsAndSummary(db, {
+          customerId: req.body.customer_id || req.body.customerId,
+          customerName: req.body.customer_name || req.body.customerName,
+          items,
+          roundOffEnabled: req.body.round_off_enabled !== false && req.body.roundOffEnabled !== false,
+          invoiceDate: req.body.invoice_date || req.body.invoiceDate,
+          user: req.user
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('Error in calculateBill:', err);
+        res.status(500).json({ error: 'Calculation failed: ' + err.message });
+      }
+    },
+
     // ============= INVOICES (BILLS) =============
     
-    // Create a new invoice/bill with line items
+    // Create a new invoice/bill with line items using server-authoritative calculations
     createBill: (req, res) => {
       try {
         const { 
@@ -332,12 +354,8 @@ module.exports = function(db) {
           invoice_no, 
           due_date, 
           products, 
-          subtotal, 
-          total_discount, 
-          total_gst, 
           round_off, 
-          grand_total,
-          previous_due 
+          invoice_date 
         } = req.body;
 
         // Validate required fields
@@ -352,7 +370,7 @@ module.exports = function(db) {
         let finalCustomerId = customer_id;
         if (!customer_id && customer_name) {
           try {
-            const customer = db.prepare('SELECT id FROM contacts WHERE name = ?').get(customer_name);
+            const customer = db.prepare('SELECT id FROM contacts WHERE name = ? COLLATE NOCASE').get(customer_name);
             if (customer) {
               finalCustomerId = customer.id;
             } else {
@@ -386,52 +404,24 @@ module.exports = function(db) {
           return res.status(400).json({ error: 'customer_id or customer_name is required' });
         }
 
+        // Run server-authoritative calculation engine
+        const serverCalc = calculator.calculateBillItemsAndSummary(db, {
+          customerId: finalCustomerId,
+          items: products,
+          roundOffEnabled: round_off !== undefined ? (round_off !== 0 && round_off !== false) : true,
+          invoiceDate: invoice_date || req.body.invoice_date || null,
+          user: req.user
+        });
+
+        const calculatedSubtotal = serverCalc.summary.subtotal;
+        const calculatedDiscount = serverCalc.summary.total_discount;
+        const calculatedGst = serverCalc.summary.total_gst;
+        const calculatedRoundOff = serverCalc.summary.round_off;
+        const calculatedGrandTotal = serverCalc.summary.grand_total;
+        const calculatedPreviousDue = serverCalc.previous_due;
+
         // Generate invoice number if not provided
-        // Use new format: GST-YYNN## (if total_gst > 0) or NGST-YYNN## (if total_gst = 0)
-        const finalInvoiceNo = invoice_no || generateNewInvoiceNumber(db, finalCustomerId, total_gst, req.body.invoice_date);
-
-        // Get customer's opening balance
-        const customer = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(finalCustomerId);
-        const opening_balance = customer ? (customer.opening_balance || 0) : 0;
-
-        // Calculate previous_due based on sequence numbers (sequence-based ordering)
-        // Formula: previous_due = opening_balance + (sum of prior invoices - payments - credits)
-        // Get all invoices for this customer, ordered by sequence
-        // Get all invoices for this customer, ordered chronologically
-        const allInvoices = db.prepare(`
-          SELECT id, invoice_no, grand_total, invoice_date, created_at FROM invoices
-          WHERE customer_id = ?
-        `).all(finalCustomerId);
-        
-        // Define 'this' invoice attributes
-        const thisInvoiceDate = req.body.invoice_date || null;
-        const thisInvoiceCreated = new Date().toISOString();
-        
-        // Calculate total of all invoices logically before this one
-        const priorInvoiceTotal = allInvoices
-          .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, thisInvoiceDate, thisInvoiceCreated, undefined))
-          .reduce((sum, inv) => sum + inv.grand_total, 0);
-        
-        // Calculate total payments/credits logically before this one
-        const allPayments = db.prepare(`
-          SELECT id, reference_number, amount, payment_date, created_at FROM payments
-          WHERE customer_id = ? AND type = 'PAYMENT'
-        `).all(finalCustomerId);
-        
-        const allCredits = db.prepare(`
-          SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
-          WHERE customer_id = ? AND type = 'CREDIT_NOTE'
-        `).all(finalCustomerId);
-        
-        const totalPayments = allPayments
-          .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, thisInvoiceDate, thisInvoiceCreated, undefined))
-          .reduce((sum, p) => sum + p.amount, 0);
-        
-        const totalCredits = allCredits
-          .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, thisInvoiceDate, thisInvoiceCreated, undefined))
-          .reduce((sum, c) => sum + c.credit_amount, 0);
-        
-        const calculatedPreviousDue = opening_balance + priorInvoiceTotal - (totalPayments + totalCredits);
+        const finalInvoiceNo = invoice_no || generateNewInvoiceNumber(db, finalCustomerId, calculatedGst, req.body.invoice_date);
 
         const creatorId = req.user ? (req.user.id || req.user.userId) : null;
 
@@ -449,11 +439,11 @@ module.exports = function(db) {
             finalCustomerId,
             finalInvoiceNo,
             due_date || null,
-            subtotal || 0,
-            total_discount || 0,
-            total_gst || 0,
-            round_off || 0,
-            grand_total || 0,
+            calculatedSubtotal,
+            calculatedDiscount,
+            calculatedGst,
+            calculatedRoundOff,
+            calculatedGrandTotal,
             calculatedPreviousDue,
             req.body.invoice_date || null,
             creatorId
@@ -472,7 +462,7 @@ module.exports = function(db) {
           return res.status(500).json({ error: 'Invoice created but no ID returned' });
         }
 
-        // Insert invoice line items
+        // Insert invoice line items using server-calculated values
         const itemStmt = db.prepare(`
           INSERT INTO invoice_items
           (invoice_id, product_id, variant_id, batch_id, pack_value, pack_type, batch_no, 
@@ -482,88 +472,36 @@ module.exports = function(db) {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `);
 
-        products.forEach((product, index) => {
+        serverCalc.items.forEach((item, index) => {
           try {
-            // Look up product_id from product_name if not provided
-            let productId = product.product_id || null;
-            if (!productId && product.product_name) {
-              const prod = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(product.product_name);
-              if (prod) {
-                productId = prod.id;
-              }
-            }
-
-            // Look up variant_id from pack info if needed
-            let variantId = product.variant_id || null;
-            if (!variantId && productId && product.pack_value && product.pack_type) {
-              const variant = db.prepare(`
-                SELECT id FROM variants 
-                WHERE product_id = ? AND pack_size_value = ? AND pack_size_type = ?
-              `).get(productId, product.pack_value, product.pack_type);
-              if (variant) {
-                variantId = variant.id;
-              }
-            }
-
-            // Look up batch_id from batch_no if needed
-            let batchId = product.batch_id || null;
-            if (!batchId && product.batch_no) {
-              if (variantId) {
-                const batch = db.prepare(`
-                  SELECT id FROM batches 
-                  WHERE variant_id = ? AND batch_no = ?
-                `).get(variantId, product.batch_no);
-                if (batch) {
-                  batchId = batch.id;
-                }
-              } else if (productId) {
-                const batch = db.prepare(`
-                  SELECT b.id, b.variant_id FROM batches b
-                  JOIN variants v ON b.variant_id = v.id
-                  WHERE v.product_id = ? AND b.batch_no = ?
-                `).get(productId, product.batch_no);
-                if (batch) {
-                  batchId = batch.id;
-                  if (!variantId) variantId = batch.variant_id;
-                }
-              }
-            }
-
-            // Use BillCalculator to get all calculated values (with GST Reverse support)
-            const lineCalc = BillCalculator.calculateLineItem({
-              ...product,
-              gst_reverse: product.gst_reverse || false
-            });
-
             itemStmt.run(
               invoiceId,
-              productId,
-              variantId,
-              batchId,
-              product.pack_value || product.pack || null,
-              product.pack_type || null,
-              product.batch_no || product.batch || null,
-              product.exp_date || product.exp || null,
-              product.qty || 1,
-              product.scheme || null,
-              product.free || 0,
-              product.mrp || 0,
-              lineCalc.discounted_rate,
-              lineCalc.discountedAmount,
-              lineCalc.discount_1_percent,
-              lineCalc.discount_1_amount,
-              lineCalc.discount_2_percent,
-              lineCalc.discount_2_amount,
-              lineCalc.gst_percent,
-              lineCalc.gst_amount,
-              lineCalc.sgst_amount,
-              lineCalc.cgst_amount,
-              lineCalc.final_amount,
-              product.gst_reverse ? 1 : 0
+              item.product_id,
+              item.variant_id,
+              item.batch_id,
+              item.pack_value || null,
+              item.pack_type || null,
+              item.batch_no || null,
+              item.exp_date || null,
+              item.qty,
+              item.scheme || null,
+              item.free || 0,
+              item.rate,
+              item.discounted_rate,
+              item.amount,
+              item.discount_1_percent,
+              item.discount_1_amount,
+              item.discount_2_percent,
+              item.discount_2_amount,
+              item.gst_percent,
+              item.gst_amount,
+              item.sgst_amount,
+              item.cgst_amount,
+              item.final_amount,
+              item.gst_reverse ? 1 : 0
             );
           } catch (err) {
             console.error(`Error inserting line item ${index + 1}:`, err.message);
-            // Continue processing other items even if one fails
           }
         });
 
@@ -581,34 +519,21 @@ module.exports = function(db) {
             updated_at = datetime('now')
         `);
 
-        products.forEach(product => {
+        serverCalc.items.forEach(item => {
           try {
-            let productId = product.product_id || null;
-            if (!productId && product.product_name) {
-              const prod = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(product.product_name);
-              if (prod) {
-                productId = prod.id;
-              }
-            }
-
-            if (productId) {
-              // Use percentage values for customer memory, not monetary amounts
-              const disc1Pct = product.discount_1_percent || 0;
-              const disc2Pct = product.discount_2_percent || 0;
-              
+            if (item.product_id) {
               prefStmt.run(
                 finalCustomerId,
-                productId,
-                disc1Pct,
-                disc2Pct,
-                product.scheme || null,
-                product.gst_percent || 0,
-                product.gst_reverse ? 1 : 0
+                item.product_id,
+                item.discount_1_percent || 0,
+                item.discount_2_percent || 0,
+                item.scheme || null,
+                item.gst_percent || 0,
+                item.gst_reverse ? 1 : 0
               );
             }
           } catch (err) {
             console.error('Error saving preference:', err);
-            // Continue even if preference save fails
           }
         });
 
@@ -640,21 +565,33 @@ module.exports = function(db) {
           resourceType: 'invoice',
           resourceId: invoiceId,
           resourceName: finalInvoiceNo,
-          metadata: { customer_id: finalCustomerId, grand_total: grand_total || 0, items_count: products.length }
+          metadata: { customer_id: finalCustomerId, grand_total: calculatedGrandTotal, items_count: serverCalc.items.length }
         });
+
+        const customerName = (function() {
+          const cust = db.prepare('SELECT name FROM contacts WHERE id = ?').get(finalCustomerId);
+          return cust?.name || customer_name || 'Customer';
+        })();
 
         res.status(201).json({
           success: true,
           id: invoiceId,
           invoice_no: finalInvoiceNo,
-          customer_name: (function() {
-            const cust = db.prepare('SELECT name FROM contacts WHERE id = ?').get(finalCustomerId);
-            return cust?.name || 'Unknown';
-          })(),
           reference_no: finalInvoiceNo,
           customer_id: finalCustomerId,
-          grand_total: grand_total || 0,
-          items_count: products.length,
+          customer_name: customerName,
+          due_date: due_date || null,
+          invoice_date: req.body.invoice_date || new Date().toISOString().slice(0, 10),
+          subtotal: calculatedSubtotal,
+          total_discount: calculatedDiscount,
+          total_gst: calculatedGst,
+          round_off: calculatedRoundOff,
+          grand_total: calculatedGrandTotal,
+          previous_due: calculatedPreviousDue,
+          projected_due: serverCalc.projected_due,
+          status: 'completed',
+          items: serverCalc.items,
+          items_count: serverCalc.items.length,
           created_at: new Date().toISOString()
         });
 
@@ -1087,6 +1024,167 @@ module.exports = function(db) {
       } catch (error) {
         console.error('Error deleting bill:', error);
         res.status(500).json({ error: error.message });
+      }
+    },
+
+    // Convert order to invoice server-authoritatively
+    convertOrderToInvoice: (req, res) => {
+      try {
+        const orderId = req.params.id;
+        const order = db.prepare(`
+          SELECT o.*, c.name as customer_name, c.phone as customer_phone
+          FROM orders o
+          LEFT JOIN contacts c ON o.customer_id = c.id
+          WHERE o.id = ?
+        `).get(orderId);
+
+        if (!order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+
+        if (order.customer_id && !isCustomerAccessible(req, order.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this order' });
+        }
+
+        // Fetch order items with variant/batch info
+        const orderItems = db.prepare(`
+          SELECT oi.*, p.name as product_name, v.pack_size_value, v.pack_size_type, b.batch_no, b.exp_date, b.mrp
+          FROM order_items oi
+          LEFT JOIN products p ON oi.product_id = p.id
+          LEFT JOIN variants v ON oi.variant_id = v.id
+          LEFT JOIN batches b ON oi.batch_id = b.id
+          WHERE oi.order_id = ?
+        `).all(orderId);
+
+        if (!orderItems || orderItems.length === 0) {
+          return res.status(400).json({ error: 'Order has no items to convert to invoice' });
+        }
+
+        // Map order items to calculation input items
+        const rawItems = orderItems.map(oi => ({
+          product_id: oi.product_id,
+          product_name: oi.product_name,
+          variant_id: oi.variant_id,
+          batch_id: oi.batch_id,
+          pack_value: oi.pack_size_value || oi.pack_value,
+          pack_type: oi.pack_size_type || oi.pack_type,
+          batch_no: oi.batch_no,
+          exp_date: oi.exp_date,
+          qty: oi.quantity !== undefined ? oi.quantity : (oi.qty || 1),
+          rate: oi.unit_price !== undefined ? oi.unit_price : (oi.rate || oi.price || oi.mrp || 0),
+          mrp: oi.mrp || oi.rate || 0,
+          disc1: oi.discount_1_percent || 0,
+          disc2: oi.discount_2_percent || 0,
+          gst_percent: oi.gst_percent || 0
+        }));
+
+        const serverCalc = calculator.calculateBillItemsAndSummary(db, {
+          customerId: order.customer_id,
+          items: rawItems,
+          roundOffEnabled: true,
+          user: req.user
+        });
+
+        // Generate invoice number
+        const finalInvoiceNo = generateNewInvoiceNumber(db, order.customer_id, serverCalc.summary.total_gst);
+        const creatorId = req.user ? (req.user.id || req.user.userId) : order.created_by_user_id;
+
+        // Insert invoice
+        const invoiceStmt = db.prepare(`
+          INSERT INTO invoices 
+          (customer_id, invoice_no, due_date, total_amount, total_discount, total_gst, 
+           round_off, grand_total, previous_due, invoice_date, created_by_user_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `);
+
+        const invoiceResult = invoiceStmt.run(
+          order.customer_id,
+          finalInvoiceNo,
+          null,
+          serverCalc.summary.subtotal,
+          serverCalc.summary.total_discount,
+          serverCalc.summary.total_gst,
+          serverCalc.summary.round_off,
+          serverCalc.summary.grand_total,
+          serverCalc.previous_due,
+          new Date().toISOString().slice(0, 10),
+          creatorId
+        );
+
+        const invoiceId = invoiceResult.lastInsertRowid;
+
+        // Insert invoice line items
+        const itemStmt = db.prepare(`
+          INSERT INTO invoice_items
+          (invoice_id, product_id, variant_id, batch_id, pack_value, pack_type, batch_no, 
+           exp_date, qty, scheme, free, mrp, rate, amount, discount_1_percent, discount_1_amount,
+           discount_2_percent, discount_2_amount, gst_percent, gst_amount, sgst_amount, cgst_amount,
+           final_amount, gst_reverse, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `);
+
+        serverCalc.items.forEach(item => {
+          itemStmt.run(
+            invoiceId,
+            item.product_id,
+            item.variant_id,
+            item.batch_id,
+            item.pack_value,
+            item.pack_type,
+            item.batch_no,
+            item.exp_date,
+            item.qty,
+            item.scheme,
+            item.free,
+            item.rate,
+            item.discounted_rate,
+            item.amount,
+            item.discount_1_percent,
+            item.discount_1_amount,
+            item.discount_2_percent,
+            item.discount_2_amount,
+            item.gst_percent,
+            item.gst_amount,
+            item.sgst_amount,
+            item.cgst_amount,
+            item.final_amount,
+            item.gst_reverse ? 1 : 0
+          );
+        });
+
+        // Update order state to Stage 3 (Fulfilled) and attach bill reference
+        db.prepare(`
+          UPDATE orders 
+          SET current_stage = 'stage3',
+              status = 'completed',
+              bill_reference = ?,
+              delivery_date = COALESCE(delivery_date, datetime('now')),
+              last_edited_by_user_id = ?,
+              updated_at = datetime('now')
+          WHERE id = ?
+        `).run(finalInvoiceNo, creatorId, orderId);
+
+        // Audit log
+        activityLogger.logActivity(req, {
+          module: 'billing',
+          action: 'convert_order',
+          resourceType: 'order',
+          resourceId: orderId,
+          resourceName: order.order_number,
+          metadata: { invoice_id: invoiceId, invoice_no: finalInvoiceNo, grand_total: serverCalc.summary.grand_total }
+        });
+
+        res.json({
+          success: true,
+          message: 'Order successfully converted to invoice ' + finalInvoiceNo,
+          invoice_id: invoiceId,
+          invoice_no: finalInvoiceNo,
+          grand_total: serverCalc.summary.grand_total,
+          order_id: orderId
+        });
+      } catch (err) {
+        console.error('Error converting order to invoice:', err);
+        res.status(500).json({ error: 'Failed to convert order to invoice: ' + err.message });
       }
     },
 

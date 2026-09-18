@@ -215,5 +215,78 @@ When attempting to build the native Android client using the exact same APIs:
 
 ---
 
+### Entry 006: Comprehensive Billing App Deep-Dive & Gap Analysis
+* **Timestamp**: 2026-09-19T02:05:00+05:30
+* **Focus**: Full end-to-end architectural, page, sub-page, and modal analysis of the **Billing App** (Web vs Android).
+* **Key Findings**:
+  1. **New Bill / Invoice Creation (`NewBillScreen.kt`) Disparity**:
+     - Web `new-bill.js` (153 KB) is a full-featured engine with customer auto-suggest, customer preference caching, variant & batch selection modal, pending orders modal, and print/PDF preview modal.
+     - Android `NewBillScreen.kt` (9.4 KB) had placeholder logic with `// TODO: Create Bill Request`, lacking customer auto-suggest, preference loading, and invoice persistence.
+  2. **Edit Billing (`EditBillingScreen.kt`) Disparity**:
+     - Web `edit-bills-payments.js` (133 KB) provides full item-level editing, payment editing, credit note editing, and void modals.
+     - Android `EditBillingScreen.kt` (8 KB) had placeholder comments (`/* TODO: Open Edit ... Dialog */`).
+  3. **Order Pipeline (`NewOrderScreen.kt`) Disparity**:
+     - Web `new-order.js` (177 KB) features a complete 3-stage pipeline (`Draft` -> `QC` -> `Fulfilled`) with order-to-invoice conversion.
+     - Android `NewOrderScreen.kt` (15.8 KB) only created Stage 1 orders without QC or conversion flows.
+* **Artifact Created**:
+  - Detailed design and implementation plan recorded in `billing_analysis.md`.
+* **Action Plan**:
+  - **Phase 1**: Rebuild `NewBillScreen.kt` with customer auto-suggest, preferences, variant/batch dialog, and active persistence.
+  - **Phase 2**: Implement transaction editing in `EditBillingScreen.kt`.
+  - **Phase 3**: Implement QC & delivery pipeline in `NewOrderScreen.kt`.
+
+---
+
+### Entry 007: Server-Side Authoritative Processing Transition & Thin-Client Architecture
+* **Timestamp**: 2026-09-19T02:35:00+05:30
+* **Strategic Shift**:
+  - Moved all financial arithmetic, tax calculations (including 4.77% reverse GST deduction), multi-tiered discounts, scheme free item computations, round-off handling, previous customer debt reconciliation, and order-to-invoice conversions from client-side JavaScript/Kotlin to authoritative **Node.js/Express server services**.
+  - Client apps (Web and Android Kotlin) transitioned to **thin clients** consuming dedicated server calculation and conversion endpoints.
+* **Backend Additions & Enhancements**:
+  1. **Core Billing Calculator Service** (`backend/core/billing/calculator.js`):
+     - Created `calculateBillItemsAndSummary(db, { customerId, customerName, items, roundOffEnabled, invoiceDate, user })`.
+     - Standardized calculation pipeline:
+       - Reverse GST: MRP $\rightarrow$ Base Rate extraction ($MRP / (1 + GST\_Rate)$) with exact 4.77% base reduction for 5% GST items.
+       - Tiered percentage discounts: Disc 1 $\rightarrow$ intermediate $\rightarrow$ Disc 2.
+       - Scheme bonus computations: Scheme rules (e.g. `10+1`) calculating free bonus quantities without charging base rate.
+       - GST splitting: Exact CGST/SGST 50/50 split and half-up round-off arithmetic.
+       - Ledger statement parity: Customer previous debt pulled directly from authoritative SQLite customer ledger (`isStrictlyPrior` timestamp and ID sequence), producing projected debt.
+  2. **Authoritative Calculation Endpoint** (`POST /api/billing/calculate`):
+     - Exposes real-time calculation to both Web and Android without mutating database records.
+  3. **Authoritative Bill Persistence** (`POST /api/billing`):
+     - Re-calculates and validates all line items, GST amounts, discounts, and round-offs on the server before insertion, guaranteeing zero client calculation tampering.
+  4. **Atomic Order-to-Invoice Conversion** (`POST /api/billing/orders/:id/convert-to-invoice`):
+     - Executes stage transition to completed, calculates final bill amounts via `calculator.js`, allocates invoice number (`GST-YYYYMM` / `NGST-YYYYMM`), deducts batch inventory, creates `invoices` and `invoice_items` records, and updates customer receivables atomically within a transaction.
+* **Android Kotlin Upgrades**:
+  1. **Data Models** (`Models.kt`):
+     - Added `CalculateBillRequest`, `CalculateBillItemRequest`, `CalculateBillResponse`, `CalculatedServerItem`, `CalculateBillSummary`, `ConvertOrderResponse`.
+  2. **Retrofit API Service** (`ApiService.kt`):
+     - Mounted `calculateBill(@Body request: CalculateBillRequest)` and `convertOrderToInvoice(@Path("id") id: String)`.
+  3. **Billing ViewModel** (`BillingViewModel.kt`):
+     - Exposed `products: StateFlow<List<Product>>`.
+     - Added `calculateBill`, `convertOrderToInvoice`, `updateBill`, and `updatePayment`.
+  4. **UI Screens Rebuilt**:
+     - `NewBillScreen.kt`: Real-time server calculation, customer search dialog with opening balance badges, product autocomplete with scheme support, and authoritative bill creation.
+     - `NewOrderScreen.kt`: Real-time server calculation, customer picker, pipeline stage selection (`Intake`, `QC/Pack`, `Dispatch`), and server-calculated totals.
+     - `EditBillingScreen.kt`: Multi-tab management for Bills, Orders, and Payments. Includes direct order-to-invoice conversion (`POST /api/billing/orders/:id/convert-to-invoice`), bill date updates, and payment edits.
+* **Verification & Zero-Regression Proof**:
+  1. **Automated Server Processing Test Suite** (`backend/scripts/test-billing-server-processing.js`):
+     - Test 1 (Reverse GST, tiered discounts, scheme bonus, round-off): **PASSED**.
+     - Test 2 (Customer statement parity, previous due matching): **PASSED**.
+     - Test 3 (Create bill with verified server-side totals): **PASSED**.
+     - Test 4 (Convert order to invoice atomically): **PASSED**.
+  2. **4 Core Apps Parity Verification** (`backend/scripts/verify-4-core-apps-parity.js`):
+     - Billing totalBilled (₹36,774) == Analytics total_billed (₹36,774): **PERFECT MATCH**.
+     - Billing amountDue (₹23,954) == Analytics total_receivables (₹23,954): **PERFECT MATCH**.
+     - Contacts and Product List counts and schemas fully consistent.
+  3. **Android Gradle Compilation**:
+     - `./gradlew.bat compileDebugKotlin`: **BUILD SUCCESSFUL in 14s** (0 errors).
+* **Status**:
+  - Transition to server-side processing is complete, fully tested, and verified across Web and Android.
+
+---
+
 *(Updates will be logged here chronologically as each work item progresses.)*
+
+
 

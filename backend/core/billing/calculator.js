@@ -1111,6 +1111,249 @@ module.exports = {
   calculateDashboardMetrics,
   calculateCustomerStatement,
   calculateBillSettlement,
+  calculateBillItemsAndSummary,
   getDateRangeForPreset,
-  parseDate
+  parseDate,
+  isStrictlyPrior
 };
+
+/**
+ * Pure chronological sequence ordering comparator for ledgers & dues
+ */
+function isStrictlyPrior(dateA, createdA, idA, dateB, createdB, idB) {
+  const normalize = (d, c) => {
+    let t = d ? new Date(d) : new Date(c);
+    t.setHours(0, 0, 0, 0);
+    return t.getTime();
+  };
+
+  const dayA = normalize(dateA, createdA);
+  const dayB = normalize(dateB, createdB);
+
+  if (dayA < dayB) return true;
+  if (dayA > dayB) return false;
+
+  const exactA = new Date(createdA).getTime();
+  const exactB = new Date(createdB).getTime();
+  if (exactA < exactB) return true;
+  if (exactA > exactB) return false;
+
+  if (idA !== undefined && idB !== undefined) return idA < idB;
+  return false;
+}
+
+const BillCalculator = require('../../../frontend/shared/bill-calculator');
+
+/**
+ * Server-Authoritative Bill & Line Item Calculation Engine
+ *
+ * Takes raw item and customer parameters and executes exact business arithmetic:
+ * - 4.77% GST reverse reduction (when enabled)
+ * - Multi-tier cascading discounts (disc1, disc2)
+ * - GST percentage split (SGST 50% / CGST 50% or IGST)
+ * - Scheme parsing (e.g. 5+1 free items)
+ * - Subtotal, discount sums, GST sums, round-off and grand total
+ * - Chronological sequence-based customer previous due and projected balance
+ */
+function calculateBillItemsAndSummary(db, { customerId, customerName, items = [], roundOffEnabled = true, invoiceDate = null, user = null }) {
+  // 1. Resolve customer
+  let finalCustomerId = customerId;
+  let customerRecord = null;
+  if (!finalCustomerId && customerName) {
+    customerRecord = db.prepare('SELECT * FROM contacts WHERE name = ? COLLATE NOCASE').get(customerName);
+    if (customerRecord) finalCustomerId = customerRecord.id;
+  } else if (finalCustomerId) {
+    customerRecord = db.prepare('SELECT * FROM contacts WHERE id = ?').get(finalCustomerId);
+  }
+
+  // 2. Compute sequence-based previous due for customer
+  let openingBalance = 0;
+  let previousDue = 0;
+  let customerInfo = null;
+
+  if (customerRecord) {
+    openingBalance = Number(customerRecord.opening_balance || 0);
+    const thisInvoiceDate = invoiceDate || null;
+    const thisInvoiceCreated = new Date().toISOString();
+
+    const allInvoices = db.prepare(`
+      SELECT id, invoice_no, grand_total, invoice_date, created_at FROM invoices
+      WHERE customer_id = ?
+    `).all(customerRecord.id);
+
+    const allPayments = db.prepare(`
+      SELECT id, reference_number, amount, payment_date, created_at FROM payments
+      WHERE customer_id = ? AND type = 'PAYMENT'
+    `).all(customerRecord.id);
+
+    const allCredits = db.prepare(`
+      SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
+      WHERE customer_id = ? AND type = 'CREDIT_NOTE'
+    `).all(customerRecord.id);
+
+    const priorInvoiceTotal = allInvoices
+      .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, thisInvoiceDate, thisInvoiceCreated, undefined))
+      .reduce((sum, inv) => sum + Number(inv.grand_total || 0), 0);
+
+    const totalPayments = allPayments
+      .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, thisInvoiceDate, thisInvoiceCreated, undefined))
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    const totalCredits = allCredits
+      .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, thisInvoiceDate, thisInvoiceCreated, undefined))
+      .reduce((sum, c) => sum + Number(c.credit_amount || 0), 0);
+
+    previousDue = Number((openingBalance + priorInvoiceTotal - (totalPayments + totalCredits)).toFixed(2));
+
+    customerInfo = {
+      id: customerRecord.id,
+      name: customerRecord.name,
+      phone: customerRecord.phone || '',
+      opening_balance: openingBalance,
+      previous_due: previousDue,
+      current_due: previousDue
+    };
+  }
+
+  // 3. Process line items using BillCalculator
+  const processedItems = (items || []).map((rawItem, idx) => {
+    let productId = rawItem.product_id || rawItem.productId || null;
+    let productName = rawItem.product_name || rawItem.productName || rawItem.name || '';
+    let variantId = rawItem.variant_id || rawItem.variantId || null;
+    let batchId = rawItem.batch_id || rawItem.batchId || null;
+    let packValue = rawItem.pack_value || rawItem.packValue || rawItem.pack || '';
+    let packType = rawItem.pack_type || rawItem.packType || '';
+    let batchNo = rawItem.batch_no || rawItem.batchNo || rawItem.batch || '';
+    let expDate = rawItem.exp_date || rawItem.expDate || rawItem.exp || '';
+
+    // If productId is missing but productName is given, look up in DB
+    if (!productId && productName) {
+      const prod = db.prepare('SELECT id, name FROM products WHERE name = ? COLLATE NOCASE').get(productName);
+      if (prod) {
+        productId = prod.id;
+        productName = prod.name;
+      }
+    } else if (productId && !productName) {
+      const prod = db.prepare('SELECT id, name FROM products WHERE id = ?').get(productId);
+      if (prod) productName = prod.name;
+    }
+
+    // Lookup variant if needed
+    if (productId && !variantId && packValue && packType) {
+      const v = db.prepare('SELECT id FROM variants WHERE product_id = ? AND pack_size_value = ? AND pack_size_type = ?').get(productId, packValue, packType);
+      if (v) variantId = v.id;
+    }
+
+    // Lookup batch if needed
+    if (!batchId && batchNo) {
+      if (variantId) {
+        const b = db.prepare('SELECT id, exp_date, mrp FROM batches WHERE variant_id = ? AND batch_no = ?').get(variantId, batchNo);
+        if (b) {
+          batchId = b.id;
+          if (!expDate) expDate = b.exp_date;
+        }
+      } else if (productId) {
+        const b = db.prepare('SELECT b.id, b.exp_date, b.mrp FROM batches b JOIN variants v ON b.variant_id = v.id WHERE v.product_id = ? AND b.batch_no = ?').get(productId, batchNo);
+        if (b) {
+          batchId = b.id;
+          if (!expDate) expDate = b.exp_date;
+        }
+      }
+    }
+
+    const calculated = BillCalculator.calculateLineItem({
+      rate: rawItem.rate !== undefined ? rawItem.rate : (rawItem.mrp || rawItem.price || 0),
+      mrp: rawItem.mrp !== undefined ? rawItem.mrp : (rawItem.rate || 0),
+      qty: rawItem.qty !== undefined ? rawItem.qty : (rawItem.quantity || 1),
+      disc1: rawItem.disc1 !== undefined ? rawItem.disc1 : (rawItem.discount_1_percent || rawItem.discount1Percent || 0),
+      disc2: rawItem.disc2 !== undefined ? rawItem.disc2 : (rawItem.discount_2_percent || rawItem.discount2Percent || 0),
+      gst_percent: rawItem.gst_percent !== undefined ? rawItem.gst_percent : (rawItem.gstPercent || rawItem.gstTotal || 0),
+      gstTotal: rawItem.gstTotal !== undefined ? rawItem.gstTotal : (rawItem.gst_percent || rawItem.gstPercent || 0),
+      sgst: rawItem.sgst !== undefined ? rawItem.sgst : (rawItem.sgst_percent || 0),
+      cgst: rawItem.cgst !== undefined ? rawItem.cgst : (rawItem.cgst_percent || 0),
+      gst_reverse: Boolean(rawItem.gst_reverse !== undefined ? rawItem.gst_reverse : rawItem.gstReverse)
+    });
+
+    const freeCount = BillCalculator.calculateFreeItems(
+      Number(rawItem.qty !== undefined ? rawItem.qty : (rawItem.quantity || 1)),
+      rawItem.scheme || ''
+    );
+
+    return {
+      index: idx,
+      product_id: productId,
+      productId: productId ? String(productId) : null,
+      product_name: productName || 'Product',
+      productName: productName || 'Product',
+      variant_id: variantId,
+      variantId: variantId ? String(variantId) : null,
+      batch_id: batchId,
+      batchId: batchId ? String(batchId) : null,
+      pack_value: packValue,
+      pack_type: packType,
+      batch_no: batchNo,
+      exp_date: expDate,
+      scheme: rawItem.scheme || '',
+      free: freeCount,
+      rate: calculated.rate,
+      discounted_rate: calculated.discounted_rate,
+      qty: calculated.qty,
+      quantity: calculated.qty,
+      amount: calculated.amount,
+      discount_1_percent: calculated.discount_1_percent,
+      discount_1_amount: calculated.discount_1_amount,
+      discount_2_percent: calculated.discount_2_percent,
+      discount_2_amount: calculated.discount_2_amount,
+      gst_percent: calculated.gst_percent,
+      gst_amount: calculated.gst_amount,
+      sgst_amount: calculated.sgst_amount,
+      cgst_amount: calculated.cgst_amount,
+      final_amount: calculated.final_amount,
+      gst_reverse: calculated.gst_reverse,
+      finalAmount: calculated.final_amount,
+      discount1Percent: calculated.discount_1_percent,
+      discount1Amount: calculated.discount_1_amount,
+      discount2Percent: calculated.discount_2_percent,
+      discount2Amount: calculated.discount_2_amount,
+      gstPercent: calculated.gst_percent,
+      gstAmount: calculated.gst_amount
+    };
+  });
+
+  // 4. Summary calculation
+  const rawSummary = BillCalculator.calculateBillSummary(processedItems);
+  let finalGrandTotal = rawSummary.grand_total;
+  let finalRoundOff = rawSummary.round_off;
+
+  if (roundOffEnabled === false) {
+    finalGrandTotal = Number(rawSummary.subtotal.toFixed(2));
+    finalRoundOff = 0;
+  }
+
+  const summary = {
+    subtotal: rawSummary.subtotal,
+    total_amount: rawSummary.total_amount,
+    total_discount: rawSummary.total_discount,
+    total_gst: rawSummary.total_gst,
+    total_sgst: rawSummary.total_sgst,
+    total_cgst: rawSummary.total_cgst,
+    round_off: finalRoundOff,
+    grand_total: finalGrandTotal,
+    discountTotal: rawSummary.total_discount,
+    taxTotal: rawSummary.total_gst,
+    grandTotal: finalGrandTotal,
+    roundOff: finalRoundOff
+  };
+
+  const projectedDue = Number((previousDue + finalGrandTotal).toFixed(2));
+
+  return {
+    success: true,
+    customer: customerInfo,
+    items: processedItems,
+    summary,
+    previous_due: previousDue,
+    projected_due: projectedDue,
+    projectedDue
+  };
+}
