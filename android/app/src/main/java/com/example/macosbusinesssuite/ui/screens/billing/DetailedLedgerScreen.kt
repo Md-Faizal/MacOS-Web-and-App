@@ -195,18 +195,28 @@ fun DetailedLedgerScreenContent(
     val customerName = currentContact?.name ?: ledgerData?.customer?.name ?: customerId.ifBlank { "All Customers" }
     val openingBalance = currentContact?.openingBalance ?: ledgerData?.customer?.openingBalance ?: 0.0
 
-    val customerBills = remember(bills, customerId, customerName) {
-        if (customerId.isBlank() || customerId.equals("all", ignoreCase = true)) bills
-        else bills.filter { 
-            (it.customerId != null && it.customerId == customerId) || 
-            (it.customerName.trim().equals(customerName.trim(), ignoreCase = true))
+    val customerBills = remember(bills, customerId, customerName, ledgerData) {
+        if (!ledgerData?.bills.isNullOrEmpty()) {
+            ledgerData.bills
+        } else if (customerId.isBlank() || customerId.equals("all", ignoreCase = true)) {
+            bills
+        } else {
+            bills.filter { 
+                (it.customerId != null && it.customerId == customerId) || 
+                (it.customerName.trim().equals(customerName.trim(), ignoreCase = true))
+            }
         }
     }
-    val customerPayments = remember(payments, customerId, customerName) {
-        if (customerId.isBlank() || customerId.equals("all", ignoreCase = true)) payments
-        else payments.filter { 
-            (it.customerId != null && it.customerId == customerId) || 
-            (it.customerName.trim().equals(customerName.trim(), ignoreCase = true))
+    val customerPayments = remember(payments, customerId, customerName, ledgerData) {
+        if (!ledgerData?.payments.isNullOrEmpty()) {
+            ledgerData.payments
+        } else if (customerId.isBlank() || customerId.equals("all", ignoreCase = true)) {
+            payments
+        } else {
+            payments.filter { 
+                (it.customerId != null && it.customerId == customerId) || 
+                (it.customerName.trim().equals(customerName.trim(), ignoreCase = true))
+            }
         }
     }
 
@@ -225,11 +235,41 @@ fun DetailedLedgerScreenContent(
         buildStatementRows(customerName, openingBalance, filteredBills, filteredPayments, settlementMap)
     }
 
-    val totalBilled = remember(filteredBills) { filteredBills.sumOf { it.grandTotal } }
-    val totalPaid = remember(filteredPayments) { filteredPayments.filter { it.type.uppercase() == "PAYMENT" }.sumOf { it.amount } }
-    val totalCredits = remember(filteredPayments) { filteredPayments.filter { it.type.uppercase() == "CREDIT_NOTE" }.sumOf { it.creditAmount } }
-    val totalCollected = totalPaid + totalCredits
-    val amountDue = totalBilled + openingBalance - totalCollected
+    val totalBilled = remember(filteredBills, ledgerData, selectedDateFilter) {
+        if (selectedDateFilter == DateFilterPeriod.ALL && ledgerData?.summary != null) {
+            ledgerData.summary.totalBilled
+        } else {
+            filteredBills.sumOf { it.grandTotal }
+        }
+    }
+    val totalPaid = remember(filteredPayments, ledgerData, selectedDateFilter) {
+        if (selectedDateFilter == DateFilterPeriod.ALL && ledgerData?.summary != null) {
+            ledgerData.summary.totalPaid
+        } else {
+            filteredPayments.filter { it.type.uppercase() == "PAYMENT" }.sumOf { it.amount }
+        }
+    }
+    val totalCredits = remember(filteredPayments, ledgerData, selectedDateFilter) {
+        if (selectedDateFilter == DateFilterPeriod.ALL && ledgerData?.summary != null) {
+            ledgerData.summary.totalCredits
+        } else {
+            filteredPayments.filter { it.type.uppercase() == "CREDIT_NOTE" }.sumOf { it.creditAmount }
+        }
+    }
+    val totalCollected = remember(totalPaid, totalCredits, ledgerData, selectedDateFilter) {
+        if (selectedDateFilter == DateFilterPeriod.ALL && ledgerData?.summary != null) {
+            ledgerData.summary.totalCollected
+        } else {
+            totalPaid + totalCredits
+        }
+    }
+    val amountDue = remember(totalBilled, openingBalance, totalCollected, ledgerData, selectedDateFilter) {
+        if (selectedDateFilter == DateFilterPeriod.ALL && ledgerData?.summary != null) {
+            ledgerData.summary.currentDue
+        } else {
+            totalBilled + openingBalance - totalCollected
+        }
+    }
 
     Scaffold(
         topBar = {

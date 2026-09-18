@@ -1,3 +1,5 @@
+import { windowGeometryManager } from './window-geometry-contract.js';
+
 /**
  * AppWindow - A standardized macOS-style window component
  * Base class for building different applications with consistent UI/UX
@@ -332,6 +334,98 @@ class AppWindow {
         position: static;
       }
 
+      
+      /* Traffic Light hover effect across all 3 glyphs */
+      .app-traffic-lights:hover .traffic-light span {
+        color: rgba(0, 0, 0, 0.75) !important;
+      }
+      .app-window[data-app-id="calculator"] .app-traffic-lights:hover .traffic-light span {
+        color: rgba(0, 0, 0, 0.85) !important;
+      }
+
+      /* 8-Directional Resizers */
+      .window-resizers {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      .window-resizers .resizer {
+        position: absolute;
+        pointer-events: auto;
+      }
+      .window-resizers .resizer-top {
+        top: -4px; left: 12px; right: 12px; height: 8px; cursor: ns-resize;
+      }
+      .window-resizers .resizer-bottom {
+        bottom: -4px; left: 12px; right: 12px; height: 8px; cursor: ns-resize;
+      }
+      .window-resizers .resizer-left {
+        left: -4px; top: 12px; bottom: 12px; width: 8px; cursor: ew-resize;
+      }
+      .window-resizers .resizer-right {
+        right: -4px; top: 12px; bottom: 12px; width: 8px; cursor: ew-resize;
+      }
+      .window-resizers .resizer-top-left {
+        top: -4px; left: -4px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2;
+      }
+      .window-resizers .resizer-top-right {
+        top: -4px; right: -4px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 2;
+      }
+      .window-resizers .resizer-bottom-left {
+        bottom: -4px; left: -4px; width: 14px; height: 14px; cursor: nesw-resize; z-index: 2;
+      }
+      .window-resizers .resizer-bottom-right {
+        bottom: -4px; right: -4px; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2;
+      }
+
+      /* macOS Sequoia Tiling Palette */
+      .macos-tiling-palette {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(28px) saturate(180%);
+        -webkit-backdrop-filter: blur(28px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: 12px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08);
+        min-width: 155px;
+        z-index: 999995;
+        animation: paletteFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes paletteFadeIn {
+        from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      .tiling-palette-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        color: #1f2937;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+        text-align: left;
+        width: 100%;
+      }
+      .tiling-palette-btn:hover {
+        background: #007aff;
+        color: #ffffff;
+      }
+      .tiling-palette-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
       .app-window.resizing {
         user-select: none;
       }
@@ -659,15 +753,11 @@ class AppWindow {
 
     document.head.appendChild(styles);
   }
-
   startDrag(e) {
     if (this.windowState === 'minimized') return;
-    
-    // Bring window to front
     this.bringToFront();
     
     const rect = this.window.getBoundingClientRect();
-    // Get clientX and clientY from either mouse or touch event
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     
@@ -676,20 +766,43 @@ class AppWindow {
     const startLeft = rect.left;
     const startTop = rect.top;
 
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const workArea = geomMgr?.getWorkAreaRect() || { top: 32, left: 0, width: window.innerWidth, height: window.innerHeight };
+    
+    let activeSnapZone = null;
+    let isDragging = false;
+    let shield = null;
+
     const moveFn = (moveEvent) => {
       const moveClientX = moveEvent.clientX || (moveEvent.touches && moveEvent.touches[0].clientX);
       const moveClientY = moveEvent.clientY || (moveEvent.touches && moveEvent.touches[0].clientY);
       
       const dx = moveClientX - startX;
       const dy = moveClientY - startY;
+      
+      if (!isDragging && Math.hypot(dx, dy) > 5) {
+        isDragging = true;
+        this.window.classList.add('is-dragging');
+        
+        shield = document.createElement('div');
+        shield.className = 'window-interaction-shield';
+        shield.style.cssText = 'position:fixed;inset:0;z-index:999999;cursor:grabbing;user-select:none;';
+        document.body.appendChild(shield);
+
+        if (this.windowState === 'maximized') {
+          this.windowState = 'normal';
+          this.updateAppBarIconState();
+          if (geomMgr) geomMgr.setState(this.appId, 'normal');
+        }
+      }
+      
       let newLeft = startLeft + dx;
       let newTop = startTop + dy;
       
-      // Constrain to viewport - keep window within bounds
-      const minLeft = 0;
-      const minTop = 0;
-      const maxLeft = window.innerWidth - rect.width;
-      const maxTop = window.innerHeight - rect.height;
+      const minLeft = -rect.width + 40;
+      const minTop = Math.max(0, workArea.top);
+      const maxLeft = window.innerWidth - 40;
+      const maxTop = window.innerHeight - 40;
       
       newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
       newTop = Math.max(minTop, Math.min(newTop, maxTop));
@@ -697,6 +810,29 @@ class AppWindow {
       this.window.style.left = newLeft + 'px';
       this.window.style.top = newTop + 'px';
       this.window.style.transform = 'none';
+
+      if (geomMgr && this.resizable && !this.fixedSize && isDragging) {
+        let newSnapZone = null;
+        const triggerZone = 20;
+        
+        if (moveClientY <= minTop + 5) {
+          newSnapZone = { type: 'fullscreen', rect: workArea };
+        } else if (moveClientX <= triggerZone) {
+          newSnapZone = { type: 'left', rect: { left: workArea.left, top: workArea.top, width: workArea.width / 2, height: workArea.height } };
+        } else if (moveClientX >= window.innerWidth - triggerZone) {
+          newSnapZone = { type: 'right', rect: { left: workArea.left + workArea.width / 2, top: workArea.top, width: workArea.width / 2, height: workArea.height } };
+        }
+        
+        if (newSnapZone) {
+          if (!activeSnapZone || activeSnapZone.type !== newSnapZone.type) {
+            activeSnapZone = newSnapZone;
+            geomMgr.showSnapPreview(activeSnapZone.rect);
+          }
+        } else if (activeSnapZone) {
+          activeSnapZone = null;
+          geomMgr.hideSnapPreview();
+        }
+      }
     };
 
     const upFn = () => {
@@ -704,8 +840,42 @@ class AppWindow {
       document.removeEventListener('mouseup', upFn);
       document.removeEventListener('touchmove', moveFn);
       document.removeEventListener('touchend', upFn);
-      // Ensure window stays within viewport after drag
-      this.constrainWindowToViewport();
+      this.window.classList.remove('is-dragging');
+      if (shield) shield.remove();
+      
+      if (geomMgr && activeSnapZone && this.resizable && !this.fixedSize) {
+        geomMgr.hideSnapPreview();
+        if (typeof this.captureFrame === 'function') {
+           this.restoreFrame = this.captureFrame();
+        }
+        
+        if (activeSnapZone.type === 'fullscreen') {
+          this.windowState = 'maximized';
+          if (geomMgr) geomMgr.setState(this.appId, 'maximized');
+          this.updateAppBarIconState();
+        }
+        
+        if (typeof this.applyFrame === 'function') {
+          this.applyFrame({
+            left: `${activeSnapZone.rect.left}px`,
+            top: `${activeSnapZone.rect.top}px`,
+            width: `${activeSnapZone.rect.width}px`,
+            height: `${activeSnapZone.rect.height}px`,
+            transform: 'none'
+          }, { animate: true });
+        } else {
+          this.window.style.left = `${activeSnapZone.rect.left}px`;
+          this.window.style.top = `${activeSnapZone.rect.top}px`;
+          this.window.style.width = `${activeSnapZone.rect.width}px`;
+          this.window.style.height = `${activeSnapZone.rect.height}px`;
+        }
+      } else {
+        const finalRect = this.window.getBoundingClientRect();
+        if (geomMgr && this.windowState === 'normal') {
+          geomMgr.updateNormalGeometry(this.appId, finalRect);
+        }
+        this.constrainWindowToViewport();
+      }
     };
 
     document.addEventListener('mousemove', moveFn);
@@ -714,9 +884,11 @@ class AppWindow {
     document.addEventListener('touchend', upFn);
   }
 
-  startResize(e) {
+  startResize(e, direction = 'se') {
+    if (this.windowState === 'minimized') return;
+    this.bringToFront();
+
     const rect = this.window.getBoundingClientRect();
-    // Get clientX and clientY from either mouse or touch event
     const clientX = e.clientX || (e.touches && e.touches[0].clientX);
     const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     
@@ -727,37 +899,61 @@ class AppWindow {
     const startLeft = rect.left;
     const startTop = rect.top;
 
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const workArea = geomMgr?.getWorkAreaRect() || { top: 32, left: 0, width: window.innerWidth, height: window.innerHeight };
+
     this.window.classList.add('resizing');
+    const shield = document.createElement('div');
+    shield.className = 'window-interaction-shield';
+    shield.style.cssText = `position:fixed;inset:0;z-index:999999;cursor:${this.getCursorForDirection(direction)};user-select:none;`;
+    document.body.appendChild(shield);
 
     const moveFn = (moveEvent) => {
       const moveClientX = moveEvent.clientX || (moveEvent.touches && moveEvent.touches[0].clientX);
       const moveClientY = moveEvent.clientY || (moveEvent.touches && moveEvent.touches[0].clientY);
-      
-      let newWidth = Math.max(this.minWidth, startWidth + (moveClientX - startX));
-      let newHeight = Math.max(this.minHeight, startHeight + (moveClientY - startY));
-      
-      // Apply app-specific max constraints
-      if (this.maxWidth !== null) {
-        newWidth = Math.min(newWidth, this.maxWidth);
+      const dx = moveClientX - startX;
+      const dy = moveClientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newLeft = startLeft;
+      let newTop = startTop;
+
+      if (direction.includes('e')) {
+        newWidth = Math.max(this.minWidth, startWidth + dx);
+        if (this.maxWidth !== null) newWidth = Math.min(newWidth, this.maxWidth);
+        newWidth = Math.min(newWidth, window.innerWidth - startLeft - 4);
       }
-      if (this.maxHeight !== null) {
-        newHeight = Math.min(newHeight, this.maxHeight);
+
+      if (direction.includes('s')) {
+        newHeight = Math.max(this.minHeight, startHeight + dy);
+        if (this.maxHeight !== null) newHeight = Math.min(newHeight, this.maxHeight);
+        newHeight = Math.min(newHeight, window.innerHeight - startTop - 4);
       }
-      
-      // Apply min constraints
-      if (this.minWidth !== null) {
-        newWidth = Math.max(newWidth, this.minWidth);
+
+      if (direction.includes('w')) {
+        let proposedWidth = startWidth - dx;
+        proposedWidth = Math.max(this.minWidth, proposedWidth);
+        if (this.maxWidth !== null) proposedWidth = Math.min(proposedWidth, this.maxWidth);
+        const actualChange = startWidth - proposedWidth;
+        newLeft = startLeft + actualChange;
+        newWidth = proposedWidth;
       }
-      if (this.minHeight !== null) {
-        newHeight = Math.max(newHeight, this.minHeight);
+
+      if (direction.includes('n')) {
+        let proposedHeight = startHeight - dy;
+        proposedHeight = Math.max(this.minHeight, proposedHeight);
+        if (this.maxHeight !== null) proposedHeight = Math.min(proposedHeight, this.maxHeight);
+        const actualChange = startHeight - proposedHeight;
+        newTop = Math.max(workArea.top, startTop + actualChange);
+        newHeight = proposedHeight;
       }
-      
-      // Constrain to viewport
-      const constrainedWidth = Math.min(newWidth, window.innerWidth - startLeft);
-      const constrainedHeight = Math.min(newHeight, window.innerHeight - startTop);
-      
-      this.window.style.width = constrainedWidth + 'px';
-      this.window.style.height = constrainedHeight + 'px';
+
+      this.window.style.width = newWidth + 'px';
+      this.window.style.height = newHeight + 'px';
+      this.window.style.left = newLeft + 'px';
+      this.window.style.top = newTop + 'px';
+      this.window.style.transform = 'none';
     };
 
     const upFn = () => {
@@ -765,8 +961,13 @@ class AppWindow {
       document.removeEventListener('mouseup', upFn);
       document.removeEventListener('touchmove', moveFn);
       document.removeEventListener('touchend', upFn);
+      shield.remove();
       this.window.classList.remove('resizing');
-      // Ensure window stays within viewport after resize
+
+      const finalRect = this.window.getBoundingClientRect();
+      if (geomMgr && this.windowState === 'normal') {
+        geomMgr.updateNormalGeometry(this.appId, finalRect);
+      }
       this.constrainWindowToViewport();
     };
 
@@ -776,9 +977,50 @@ class AppWindow {
     document.addEventListener('touchend', upFn);
   }
 
+  getCursorForDirection(direction) {
+    switch (direction) {
+      case 'n': case 's': return 'ns-resize';
+      case 'e': case 'w': return 'ew-resize';
+      case 'nw': case 'se': return 'nwse-resize';
+      case 'ne': case 'sw': return 'nesw-resize';
+      default: return 'se-resize';
+    }
+  }
+
+  toggleVerticalZoom() {
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const work = geomMgr?.getWorkAreaRect() || { top: 32, height: window.innerHeight - 32 };
+    const rect = this.window.getBoundingClientRect();
+
+    if (Math.abs(rect.height - work.height) < 10) {
+      if (this.restoreFrame) {
+        if (typeof this.applyFrame === 'function') {
+          this.applyFrame(this.restoreFrame, { animate: true });
+        }
+      }
+    } else {
+      if (typeof this.captureFrame === 'function') {
+        this.restoreFrame = this.captureFrame();
+      }
+      if (typeof this.applyFrame === 'function') {
+        this.applyFrame({
+          left: `${rect.left}px`,
+          top: `${work.top}px`,
+          width: `${rect.width}px`,
+          height: `${work.height}px`,
+          transform: 'none'
+        }, { animate: true });
+      }
+    }
+  }
+
+  toggleZoom() {
+    this.toggleMaximize();
+  }
+
+
   constrainWindowToViewport() {
     /**
-     * Security Checker: Ensures all 4 corners of the window stay inside the viewport
      * Checks and adjusts position and size to prevent window from going outside viewport
      */
     const rect = this.window.getBoundingClientRect();
@@ -851,93 +1093,150 @@ class AppWindow {
     this.window.style.zIndex = window.__appZIndexCounter;
   }
 
+    captureFrame() {
+    if (!this.window) return { left: '100px', top: '80px', width: '600px', height: '500px', transform: 'none' };
+    const rect = this.window.getBoundingClientRect();
+    return {
+      left: Math.round(rect.left) + 'px',
+      top: Math.round(rect.top) + 'px',
+      width: Math.round(rect.width) + 'px',
+      height: Math.round(rect.height) + 'px',
+      transform: 'none'
+    };
+  }
+
+  applyFrame(frame, { animate = true } = {}) {
+    if (!frame || !this.window) return;
+    const previous = this.window.style.transition;
+    if (animate) {
+      this.window.style.transition = 'left 320ms cubic-bezier(0.16, 1, 0.3, 1), top 320ms cubic-bezier(0.16, 1, 0.3, 1), width 320ms cubic-bezier(0.16, 1, 0.3, 1), height 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 320ms cubic-bezier(0.16, 1, 0.3, 1)';
+    }
+    this.window.style.transform = frame.transform || 'none';
+    this.window.style.left = frame.left;
+    this.window.style.top = frame.top;
+    this.window.style.width = frame.width;
+    this.window.style.height = frame.height;
+    if (animate) {
+      setTimeout(() => {
+        if (this.window) this.window.style.transition = previous;
+      }, 340);
+    }
+  }
+
+  getWorkAreaFrame() {
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    if (geomMgr) {
+      const rect = geomMgr.getWorkAreaRect();
+      return {
+        left: rect.left + 'px',
+        top: rect.top + 'px',
+        width: rect.width + 'px',
+        height: rect.height + 'px',
+        transform: 'none'
+      };
+    }
+    const topBar = document.querySelector('.top-bar')?.getBoundingClientRect();
+    const dock = document.querySelector('.dock-container');
+    const dockRect = dock && !dock.classList.contains('dock-hidden') ? dock.getBoundingClientRect() : null;
+    const inset = 10;
+    const top = Math.max(inset, (topBar?.bottom || 0) + 4);
+    const bottom = dockRect && dockRect.top > top ? dockRect.top - 10 : window.innerHeight - inset;
+    return {
+      left: inset + 'px',
+      top: top + 'px',
+      width: Math.max(320, window.innerWidth - inset * 2) + 'px',
+      height: Math.max(220, bottom - top) + 'px',
+      transform: 'none'
+    };
+  }
+
   showTilingMenu() {
-    // Remove existing menu if any
     this.hideTilingMenu();
 
-    // Create menu container
     const menu = document.createElement('div');
-    menu.className = 'tiling-menu';
+    menu.className = 'tiling-menu macos-tiling-palette';
     menu.id = `tiling-menu-${this.appId}`;
 
-    // Define tiling options with SVG icons and descriptions
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const work = geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+    const halfW = Math.floor((work.width - 8) / 2);
+    const halfH = Math.floor((work.height - 8) / 2);
+
     const tilingOptions = [
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="20" height="40" fill="none" stroke="black" stroke-width="2"/><rect x="24" y="4" width="20" height="40" fill="white" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Tile Left', 
-        action: () => this.tileLeft() 
+      {
+        id: 'tile-left',
+        title: 'Left Half',
+        icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="12" y1="4" x2="12" y2="20"/><rect x="3" y="4" width="9" height="16" rx="2" fill="currentColor" fill-opacity="0.25"/></svg>',
+        zone: { left: work.left, top: work.top, width: halfW, height: work.height },
+        action: () => this.tileLeft()
       },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="20" height="40" fill="white" stroke="black" stroke-width="2"/><rect x="24" y="4" width="20" height="40" fill="none" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Tile Right', 
-        action: () => this.tileRight() 
+      {
+        id: 'tile-right',
+        title: 'Right Half',
+        icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="12" y1="4" x2="12" y2="20"/><rect x="12" y="4" width="9" height="16" rx="2" fill="currentColor" fill-opacity="0.25"/></svg>',
+        zone: { left: work.left + halfW + 8, top: work.top, width: halfW, height: work.height },
+        action: () => this.tileRight()
       },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="40" height="20" fill="none" stroke="black" stroke-width="2"/><rect x="4" y="24" width="40" height="20" fill="white" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Tile Top', 
-        action: () => this.tileTop() 
+      {
+        id: 'tile-top',
+        title: 'Top Half',
+        icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="3" y1="12" x2="21" y2="12"/><rect x="3" y="4" width="18" height="8" rx="2" fill="currentColor" fill-opacity="0.25"/></svg>',
+        zone: { left: work.left, top: work.top, width: work.width, height: halfH },
+        action: () => this.tileTop()
       },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="40" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="24" width="40" height="20" fill="none" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Tile Bottom', 
-        action: () => this.tileBottom() 
+      {
+        id: 'tile-bottom',
+        title: 'Bottom Half',
+        icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="3" y1="12" x2="21" y2="12"/><rect x="3" y="12" width="18" height="8" rx="2" fill="currentColor" fill-opacity="0.25"/></svg>',
+        zone: { left: work.left, top: work.top + halfH + 8, width: work.width, height: halfH },
+        action: () => this.tileBottom()
       },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="40" height="40" fill="none" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Fullscreen', 
-        action: () => this.tileFullscreen() 
-      },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="20" height="40" fill="none" stroke="black" stroke-width="2"/><line x1="24" y1="4" x2="24" y2="44" stroke="black" stroke-width="2"/><rect x="24" y="4" width="20" height="40" fill="white" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Left + Right', 
-        action: () => this.tileLeftRight() 
-      },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><rect x="4" y="4" width="20" height="40" fill="none" stroke="black" stroke-width="2"/><line x1="24" y1="4" x2="24" y2="44" stroke="black" stroke-width="2"/><rect x="24" y="4" width="20" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="24" y="24" width="20" height="20" fill="white" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Left + Top/Bot', 
-        action: () => this.tileLeftDual() 
-      },
-      { 
-        icon: '<svg viewBox="0 0 48 48" style="width:100%;height:100%"><line x1="24" y1="4" x2="24" y2="44" stroke="black" stroke-width="2"/><line x1="4" y1="24" x2="44" y2="24" stroke="black" stroke-width="2"/><rect x="4" y="4" width="20" height="20" fill="none" stroke="black" stroke-width="2"/><rect x="24" y="4" width="20" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="4" y="24" width="20" height="20" fill="white" stroke="black" stroke-width="2"/><rect x="24" y="24" width="20" height="20" fill="white" stroke="black" stroke-width="2"/></svg>', 
-        desc: 'Quadrant', 
-        action: () => this.tileQuadrant() 
+      {
+        id: 'tile-fill',
+        title: 'Fill Screen',
+        icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3" fill="currentColor" fill-opacity="0.25"/></svg>',
+        zone: work,
+        action: () => this.toggleMaximize()
       }
     ];
 
-    // Create option buttons
-    tilingOptions.forEach(option => {
-      const btn = document.createElement('div');
-      btn.className = 'tiling-option';
-      btn.innerHTML = `
-        ${option.icon}
-        <div class="tiling-option-tooltip">${option.desc}</div>
+    tilingOptions.forEach(opt => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'tiling-palette-btn';
+      item.innerHTML = `
+        <span class="tiling-palette-icon">${opt.icon}</span>
+        <span class="tiling-palette-label">${opt.title}</span>
       `;
-      btn.addEventListener('click', () => {
-        option.action();
-        this.hideTilingMenu();
+
+      item.addEventListener('mouseenter', () => {
+        if (geomMgr) geomMgr.showSnapPreview(opt.zone);
       });
-      menu.appendChild(btn);
+      item.addEventListener('mouseleave', () => {
+        if (geomMgr) geomMgr.hideSnapPreview();
+      });
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (geomMgr) geomMgr.hideSnapPreview();
+        this.hideTilingMenu();
+        opt.action();
+      });
+
+      menu.appendChild(item);
     });
 
-    // Get current window z-index and set menu z-index higher
-    const windowZIndex = parseInt(window.getComputedStyle(this.window).zIndex, 10) || 9999;
-    menu.style.zIndex = (windowZIndex + 2).toString();
-
-    // Position menu near maximize button
     const rect = this.maximizeBtn.getBoundingClientRect();
-    menu.style.top = (rect.bottom + 8) + 'px';
-    menu.style.left = (rect.left - 110) + 'px';
+    menu.style.position = 'fixed';
+    menu.style.top = `${rect.bottom + 8}px`;
+    menu.style.left = `${Math.max(10, rect.left - 24)}px`;
+    menu.style.zIndex = '999995';
 
     document.body.appendChild(menu);
     this.tilingMenu = menu;
 
-    // Keep menu open when hovering over it
-    menu.addEventListener('mouseenter', () => {
-      // Menu stays open
-    });
-
     menu.addEventListener('mouseleave', () => {
-      setTimeout(() => this.hideTilingMenu(), 100);
+      if (geomMgr) geomMgr.hideSnapPreview();
+      setTimeout(() => this.hideTilingMenu(), 200);
     });
   }
 
@@ -946,6 +1245,8 @@ class AppWindow {
       this.tilingMenu.remove();
       this.tilingMenu = null;
     }
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    if (geomMgr) geomMgr.hideSnapPreview();
   }
 
   tileLeft() {
@@ -2412,125 +2713,131 @@ class AppWindow {
   }
 
   minimize() {
-    // Prevent rapid consecutive calls
     if (this.isAnimating) return;
-    
     if (this.windowState === 'minimized') {
       this.restore();
-    } else {
-      this.isAnimating = true;
-      this.windowState = 'minimized';
-      this.updateAppBarIconState();
-      this.callbacks.onMinimize?.();
-      
-      // Get current computed position and size to avoid inline style issues
-      const rect = this.window.getBoundingClientRect();
-      const computedStyle = window.getComputedStyle(this.window);
-      
-      this.originalPosition = {
-        top: rect.top + 'px',
-        left: rect.left + 'px',
-        width: rect.width + 'px',
-        height: rect.height + 'px',
-        transform: computedStyle.transform,
-        wasCentered: computedStyle.transform.includes('translate(-50%, -50%)')
-      };
-      
-      // Animate minimize
-      this.window.style.animation = 'minimizeToDock 0.4s ease-in forwards';
-      
-      setTimeout(() => {
-        this.window.style.display = 'none';
-        this.window.style.animation = 'none';
-        this.isAnimating = false;
-        this.updateAppBarIconState();
-      }, 420);
+      return;
     }
+
+    this.isAnimating = true;
+    this.minimizedFromState = this.windowState;
+    this.minimizedFrame = this.captureFrame();
+
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const dockTarget = geomMgr?.getDockIconRect(this.appId) || {
+      centerX: window.innerWidth / 2,
+      centerY: window.innerHeight - 32
+    };
+
+    const curRect = this.window.getBoundingClientRect();
+    const curCenterX = curRect.left + curRect.width / 2;
+    const curCenterY = curRect.top + curRect.height / 2;
+
+    const dx = Math.round(dockTarget.centerX - curCenterX);
+    const dy = Math.round(dockTarget.centerY - curCenterY);
+
+    this.window.style.transition = 'transform 360ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 280ms ease, filter 360ms ease';
+    this.window.style.transformOrigin = 'center center';
+    this.window.style.pointerEvents = 'none';
+
+    requestAnimationFrame(() => {
+      this.window.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.05)`;
+      this.window.style.opacity = '0';
+      this.window.style.filter = 'blur(1px)';
+    });
+
+    this.windowState = 'minimized';
+    if (geomMgr) {
+      geomMgr.setState(this.appId, 'minimized');
+    }
+    this.updateAppBarIconState();
+    this.callbacks.onMinimize?.();
+
+    setTimeout(() => {
+      if (this.window && this.windowState === 'minimized') {
+        this.window.style.display = 'none';
+        this.window.style.transform = 'none';
+        this.window.style.filter = 'none';
+      }
+      this.isAnimating = false;
+    }, 380);
   }
 
   restore() {
-    // Prevent rapid consecutive calls
     if (this.isAnimating) return;
-    
     this.isAnimating = true;
-    this.windowState = 'normal';
+
+    const restoreFrame = this.minimizedFrame || this.restoreFrame || this.captureFrame();
+    const targetState = this.minimizedFromState === 'minimized' ? 'normal' : this.minimizedFromState;
+    this.windowState = targetState;
+
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const dockTarget = geomMgr?.getDockIconRect(this.appId) || {
+      centerX: window.innerWidth / 2,
+      centerY: window.innerHeight - 32
+    };
+
+    this.applyFrame(restoreFrame, { animate: false });
+    this.window.style.display = 'flex';
+    void this.window.offsetHeight;
+
+    const curRect = this.window.getBoundingClientRect();
+    const curCenterX = curRect.left + curRect.width / 2;
+    const curCenterY = curRect.top + curRect.height / 2;
+    const dx = Math.round(dockTarget.centerX - curCenterX);
+    const dy = Math.round(dockTarget.centerY - curCenterY);
+
+    this.window.style.transition = 'none';
+    this.window.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.08)`;
+    this.window.style.opacity = '0';
+    this.window.style.filter = 'blur(2px)';
+    this.window.style.pointerEvents = 'none';
+
+    void this.window.offsetHeight;
+
+    this.window.style.transition = 'transform 360ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease, filter 360ms ease';
+    requestAnimationFrame(() => {
+      this.window.style.transform = 'none';
+      this.window.style.opacity = '1';
+      this.window.style.filter = 'none';
+    });
+
+    if (geomMgr) {
+      geomMgr.setState(this.appId, targetState);
+      geomMgr.bringToFront(this.appId);
+    }
     this.updateAppBarIconState();
     this.callbacks.onOpen?.();
-    
-    // Apply position and size BEFORE making window visible to avoid jump
-    if (this.originalPosition.wasCentered) {
-      this.window.style.transform = 'translate(-50%, -50%)';
-      this.window.style.top = '50%';
-      this.window.style.left = '50%';
-      this.window.style.width = `${this.initialWidth}px`;
-      this.window.style.height = `${this.initialHeight}px`;
-    } else {
-      // Restore to exact previous position and size
-      this.window.style.transform = 'none';
-      this.window.style.top = this.originalPosition.top;
-      this.window.style.left = this.originalPosition.left;
-      this.window.style.width = this.originalPosition.width;
-      this.window.style.height = this.originalPosition.height;
-    }
-    
-    // Now make window visible
-    this.window.style.display = 'flex';
-    
-    // Force browser reflow to apply styles before animation starts
-    void this.window.offsetHeight;
-    
-    // Set initial opacity state and animate fade-in
-    this.window.style.opacity = '0';
-    this.window.style.pointerEvents = 'none';
-    this.window.style.animation = 'restoreFromDock 0.4s ease-out forwards';
-    
+
     setTimeout(() => {
-      // After animation, ensure window is fully visible and interactive
-      this.window.style.opacity = '1';
-      this.window.style.pointerEvents = 'auto';
-      this.window.style.animation = 'none';
+      if (this.window) {
+        this.window.style.pointerEvents = 'auto';
+        this.window.style.transition = '';
+      }
       this.isAnimating = false;
-      this.updateAppBarIconState();
-    }, 420);
+    }, 380);
   }
 
   toggleMaximize() {
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
     if (this.windowState === 'maximized') {
-      this.restore();
+      this.windowState = 'normal';
+      const frameToRestore = this.restoreFrame || this.captureFrame();
+      this.applyFrame(frameToRestore, { animate: true });
+      if (geomMgr) geomMgr.setState(this.appId, 'normal');
+      this.updateAppBarIconState();
     } else {
+      this.restoreFrame = this.captureFrame();
       this.windowState = 'maximized';
-      
-      // Store current position in pixels (convert from any unit)
-      const rect = this.window.getBoundingClientRect();
-      this.originalPosition = {
-        top: rect.top + 'px',
-        left: rect.left + 'px',
-        width: rect.width + 'px',
-        height: rect.height + 'px',
-        transform: 'none',
-        wasCentered: this.window.style.transform.includes('translate(-50%, -50%)')
-      };
-      
-      // Maximize to full viewport (with small margin and top bar + dock reservation)
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const topBarHeight = 44;
-      
-      let isDockHidden = false;
-      try {
-        const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
-        isDockHidden = saved['dock-auto-hide'] === true;
-      } catch (e) {}
-      
-      const dockHeight = isDockHidden ? 0 : 80;
-      const margin = 10;
-      
-      this.window.style.transform = 'none';
-      this.window.style.left = margin + 'px';
-      this.window.style.top = topBarHeight + 'px';
-      this.window.style.width = (vw - margin * 2) + 'px';
-      this.window.style.height = (vh - topBarHeight - dockHeight - margin) + 'px';
-      this.constrainWindowToViewport();
+      const workArea = geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+      this.applyFrame({
+        left: `${workArea.left}px`,
+        top: `${workArea.top}px`,
+        width: `${workArea.width}px`,
+        height: `${workArea.height}px`,
+        transform: 'none'
+      }, { animate: true });
+      if (geomMgr) geomMgr.setState(this.appId, 'maximized');
       this.updateAppBarIconState();
     }
   }
@@ -2539,13 +2846,16 @@ class AppWindow {
     const container = document.getElementById(this.containerId);
     if (container) {
       this.windowState = 'closed';
+      const geomMgr = window.windowGeometryManager || windowGeometryManager;
+      if (geomMgr) {
+        geomMgr.setState(this.appId, 'closed');
+        geomMgr.unregisterWindow(this.appId);
+      }
       
-      // Stop media/camera streams immediately if present
       if (typeof this.stopCamera === 'function') {
         try { this.stopCamera(); } catch(e) {}
       }
 
-      // Clear global instance references
       const camelAppId = this.appId.replace(/-([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toUpperCase());
       if (window[`current${camelAppId}App`] === this) delete window[`current${camelAppId}App`];
       if (window[`current${this.constructor.name}`] === this) delete window[`current${this.constructor.name}`];
@@ -2555,23 +2865,18 @@ class AppWindow {
       if (window.currentCalculatorApp === this) delete window.currentCalculatorApp;
       if (window.currentNotesApp === this) delete window.currentNotesApp;
 
-      // Update app bar icon state
       this.updateAppBarIconState();
-
-      // Notify listeners that app is closing
       this.callbacks.onClose?.();
       
-      // Animate close with fade effect
       if (this.window) {
-        this.window.style.animation = 'minimizeToDock 0.4s ease-in forwards';
+        this.window.style.animation = 'minimizeToDock 0.35s ease-in forwards';
       }
       
-      // Remove after animation completes
       setTimeout(() => {
         if (container) {
           container.innerHTML = '';
         }
-      }, 400);
+      }, 360);
     }
   }
 

@@ -147,7 +147,15 @@ app.use((req, res, next) => {
     '/api/auth/update-security'
   ].includes(req.path);
 
-  const hasBrowserSession = !!req.cookies?.auth_session;
+  // Industry Standard: CSRF protection applies strictly to ambient browser cookie sessions.
+  // Stateless mobile API clients using Bearer tokens or explicitly identified native platforms
+  // cannot be forged via cross-site browser requests and MUST NOT be blocked by web CSRF checks.
+  const isAndroidClient = (req.get('x-app-type') === 'native_android') ||
+                          ((req.get('x-client-platform') || '').toLowerCase() === 'android');
+  const hasBearerToken = (req.get('authorization') || '').startsWith('Bearer ');
+  const isNativeOrBearerAuth = isAndroidClient || hasBearerToken;
+
+  const hasBrowserSession = !isNativeOrBearerAuth && !!req.cookies?.auth_session;
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
   if (!isAuthEntrypoint && hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
     return res.status(403).json({ error: 'CSRF validation failed' });
@@ -289,10 +297,13 @@ const rateLimitedPaths = new Set([
 app.use((req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
 
+  const isAndroidClient = (req.get('x-app-type') === 'native_android') ||
+                          ((req.get('x-client-platform') || '').toLowerCase() === 'android');
+
   const origin = req.headers.origin || (() => {
     try { return new URL(req.headers.referer || '').origin; } catch { return null; }
   })();
-  if (!isOriginAllowed(origin)) {
+  if (!isAndroidClient && !isOriginAllowed(origin)) {
     return res.status(403).json({ error: 'Request origin is not allowed' });
   }
 

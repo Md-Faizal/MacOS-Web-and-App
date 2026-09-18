@@ -21,6 +21,19 @@ function initializeDock() {
       action: (params) => AppWindow.launchApp('ai-vision', window.AIVisionApp, 'aiVisionAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
     },
     {
+      id: 'mission-control',
+      name: 'Mission Control',
+      icon: '/assets/Images/Mission_Control_macOS_Golden_Gate.png',
+      alt: 'Mission Control',
+      color: '#3b82f6',
+      category: 'system',
+      action: () => {
+        if (window.missionControl) {
+          window.missionControl.toggle();
+        }
+      }
+    },
+    {
       id: 'launchpad',
       name: 'Launchpad',
       icon: '/assets/Images/Launchpad.png',
@@ -125,7 +138,7 @@ function initializeDock() {
   }
 
   const availableApps = allowedAppsList 
-    ? apps.filter(a => allowedAppsList.includes(a.id) || a.id === 'launchpad' || a.id === 'settings')
+    ? apps.filter(a => allowedAppsList.includes(a.id) || a.id === 'launchpad' || a.id === 'settings' || a.id === 'mission-control')
     : apps;
   window.availableAppsForLaunchpad = availableApps;
   
@@ -414,6 +427,7 @@ function initializeDock() {
   let dockHideTimer = null;
   let isMouseInDockZone = false;
   let isMouseDown = false;
+  let isMissionControlActive = false;
 
   function isAutoHideEnabled() {
     try {
@@ -433,6 +447,8 @@ function initializeDock() {
 
   function hideDock() {
     if (!dockWrapper || !isAutoHideEnabled()) return;
+    // macOS Constraint: In Mission Control, dock must remain visible even if auto-hide is turned on
+    if (isMissionControlActive || document.body.classList.contains('mission-control-active')) return;
     // macOS Constraint: Never hide while cursor is in the dock zone or dragging an item
     if (isMouseInDockZone) return;
     if (dockContainer.querySelector('.dragging') || isMouseDown) return;
@@ -599,6 +615,16 @@ function initializeDock() {
     if (detail.appBarOrder && Array.isArray(detail.appBarOrder)) {
       appOrder = [...detail.appBarOrder];
       renderApps();
+    }
+  });
+
+  // macOS Behavior: If dock is hidden, it must appear in Mission Control
+  window.addEventListener('mission-control-toggled', (e) => {
+    isMissionControlActive = !!(e.detail && e.detail.isActive);
+    if (isMissionControlActive) {
+      revealDock();
+    } else {
+      applyAutoHide();
     }
   });
 
@@ -1118,17 +1144,21 @@ function initializeDock() {
         appElement.classList.remove('bouncing');
       }, 1300);
 
-      // If app is already open, bring it to front instead of creating new instance
-      if (openApps.has(app.id)) {
-        const appInstance = window[`current${app.id.charAt(0).toUpperCase() + app.id.slice(1)}App`];
-        if (appInstance && appInstance.appWindow) {
-          if (appInstance.windowState === 'minimized') {
-            appInstance.restore();
-          } else {
-            appInstance.appWindow.bringToFront();
-          }
-          return;
+      // Unified WindowGeometryManager coordination: restore if minimized or bring to front
+      const geomMgr = window.windowGeometryManager;
+      const record = geomMgr?.getWindow(app.id);
+      const appInstance = record?.instance ||
+        window[`current${app.id.charAt(0).toUpperCase() + app.id.slice(1)}App`] ||
+        window[`${app.id}Instance`];
+
+      if (appInstance && appInstance.windowState !== 'closed') {
+        const target = appInstance.appWindow || appInstance;
+        if (target.windowState === 'minimized') {
+          target.restore();
+        } else {
+          target.bringToFront();
         }
+        return;
       }
       
       // Otherwise, launch the app normally

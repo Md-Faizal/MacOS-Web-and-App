@@ -207,6 +207,76 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
     fun setMetricsPeriod(period: MetricsPeriod) {
         _selectedPeriod.value = period
         recalculateDashboard()
+        loadServerDashboardMetrics(period)
+    }
+
+    private fun applyServerDashboardMetrics(data: DashboardMetricsResponse) {
+        data.keyMetrics?.let { km ->
+            _dashboardMetrics.value = DashboardMetricsState(
+                totalBilled = km.totalBilled,
+                totalPaid = km.totalCollected,
+                amountDue = km.amountDue,
+                overdueAmount = km.overdueAmount,
+                activeCustomersCount = km.activeCustomersCount,
+                collectionRatePercent = km.collectionRatePercent,
+                totalBillsCount = km.totalBillsCount,
+                totalPaymentsCount = km.paymentsCount,
+                rangeText = km.rangeText
+            )
+        }
+        data.orderMetrics?.let { om ->
+            _orderMetrics.value = OrderMetricsState(
+                totalOrders = om.totalOrders,
+                fulfilledOrdersCount = om.fulfilledOrdersCount,
+                pendingOrdersCount = om.pendingOrdersCount,
+                stage1DraftCount = om.draftCount,
+                stage2QcCount = om.qualityCheckCount,
+                totalDeliveredQty = om.totalDeliveredQty,
+                totalOrderedQty = om.totalOrderedQty,
+                totalPaidOnOrders = om.totalPaidOnOrders,
+                totalDeliveredValue = om.totalDeliveredValue,
+                totalOrderedValue = om.totalOrderedValue,
+                avgOrderValue = om.avgOrderValue,
+                totalLostValue = om.totalLostValue,
+                fulfillmentQtyRatio = om.fulfillmentQtyRatio,
+                settlementPaidRatio = om.settlementPaidRatio,
+                fulfillmentSpeedDaysText = om.fulfillmentSpeedDaysText,
+                rangeText = om.rangeText
+            )
+        }
+        data.receivablesAging?.let { ra ->
+            _receivablesAging.value = ra
+        }
+        if (data.topProducts.isNotEmpty()) {
+            _topProducts.value = data.topProducts.map { TopProductSummary(it.name, it.quantity.toDouble(), it.revenue) }
+        }
+        if (data.topCustomers.isNotEmpty()) {
+            _topCustomers.value = data.topCustomers.map { TopCustomerSummary(it.id, it.name, it.ordersCount, it.billed, it.dueBalance) }
+        }
+        if (data.overdueReminders.isNotEmpty()) {
+            _overdueReminders.value = data.overdueReminders.map { OverdueReminderItem(it.billId, it.customerName, it.remainingAmount, it.daysOverdue, it.isCritical) }
+        }
+    }
+
+    fun loadServerDashboardMetrics(period: MetricsPeriod = _selectedPeriod.value) {
+        if (!sessionManager.isLoggedIn || sessionManager.authToken.isNullOrBlank()) return
+        val presetParam = when (period) {
+            MetricsPeriod.ALL -> "all"
+            MetricsPeriod.THIS_MONTH -> "this-month"
+            MetricsPeriod.LAST_MONTH -> "last-month"
+            MetricsPeriod.THIS_QUARTER -> "this-quarter"
+            MetricsPeriod.THIS_YEAR -> "this-year"
+        }
+        viewModelScope.launch {
+            try {
+                val resp = api.getDashboardMetrics(preset = presetParam)
+                if (resp.isSuccessful && resp.body() != null) {
+                    applyServerDashboardMetrics(resp.body()!!)
+                }
+            } catch (e: Exception) {
+                Log.w("BillingViewModel", "Error fetching server dashboard metrics", e)
+            }
+        }
     }
 
     fun setSalesTrendPeriod(period: SalesTrendPeriod) {
@@ -343,6 +413,23 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
 
                 recalculateDashboard()
                 recalculateLedgerCustomers()
+
+                // Load server-authoritative calculations
+                try {
+                    val presetParam = when (_selectedPeriod.value) {
+                        MetricsPeriod.ALL -> "all"
+                        MetricsPeriod.THIS_MONTH -> "this-month"
+                        MetricsPeriod.LAST_MONTH -> "last-month"
+                        MetricsPeriod.THIS_QUARTER -> "this-quarter"
+                        MetricsPeriod.THIS_YEAR -> "this-year"
+                    }
+                    val metricsResp = api.getDashboardMetrics(preset = presetParam)
+                    if (metricsResp.isSuccessful && metricsResp.body() != null) {
+                        applyServerDashboardMetrics(metricsResp.body()!!)
+                    }
+                } catch (e: Exception) {
+                    Log.w("BillingViewModel", "Server metrics fetch failed, retaining local calculation: ${e.message}")
+                }
 
                 val currentUserId = sessionManager.userId
                 val currentEmail = sessionManager.userEmail?.takeIf { it.isNotBlank() }
@@ -832,9 +919,15 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
             val fallbackData = buildFallbackDetailedLedger(customerId)
             _detailedLedger.value = fallbackData
             try {
-                val response = api.getDetailedLedger(customerId)
-                if (response.isSuccessful && response.body()?.success == true && response.body()?.data != null) {
-                    _detailedLedger.value = response.body()?.data
+                // Prefer dedicated customer statement endpoint, fall back to public ledger
+                val stmtResp = api.getCustomerStatement(customerId)
+                if (stmtResp.isSuccessful && stmtResp.body()?.success == true && stmtResp.body()?.data != null) {
+                    _detailedLedger.value = stmtResp.body()?.data
+                } else {
+                    val response = api.getDetailedLedger(customerId)
+                    if (response.isSuccessful && response.body()?.success == true && response.body()?.data != null) {
+                        _detailedLedger.value = response.body()?.data
+                    }
                 }
             } catch (e: Exception) {
                 Log.w("BillingViewModel", "API detailed ledger unavailable, using cached state: ${e.message}")

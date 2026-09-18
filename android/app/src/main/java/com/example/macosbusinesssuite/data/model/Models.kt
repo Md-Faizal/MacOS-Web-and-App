@@ -383,7 +383,7 @@ data class Bill(
     @SerializedName("total_discount", alternate = ["discount", "discountTotal"]) val discountTotal: Double = 0.0,
     @SerializedName("total_gst", alternate = ["tax", "taxTotal"]) val taxTotal: Double = 0.0,
     @SerializedName("round_off") val roundOff: Double = 0.0,
-    @SerializedName("grand_total", alternate = ["total", "total_amount", "grandTotal"]) val grandTotal: Double = 0.0,
+    @SerializedName("grand_total", alternate = ["total", "total_amount", "grandTotal", "amount"]) val grandTotal: Double = 0.0,
     @SerializedName("paid_amount", alternate = ["paidAmount"]) val paidAmount: Double = 0.0,
     @SerializedName("balance_amount", alternate = ["balanceAmount"]) val balanceAmount: Double = 0.0,
     @SerializedName("due_date") val dueDate: String? = null,
@@ -476,10 +476,10 @@ data class NextReferenceResponse(
 )
 
 data class LedgerCustomer(
-    val customerId: String = "",
-    val customerName: String = "",
+    @SerializedName("customerId", alternate = ["customer_id", "id"]) val customerId: String = "",
+    @SerializedName("customerName", alternate = ["name", "customer_name"]) val customerName: String = "",
     val phone: String? = null,
-    val balance: Double = 0.0,
+    @SerializedName("balance", alternate = ["amountDue", "total_outstanding", "current_due"]) val balance: Double = 0.0,
     val status: String = "Clear",
     @SerializedName("exclude_from_stats", alternate = ["exclude_stats", "excludeFromStats"]) val excludeFromStats: Boolean = false,
     @SerializedName("active", alternate = ["active_state", "status_active"]) val activeState: String = "ACTIVE",
@@ -572,12 +572,43 @@ data class OrderItemRequest(
     @SerializedName("amount") val amount: Double
 )
 
+data class StatementRowModel(
+    val id: Any? = null,
+    val date: String? = null,
+    @SerializedName("date_formatted") val dateFormatted: String? = null,
+    val type: String = "",
+    @SerializedName("reference", alternate = ["ref"]) val reference: String = "",
+    @SerializedName("info_text") val infoText: String = "",
+    val debit: Double = 0.0,
+    val credit: Double = 0.0,
+    @SerializedName("running_balance") val runningBalance: Double = 0.0
+)
+
+data class StatementSummaryModel(
+    @SerializedName("total_purchases") val totalPurchases: Double = 0.0,
+    @SerializedName("total_billed") val totalBilled: Double = 0.0,
+    @SerializedName("total_paid") val totalPaid: Double = 0.0,
+    @SerializedName("total_credits") val totalCredits: Double = 0.0,
+    @SerializedName("total_collected") val totalCollected: Double = 0.0,
+    @SerializedName("current_due") val currentDue: Double = 0.0,
+    @SerializedName("total_settled") val totalSettled: Double = 0.0,
+    @SerializedName("paid_percent") val paidPercent: Int = 0,
+    @SerializedName("total_bills") val totalBills: Int = 0,
+    @SerializedName("total_payments") val totalPayments: Int = 0,
+    @SerializedName("ageing_0_to_7") val ageing0to7: Double = 0.0,
+    @SerializedName("ageing_8_to_15") val ageing8to15: Double = 0.0,
+    @SerializedName("ageing_16_to_30") val ageing16to30: Double = 0.0,
+    @SerializedName("ageing_over_30") val ageingOver30: Double = 0.0
+)
+
 data class DetailedLedgerData(
-    val customer: Contact,
-    val bank: BankDetails,
-    val stats: LedgerStats,
-    val bills: List<Bill>,
-    val payments: List<PaymentRecord>
+    val customer: Contact = Contact(),
+    val bank: BankDetails = BankDetails(),
+    val stats: LedgerStats = LedgerStats(),
+    val summary: StatementSummaryModel? = null,
+    @SerializedName("statement_rows", alternate = ["statementRows"]) val statementRows: List<StatementRowModel> = emptyList(),
+    val bills: List<Bill> = emptyList(),
+    val payments: List<PaymentRecord> = emptyList()
 )
 
 data class DetailedLedgerResponse(

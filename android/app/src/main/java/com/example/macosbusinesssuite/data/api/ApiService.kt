@@ -152,6 +152,14 @@ interface ApiService {
     @GET("billing/summary")
     suspend fun getBillingSummary(): Response<JsonElement>
 
+    @GET("billing/dashboard-metrics")
+    suspend fun getDashboardMetrics(
+        @Query("preset") preset: String? = null,
+        @Query("start_date") startDate: String? = null,
+        @Query("end_date") endDate: String? = null,
+        @Query("customer_id") customerId: String? = null
+    ): Response<DashboardMetricsResponse>
+
     @GET("billing/invoices/payments/total-collected")
     suspend fun getTotalCollected(): Response<TotalCollectedResponse>
 
@@ -211,6 +219,9 @@ interface ApiService {
 
     @GET("billing/public/ledger/{customerId}")
     suspend fun getDetailedLedger(@Path("customerId") customerId: String): Response<DetailedLedgerResponse>
+
+    @GET("billing/customers/{customerId}/statement")
+    suspend fun getCustomerStatement(@Path("customerId") customerId: String): Response<DetailedLedgerResponse>
 
     @GET("billing/preference/{customerName}/{productName}")
     suspend fun getPreference(

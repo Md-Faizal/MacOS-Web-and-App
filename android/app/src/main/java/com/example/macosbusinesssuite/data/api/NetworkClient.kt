@@ -22,13 +22,18 @@ object NetworkClient {
     @Volatile
     private var activeSessionManager: SessionManager? = null
 
-    // Simple in-memory cookie storage for session preservation across API calls
+    // In-memory cookie storage: ignores ambient browser session cookies (e.g. auth_session)
+    // so mobile requests remain clean, stateless REST calls authenticated via Bearer tokens.
     private val cookieStore = mutableMapOf<String, List<Cookie>>()
 
     private val cookieJar = object : CookieJar {
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             synchronized(cookieStore) {
-                cookieStore[url.host] = cookies
+                val filtered = cookies.filterNot {
+                    it.name.equals("auth_session", ignoreCase = true) ||
+                    it.name.equals("macos_session", ignoreCase = true)
+                }
+                cookieStore[url.host] = filtered
             }
         }
 
@@ -100,6 +105,13 @@ object NetworkClient {
 
                     if (!token.isNullOrBlank()) {
                         requestBuilder.header("Authorization", "Bearer $token")
+                    }
+
+                    val csrfCookie = synchronized(cookieStore) {
+                        cookieStore[request.url.host]?.firstOrNull { it.name.equals("csrf_token", ignoreCase = true) }?.value
+                    }
+                    if (!csrfCookie.isNullOrBlank()) {
+                        requestBuilder.header("X-CSRF-Token", csrfCookie)
                     }
 
                     chain.proceed(requestBuilder.build())

@@ -1,0 +1,365 @@
+/**
+ * macOS Golden Gate (Sonoma/Sequoia) Mission Control Stylesheet
+ * 1:1 Pixel-faithful presentation
+ */
+
+/* Root overlay */
+.mission-control-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, sans-serif;
+  overflow: hidden;
+}
+
+.mission-control-active .mission-control-root {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Wallpaper Tint & Backdrop Blur */
+.mission-control-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 16, 28, 0.22);
+  backdrop-filter: blur(12px) saturate(1.15) brightness(0.92);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15) brightness(0.92);
+}
+
+/* ===================================================
+   DESKTOP WIDGET DIMMING SCRIM
+   Prevents background widgets/clock from clashing
+   =================================================== */
+.mission-control-active #desktopArea,
+.mission-control-active .desktop-widgets,
+.mission-control-active .desktop-shortcuts,
+.mission-control-active .clock-container,
+.mission-control-active .weather-container,
+.mission-control-active .shortcut-grid,
+.mission-control-active #loginClockDisplay {
+  opacity: 0.1 !important;
+  filter: blur(5px) !important;
+  transition: opacity 250ms ease, filter 250ms ease;
+  pointer-events: none !important;
+}
+
+body.mission-control-active .dock-container {
+  z-index: 2147483005 !important;
+}
+
+/* ===================================================
+   SPACES TOP SHELF (FROSTED ACRYLIC)
+   =================================================== */
+.mission-control-spaces-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 116px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 32px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+}
+
+/* Spaces Thumbnail List */
+.mission-control-spaces-list {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 28px;
+  flex: 1;
+  max-width: calc(100vw - 140px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 10px;
+}
+
+.mission-control-spaces-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* Space Thumbnail Item */
+.space-thumbnail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 138px;
+  padding: 0;
+  color: #fff;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: transform 180ms ease;
+  user-select: none;
+}
+
+.space-thumbnail:hover {
+  transform: translateY(-2px);
+}
+
+/* Space Preview Miniature Canvas */
+.space-preview {
+  position: relative;
+  width: 138px;
+  height: 86px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f97316 0%, #ec4899 50%, #3b82f6 100%);
+  background-size: cover;
+  background-position: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.space-preview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.16));
+  pointer-events: none;
+}
+
+/* Active Space Golden Gate Glowing Border */
+.space-thumbnail.is-active .space-preview {
+  border-color: rgba(255, 255, 255, 0.95);
+  outline: 2.5px solid #007aff;
+  outline-offset: 2.5px;
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.45), 0 0 12px rgba(0, 122, 255, 0.3);
+}
+
+/* Drop target hover state during window drag */
+.space-thumbnail.drop-target .space-preview {
+  outline: 3px solid #34c759 !important;
+  outline-offset: 3px;
+  transform: scale(1.06);
+  box-shadow: 0 12px 28px rgba(52, 199, 89, 0.5) !important;
+}
+
+/* Mini Window Silhouette with header bar */
+.space-preview-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 2.5px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.space-preview-header {
+  height: 4px;
+  background: rgba(210, 215, 225, 0.9);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+/* Space Name Label */
+.space-name {
+  display: block;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Close Space "✕" Button */
+.close-space {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(45, 50, 60, 0.92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 12;
+}
+
+.space-thumbnail:hover .close-space {
+  opacity: 1;
+}
+
+.close-space:hover {
+  transform: scale(1.15);
+  background: #ff453a;
+}
+
+/* Add Space (+) Action */
+.add-space-btn {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  padding: 0;
+}
+
+.add-space-btn span {
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+.add-space-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+  transform: translateY(-50%) scale(1.08);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.add-space-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.add-space-btn.drop-target {
+  outline: 2.5px solid #007aff;
+  outline-offset: 2px;
+  background: rgba(0, 122, 255, 0.35);
+  transform: translateY(-50%) scale(1.12);
+}
+
+/* ===================================================
+   MISSION CONTROL SPREAD WINDOW CARDS
+   =================================================== */
+
+.app-window.mission-control-card {
+  transition: transform 380ms cubic-bezier(0.2, 0.85, 0.25, 1), box-shadow 260ms ease, filter 260ms ease !important;
+  transform: translate3d(var(--mc-x), var(--mc-y), 0) scale(var(--mc-scale)) !important;
+  transform-origin: center center;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+  border-radius: 12px !important;
+  cursor: default !important;
+  will-change: transform;
+}
+
+.mission-control-active .app-window.mission-control-card * {
+  pointer-events: none !important;
+}
+
+/* Hover state on cards */
+.mission-control-active .app-window.mission-control-card:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 36px 90px rgba(0, 0, 0, 0.58), 0 0 0 1.5px rgba(255, 255, 255, 0.35) inset !important;
+}
+
+/* Dragging state */
+.app-window.mission-control-card.is-moving {
+  transition: none !important;
+  opacity: 0.85 !important;
+  filter: brightness(1.08) !important;
+  cursor: grabbing !important;
+  z-index: 2147483015 !important;
+}
+
+/* Hidden in inactive space */
+.mission-control-active .app-window[data-hidden-space="true"] {
+  display: none !important;
+}
+
+/* ===================================================
+   FLOATING APP NAME & ICON BADGE ON CARD HOVER
+   =================================================== */
+
+.mission-control-badge-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483010;
+}
+
+.mission-control-badge {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  background: rgba(28, 32, 44, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.25px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  opacity: 0;
+  transform: translate(-50%, 4px) scale(0.96);
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.mission-control-badge .badge-title {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .mission-control-spaces-bar {
+    top: 24px;
+    height: 96px;
+    padding: 6px 16px;
+  }
+  .space-thumbnail {
+    width: 104px;
+  }
+  .space-preview {
+    width: 104px;
+    height: 65px;
+  }
+  .space-name {
+    font-size: 11px;
+  }
+  .add-space-btn {
+    right: 16px;
+    width: 30px;
+    height: 30px;
+  }
+  .add-space-btn span {
+    font-size: 18px;
+  }
+}

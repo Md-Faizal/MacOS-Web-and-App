@@ -31,7 +31,10 @@ module.exports = function(router, handlers) {
   router.post('/', handlers.createBill);           // POST /api/billing - Create bill
   router.get('/', handlers.getBills);              // GET /api/billing - List bills
   router.get('/summary', handlers.getBillingSummary); // GET /api/billing/summary - Billing summary
+  router.get('/dashboard-metrics', handlers.getDashboardMetrics); // GET /api/billing/dashboard-metrics - Pre-calculated KPIs
   router.get('/ledger/customers', handlers.getLedgerCustomers); // GET /api/billing/ledger/customers - Get customers with ledger balances
+  router.get('/customers/:id/statement', handlers.getCustomerStatement); // GET /api/billing/customers/:id/statement - Customer ledger statement
+  router.get('/customer/:id/statement', handlers.getCustomerStatement);  // GET /api/billing/customer/:id/statement - Customer ledger statement alias
   router.get('/settings/app-settings', handlers.getAppSettings); // GET /api/billing/settings/app-settings - Get app settings
   router.post('/settings/app-settings', handlers.saveAppSettings); // POST /api/billing/settings/app-settings - Save app settings
   router.get('/:id', handlers.getBill);            // GET /api/billing/:id - Get bill detail (must be last!)

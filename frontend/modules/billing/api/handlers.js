@@ -1150,6 +1150,24 @@ module.exports = function(db) {
       }
     },
 
+    // Server-authoritative Dashboard Metrics (for Android & Web parity)
+    getDashboardMetrics: (req, res) => {
+      try {
+        const { preset, start_date, end_date, customer_id } = req.query;
+        const calculator = require('../../../../backend/core/billing/calculator');
+        const metrics = calculator.calculateDashboardMetrics(db, req.user, {
+          preset: preset || 'all',
+          startDate: start_date,
+          endDate: end_date,
+          customerId: customer_id
+        });
+        res.json(metrics);
+      } catch (error) {
+        console.error('Error calculating dashboard metrics:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    },
+
     // Get all customers with their ledger balances and financial metrics
     getLedgerCustomers: (req, res) => {
       try {
@@ -1171,6 +1189,7 @@ module.exports = function(db) {
           SELECT 
             c.id,
             c.name,
+            c.phone,
             c.opening_balance,
             ${selectExclude},
             c.active,
@@ -1213,12 +1232,19 @@ module.exports = function(db) {
             daysOverdue = Math.max(0, daysSinceBill - 30);
           }
 
+          const status = daysOverdue > 0 ? 'OVERDUE' : (amountDueWithOpening > 0 ? 'DUE' : (amountDueWithOpening < 0 ? 'CREDIT' : 'CLEAR'));
+
           return {
+            customerId: String(c.id),
             customer_id: c.id,
             customerName: c.name,
+            phone: c.phone || null,
             opening_balance: openingBalance,
-            exclude_from_stats: c.exclude_from_stats || 0,
+            exclude_from_stats: Boolean(c.exclude_from_stats),
+            excludeFromStats: Boolean(c.exclude_from_stats),
             amountDue: amountDueWithOpening,
+            balance: amountDueWithOpening,
+            status: status,
             current_due: c.current_due,
             total_debit: c.total_debit || 0,
             total_credit: c.total_credit || 0,
@@ -1226,8 +1252,11 @@ module.exports = function(db) {
             total_bills: c.total_bills,
             total_payments: c.total_payments,
             daysOverdue: daysOverdue,
+            days_overdue: daysOverdue,
             lastBillDate: c.last_bill_date || null,
+            last_bill_date: c.last_bill_date || null,
             lastPaymentDate: c.last_payment_date || null,
+            last_payment_date: c.last_payment_date || null,
             active: c.active || 'ACTIVE',
             last_activity: c.last_activity,
             created_by_role: c.created_by_role,
@@ -1236,6 +1265,11 @@ module.exports = function(db) {
             last_edited_by_name: c.last_edited_by_name
           };
         });
+
+        const isAndroidClient = req.headers['x-client-platform'] === 'android' || req.query.format === 'array';
+        if (isAndroidClient && !req.query.format_object) {
+          return res.json(formattedCustomers);
+        }
 
         res.json({
           success: true,
@@ -1248,106 +1282,45 @@ module.exports = function(db) {
       }
     },
 
-    // Get public ledger for a specific customer
+    // Get public ledger for a specific customer (backward-compatible with web customer-ledger.js)
     getPublicLedger: (req, res) => {
       try {
         const { customerId } = req.params;
-        
-        // Find customer
-        const customer = db.prepare(`
-          SELECT id, name, opening_balance 
-          FROM contacts 
-          WHERE id = ? AND (type IS NULL OR LOWER(type) = 'customer')
-        `).get(customerId);
-        
-        if (!customer) {
-          return res.status(404).json({ error: 'Customer not found' });
-        }
+        const calculator = require('../../../../backend/core/billing/calculator');
+        const statement = calculator.calculateCustomerStatement(db, customerId);
 
-        // Get ledger totals
-        const totals = db.prepare(`
-          SELECT 
-            COALESCE(current_due, 0) as current_due,
-            total_bills,
-            total_payments
-          FROM ledger 
-          WHERE customer_id = ?
-        `).get(customerId) || { current_due: 0, total_bills: 0, total_payments: 0 };
-
-        // Get Bills
-        const bills = db.prepare(`
-          SELECT id, invoice_no, invoice_date, created_at, grand_total as amount 
-          FROM invoices 
-          WHERE customer_id = ? 
-          ORDER BY COALESCE(invoice_date, created_at) DESC
-        `).all(customerId);
-
-        // Get Payments and Credit Notes
-        const payments = db.prepare(`
-          SELECT id, reference_number, payment_date, created_at, amount, credit_amount, type 
-          FROM payments 
-          WHERE customer_id = ? 
-          ORDER BY COALESCE(payment_date, created_at) DESC
-        `).all(customerId);
-
-        // Fetch settings from app_settings table
-        db.prepare(`
-          CREATE TABLE IF NOT EXISTS app_settings (
-            id TEXT PRIMARY KEY,
-            setting_key TEXT NOT NULL UNIQUE,
-            setting_value TEXT NOT NULL,
-            setting_type TEXT DEFAULT 'string',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `).run();
-        const settingRows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
-        const app_settings = {};
-        for (const row of settingRows) {
-          app_settings[row.setting_key] = row.setting_value;
-        }
-        const defaults = {
-          'payment_upi_id': '7749089400@hdfc',
-          'bank_account_holder': 'MD  FAIZAL',
-          'bank_account_number': '50100673684509',
-          'bank_ifsc': 'HDFC0000236',
-          'bank_branch': 'CUTTACK - ODISHA',
-          'bank_account_type': 'Savings Account'
-        };
-        for (const [k, v] of Object.entries(defaults)) {
-          if (app_settings[k] === undefined || app_settings[k] === null || app_settings[k] === '') {
-            app_settings[k] = v;
-          }
+        if (!statement.success) {
+          return res.status(404).json({ error: statement.error || 'Customer not found' });
         }
 
         res.json({
           success: true,
-          data: {
-            customer: {
-              id: customer.id,
-              name: customer.name,
-              opening_balance: customer.opening_balance || 0,
-              current_due: totals.current_due + (customer.opening_balance || 0)
-            },
-            bank: {
-              upi_id: app_settings.payment_upi_id,
-              account_holder: app_settings.bank_account_holder,
-              account_number: app_settings.bank_account_number,
-              ifsc: app_settings.bank_ifsc,
-              branch: app_settings.bank_branch,
-              account_type: app_settings.bank_account_type
-            },
-            stats: {
-              total_bills: totals.total_bills || bills.length,
-              total_payments: totals.total_payments || payments.filter(p => p.type === 'PAYMENT').length
-            },
-            bills: bills,
-            payments: payments
-          }
+          data: statement
         });
       } catch (error) {
         console.error('Error getting public ledger:', error);
         res.status(500).json({ error: 'Failed to load ledger data' });
+      }
+    },
+
+    // Server-authoritative Customer Statement of Account endpoint
+    getCustomerStatement: (req, res) => {
+      try {
+        const customerId = req.params.id || req.params.customerId;
+        const calculator = require('../../../../backend/core/billing/calculator');
+        const statement = calculator.calculateCustomerStatement(db, customerId, req.user);
+
+        if (!statement.success) {
+          return res.status(statement.error === 'Customer not found' ? 404 : 403).json(statement);
+        }
+
+        res.json({
+          success: true,
+          data: statement
+        });
+      } catch (error) {
+        console.error('Error getting customer statement:', error);
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 

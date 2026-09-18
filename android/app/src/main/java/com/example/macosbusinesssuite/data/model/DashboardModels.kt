@@ -122,3 +122,14 @@ data class DashboardUiState(
     val paymentMediumSplits: Map<String, Double> = emptyMap(),
     val tickerItems: List<TopbarTickerItem> = emptyList()
 )
+
+data class DashboardMetricsResponse(
+    val success: Boolean = true,
+    val keyMetrics: DashboardKeyMetrics? = null,
+    val orderMetrics: DashboardOrderMetrics? = null,
+    val receivablesAging: ReceivablesAging? = null,
+    val salesMetrics: SalesMetricsSummary? = null,
+    val topProducts: List<TopProductPerformer> = emptyList(),
+    val topCustomers: List<TopCustomerPerformer> = emptyList(),
+    val overdueReminders: List<OverdueBillReminder> = emptyList()
+)
