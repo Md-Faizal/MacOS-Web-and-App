@@ -16,73 +16,47 @@
  * - Audit trail (stores calculated amounts for verification)
  */
 
-let SuiteCoreBridge = null;
-if (typeof require !== 'undefined') {
-  try {
-    SuiteCoreBridge = require('./suite_core_bridge');
-  } catch (_) {}
-} else if (typeof window !== 'undefined' && window.SuiteCoreBridge) {
-  SuiteCoreBridge = window.SuiteCoreBridge;
+function getSuiteCoreBridge() {
+  if (typeof window !== 'undefined' && window.SuiteCoreBridge) {
+    return window.SuiteCoreBridge;
+  }
+  if (typeof require === 'function') {
+    try {
+      return require('./suite_core_bridge');
+    } catch (_) {}
+  }
+  return null;
 }
 
-// Browser asynchronous WebAssembly auto-loader with fallback
+// Browser asynchronous WebAssembly initialization via SuiteCoreBridge
 if (typeof window !== 'undefined') {
-  const loadWasmBrowser = async () => {
-    if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded()) return true;
-    const urls = ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
-    for (const url of urls) {
-      try {
-        const resp = await fetch(url);
-        if (resp.ok) {
-          const bytes = await resp.arrayBuffer();
-          const { instance } = await WebAssembly.instantiate(bytes, {});
-          const memory = instance.exports.memory;
-          SuiteCoreBridge = {
-            isWasmLoaded: () => true,
-            calcLineItemFast: (rate, qty, disc1, disc2, gst, gstReverse = false) => {
-              const exports = instance.exports;
-              if (!exports.calc_line_item_fast) return null;
-              const outPtr = exports.suite_alloc(56);
-              const code = exports.calc_line_item_fast(
-                rate, qty, disc1, disc2, gst, gstReverse ? 1 : 0, outPtr
-              );
-              if (code !== 0) {
-                exports.suite_dealloc(outPtr, 56);
-                return null;
-              }
-              const floatView = new Float64Array(memory.buffer, outPtr, 7);
-              const res = {
-                amount: floatView[0],
-                discount_1_amount: floatView[1],
-                discount_2_amount: floatView[2],
-                gst_amount: floatView[3],
-                sgst_amount: floatView[4],
-                cgst_amount: floatView[5],
-                final_amount: floatView[6]
-              };
-              exports.suite_dealloc(outPtr, 56);
-              return res;
-            }
-          };
-          window.SuiteCoreBridge = SuiteCoreBridge;
-          if (typeof console !== 'undefined' && console.log) {
-            console.log('[LOAD] bill-calculator.js: WebAssembly Core Initialized in Browser (WASM Accelerated: YES)');
-          }
-          return true;
-        }
-      } catch (_) {}
-    }
-    return false;
-  };
-  loadWasmBrowser();
-}
-
-if (typeof console !== 'undefined' && console.log) {
-  const isAccelerated = SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded();
-  console.log(`[LOAD] bill-calculator.js starting (WASM Accelerated: ${isAccelerated ? 'YES' : 'INITIALIZING IN BROWSER'})...`);
+  if (window.SuiteCoreBridge && typeof window.SuiteCoreBridge.initBrowser === 'function') {
+    window.SuiteCoreBridge.initBrowser().then(loaded => {
+      if (loaded && typeof console !== 'undefined' && console.log) {
+        console.log('[LOAD] bill-calculator.js: SuiteCore WebAssembly Accelerated (WASM: YES)');
+      }
+    });
+  }
 }
 
 class BillCalculator {
+  static getBridge() {
+    return getSuiteCoreBridge();
+  }
+
+  static isWasmLoaded() {
+    const bridge = getSuiteCoreBridge();
+    return !!(bridge && bridge.isWasmLoaded());
+  }
+
+  static async ensureReady() {
+    const bridge = getSuiteCoreBridge();
+    if (bridge && typeof bridge.ensureReady === 'function') {
+      return await bridge.ensureReady();
+    }
+    return bridge ? bridge.isWasmLoaded() : false;
+  }
+
   /**
    * Calculate details for a single product line item
    * 
@@ -118,11 +92,12 @@ class BillCalculator {
       gstTotal = sgstPercent + cgstPercent;
     }
 
-    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+    const bridge = getSuiteCoreBridge();
+    if (!bridge || !bridge.isWasmLoaded()) {
       throw new Error('[BillCalculator] SuiteCore WebAssembly engine is not loaded. Cannot execute financial calculation.');
     }
 
-    const fast = SuiteCoreBridge.calcLineItemFast(rate, qty, disc1Percent, disc2Percent, gstTotal, gstReverse);
+    const fast = bridge.calcLineItemFast(rate, qty, disc1Percent, disc2Percent, gstTotal, gstReverse);
     if (!fast) {
       throw new Error('[BillCalculator] SuiteCore WebAssembly calculation returned null');
     }
@@ -163,10 +138,11 @@ class BillCalculator {
    * @returns {Object} Bill summary: subtotal, total_discount, total_gst, round_off, grand_total
    */
   static calculateBillSummary(items) {
-    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+    const bridge = getSuiteCoreBridge();
+    if (!bridge || !bridge.isWasmLoaded()) {
       throw new Error('[BillCalculator] SuiteCore WebAssembly engine is not loaded. Cannot execute financial calculation.');
     }
-    const summary = SuiteCoreBridge.calculateBillSummary(items, 0.0, true);
+    const summary = bridge.calculateBillSummary(items, 0.0, true);
     if (!summary) {
       throw new Error('[BillCalculator] SuiteCore WebAssembly calculateBillSummary returned null');
     }

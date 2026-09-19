@@ -183,7 +183,7 @@ function calculateSettlementMap(bills, payments, openingBalance = 0) {
   const paymentAllocMap = {};
   if (!bills || bills.length === 0) return { settlementMap, paymentAllocMap };
 
-  if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+  if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded() && typeof window.SuiteCoreBridge.calculateStatement === 'function') {
     const rustBills = bills.map(b => ({
       id: String(b.id),
       customer_id: String(b.customer_id || ''),

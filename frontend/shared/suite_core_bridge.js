@@ -10,9 +10,11 @@
 
 let wasmInstance = null;
 let wasmMemory = null;
+let wasmInitPromise = null;
 
 // Initialize in Node.js synchronously if running on server
-if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+if (isNode && typeof require === 'function') {
   try {
     const fs = require('fs');
     const path = require('path');
@@ -45,28 +47,40 @@ class SuiteCoreBridge {
   }
 
   /**
-   * Browser asynchronous initialization
+   * Browser asynchronous initialization with deduplicated promise
    */
   static async initBrowser(customUrl = null) {
     if (this.isWasmLoaded()) return true;
-    const candidates = customUrl ? [customUrl] : ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
-    for (const url of candidates) {
-      try {
-        const response = await fetch(url);
-        if (response.ok) {
-          const bytes = await response.arrayBuffer();
-          const { instance } = await WebAssembly.instantiate(bytes, {});
-          wasmInstance = instance;
-          wasmMemory = instance.exports.memory;
-          if (typeof console !== 'undefined' && console.log) {
-            console.log(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
+    if (wasmInitPromise) return wasmInitPromise;
+    wasmInitPromise = (async () => {
+      const candidates = customUrl ? [customUrl] : ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const bytes = await response.arrayBuffer();
+            const { instance } = await WebAssembly.instantiate(bytes, {});
+            wasmInstance = instance;
+            wasmMemory = instance.exports.memory;
+            if (typeof console !== 'undefined' && console.log) {
+              console.log(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
+            }
+            return true;
           }
-          return true;
-        }
-      } catch (err) {}
-    }
-    console.warn('[SuiteCoreBridge] Browser WASM load failed from all candidates, fallback active');
-    return false;
+        } catch (err) {}
+      }
+      console.warn('[SuiteCoreBridge] Browser WASM load failed from all candidates');
+      return false;
+    })();
+    return wasmInitPromise;
+  }
+
+  /**
+   * Asynchronously ensure WebAssembly core is ready
+   */
+  static async ensureReady() {
+    if (this.isWasmLoaded()) return true;
+    return this.initBrowser();
   }
 
   /**

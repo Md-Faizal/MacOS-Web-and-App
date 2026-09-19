@@ -403,6 +403,11 @@ class BillingDashboard {
         await this.billingApp.loadBillingDataFromAPI();
       }
 
+      // Ensure SuiteCore WebAssembly is initialized before rendering calculations
+      if (typeof window !== 'undefined' && window.SuiteCoreBridge && typeof window.SuiteCoreBridge.ensureReady === 'function') {
+        await window.SuiteCoreBridge.ensureReady();
+      }
+
       // Initialize filter values in DOM
       const presetEl = document.getElementById('metricsPreset');
       if (presetEl) {
@@ -2310,7 +2315,7 @@ class BillingDashboard {
    * Returns a map of billId -> remaining balance.
    */
   calculateBillSettlement(bills, payments, contacts) {
-    if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+    if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded() && typeof window.SuiteCoreBridge.calculateStatement === 'function') {
       const customerBills = {};
       const customerPayments = {};
 
