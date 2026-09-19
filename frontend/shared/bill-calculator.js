@@ -25,8 +25,61 @@ if (typeof require !== 'undefined') {
   SuiteCoreBridge = window.SuiteCoreBridge;
 }
 
+// Browser asynchronous WebAssembly auto-loader with fallback
+if (typeof window !== 'undefined') {
+  const loadWasmBrowser = async () => {
+    if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded()) return true;
+    const urls = ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const bytes = await resp.arrayBuffer();
+          const { instance } = await WebAssembly.instantiate(bytes, {});
+          const memory = instance.exports.memory;
+          SuiteCoreBridge = {
+            isWasmLoaded: () => true,
+            calcLineItemFast: (rate, qty, disc1, disc2, gst, gstReverse = false) => {
+              const exports = instance.exports;
+              if (!exports.calc_line_item_fast) return null;
+              const outPtr = exports.suite_alloc(56);
+              const code = exports.calc_line_item_fast(
+                rate, qty, disc1, disc2, gst, gstReverse ? 1 : 0, outPtr
+              );
+              if (code !== 0) {
+                exports.suite_dealloc(outPtr, 56);
+                return null;
+              }
+              const floatView = new Float64Array(memory.buffer, outPtr, 7);
+              const res = {
+                amount: floatView[0],
+                discount_1_amount: floatView[1],
+                discount_2_amount: floatView[2],
+                gst_amount: floatView[3],
+                sgst_amount: floatView[4],
+                cgst_amount: floatView[5],
+                final_amount: floatView[6]
+              };
+              exports.suite_dealloc(outPtr, 56);
+              return res;
+            }
+          };
+          window.SuiteCoreBridge = SuiteCoreBridge;
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[LOAD] bill-calculator.js: WebAssembly Core Initialized in Browser (WASM Accelerated: YES)');
+          }
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  };
+  loadWasmBrowser();
+}
+
 if (typeof console !== 'undefined' && console.log) {
-  console.log('[LOAD] bill-calculator.js starting (WASM Accelerated: ' + (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded() ? 'YES' : 'NO') + ')...');
+  const isAccelerated = SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded();
+  console.log(`[LOAD] bill-calculator.js starting (WASM Accelerated: ${isAccelerated ? 'YES' : 'INITIALIZING IN BROWSER'})...`);
 }
 
 class BillCalculator {

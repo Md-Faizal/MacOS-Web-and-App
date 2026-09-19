@@ -47,19 +47,26 @@ class SuiteCoreBridge {
   /**
    * Browser asynchronous initialization
    */
-  static async initBrowser(wasmUrl = '/shared/suite_core.wasm') {
+  static async initBrowser(customUrl = null) {
     if (this.isWasmLoaded()) return true;
-    try {
-      const response = await fetch(wasmUrl);
-      const bytes = await response.arrayBuffer();
-      const { instance } = await WebAssembly.instantiate(bytes, {});
-      wasmInstance = instance;
-      wasmMemory = instance.exports.memory;
-      return true;
-    } catch (err) {
-      console.warn('[SuiteCoreBridge] Browser WASM load failed, fallback active:', err);
-      return false;
+    const candidates = customUrl ? [customUrl] : ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const bytes = await response.arrayBuffer();
+          const { instance } = await WebAssembly.instantiate(bytes, {});
+          wasmInstance = instance;
+          wasmMemory = instance.exports.memory;
+          if (typeof console !== 'undefined' && console.log) {
+            console.log(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
+          }
+          return true;
+        }
+      } catch (err) {}
     }
+    console.warn('[SuiteCoreBridge] Browser WASM load failed from all candidates, fallback active');
+    return false;
   }
 
   /**
@@ -181,6 +188,7 @@ class SuiteCoreBridge {
 
 if (typeof window !== 'undefined') {
   window.SuiteCoreBridge = SuiteCoreBridge;
+  SuiteCoreBridge.initBrowser();
 }
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = SuiteCoreBridge;
