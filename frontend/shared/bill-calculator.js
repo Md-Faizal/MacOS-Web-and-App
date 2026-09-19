@@ -118,120 +118,41 @@ class BillCalculator {
       gstTotal = sgstPercent + cgstPercent;
     }
 
-    if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded()) {
-      try {
-        const fast = SuiteCoreBridge.calcLineItemFast(rate, qty, disc1Percent, disc2Percent, gstTotal, gstReverse);
-        if (fast) {
-          const effectiveRate = gstReverse ? (rate * (1 - 0.0477)) : rate;
-          const discountedRate = effectiveRate * (1 - disc1Percent / 100);
-          const amountAfterDisc2 = fast.amount - fast.discount_1_amount - fast.discount_2_amount;
-          return {
-            rate: parseFloat(effectiveRate.toFixed(2)),
-            discounted_rate: parseFloat(discountedRate.toFixed(2)),
-            qty: qty,
-            amount: parseFloat(fast.amount.toFixed(2)),
-            discount_1_percent: disc1Percent,
-            discount_1_amount: parseFloat(fast.discount_1_amount.toFixed(2)),
-            discount_2_percent: disc2Percent,
-            discount_2_amount: parseFloat(fast.discount_2_amount.toFixed(2)),
-            gst_percent: gstTotal,
-            gst_amount: parseFloat(fast.gst_amount.toFixed(2)),
-            sgst_amount: parseFloat(fast.sgst_amount.toFixed(2)),
-            cgst_amount: parseFloat(fast.cgst_amount.toFixed(2)),
-            final_amount: parseFloat(fast.final_amount.toFixed(2)),
-            gst_reverse: gstReverse,
-            disc1: parseFloat(fast.discount_1_amount.toFixed(2)),
-            disc2: parseFloat(fast.discount_2_amount.toFixed(2)),
-            discountedAmount: parseFloat(amountAfterDisc2.toFixed(2)),
-            sgstValue: parseFloat(fast.sgst_amount.toFixed(2)),
-            cgstValue: parseFloat(fast.cgst_amount.toFixed(2)),
-            finalAmount: parseFloat(fast.final_amount.toFixed(2)),
-            lineTotal: parseFloat(fast.final_amount.toFixed(2))
-          };
-        }
-      } catch (_) {}
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[BillCalculator] SuiteCore WebAssembly engine is not loaded. Cannot execute financial calculation.');
     }
 
-    if (typeof console !== 'undefined') {
-      console.log(`📐 BillCalculator.calculateLineItem:`, {
-        rate, qty, disc1Percent, disc2Percent, sgstPercent, cgstPercent, gstTotal, gstReverse
-      });
+    const fast = SuiteCoreBridge.calcLineItemFast(rate, qty, disc1Percent, disc2Percent, gstTotal, gstReverse);
+    if (!fast) {
+      throw new Error('[BillCalculator] SuiteCore WebAssembly calculation returned null');
     }
 
-    // **GST REVERSE LOGIC**: If gst_reverse is enabled, apply 4.77% reduction to MRP first
-    // 4.77% represents the true GST component embedded in 5% GST: 5% ÷ (1 + 5%) = 0.0477
-    // CRITICAL: Keep full precision - only round final amounts, not intermediate values!
-    let baseRate = rate;
-    if (gstReverse) {
-      baseRate = rate * (1 - 0.0477); // Full precision - NO rounding yet!
-      if (typeof console !== 'undefined') {
-        console.log(`💰 GST Reverse Applied: MRP ${rate} → Base Rate ${baseRate.toFixed(2)} (removed 4.77%)`);
-      }
-      rate = baseRate; // Use baseRate for further calculations
-    }
+    const effectiveRate = gstReverse ? (rate * (1 - 0.0477)) : rate;
+    const discountedRate = effectiveRate * (1 - disc1Percent / 100);
+    const amountAfterDisc2 = fast.amount - fast.discount_1_amount - fast.discount_2_amount;
 
-    // Step 1: Calculate base amount = rate × qty (keep full precision)
-    const amount = rate * qty;
-
-    // Step 2: Calculate Discount 1 (as percentage on base amount) - keep full precision
-    const discount_1_amount = amount * (disc1Percent / 100);
-    const amountAfterDisc1 = amount - discount_1_amount;
-    
-    // Calculate the discounted rate (rate after discount 1)
-    const discounted_rate = rate * (1 - disc1Percent / 100);
-
-    // Step 3: Calculate Discount 2 (as percentage on amount after discount 1) - keep full precision
-    const discount_2_amount = amountAfterDisc1 * (disc2Percent / 100);
-    const amountAfterDisc2 = amountAfterDisc1 - discount_2_amount;
-
-    // Step 4: Calculate tax amounts on discounted amount - keep full precision
-    let gst_amount = 0;
-    let sgst_amount = 0;
-    let cgst_amount = 0;
-
-    if (gstTotal > 0) {
-      gst_amount = amountAfterDisc2 * (gstTotal / 100);
-      sgst_amount = amountAfterDisc2 * (sgstPercent / 100);
-      cgst_amount = amountAfterDisc2 * (cgstPercent / 100);
-    }
-
-    // Step 5: Calculate final amount = discounted amount + tax (keep full precision until final rounding)
-    const final_amount_unrounded = amountAfterDisc2 + gst_amount;
-
-    if (typeof console !== 'undefined') {
-      console.log(`📊 BillCalculator.RESULT:`, {
-        sgst_amount: sgst_amount.toFixed(2), cgst_amount: cgst_amount.toFixed(2), gst_amount: gst_amount.toFixed(2), final_amount: final_amount_unrounded.toFixed(2), amountAfterDisc2: amountAfterDisc2.toFixed(2)
-      });
-    }
-
-    // NOW round all values for storage and display
     return {
-      // Source data for audit trail
-      rate: parseFloat(rate.toFixed(2)),
-      discounted_rate: parseFloat(discounted_rate.toFixed(2)),
+      rate: parseFloat(effectiveRate.toFixed(2)),
+      discounted_rate: parseFloat(discountedRate.toFixed(2)),
       qty: qty,
-      
-      // Calculated amounts for display and storage - ROUNDED
-      amount: parseFloat(amount.toFixed(2)),
+      amount: parseFloat(fast.amount.toFixed(2)),
       discount_1_percent: disc1Percent,
-      discount_1_amount: parseFloat(discount_1_amount.toFixed(2)),
+      discount_1_amount: parseFloat(fast.discount_1_amount.toFixed(2)),
       discount_2_percent: disc2Percent,
-      discount_2_amount: parseFloat(discount_2_amount.toFixed(2)),
+      discount_2_amount: parseFloat(fast.discount_2_amount.toFixed(2)),
       gst_percent: gstTotal,
-      gst_amount: parseFloat(gst_amount.toFixed(2)),
-      sgst_amount: parseFloat(sgst_amount.toFixed(2)),
-      cgst_amount: parseFloat(cgst_amount.toFixed(2)),
-      final_amount: parseFloat(final_amount_unrounded.toFixed(2)),
+      gst_amount: parseFloat(fast.gst_amount.toFixed(2)),
+      sgst_amount: parseFloat(fast.sgst_amount.toFixed(2)),
+      cgst_amount: parseFloat(fast.cgst_amount.toFixed(2)),
+      final_amount: parseFloat(fast.final_amount.toFixed(2)),
       gst_reverse: gstReverse,
-      
-      // For backward compatibility
-      disc1: parseFloat(discount_1_amount.toFixed(2)),
-      disc2: parseFloat(discount_2_amount.toFixed(2)),
+      disc1: parseFloat(fast.discount_1_amount.toFixed(2)),
+      disc2: parseFloat(fast.discount_2_amount.toFixed(2)),
       discountedAmount: parseFloat(amountAfterDisc2.toFixed(2)),
-      sgstValue: parseFloat(sgst_amount.toFixed(2)),
-      cgstValue: parseFloat(cgst_amount.toFixed(2)),
-      finalAmount: parseFloat(final_amount_unrounded.toFixed(2)),
-      lineTotal: parseFloat(final_amount_unrounded.toFixed(2))
+      sgstValue: parseFloat(fast.sgst_amount.toFixed(2)),
+      cgstValue: parseFloat(fast.cgst_amount.toFixed(2)),
+      finalAmount: parseFloat(fast.final_amount.toFixed(2)),
+      lineTotal: parseFloat(fast.final_amount.toFixed(2))
     };
   }
 
