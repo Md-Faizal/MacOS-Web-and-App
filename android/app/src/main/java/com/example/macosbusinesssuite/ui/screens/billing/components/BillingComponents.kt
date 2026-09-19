@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.macosbusinesssuite.data.model.*
+import com.example.macosbusinesssuite.domain.calculation.BillCalculator
 
 @Composable
 fun CustomerPickerDialog(
@@ -219,6 +220,61 @@ fun AddProductDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = gstReverse, onCheckedChange = { gstReverse = it })
                     Text("Apply GST Reverse (Subtract 4.77% first)", style = MaterialTheme.typography.bodySmall)
+                }
+
+                val previewItem = remember(rate, qty, disc1, disc2, gst, gstReverse, scheme) {
+                    val r = rate.toDoubleOrNull() ?: 0.0
+                    val q = qty.toDoubleOrNull() ?: 1.0
+                    val d1 = disc1.toDoubleOrNull() ?: 0.0
+                    val d2 = disc2.toDoubleOrNull() ?: 0.0
+                    val g = gst.toDoubleOrNull() ?: 0.0
+                    if (r > 0.0 && q > 0.0) {
+                        BillCalculator.calculateLineItem(
+                            CalculateBillItemRequest(
+                                rate = r,
+                                qty = q,
+                                disc1 = d1,
+                                disc2 = d2,
+                                gstPercent = g,
+                                gstReverse = gstReverse,
+                                scheme = scheme.ifBlank { null }
+                            )
+                        )
+                    } else null
+                }
+
+                if (previewItem != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Rate: ₹${previewItem.rate} • Tax: ₹${previewItem.gstAmount}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    "Line Total: ₹${previewItem.finalAmount}",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            if (previewItem.free > 0) {
+                                Text(
+                                    "Scheme Bonus: +${previewItem.free} Free items",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },

@@ -656,10 +656,23 @@ module.exports = function(db) {
               id: item.id,
               product_id: item.product_id,
               variant_id: item.variant_id,
+              batch_id: item.batch_id,
+              batch_no: item.batch_no,
               product_name: item.product_name || `Product #${item.product_id}` || 'Unknown',
               quantity: item.qty || 0,
+              qty: item.qty || 0,
+              rate: item.rate || 0,
               price: item.rate || 0,
-              total: item.amount || 0
+              amount: item.amount || 0,
+              total: item.amount || 0,
+              discount_1_percent: item.discount_1_percent || 0,
+              discount_1_amount: item.discount_1_amount || 0,
+              discount_2_percent: item.discount_2_percent || 0,
+              discount_2_amount: item.discount_2_amount || 0,
+              gst_percent: item.gst_percent || 0,
+              gst_amount: item.gst_amount || 0,
+              final_amount: item.final_amount || 0,
+              gst_reverse: !!item.gst_reverse
             }));
           } catch (itemErr) {
             console.error('Error fetching invoice items:', itemErr.message);
@@ -833,42 +846,58 @@ module.exports = function(db) {
         const customerId = customer_id || existing.customer_id;
         const editorId = req.user ? (req.user.id || req.user.userId) : null;
 
-        // Update main invoice table
-        const updateStmt = db.prepare(`
-          UPDATE invoices 
-          SET customer_id = COALESCE(?, customer_id),
-              due_date = COALESCE(?, due_date),
-              total_amount = COALESCE(?, total_amount),
-              total_discount = COALESCE(?, total_discount),
-              total_gst = COALESCE(?, total_gst),
-              round_off = COALESCE(?, round_off),
-              grand_total = COALESCE(?, grand_total),
-              invoice_date = COALESCE(?, invoice_date),
-              last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
-              updated_at = datetime('now')
-          WHERE id = ?
-        `);
-
-        updateStmt.run(
-          customerId,
-          due_date,
-          subtotal,
-          total_discount,
-          total_gst,
-          round_off,
-          grand_total,
-          invoice_date,
-          editorId,
-          id
-        );
-
-        // If products are provided, replace all invoice items
+        // Check if products array is provided
         if (products && Array.isArray(products) && products.length > 0) {
+          // Authoritative Server Recalculation
+          const serverCalc = calculator.calculateBillItemsAndSummary(db, {
+            customerId,
+            customerName: null,
+            items: products,
+            roundOffEnabled: round_off !== undefined ? (round_off !== 0 && round_off !== false) : true,
+            invoiceDate: invoice_date || existing.invoice_date || null,
+            user: req.user
+          });
+
+          const calculatedSubtotal = serverCalc.summary.subtotal;
+          const calculatedDiscount = serverCalc.summary.total_discount;
+          const calculatedGst = serverCalc.summary.total_gst;
+          const calculatedRoundOff = serverCalc.summary.round_off;
+          const calculatedGrandTotal = serverCalc.summary.grand_total;
+
+          // Update main invoice record with verified server totals
+          const updateStmt = db.prepare(`
+            UPDATE invoices 
+            SET customer_id = COALESCE(?, customer_id),
+                due_date = COALESCE(?, due_date),
+                total_amount = ?,
+                total_discount = ?,
+                total_gst = ?,
+                round_off = ?,
+                grand_total = ?,
+                invoice_date = COALESCE(?, invoice_date),
+                last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
+                updated_at = datetime('now')
+            WHERE id = ?
+          `);
+
+          updateStmt.run(
+            customerId,
+            due_date,
+            calculatedSubtotal,
+            calculatedDiscount,
+            calculatedGst,
+            calculatedRoundOff,
+            calculatedGrandTotal,
+            invoice_date,
+            editorId,
+            id
+          );
+
           // Delete existing items
           const deleteItemsStmt = db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?');
           deleteItemsStmt.run(id);
 
-          // Insert new items using shared BillCalculator
+          // Insert new items using server-calculated verified values
           const itemStmt = db.prepare(`
             INSERT INTO invoice_items
             (invoice_id, product_id, variant_id, batch_id, pack_value, pack_type, batch_no, 
@@ -878,83 +907,97 @@ module.exports = function(db) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           `);
 
-          products.forEach(product => {
+          serverCalc.items.forEach(item => {
             try {
-              let productId = product.product_id || null;
-              if (!productId && product.product_name) {
-                const prod = db.prepare('SELECT id FROM products WHERE LOWER(name) = LOWER(?)').get(product.product_name);
-                if (prod) productId = prod.id;
-              }
-
-              let variantId = product.variant_id || null;
-              if (!variantId && productId && product.pack_value && product.pack_type) {
-                const variant = db.prepare(`
-                  SELECT id FROM variants 
-                  WHERE product_id = ? AND pack_size_value = ? AND pack_size_type = ?
-                `).get(productId, product.pack_value, product.pack_type);
-                if (variant) variantId = variant.id;
-              }
-
-              let batchId = product.batch_id || null;
-              if (!batchId && variantId && product.batch_no) {
-                const batch = db.prepare(`
-                  SELECT id FROM batches 
-                  WHERE variant_id = ? AND batch_no = ?
-                `).get(variantId, product.batch_no);
-                if (batch) batchId = batch.id;
-              }
-
-              const lineCalc = BillCalculator.calculateLineItem({
-                mrp: product.mrp || 0,
-                rate: product.rate || product.price || 0,
-                qty: product.qty || product.quantity || 1,
-                free: product.free || 0,
-                disc1: product.discount_1_percent || product.disc1 || 0,
-                disc2: product.discount_2_percent || product.disc2 || 0,
-                sgst: product.sgst_percent || product.sgst || 0,
-                cgst: product.cgst_percent || product.cgst || 0,
-                gstTotal: product.gst_percent || product.gstTotal || 0,
-                scheme: product.scheme || null,
-                gst_reverse: product.gst_reverse || false
-              });
-
               itemStmt.run(
                 id,
-                productId,
-                variantId,
-                batchId,
-                product.pack_value || product.pack || null,
-                product.pack_type || null,
-                product.batch_no || product.batch || null,
-                product.exp_date || product.exp || null,
-                product.qty || product.quantity || 1,
-                product.scheme || null,
-                product.free || 0,
-                product.mrp || 0,
-                lineCalc.discounted_rate,
-                lineCalc.discountedAmount,
-                lineCalc.discount_1_percent,
-                lineCalc.discount_1_amount,
-                lineCalc.discount_2_percent,
-                lineCalc.discount_2_amount,
-                lineCalc.gst_percent,
-                lineCalc.gst_amount,
-                lineCalc.sgst_amount,
-                lineCalc.cgst_amount,
-                lineCalc.final_amount,
-                product.gst_reverse ? 1 : 0
+                item.product_id,
+                item.variant_id,
+                item.batch_id,
+                item.pack_value || null,
+                item.pack_type || null,
+                item.batch_no || null,
+                item.exp_date || null,
+                item.qty,
+                item.scheme || null,
+                item.free || 0,
+                item.mrp || 0,
+                item.discounted_rate,
+                item.amount,
+                item.discount_1_percent,
+                item.discount_1_amount,
+                item.discount_2_percent,
+                item.discount_2_amount,
+                item.gst_percent,
+                item.gst_amount,
+                item.sgst_amount,
+                item.cgst_amount,
+                item.final_amount,
+                item.gst_reverse ? 1 : 0
               );
             } catch (err) {
               console.error('Error updating line item:', err);
             }
           });
-        }
 
-        res.json({
-          success: true,
-          message: 'Invoice updated',
-          id: id
-        });
+          // Recalculate customer ledger balance if customerId exists
+          if (customerId) {
+            try {
+              const totals = db.prepare(`
+                SELECT 
+                  COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = ?), 0) as total_debit,
+                  COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = ? AND type = 'PAYMENT'), 0) +
+                  COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = ? AND type = 'CREDIT_NOTE'), 0) as total_credit
+              `).get(customerId, customerId, customerId);
+
+              const current_due = totals.total_debit - totals.total_credit;
+              db.prepare(`
+                UPDATE ledger 
+                SET current_due = ?,
+                    updated_at = datetime('now')
+                WHERE customer_id = ?
+              `).run(current_due, customerId);
+            } catch (ledgErr) {
+              console.error('Error updating ledger balance on bill edit:', ledgErr);
+            }
+          }
+
+          return res.json({
+            success: true,
+            message: 'Invoice updated and recalculations verified',
+            id: id,
+            grand_total: calculatedGrandTotal,
+            subtotal: calculatedSubtotal,
+            total_gst: calculatedGst,
+            total_discount: calculatedDiscount,
+            items: serverCalc.items
+          });
+        } else {
+          // No products provided, update metadata only (date, due_date)
+          const updateStmt = db.prepare(`
+            UPDATE invoices 
+            SET customer_id = COALESCE(?, customer_id),
+                due_date = COALESCE(?, due_date),
+                invoice_date = COALESCE(?, invoice_date),
+                last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
+                updated_at = datetime('now')
+            WHERE id = ?
+          `);
+
+          updateStmt.run(
+            customerId,
+            due_date,
+            invoice_date,
+            editorId,
+            id
+          );
+
+          return res.json({
+            success: true,
+            message: 'Invoice metadata updated',
+            id: id
+          });
+        }
       } catch (error) {
         console.error('Error updating bill:', error);
         res.status(500).json({ error: error.message });

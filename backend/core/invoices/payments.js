@@ -23,6 +23,103 @@ module.exports = function(db) {
     return Boolean(row);
   }
 
+  function syncCustomerLedgerAndPriorDues(customerId) {
+    if (!customerId) return null;
+    try {
+      const customerData = db.prepare('SELECT id, opening_balance FROM contacts WHERE id = ?').get(customerId);
+      if (!customerData) return null;
+      const opening_balance = customerData.opening_balance || 0;
+
+      // Calculate total invoiced (debit)
+      const invoiceStats = db.prepare(`
+        SELECT 
+          COALESCE(SUM(grand_total), 0) as total_debit,
+          COUNT(*) as total_bills
+        FROM invoices 
+        WHERE customer_id = ?
+      `).get(customerId);
+
+      // Calculate total payments (credit)
+      const paymentStats = db.prepare(`
+        SELECT 
+          COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0) as payment_credit,
+          COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as credit_note_credit,
+          COUNT(*) as total_payments
+        FROM payments 
+        WHERE customer_id = ?
+      `).get(customerId);
+
+      const total_debit = (invoiceStats && invoiceStats.total_debit) || 0;
+      const total_bills = (invoiceStats && invoiceStats.total_bills) || 0;
+      const total_credit = ((paymentStats && paymentStats.payment_credit) || 0) + ((paymentStats && paymentStats.credit_note_credit) || 0);
+      const total_payments = (paymentStats && paymentStats.total_payments) || 0;
+      const current_due = total_debit - total_credit;
+      const current_status = current_due > 0 ? 'OUTSTANDING' : (current_due < 0 ? 'OVERPAID' : 'SETTLED');
+
+      // Update or insert into ledger table
+      const existingLedger = db.prepare('SELECT id FROM ledger WHERE customer_id = ?').get(customerId);
+      if (existingLedger) {
+        db.prepare(`
+          UPDATE ledger 
+          SET current_due = ?, total_debit = ?, total_credit = ?, current_status = ?, 
+              total_bills = ?, total_payments = ?, updated_at = datetime('now')
+          WHERE customer_id = ?
+        `).run(current_due, total_debit, total_credit, current_status, total_bills, total_payments, customerId);
+      } else {
+        db.prepare(`
+          INSERT INTO ledger (customer_id, current_due, total_debit, total_credit, current_status, total_bills, total_payments, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `).run(customerId, current_due, total_debit, total_credit, current_status, total_bills, total_payments);
+      }
+
+      // Recalculate previous_due for all invoices of this customer chronologically
+      const allInvoices = db.prepare(`
+        SELECT id, invoice_no, grand_total, invoice_date, created_at FROM invoices
+        WHERE customer_id = ?
+        ORDER BY COALESCE(invoice_date, created_at) ASC, id ASC
+      `).all(customerId);
+      
+      const allPayments = db.prepare(`
+        SELECT id, reference_number, amount, payment_date, created_at FROM payments
+        WHERE customer_id = ? AND type = 'PAYMENT'
+      `).all(customerId);
+      
+      const allCredits = db.prepare(`
+        SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
+        WHERE customer_id = ? AND type = 'CREDIT_NOTE'
+      `).all(customerId);
+
+      allInvoices.forEach(invoice => {
+        const priorInvoiceTotal = allInvoices
+          .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, invoice.invoice_date, invoice.created_at, invoice.id))
+          .reduce((sum, inv) => sum + inv.grand_total, 0);
+        
+        const totalPriorPayments = allPayments
+          .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, invoice.invoice_date, invoice.created_at, undefined))
+          .reduce((sum, p) => sum + p.amount, 0);
+        
+        const totalPriorCredits = allCredits
+          .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, invoice.invoice_date, invoice.created_at, undefined))
+          .reduce((sum, c) => sum + c.credit_amount, 0);
+        
+        const calculatedPreviousDue = opening_balance + priorInvoiceTotal - (totalPriorPayments + totalPriorCredits);
+        db.prepare('UPDATE invoices SET previous_due = ? WHERE id = ?').run(calculatedPreviousDue, invoice.id);
+      });
+
+      return {
+        current_due,
+        total_debit,
+        total_credit,
+        current_status,
+        opening_balance,
+        total_outstanding: current_due + opening_balance
+      };
+    } catch (err) {
+      console.error(`Error syncing ledger for customer ${customerId}:`, err);
+      return null;
+    }
+  }
+
   return {
     /**
      * GET NEXT PAYMENT REFERENCE (Preview - does not create record)
@@ -121,6 +218,9 @@ module.exports = function(db) {
         const paymentResult = paymentStmt.run(customer_id, amount, payment_medium, finalReferenceNumber, finalPaymentDate || null, invoice_id, notes, creatorId);
         const payment_id = paymentResult.lastInsertRowid;
 
+        // Authoritatively sync customer ledger and prior invoice dues
+        const ledgerSync = syncCustomerLedgerAndPriorDues(customer_id);
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'payments',
@@ -138,6 +238,8 @@ module.exports = function(db) {
           invoice_id,
           customer_id,
           amount,
+          current_due: ledgerSync ? ledgerSync.current_due : undefined,
+          total_outstanding: ledgerSync ? ledgerSync.total_outstanding : undefined,
           created_at: new Date().toISOString()
         });
 
@@ -212,6 +314,9 @@ module.exports = function(db) {
 
         const payment_id = creditResult.lastInsertRowid;
 
+        // Authoritatively sync customer ledger and prior invoice dues
+        const ledgerSync = syncCustomerLedgerAndPriorDues(customer_id);
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'payments',
@@ -231,6 +336,8 @@ module.exports = function(db) {
           customer_id,
           amount,
           reason,
+          current_due: ledgerSync ? ledgerSync.current_due : undefined,
+          total_outstanding: ledgerSync ? ledgerSync.total_outstanding : undefined,
           created_at: new Date().toISOString()
         });
 
@@ -453,6 +560,9 @@ module.exports = function(db) {
         // Get updated payment to return
         const updatedPayment = db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
 
+        // Authoritatively sync customer ledger and prior invoice dues
+        const ledgerSync = syncCustomerLedgerAndPriorDues(customer_id);
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'payments',
@@ -466,7 +576,9 @@ module.exports = function(db) {
         res.json({
           success: true,
           message: 'Payment updated successfully',
-          payment: updatedPayment
+          payment: updatedPayment,
+          current_due: ledgerSync ? ledgerSync.current_due : undefined,
+          total_outstanding: ledgerSync ? ledgerSync.total_outstanding : undefined
         });
 
       } catch (error) {
@@ -496,6 +608,9 @@ module.exports = function(db) {
         // Delete payment record
         db.prepare('DELETE FROM payments WHERE id = ?').run(id);
 
+        // Authoritatively sync customer ledger and prior invoice dues
+        const ledgerSync = syncCustomerLedgerAndPriorDues(customer_id);
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'payments',
@@ -509,7 +624,9 @@ module.exports = function(db) {
         res.json({ 
           success: true, 
           message: 'Payment deleted successfully',
-          customer_id
+          customer_id,
+          current_due: ledgerSync ? ledgerSync.current_due : undefined,
+          total_outstanding: ledgerSync ? ledgerSync.total_outstanding : undefined
         });
 
       } catch (error) {
@@ -746,93 +863,7 @@ module.exports = function(db) {
         db.prepare('DELETE FROM ledger').run();
 
         customers.forEach(customer => {
-          // Get customer's opening balance
-          const customerData = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(customer.id);
-          const opening_balance = customerData ? (customerData.opening_balance || 0) : 0;
-
-          // Calculate total invoiced (debit)
-          const invoiceStats = db.prepare(`
-            SELECT 
-              COALESCE(SUM(grand_total), 0) as total_debit,
-              COUNT(*) as total_bills
-            FROM invoices 
-            WHERE customer_id = ?
-          `).get(customer.id);
-
-          // Calculate total payments (credit)
-          const paymentStats = db.prepare(`
-            SELECT 
-              COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0) as payment_credit,
-              COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as credit_note_credit,
-              COUNT(*) as total_payments
-            FROM payments 
-            WHERE customer_id = ?
-          `).get(customer.id);
-
-          const total_debit = invoiceStats.total_debit || 0;
-          const total_bills = invoiceStats.total_bills || 0;
-          const total_credit = (paymentStats.payment_credit || 0) + (paymentStats.credit_note_credit || 0);
-          const total_payments = paymentStats.total_payments || 0;
-          const current_due = total_debit - total_credit;
-          const current_status = current_due > 0 ? 'OUTSTANDING' : (current_due < 0 ? 'OVERPAID' : 'SETTLED');
-
-          // Update or insert ledger entry
-          const existingLedger = db.prepare('SELECT id FROM ledger WHERE customer_id = ?').get(customer.id);
-          
-          if (existingLedger) {
-            db.prepare(`
-              UPDATE ledger 
-              SET current_due = ?, total_debit = ?, total_credit = ?, current_status = ?, 
-                  total_bills = ?, total_payments = ?, updated_at = datetime('now')
-              WHERE customer_id = ?
-            `).run(current_due, total_debit, total_credit, current_status, total_bills, total_payments, customer.id);
-          } else {
-            db.prepare(`
-              INSERT INTO ledger (customer_id, current_due, total_debit, total_credit, current_status, total_bills, total_payments, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            `).run(customer.id, current_due, total_debit, total_credit, current_status, total_bills, total_payments);
-          }
-
-          // RECALCULATE PREVIOUS_DUE FOR ALL INVOICES
-          // Get all invoices and payments for this customer ordered chronologically
-          const allInvoices = db.prepare(`
-            SELECT id, invoice_no, grand_total, invoice_date, created_at FROM invoices
-            WHERE customer_id = ?
-            ORDER BY COALESCE(invoice_date, created_at) ASC, id ASC
-          `).all(customer.id);
-          
-          const allPayments = db.prepare(`
-            SELECT id, reference_number, amount, payment_date, created_at FROM payments
-            WHERE customer_id = ? AND type = 'PAYMENT'
-          `).all(customer.id);
-          
-          const allCredits = db.prepare(`
-            SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
-            WHERE customer_id = ? AND type = 'CREDIT_NOTE'
-          `).all(customer.id);
-
-          // Recalculate previous_due for each invoice chronologically
-          // Formula: previous_due = opening_balance + (sum of prior invoices - payments - credits)
-          allInvoices.forEach(invoice => {
-            
-            // Sum invoices chronologically before this invoice
-            const priorInvoiceTotal = allInvoices
-              .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, invoice.invoice_date, invoice.created_at, invoice.id))
-              .reduce((sum, inv) => sum + inv.grand_total, 0);
-            
-            // Sum payments chronologically before this invoice
-            const totalPayments = allPayments
-              .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, invoice.invoice_date, invoice.created_at, undefined))
-              .reduce((sum, p) => sum + p.amount, 0);
-            
-            // Sum credits chronologically before this invoice
-            const totalCredits = allCredits
-              .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, invoice.invoice_date, invoice.created_at, undefined))
-              .reduce((sum, c) => sum + c.credit_amount, 0);
-            
-            const calculatedPreviousDue = opening_balance + priorInvoiceTotal - (totalPayments + totalCredits);
-            db.prepare('UPDATE invoices SET previous_due = ? WHERE id = ?').run(calculatedPreviousDue, invoice.id);
-          });
+          syncCustomerLedgerAndPriorDues(customer.id);
         });
 
         res.json({

@@ -562,6 +562,24 @@ private fun RecordPaymentTab(
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     Text("Payment Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
 
+                    if (selectedCustomer.isNotBlank() && activeDue > 0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0.25 to "25%", 0.50 to "50%", 0.75 to "75%", 1.0 to "Full Due").forEach { (ratio, label) ->
+                                AssistChip(
+                                    onClick = {
+                                        val calculated = activeDue * ratio
+                                        paymentAmount = String.format(Locale.US, "%.2f", calculated)
+                                    },
+                                    label = { Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -594,6 +612,43 @@ private fun RecordPaymentTab(
                             enabled = selectedCustomer.isNotBlank() && activeDue > 0
                         ) {
                             Text("Pay Full", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    val enteredAmount = paymentAmount.toDoubleOrNull() ?: 0.0
+                    if (selectedCustomer.isNotBlank() && enteredAmount > 0.0) {
+                        val remainingDue = activeDue - enteredAmount
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (remainingDue <= 0.001) Color(0xFFDCFCE7) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, if (remainingDue <= 0.001) Color(0xFF86EFAC) else MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(
+                                        if (remainingDue <= 0.001) Icons.Default.CheckCircle else Icons.Default.Calculate,
+                                        contentDescription = null,
+                                        tint = if (remainingDue <= 0.001) Color(0xFF16A34A) else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        if (remainingDue < -0.001) "Projected Advance / Credit" else if (Math.abs(remainingDue) <= 0.001) "Projected Fully Settled" else "Projected Remaining Due",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                Text(
+                                    "₹${formatCurrency(Math.abs(remainingDue))}",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (remainingDue <= 0.001) Color(0xFF16A34A) else MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
                         }
                     }
 
@@ -698,6 +753,11 @@ private fun RecordPaymentTab(
                             if (success) {
                                 onSuccess(msg ?: "✓ Payment recorded successfully")
                                 paymentAmount = ""; notes = ""; referenceNumber = ""
+                                if (selectedCustomer.isNotBlank()) {
+                                    billingViewModel.fetchCustomerOutstanding(selectedCustomer) { res ->
+                                        apiOutstandingData = res
+                                    }
+                                }
                             } else { onSuccess(msg ?: "❌ Error recording payment") }
                         }
                     },
@@ -797,6 +857,8 @@ private fun IssueCreditNoteTab(
         "other" to "📝 Other"
     )
 
+    val activeDue = apiOutstandingData?.totalOutstanding ?: localCustomerBalance?.totalDue ?: 0.0
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -849,6 +911,24 @@ private fun IssueCreditNoteTab(
                 Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     Text("Credit Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
 
+                    if (selectedCustomer.isNotBlank() && activeDue > 0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0.25 to "25%", 0.50 to "50%", 1.0 to "Full Due").forEach { (ratio, label) ->
+                                AssistChip(
+                                    onClick = {
+                                        val calculated = activeDue * ratio
+                                        creditAmount = String.format(Locale.US, "%.2f", calculated)
+                                    },
+                                    label = { Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = creditAmount,
                         onValueChange = { creditAmount = it },
@@ -867,6 +947,43 @@ private fun IssueCreditNoteTab(
                             unfocusedContainerColor = MaterialTheme.colorScheme.surface
                         )
                     )
+
+                    val enteredCredit = creditAmount.toDoubleOrNull() ?: 0.0
+                    if (selectedCustomer.isNotBlank() && enteredCredit > 0.0) {
+                        val remainingDue = activeDue - enteredCredit
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (remainingDue <= 0.001) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                            border = BorderStroke(1.dp, if (remainingDue <= 0.001) Color(0xFF86EFAC) else Color(0xFFFCD34D))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(
+                                        Icons.Default.Calculate,
+                                        contentDescription = null,
+                                        tint = if (remainingDue <= 0.001) Color(0xFF16A34A) else Color(0xFFD97706),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        if (remainingDue < -0.001) "Projected Advance / Credit" else if (Math.abs(remainingDue) <= 0.001) "Projected Fully Settled" else "Projected Remaining Due",
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                Text(
+                                    "₹${formatCurrency(Math.abs(remainingDue))}",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (remainingDue <= 0.001) Color(0xFF16A34A) else MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
+                    }
 
                     ExposedDropdownMenuBox(
                         expanded = reasonDropdownExpanded,
@@ -1009,6 +1126,11 @@ private fun IssueCreditNoteTab(
                             if (success) {
                                 onSuccess(msg ?: "✓ Credit note issued successfully")
                                 creditAmount = ""; description = ""; referenceNumber = ""; imageUri = null; compressedBase64 = null
+                                if (selectedCustomer.isNotBlank()) {
+                                    billingViewModel.fetchCustomerOutstanding(selectedCustomer) { res ->
+                                        apiOutstandingData = res
+                                    }
+                                }
                             } else { onSuccess(msg ?: "❌ Error issuing credit note") }
                         }
                     },
@@ -1149,7 +1271,12 @@ private fun TransactionHistoryTab(
         }
 
         if (selectedFilter == "opening-balance") {
-            val contactsWithOpening = remember(contacts) { contacts.filter { it.openingBalance != 0.0 } }
+            val contactsWithOpening = remember(contacts, searchQuery) {
+                val q = searchQuery.trim().lowercase()
+                contacts.filter { 
+                    it.openingBalance != 0.0 && (q.isEmpty() || it.name.lowercase().contains(q))
+                }
+            }
             if (contactsWithOpening.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No customer opening balances recorded", color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -191,7 +191,15 @@ module.exports = function(db) {
           current_status = 'SETTLED';
         }
         
-        res.json({ message: 'Payment deleted successfully', id });
+        // Update ledger row
+        db.prepare(`
+          UPDATE ledger 
+          SET current_due = ?, total_debit = ?, total_credit = ?, current_status = ?, 
+              total_bills = ?, total_payments = ?, updated_at = datetime('now')
+          WHERE customer_id = ?
+        `).run(current_due, totals.total_debit, total_credit, current_status, totals.total_bills, totals.total_payments_count, customer_id);
+
+        res.json({ message: 'Payment deleted successfully', id, current_due });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

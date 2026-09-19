@@ -47,6 +47,14 @@ When attempting to build the native Android client using the exact same APIs:
 * **Decision**: Build a server-side calculation service in `backend/core/billing/` that computes customer balances, receivables aging, and dashboard metrics. Expose these via dedicated endpoints (e.g., `GET /api/billing/dashboard-metrics`, `GET /api/billing/customers/:id/statement`).
 * **Impact**: Single source of truth. Android simply renders what the server returns; the website can opt into these endpoints over time.
 
+### ADR 003: Post-Parity Compiled Shared Core (Rust / WASM / JNI)
+* **Date**: 2026-09-19
+* **Context**: Mathematical business calculations (reverse GST, cascading discounts, scheme bonuses, round-offs) currently run via 1:1 structural mirrors in JavaScript (`bill-calculator.js`), Kotlin (`BillCalculator.kt`), and Node.js (`calculator.js`). To permanently eliminate any future possibility of calculation drift, the user and architecture team agreed to consolidate these into a single compiled Rust core.
+* **Decision**: Execute Option A: Complete all functional and screen-level parity milestones first (Section 3: Payments & Credit Notes, Section 4: Customer Statements). Once all business workflows and API contracts are fully stabilized and verified, introduce the compiled Rust shared core in Phase 2:
+  - Compiles to `billing_core.wasm` for Web and Node.js via `wasm-pack`.
+  - Compiles to native `.so` binaries (`arm64-v8a`, `x86_64`) for Android using Android NDK 27.1 via `cargo ndk` + UniFFI.
+* **Impact**: Zero risk of stalling active UI and business parity progress on toolchain plumbing. The current 1:1 Kotlin/JS mirror serves as a direct drop-in wrapper that can swap its internal implementation with the compiled WASM/native binary without changing any screen contracts or API endpoints.
+
 ---
 
 ## 4. Workstreams & Action Matrix
@@ -283,6 +291,109 @@ When attempting to build the native Android client using the exact same APIs:
      - `./gradlew.bat compileDebugKotlin`: **BUILD SUCCESSFUL in 14s** (0 errors).
 * **Status**:
   - Transition to server-side processing is complete, fully tested, and verified across Web and Android.
+
+### Entry 008: Section 2 - Edit Billing Center (`EditBillingScreen.kt`) Line-Item Parity & Ledger Sync
+* **Timestamp**: 2026-09-19T12:52:00+05:30
+* **Strategic Objective**:
+  - Bring full line-item level editing, product addition/deletion, and real-time server-authoritative recalculation to `EditBillingScreen.kt` for invoices, while maintaining customer ledger balance integrity.
+* **Backend Enhancements**:
+  1. **Authoritative Bill Update & Recalculation** (`PUT /api/billing/:id` in `frontend/modules/billing/api/handlers.js`):
+     - When `products` array is provided, invoice line items and totals are computed authoritatively through `calculator.calculateBillItemsAndSummary`.
+     - Deletes previous `invoice_items` and replaces them with verified calculated items.
+     - Automatically recalculates customer ledger `current_due` debit/credit delta and updates the `ledger` table for the customer.
+  2. **Invoice Items Retrieval in Invoice List** (`GET /api/billing`):
+     - Enriched invoice item mapping to return complete attributes (`batch_id`, `batch_no`, `discount_1_percent`, `discount_2_percent`, `gst_percent`, `final_amount`, `gst_reverse`) so the Android client has full line-item state immediately on editing.
+* **Android Kotlin Upgrades**:
+  1. **`EditBillingScreen.kt`**:
+     - Expanded the bill editing dialog from a simple date editor into a comprehensive line-item management sheet:
+       - Displays all existing invoice items with rate, quantity, GST amount, and line totals.
+       - Supports removing line items.
+       - Supports adding new items from the product catalog via `AddProductDialog`.
+       - Recalculates line items and totals live via `billingViewModel.calculateBill(...)` on change.
+       - "Save Changes" submits the updated products array and dates to `billingViewModel.updateBill(...)` for authoritative server persistence.
+* **Verification & Validation**:
+  - Android Kotlin compilation (`.\gradlew.bat compileDebugKotlin`): **BUILD SUCCESSFUL in 29s** (0 errors).
+  - Server-side billing test suite (`node backend/scripts/test-billing-server-processing.js`): **4/4 PASSED**.
+  - 4 Core Apps Parity test (`node backend/scripts/verify-4-core-apps-parity.js`): **100% PARITY CONFIRMED** (Billed: ₹36,774, Receivables: ₹23,954).
+* **Status**:
+  - Section 2 is complete and verified.
+
+### Entry 009: Hybrid Parity Engine - Instant Client Calculation (`BillCalculator.kt`) & Background Server Sync
+* **Timestamp**: 2026-09-19T13:14:00+05:30
+* **Strategic Objective**:
+  - Implement full local calculation engine on Android (`BillCalculator.kt`) matching `frontend/shared/bill-calculator.js` for 0ms instantaneous, non-debounced UI responsiveness across all billing dialogs and screens, while retaining authoritative server persistence and background ledger synchronization.
+* **Core Additions**:
+  1. **Android Client-Side Calculator (`BillCalculator.kt`)**:
+     - Ported from `frontend/shared/bill-calculator.js` and `backend/core/billing/calculator.js`.
+     - Reverse GST arithmetic (4.77% base reduction for embedded tax).
+     - Multi-tiered cascading discount handling (`disc1` on base, `disc2` on intermediate).
+     - Standard SGST/CGST 50/50 tax split.
+     - Scheme parsing and bonus calculation (e.g. `5+1`, `10+2`).
+     - Subtotal, GST, discount sums, round-off, and grand total.
+  2. **Live Item Preview Banner (`AddProductDialog` in `BillingComponents.kt`)**:
+     - Real-time synchronous calculation banner displays Line Total, Base Amount, GST, and Scheme Bonus as the operator types rate, quantity, or discounts.
+  3. **Non-Debounced Zero-Latency Screens (`NewBillScreen.kt`, `NewOrderScreen.kt`, `EditBillingScreen.kt`)**:
+     - Immediate local calculation updates UI in $<1\text{ms}$ upon adding or removing products (no progress bar blockage or disabled save buttons).
+     - Background coroutine debounces network calls (200ms) to sync authoritative database customer statement balances and projected dues seamlessly.
+  4. **Automated Unit Testing (`BillCalculatorTest.kt`)**:
+     - Validates line items, reverse GST, multi-tier discounts, and summary totals against exact figures from `test-billing-server-processing.js`.
+* **Verification & Validation**:
+  - JUnit unit test suite (`.\gradlew.bat testDebugUnitTest --tests com.example.macosbusinesssuite.BillCalculatorTest`): **BUILD SUCCESSFUL (100% tests passed)**.
+  - Android Gradle compilation (`.\gradlew.bat compileDebugKotlin`): **BUILD SUCCESSFUL in 15s** (0 errors).
+  - Server-side billing test suite (`node backend/scripts/test-billing-server-processing.js`): **4/4 PASSED**.
+  - 4 Core Apps Parity test (`node backend/scripts/verify-4-core-apps-parity.js`): **100% PARITY CONFIRMED** (Billed: ₹36,774, Receivables: ₹23,954).
+* **Status**:
+  - Client-side fast calculation infrastructure is complete and verified. Ready to proceed to Section 3.
+
+### Entry 011: Section 3 - Payments & Credit Notes (`PaymentsCreditNoteScreen.kt`) Ledger Sync & Parity
+* **Timestamp**: 2026-09-19T14:45:00+05:30
+* **Strategic Objective**:
+  - Achieve 100% calculation and balance synchronization parity for Payments and Credit Notes across Web, Android, and Backend without breaking customer running balances or existing web workflows.
+  - Implement instant client-side settlement calculation (quick percentage chips, live remaining balance banners) and immediate authoritative balance refresh upon recording payments/credit notes.
+* **Backend Ledger Synchronization (`backend/core/invoices/payments.js` & `backend/core/payments/handlers.js`)**:
+  1. **Ledger Desync Diagnosis**:
+     - Identified that `createPayment`, `createCreditNote`, `updatePayment`, and `deletePayment` inserted/updated/deleted rows in `payments`, but never recalculated or persisted `current_due`, `total_debit`, and `total_credit` into the `ledger` table.
+     - As a result, customer balances remained stale across both platforms until full ledger recalculation.
+  2. **Authoritative Ledger & Prior Dues Synchronizer (`syncCustomerLedgerAndPriorDues`)**:
+     - Created `syncCustomerLedgerAndPriorDues(db, customerId)` in `backend/core/invoices/payments.js`:
+       - Recalculates `total_debit = SUM(invoices.grand_total)` and `total_credit = SUM(payments.amount) + SUM(credit_notes.credit_amount)`.
+       - Computes `current_due = total_debit - total_credit` and status (`OUTSTANDING`, `OVERPAID`, `SETTLED`).
+       - Upserts into the `ledger` table with timestamp.
+       - Chronologically recomputes `previous_due` across all invoices for the customer using `isStrictlyPrior` timestamp and ID sequence.
+     - Wired into:
+       - `createPayment`: updates ledger and returns authoritative `current_due` and `total_outstanding`.
+       - `createCreditNote`: updates ledger and returns authoritative balances.
+       - `updatePayment`: recalculates customer ledger on amount changes.
+       - `deletePayment`: restores customer ledger and prior dues immediately.
+       - `recalculateLedger`: simplified to reuse `syncCustomerLedgerAndPriorDues(customer.id)`.
+     - In `backend/core/payments/handlers.js`:
+       - Added missing `UPDATE ledger` execution in `deletePayment`.
+* **Android Kotlin UI & Calculation Upgrades (`PaymentsCreditNoteScreen.kt`)**:
+  1. **Quick Settlement Chips**:
+     - Added one-tap settlement ratio chips (`25%`, `50%`, `75%`, `Full Due`) in `RecordPaymentTab` and `IssueCreditNoteTab` for 0ms instant amount allocation.
+  2. **Real-Time Balance Preview Banners**:
+     - Dynamic banner displays `Projected Remaining Due` or `Projected Advance / Credit` instantly as the operator enters amounts.
+  3. **Authoritative Outstanding Due Auto-Refresh**:
+     - On successful payment or credit note creation, immediately triggers `billingViewModel.fetchCustomerOutstanding(selectedCustomer)` to sync server balances on screen.
+  4. **Transaction History Polish**:
+     - Enhanced `TransactionHistoryTab` to support real-time search query filtering across customer opening balances.
+* **Automated Test Suite & Verification**:
+  1. **New Automated Test Suite (`backend/scripts/test-payments-credit-notes-sync.js`)**:
+     - Test 1 (`createPayment` updates ledger & `previous_due`): **PASSED**.
+     - Test 2 (`createCreditNote` updates ledger): **PASSED**.
+     - Test 3 (`updatePayment` adjusts ledger): **PASSED**.
+     - Test 4 (`deletePayment` restores balance): **PASSED**.
+     - Clean transactional rollback ensures zero test data pollution.
+  2. **Existing Test Suites**:
+     - `node backend/scripts/test-billing-server-processing.js`: **4/4 PASSED**.
+     - `node backend/scripts/verify-4-core-apps-parity.js`: **100% PARITY CONFIRMED** (Billed: ₹36,774, Receivables: ₹23,954).
+     - Android Unit Tests (`.\gradlew.bat testDebugUnitTest`): **100% PASSED in 9s**.
+     - Android Kotlin Compilation (`.\gradlew.bat compileDebugKotlin`): **BUILD SUCCESSFUL in 13s** (0 errors).
+* **Phase 2 Rust Shared Core Roadmap Note**:
+  - As per the user's architectural directive, Phase 1 prioritizes completing functional parity across all business screens (Next: Section 4: Customer Statements & Detailed Ledger, Section 5: Drafts & Templates).
+  - The shared Rust calculation core (`billing_core` compiling to WASM for Web/Node and JNI `.so` via NDK 27.1 for Android) remains firmly scheduled for **Phase 2 (Post-Parity Hardening)**.
+* **Status**:
+  - Section 3 is 100% complete, fully verified, and zero regressions confirmed across Web, Android, and Server.
 
 ---
 

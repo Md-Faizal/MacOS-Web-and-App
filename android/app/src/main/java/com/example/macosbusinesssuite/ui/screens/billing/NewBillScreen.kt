@@ -21,6 +21,8 @@ import com.example.macosbusinesssuite.data.model.*
 import com.example.macosbusinesssuite.ui.screens.billing.components.AddProductDialog
 import com.example.macosbusinesssuite.ui.screens.billing.components.CustomerPickerDialog
 import com.example.macosbusinesssuite.ui.viewmodels.BillingViewModel
+import com.example.macosbusinesssuite.domain.calculation.BillCalculator
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,12 +45,32 @@ fun NewBillScreen(
     // Line items input state
     var rawItems by remember { mutableStateOf(listOf<CalculateBillItemRequest>()) }
     var serverCalcResult by remember { mutableStateOf<CalculateBillResponse?>(null) }
-    var isCalculating by remember { mutableStateOf(false) }
+    var isServerSyncing by remember { mutableStateOf(false) }
 
-    // Trigger server-authoritative calculation whenever items or customer change
+    // 1. Instant Client-Side Calculation (0ms latency - updates UI immediately as items are added/deleted)
+    LaunchedEffect(rawItems, selectedCustomer) {
+        if (rawItems.isNotEmpty()) {
+            val instant = BillCalculator.calculate(
+                items = rawItems,
+                customer = selectedCustomer,
+                roundOffEnabled = true
+            )
+            serverCalcResult = serverCalcResult?.let { prev ->
+                instant.copy(
+                    previousDue = prev.previousDue,
+                    projectedDue = BillCalculator.round2(prev.previousDue + instant.summary.grandTotal)
+                )
+            } ?: instant
+        } else {
+            serverCalcResult = null
+        }
+    }
+
+    // 2. Debounced Background Server Verification (pulls exact DB statement running balance)
     LaunchedEffect(rawItems, customerName, selectedCustomer) {
         if (rawItems.isNotEmpty()) {
-            isCalculating = true
+            delay(200)
+            isServerSyncing = true
             val calcReq = CalculateBillRequest(
                 customerId = selectedCustomer?.id,
                 customerName = customerName.ifEmpty { null },
@@ -56,12 +78,13 @@ fun NewBillScreen(
                 roundOffEnabled = true
             )
             billingViewModel.calculateBill(calcReq) { resp ->
-                serverCalcResult = resp
-                isCalculating = false
+                if (resp != null && resp.success) {
+                    serverCalcResult = resp
+                }
+                isServerSyncing = false
             }
         } else {
-            serverCalcResult = null
-            isCalculating = false
+            isServerSyncing = false
         }
     }
 
@@ -76,7 +99,7 @@ fun NewBillScreen(
                     }
                 },
                 actions = {
-                    if (isLoading || isCalculating) {
+                    if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 16.dp), strokeWidth = 2.dp)
                     } else {
                         Button(
@@ -213,8 +236,8 @@ fun NewBillScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                if (isCalculating) {
-                    Text("Recalculating...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                if (isServerSyncing) {
+                    Text("Syncing...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
             }
 

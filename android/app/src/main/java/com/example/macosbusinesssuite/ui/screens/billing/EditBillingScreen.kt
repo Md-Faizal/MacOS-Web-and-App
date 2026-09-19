@@ -22,6 +22,15 @@ import com.example.macosbusinesssuite.data.model.OrderRecord
 import com.example.macosbusinesssuite.data.model.PaymentRecord
 import com.example.macosbusinesssuite.data.model.UpdateBillRequest
 import com.example.macosbusinesssuite.ui.viewmodels.BillingViewModel
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.filled.Add
+import com.example.macosbusinesssuite.data.model.BillItem
+import com.example.macosbusinesssuite.data.model.CalculateBillItemRequest
+import com.example.macosbusinesssuite.data.model.CalculateBillRequest
+import com.example.macosbusinesssuite.data.model.CalculateBillResponse
+import com.example.macosbusinesssuite.ui.screens.billing.components.AddProductDialog
+import com.example.macosbusinesssuite.domain.calculation.BillCalculator
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -226,51 +235,309 @@ fun EditBillingScreen(
         )
     }
 
-    // Edit Bill Dialog
+    // Edit Bill Dialog with full line items support and server-side recalculation
     editingBill?.let { bill ->
+        val productCatalog by billingViewModel.products.collectAsState()
         var dueDate by remember { mutableStateOf(bill.dueDate ?: "") }
         var invoiceDate by remember { mutableStateOf(bill.date) }
+        var showAddItemDialog by remember { mutableStateOf(false) }
+
+        var editItems by remember(bill) {
+            mutableStateOf(
+                bill.items.map { item ->
+                    CalculateBillItemRequest(
+                        productId = item.productId.ifBlank { null },
+                        productName = item.productName,
+                        variantId = item.variantId,
+                        batchId = item.batchId,
+                        batchNo = item.batchNo,
+                        qty = item.quantity,
+                        rate = item.rate,
+                        mrp = item.rate,
+                        disc1 = item.discount1Percent,
+                        disc2 = item.discount2Percent,
+                        gstPercent = item.gstPercent,
+                        gstReverse = false
+                    )
+                }
+            )
+        }
+
+        var serverCalcResult by remember { mutableStateOf<CalculateBillResponse?>(null) }
+        var isRecalculating by remember { mutableStateOf(false) }
+
+        // 1. Instant Client-Side Calculation (0ms latency)
+        LaunchedEffect(editItems) {
+            if (editItems.isNotEmpty()) {
+                val instant = BillCalculator.calculate(
+                    items = editItems,
+                    customer = null,
+                    roundOffEnabled = true
+                )
+                serverCalcResult = serverCalcResult?.let { prev ->
+                    instant.copy(
+                        previousDue = prev.previousDue,
+                        projectedDue = BillCalculator.round2(prev.previousDue + instant.summary.grandTotal)
+                    )
+                } ?: instant
+            } else {
+                serverCalcResult = null
+            }
+        }
+
+        // 2. Debounced Background Server Verification
+        LaunchedEffect(editItems, invoiceDate) {
+            if (editItems.isNotEmpty()) {
+                delay(200)
+                isRecalculating = true
+                val calcReq = CalculateBillRequest(
+                    customerId = bill.customerId,
+                    customerName = bill.customerName,
+                    items = editItems,
+                    roundOffEnabled = true,
+                    invoiceDate = invoiceDate.ifBlank { null }
+                )
+                billingViewModel.calculateBill(calcReq) { response ->
+                    if (response != null && response.success) {
+                        serverCalcResult = response
+                    }
+                    isRecalculating = false
+                }
+            } else {
+                isRecalculating = false
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { editingBill = null },
-            title = { Text("Edit Bill ${bill.billNumber}") },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Edit Bill ${bill.billNumber}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                    if (isRecalculating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Customer: ${bill.customerName}", fontWeight = FontWeight.SemiBold)
-                    Text("Amount: ₹${bill.grandTotal}", color = MaterialTheme.colorScheme.primary)
-                    OutlinedTextField(
-                        value = invoiceDate,
-                        onValueChange = { invoiceDate = it },
-                        label = { Text("Bill Date") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = dueDate,
-                        onValueChange = { dueDate = it },
-                        label = { Text("Due Date") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Customer: ${bill.customerName}", fontWeight = FontWeight.SemiBold)
+                        val grandTotalDisplay = serverCalcResult?.summary?.grandTotal ?: bill.grandTotal
+                        Text("Total: ₹$grandTotalDisplay", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = invoiceDate,
+                            onValueChange = { invoiceDate = it },
+                            label = { Text("Bill Date") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = dueDate,
+                            onValueChange = { dueDate = it },
+                            label = { Text("Due Date") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+
+                    // Line Items Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Line Items (${editItems.size})", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
+                        FilledTonalButton(
+                            onClick = { showAddItemDialog = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Item", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    if (editItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No items in invoice. Tap 'Add Item' to add.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val displayItems = serverCalcResult?.items
+                            itemsIndexed(editItems) { idx, itm ->
+                                val calcItem = displayItems?.getOrNull(idx)
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                calcItem?.productName ?: itm.productName ?: "Item",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            val q = calcItem?.qty ?: itm.qty
+                                            val r = calcItem?.rate ?: itm.rate
+                                            val amt = calcItem?.amount ?: (q * r)
+                                            Text("Qty: $q × ₹$r = ₹$amt", style = MaterialTheme.typography.bodySmall)
+                                            val gst = calcItem?.gstPercent ?: itm.gstPercent
+                                            if (gst > 0) {
+                                                Text("GST: $gst% (₹${calcItem?.gstAmount ?: 0.0})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                                            }
+                                        }
+                                        val finalVal = calcItem?.finalAmount ?: (itm.rate * itm.qty)
+                                        Text("₹$finalVal", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp))
+                                        IconButton(
+                                            onClick = {
+                                                editItems = editItems.toMutableList().also { it.removeAt(idx) }
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete Item", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Summary Section
+                    val summary = serverCalcResult?.summary
+                    if (summary != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Subtotal", style = MaterialTheme.typography.bodySmall)
+                                    Text("₹${summary.subtotal}", style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (summary.totalDiscount > 0) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Discount", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                        Text("-₹${summary.totalDiscount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                if (summary.totalGst > 0) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("GST", style = MaterialTheme.typography.bodySmall)
+                                        Text("₹${summary.totalGst}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Grand Total", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                    Text("₹${summary.grandTotal}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    val req = UpdateBillRequest(
-                        invoiceDate = invoiceDate.ifBlank { null },
-                        dueDate = dueDate.ifBlank { null }
-                    )
-                    billingViewModel.updateBill(bill.id, req) { success, msg ->
-                        editingBill = null
-                        scope.launch {
-                            snackbarHostState.showSnackbar(if (success) "✓ Bill updated" else msg ?: "Error updating bill")
+                Button(
+                    onClick = {
+                        val finalProducts = (serverCalcResult?.items ?: emptyList()).map { item ->
+                            BillItem(
+                                productId = item.productId ?: "",
+                                productName = item.productName,
+                                variantId = item.variantId,
+                                batchId = item.batchId,
+                                batchNo = item.batchNo,
+                                quantity = item.qty,
+                                rate = item.rate,
+                                amount = item.amount,
+                                discount1Percent = item.discount1Percent,
+                                discount1Amount = item.discount1Amount,
+                                discount2Percent = item.discount2Percent,
+                                discount2Amount = item.discount2Amount,
+                                gstPercent = item.gstPercent,
+                                gstAmount = item.gstAmount,
+                                finalAmount = item.finalAmount
+                            )
+                        }.ifEmpty {
+                            editItems.map { itm ->
+                                BillItem(
+                                    productId = itm.productId ?: "",
+                                    productName = itm.productName ?: "Item",
+                                    quantity = itm.qty,
+                                    rate = itm.rate,
+                                    amount = itm.qty * itm.rate,
+                                    discount1Percent = itm.disc1,
+                                    discount2Percent = itm.disc2,
+                                    gstPercent = itm.gstPercent,
+                                    finalAmount = itm.qty * itm.rate
+                                )
+                            }
                         }
-                    }
-                }) {
-                    Text("Save")
+
+                        val req = UpdateBillRequest(
+                            invoiceDate = invoiceDate.ifBlank { null },
+                            dueDate = dueDate.ifBlank { null },
+                            products = finalProducts.ifEmpty { null }
+                        )
+
+                        billingViewModel.updateBill(bill.id, req) { success, msg ->
+                            editingBill = null
+                            scope.launch {
+                                snackbarHostState.showSnackbar(if (success) "✓ Bill updated" else msg ?: "Error updating bill")
+                            }
+                        }
+                    },
+                    enabled = editItems.isNotEmpty()
+                ) {
+                    Text("Save Changes")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { editingBill = null }) { Text("Cancel") }
             }
         )
+
+        if (showAddItemDialog) {
+            AddProductDialog(
+                products = productCatalog,
+                onDismiss = { showAddItemDialog = false },
+                onAdd = { _, itemReq ->
+                    editItems = editItems + itemReq
+                    showAddItemDialog = false
+                }
+            )
+        }
     }
 
     // Edit Payment Dialog
