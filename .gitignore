@@ -54,3 +54,8 @@ __pycache__/
 
 # ─── PM2 ───
 .pm2/
+
+# ─── Rust ───
+target/
+**/target/
+

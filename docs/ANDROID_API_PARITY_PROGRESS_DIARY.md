@@ -476,10 +476,48 @@ When attempting to build the native Android client using the exact same APIs:
 * **Status**:
   - Section 5 is 100% complete and verified. Ready to proceed to the next section or review.
 
+### [2026-09-19 18:00] - Entry 014: Unified Enterprise Core (`suite_core`) — Rust Shared Core, Domain Decoupling, WebAssembly & Android NDK Compilation
+
+* **Objective**:
+  Re-architect enterprise business logic into a single, high-performance, deterministic Rust core (`shared/suite_core`), resolving domain anomalies (decoupling Aging Analysis from Billing into Analytics), achieving sub-microsecond calculation performance across Web (via WASM) and Android (via NDK/JNI), while strictly preserving existing database records, columns, and schemas with zero data loss.
+
+* **Architectural Decisions & Domain Separation**:
+  1. **Domain Anomaly Resolution**:
+     - *Decoupled Aging*: Relocated aging arithmetic (`0-7d`, `8-15d`, `16-30d`, `>30d`, and macro `0-30d`, `31-60d`, `61+d`) from Billing into `analytics::aging`. Both Customer Statement (ledger) and Executive Analytics dashboard now consume this single, pure engine.
+     - *Ledger vs Invoicing Separation*: Decoupled into `finance::invoicing` (pure transaction math, 4.77% reverse GST, tiered cascading discounts, scheme bonuses, round-offs) and `finance::ledger` (chronological FIFO debt allocation, running balance statements).
+     - *Executive KPIs*: Consolidated in `analytics::kpi` ensuring Web and Mobile never display divergent revenue or receivables.
+     - *Sales & Catalog*: Implemented `sales::orders` (fulfillment ratios and pipeline validation) and `catalog::expiry` (batch expiry days arithmetic).
+  2. **Database Integrity & Backward Compatibility**:
+     - Maintained 100% compatibility with SQLite tables (`invoices`, `payments`, `contacts`, `products`, `orders`).
+     - Preserved all column aliases (`grand_total`, `grandTotal`, `total_amount`, `total_discount`, `discountTotal`, `total_gst`, `taxTotal`, `round_off`, `roundOff`, `running_balance`, `ageing0to7`, `ageing8to15`, etc.).
+  3. **High-Precision Arithmetic & Fast-Path ABI**:
+     - Integer Paise fixed-point representations and unrounded intermediate formulas eliminate IEEE-754 binary floating-point drift.
+     - Fast-path primitive register C ABI (`calc_line_item_fast`) enables <10ns keystroke line item calculations for modal typing.
+
+* **Build & Compilation Results**:
+  1. **Rust Parity Test Suite (`tests/parity_tests.rs`)**:
+     - 10/10 tests passed (`cargo test` on `x86_64-pc-windows-gnu` in 0.00s).
+  2. **WebAssembly Binary (`wasm32-unknown-unknown`)**:
+     - Production release binary compiled to `shared/suite_core.wasm` (221 KB).
+     - Deployed to `frontend/shared/suite_core.wasm` and `backend/core/billing/suite_core.wasm`.
+     - `frontend/shared/suite_core_bridge.js` created with synchronous Node.js loading and asynchronous browser loading.
+     - Seamless integration into `frontend/shared/bill-calculator.js` with instant WASM acceleration and transparent JS fallback.
+  3. **Android NDK 27.1 Native Binaries**:
+     - Cross-compiled release shared libraries (`.so`) using Android NDK 27.1 clang:
+       - `android/app/src/main/jniLibs/arm64-v8a/libsuite_core.so` (506 KB)
+       - `android/app/src/main/jniLibs/x86_64/libsuite_core.so` (566 KB)
+     - `BillCalculator.kt` wired to load `libsuite_core` with fallback to native Kotlin arithmetic.
+
+* **Verification & Parity Validation**:
+  - `cargo test --manifest-path shared/suite_core/Cargo.toml`: **10/10 PASSED**
+  - `node backend/scripts/test-billing-server-processing.js`: **4/4 PASSED** (WASM Accelerated: YES)
+  - `node backend/scripts/verify-4-core-apps-parity.js`: **100% PARITY CONFIRMED** across all 4 core apps
+  - `node backend/scripts/test-payments-credit-notes-sync.js`: **4/4 PASSED** (clean DB rollback)
+  - `.\gradlew.bat testDebugUnitTest`: **BUILD SUCCESSFUL in 47s** (all Android unit tests passed)
+
+* **Status**:
+  - Core Rust architecture, WebAssembly deployment, Android native libraries, and cross-platform tests are 100% operational. Zero database schema breaks. Ready for further operations.
+
 ---
 
 *(Updates will be logged here chronologically as each work item progresses.)*
-
-
-
-

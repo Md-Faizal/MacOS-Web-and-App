@@ -22,6 +22,28 @@ import java.math.RoundingMode
  */
 object BillCalculator {
 
+    private var isNativeLoaded = false
+
+    init {
+        try {
+            System.loadLibrary("suite_core")
+            isNativeLoaded = true
+        } catch (_: Throwable) {
+            isNativeLoaded = false
+        }
+    }
+
+    @JvmStatic
+    private external fun calculateLineItemFast(
+        rate: Double,
+        qty: Double,
+        disc1: Double,
+        disc2: Double,
+        gst: Double,
+        gstReverse: Byte,
+        outPtr: DoubleArray
+    ): Int
+
     fun round2(value: Double): Double {
         return try {
             BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toDouble()
@@ -64,6 +86,56 @@ object BillCalculator {
         val gstTotal = rawItem.gstPercent
         val sgstPercent = gstTotal / 2.0
         val cgstPercent = gstTotal / 2.0
+
+        if (isNativeLoaded) {
+            try {
+                val out = DoubleArray(7)
+                val code = calculateLineItemFast(
+                    rate, qty, disc1Percent, disc2Percent, gstTotal,
+                    if (gstReverse) 1 else 0, out
+                )
+                if (code == 0) {
+                    val amount = out[0]
+                    val disc1Amount = out[1]
+                    val disc2Amount = out[2]
+                    val gstAmount = out[3]
+                    val sgstAmount = out[4]
+                    val cgstAmount = out[5]
+                    val finalAmount = out[6]
+                    val freeCount = calculateFreeItems(qty, rawItem.scheme)
+                    val effectiveRate = if (gstReverse) rate * (1.0 - 0.0477) else rate
+                    val discountedRate = effectiveRate * (1.0 - disc1Percent / 100.0)
+
+                    return CalculatedServerItem(
+                        index = index,
+                        productId = rawItem.productId,
+                        productName = rawItem.productName ?: "Product",
+                        variantId = rawItem.variantId,
+                        batchId = rawItem.batchId,
+                        packValue = rawItem.packValue,
+                        packType = rawItem.packType,
+                        batchNo = rawItem.batchNo,
+                        expDate = rawItem.expDate,
+                        scheme = rawItem.scheme,
+                        free = freeCount,
+                        rate = round2(effectiveRate),
+                        discountedRate = round2(discountedRate),
+                        qty = qty,
+                        amount = round2(amount),
+                        discount1Percent = disc1Percent,
+                        discount1Amount = round2(disc1Amount),
+                        discount2Percent = disc2Percent,
+                        discount2Amount = round2(disc2Amount),
+                        gstPercent = gstTotal,
+                        gstAmount = round2(gstAmount),
+                        sgstAmount = round2(sgstAmount),
+                        cgstAmount = round2(cgstAmount),
+                        finalAmount = round2(finalAmount),
+                        gstReverse = gstReverse
+                    )
+                }
+            } catch (_: Throwable) {}
+        }
 
         // Reverse GST Logic: If gstReverse, apply 4.77% reduction to rate first
         if (gstReverse) {
