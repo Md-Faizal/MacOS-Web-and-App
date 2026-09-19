@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -95,61 +96,124 @@ fun NewBillScreen(
                 title = { Text("New Bill", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 16.dp), strokeWidth = 2.dp)
                     } else {
-                        Button(
-                            onClick = {
-                                val billItems = (serverCalcResult?.items ?: emptyList()).map { item ->
-                                    BillItem(
-                                        productId = item.productId ?: "",
-                                        productName = item.productName,
-                                        variantId = item.variantId,
-                                        batchId = item.batchId,
-                                        batchNo = item.batchNo,
-                                        quantity = item.qty,
-                                        rate = item.rate,
-                                        amount = item.amount,
-                                        discount1Percent = item.discount1Percent,
-                                        discount1Amount = item.discount1Amount,
-                                        discount2Percent = item.discount2Percent,
-                                        discount2Amount = item.discount2Amount,
-                                        gstPercent = item.gstPercent,
-                                        gstAmount = item.gstAmount,
-                                        finalAmount = item.finalAmount
-                                    )
-                                }
-                                val req = CreateBillRequest(
-                                    customerId = selectedCustomer?.id,
-                                    customerName = customerName.ifEmpty { "Walk-in Customer" },
-                                    customerPhone = selectedCustomer?.phone,
-                                    items = billItems,
-                                    subtotal = serverCalcResult?.summary?.subtotal ?: 0.0,
-                                    discountTotal = serverCalcResult?.summary?.totalDiscount ?: 0.0,
-                                    taxTotal = serverCalcResult?.summary?.totalGst ?: 0.0,
-                                    roundOff = serverCalcResult?.summary?.roundOff ?: 0.0,
-                                    grandTotal = serverCalcResult?.summary?.grandTotal ?: 0.0,
-                                    paidAmount = 0.0,
-                                    paymentMode = "Cash"
-                                )
-                                billingViewModel.createBill(req) { success, msg ->
-                                    if (success) {
-                                        navController.navigateUp()
-                                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val resolvedCustId = selectedCustomer?.id ?: contacts.find { it.name.equals(customerName, true) }?.id
+                                    if (resolvedCustId.isNullOrBlank()) {
                                         scope.launch {
-                                            snackbarHostState.showSnackbar(msg ?: "Failed to save bill")
+                                            snackbarHostState.showSnackbar("Please select a registered customer to save a draft order")
+                                        }
+                                        return@OutlinedButton
+                                    }
+                                    val calculatedItems = serverCalcResult?.items ?: emptyList()
+                                    val orderItems = if (calculatedItems.isNotEmpty()) {
+                                        calculatedItems.map {
+                                            OrderItemRequest(
+                                                productId = it.productId ?: "",
+                                                variantId = it.variantId,
+                                                batchId = it.batchId,
+                                                qty = it.qty,
+                                                rate = it.rate,
+                                                amount = it.finalAmount
+                                            )
+                                        }
+                                    } else {
+                                        rawItems.map {
+                                            OrderItemRequest(
+                                                productId = it.productId ?: "",
+                                                variantId = it.variantId,
+                                                batchId = it.batchId,
+                                                qty = it.qty,
+                                                rate = it.rate,
+                                                amount = it.qty * it.rate
+                                            )
                                         }
                                     }
-                                }
-                            },
-                            enabled = customerName.isNotBlank() && rawItems.isNotEmpty() && !isLoading,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Save Bill", fontWeight = FontWeight.Bold)
+                                    val grandTotal = serverCalcResult?.summary?.grandTotal ?: orderItems.sumOf { it.amount }
+                                    val req = CreateOrderRequest(
+                                        customerId = resolvedCustId,
+                                        currentStage = "stage1",
+                                        orderNotes = "Draft saved from New Bill screen",
+                                        totalAmount = grandTotal,
+                                        items = orderItems
+                                    )
+                                    billingViewModel.createOrder(req) { success, msg ->
+                                        if (success) {
+                                            navController.navigateUp()
+                                        } else {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(msg ?: "Failed to save draft order")
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = customerName.isNotBlank() && rawItems.isNotEmpty() && !isLoading,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Save Draft")
+                            }
+
+                            Button(
+                                onClick = {
+                                    val billItems = (serverCalcResult?.items ?: emptyList()).map { item ->
+                                        BillItem(
+                                            productId = item.productId ?: "",
+                                            productName = item.productName,
+                                            variantId = item.variantId,
+                                            batchId = item.batchId,
+                                            batchNo = item.batchNo,
+                                            quantity = item.qty,
+                                            rate = item.rate,
+                                            amount = item.amount,
+                                            discount1Percent = item.discount1Percent,
+                                            discount1Amount = item.discount1Amount,
+                                            discount2Percent = item.discount2Percent,
+                                            discount2Amount = item.discount2Amount,
+                                            gstPercent = item.gstPercent,
+                                            gstAmount = item.gstAmount,
+                                            finalAmount = item.finalAmount
+                                        )
+                                    }
+                                    val req = CreateBillRequest(
+                                        customerId = selectedCustomer?.id,
+                                        customerName = customerName.ifEmpty { "Walk-in Customer" },
+                                        customerPhone = selectedCustomer?.phone,
+                                        items = billItems,
+                                        subtotal = serverCalcResult?.summary?.subtotal ?: 0.0,
+                                        discountTotal = serverCalcResult?.summary?.totalDiscount ?: 0.0,
+                                        taxTotal = serverCalcResult?.summary?.totalGst ?: 0.0,
+                                        roundOff = serverCalcResult?.summary?.roundOff ?: 0.0,
+                                        grandTotal = serverCalcResult?.summary?.grandTotal ?: 0.0,
+                                        paidAmount = 0.0,
+                                        paymentMode = "Cash"
+                                    )
+                                    billingViewModel.createBill(req) { success, msg ->
+                                        if (success) {
+                                            navController.navigateUp()
+                                        } else {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(msg ?: "Failed to save bill")
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = customerName.isNotBlank() && rawItems.isNotEmpty() && !isLoading,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Save Bill", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 },

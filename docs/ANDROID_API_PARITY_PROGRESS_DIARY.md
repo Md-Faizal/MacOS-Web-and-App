@@ -437,12 +437,49 @@ When attempting to build the native Android client using the exact same APIs:
      - `node backend/scripts/test-billing-server-processing.js`: **4/4 PASSED**.
      - `node backend/scripts/verify-4-core-apps-parity.js`: **100% PARITY CONFIRMED**.
 
-* **Next Milestone**:
-  - Proceed to **Section 5: Drafts, Quotations & Templates (`DraftsScreen.kt`, `TemplatesScreen.kt`)** to complete quotation conversion and draft restoration parity.
+### [2026-09-19 15:15] - Entry 013: Section 5 Completed — Billing History, Drafts, Quotations & Order Conversion Parity
+
+* **Objective**:
+  Transform Android billing history and order drafting from a passive view into an interactive enterprise operational hub matching Web Desktop (`history.js`, `new-bill.js`, `new-order.js`). Enable seamless quotation/draft creation in `NewBillScreen.kt` and authoritative one-tap order-to-tax-invoice conversion directly in `BillingHistoryScreen.kt`.
+
+* **Key Architecture & UI Parity Implementations**:
+  1. **Interactive Operational Hub (`BillingHistoryScreen.kt`)**:
+     - **Enterprise KPI Ribbon**: Top header metric card displaying real-time `TOTAL INVOICED`, `TOTAL COLLECTED`, and `PIPELINE ORDERS` matching the web `history.js` executive header stats.
+     - **Material 3 PrimaryTabRow**: Replaced deprecated `TabRow` with `PrimaryTabRow` displaying dynamic count indicators: `Bills (N)`, `Payments (N)`, `Credits (N)`, and `Orders (N)`.
+     - **Clickable Cards**: Upgraded `HistoryCard` across all tabs to be interactive, showing `PixelStatusBadge` indicators (`PAID`, `PARTIAL`, `PAYMENT`, `CREDIT`, `PENDING`, `CONFIRMED`, `COMPLETED`).
+     - **Action Sheets**:
+       - *Bill Action Sheet*: Document Preview via `billingViewModel.fetchPreviewBytes`, native PDF export via `billingViewModel.exportPdfBytes` & `sharePdfFile`, customer ledger navigation (`detailed_ledger/{id}`), and bill deletion with confirmation dialog.
+       - *Payment Action Sheet*: Receipt preview, attachment viewer (`ZoomableAttachmentDialog`), customer ledger navigation, and deletion.
+       - *Credit Note Action Sheet*: Credit note document preview, ledger navigation, and deletion.
+       - *Order Action Sheet*: Comprehensive order inspection with notes and itemized line items list.
+     - **Direct Order-to-Invoice Conversion**:
+       - Embedded a prominent one-tap action: **"Convert to Tax Invoice"** for pending/unfulfilled orders.
+       - Connects directly to authoritative backend order conversion (`billingViewModel.convertOrderToInvoice(order.id)`) calling `POST /api/billing/orders/:id/convert-to-invoice`.
+       - Atomically fulfills the order, generates the tax invoice, deducts inventory, posts to the customer ledger, and refreshes local billing data.
+  2. **Draft & Quotation Creation in New Bill (`NewBillScreen.kt`)**:
+     - Added an **"Save Draft"** action button in `TopAppBar.actions` next to "Save Bill".
+     - Operators can stage products and customer carts, then save directly as a `stage1` (Intake / Quotation / Draft) Order without polluting tax invoice sequences or customer debt until finalized.
+  3. **Shared Document Utilities & Code Quality**:
+     - `DetailedLedgerScreen.kt`: Exposing `sharePdfFile` as `internal` so native Android PDF chooser intents are shared seamlessly with `BillingHistoryScreen.kt`.
+     - Replaced all deprecated `Icons.Default.ArrowBack` references with `Icons.AutoMirrored.Filled.ArrowBack` across `BillingHistoryScreen.kt`, `NewBillScreen.kt`, and `NewOrderScreen.kt`.
+
+* **Automated Verification & Validation**:
+  1. **Kotlin Compilation**:
+     - `.\gradlew.bat compileDebugKotlin`: **BUILD SUCCESSFUL in 37s** (0 errors).
+  2. **Android Unit Tests**:
+     - `.\gradlew.bat testDebugUnitTest`: **BUILD SUCCESSFUL in 25s** (100% tests passed, including `BillCalculatorTest`).
+  3. **Backend & Parity Test Suites**:
+     - `node backend/scripts/test-payments-credit-notes-sync.js`: **4/4 PASSED** (clean database rollback).
+     - `node backend/scripts/test-billing-server-processing.js`: **4/4 PASSED** (including Test 4: `Convert Order to Invoice Server-Authoritatively`).
+     - `node backend/scripts/verify-4-core-apps-parity.js`: **100% MATCH** across all 4 core business applications.
+
+* **Status**:
+  - Section 5 is 100% complete and verified. Ready to proceed to the next section or review.
 
 ---
 
 *(Updates will be logged here chronologically as each work item progresses.)*
+
 
 
 

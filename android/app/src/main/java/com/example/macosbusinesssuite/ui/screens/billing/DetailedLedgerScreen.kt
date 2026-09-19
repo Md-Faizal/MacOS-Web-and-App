@@ -1269,7 +1269,7 @@ private fun filterPaymentsByPeriod(pmts: List<PaymentRecord>, p: DateFilterPerio
     }
 }
 
-private fun sharePdfFile(c: Context, name: String, bytes: ByteArray) {
+internal fun sharePdfFile(c: Context, name: String, bytes: ByteArray) {
     try {
         val f = File(c.cacheDir, name); FileOutputStream(f).use { it.write(bytes) }
         val uri = FileProvider.getUriForFile(c, "${c.packageName}.fileprovider", f)
