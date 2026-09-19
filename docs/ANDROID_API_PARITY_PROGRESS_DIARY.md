@@ -397,6 +397,51 @@ When attempting to build the native Android client using the exact same APIs:
 
 ---
 
+### [2026-09-19 14:55] - Entry 012: Section 4 Completed — Customer Statements & Detailed Ledger Parity & Receivables Aging Breakdown
+
+* **Objective**:
+  Achieve complete calculation, statement feed, and visual parity between Web Desktop (`customer-ledger.js`, `ledger.js`) and Android Native (`CustomerLedgerScreen.kt`, `DetailedLedgerScreen.kt`) utilizing the server-authoritative customer statement engine.
+
+* **Backend & Server Hardening**:
+  - **`frontend/modules/billing/api/handlers.js` (`getLedgerCustomers`)**:
+    - Hardened balance arithmetic at line 1366: guarded with explicit `Number(c.opening_balance) || 0` and `Number(c.current_due) || 0`.
+    - Eliminated potential `NaN` or unintended string concatenation for newly registered contacts with zero prior transactions.
+  - **Server Statement Engine (`backend/core/billing/calculator.js:calculateCustomerStatement`)**:
+    - Confirmed full delivery of enriched bills, enriched payments, chronological `statement_rows` with running balances, and `summary` containing aging buckets (`0-7d`, `8-15d`, `16-30d`, `>30d`) and `paid_percent`.
+
+* **Android Native UI & Domain Parity (`DetailedLedgerScreen.kt`, `FifoSettlementCalculator.kt`, `PixelComponents.kt`)**:
+  1. **Direct Server Statement Consumption**:
+     - `DetailedLedgerScreenContent`: When viewing all dates (`selectedDateFilter == DateFilterPeriod.ALL`) and `ledgerData?.statementRows` is populated, the screen maps the authoritative server statement rows directly into `StatementRow`.
+     - Maintains exact chronological sequence, running balance progression, and transaction settlement tags (`SETTLED IN ...D`, `...D OUTSTANDING`, `ALLOCATED (...)`).
+     - Gracefully falls back to local FIFO reconstruction when filtered by specific date ranges or running offline.
+  2. **Receivables Aging Breakdown Component (`ReceivablesAgingCard` & `AgingPill`)**:
+     - Added dedicated Material 3 aging card displaying aged brackets: `0–7 Days` (Green), `8–15 Days` (Blue), `16–30 Days` (Amber), `>30 Days` (Red).
+     - Computed authoritatively from server summary (or locally on date-filtered sub-ranges) and dynamically rendered in the collapsible header whenever `amountDue > 0`.
+  3. **Settlement Progress Indicator**:
+     - Embedded a LinearProgressIndicator in the header displaying `% Settled` (e.g. `85% Settled`) with real-time purchase vs collected reconciliation.
+  4. **Transaction Badges & Status Indication**:
+     - Extended `PixelStatusBadge` in `PixelComponents.kt` with tailored color schemes for `INVOICE`, `CREDIT`, and `OPENING`.
+     - Redesigned `StatementRowCard` with status badges, settlement info chips, debit/credit color separation, and prominent running balances.
+  5. **Share Ledger Statement**:
+     - Enhanced `ShareLedgerDialog` in `DetailedLedgerScreen.kt` to clearly format credit balances (`Credit Balance: ₹...`) and cleanly fallback to customer names if contact IDs are blank.
+  6. **FifoSettlementCalculator**:
+     - Added `settled` property getter alias to `SettlementInfo` for Kotlin syntax ergonomics and backwards compatibility.
+
+* **Automated Test Suite & Verification**:
+  1. **Kotlin Compilation**:
+     - `.\gradlew.bat compileDebugKotlin`: **BUILD SUCCESSFUL in 1m 36s** (0 errors).
+  2. **Android Unit Tests**:
+     - `.\gradlew.bat testDebugUnitTest`: **BUILD SUCCESSFUL in 22s** (All tests passed, including `BillCalculatorTest`).
+  3. **Node/Backend Test Suites**:
+     - `node backend/scripts/test-payments-credit-notes-sync.js`: **4/4 PASSED**.
+     - `node backend/scripts/test-billing-server-processing.js`: **4/4 PASSED**.
+     - `node backend/scripts/verify-4-core-apps-parity.js`: **100% PARITY CONFIRMED**.
+
+* **Next Milestone**:
+  - Proceed to **Section 5: Drafts, Quotations & Templates (`DraftsScreen.kt`, `TemplatesScreen.kt`)** to complete quotation conversion and draft restoration parity.
+
+---
+
 *(Updates will be logged here chronologically as each work item progresses.)*
 
 

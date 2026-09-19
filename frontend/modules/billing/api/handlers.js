@@ -1362,8 +1362,9 @@ module.exports = function(db) {
 
         // Format response for ledger view - include opening balance in total due calculation
         const formattedCustomers = customers.map(c => {
-          const openingBalance = c.opening_balance || 0;
-          const amountDueWithOpening = c.current_due + openingBalance;
+          const openingBalance = Number(c.opening_balance) || 0;
+          const currentDue = Number(c.current_due) || 0;
+          const amountDueWithOpening = currentDue + openingBalance;
           
           // Calculate days overdue (grace period of 30 days)
           let daysOverdue = 0;

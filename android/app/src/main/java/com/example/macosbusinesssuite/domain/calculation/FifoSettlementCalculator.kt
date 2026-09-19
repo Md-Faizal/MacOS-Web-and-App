@@ -191,7 +191,9 @@ object FifoSettlementCalculator {
     data class SettlementInfo(
         val isSettled: Boolean,
         val days: Int
-    )
+    ) {
+        val settled: Boolean get() = isSettled
+    }
 
     /**
      * Calculate settlement map matching web's calculateSettlementMap.

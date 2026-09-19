@@ -127,6 +127,9 @@ fun PixelStatusBadge(status: String) {
         "paid", "active", "clear", "connected", "this device" -> StatusActiveContainer to StatusActive
         "pending", "partial" -> StatusPendingContainer to StatusPending
         "overdue", "inactive", "danger", "churned", "not linked" -> StatusDangerContainer to StatusDanger
+        "credit", "credit_note", "credit note" -> Color(0xFFEDE7F6) to Color(0xFF512DA8)
+        "invoice", "bill" -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+        "opening", "opening balance" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
