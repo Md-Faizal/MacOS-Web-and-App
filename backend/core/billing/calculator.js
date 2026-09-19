@@ -13,6 +13,8 @@
  * Designed to ensure 100% mathematical parity between Web and Android Native apps.
  */
 
+const SuiteCoreBridge = require('../../../frontend/shared/suite_core_bridge');
+
 function parseDate(dateStr) {
   if (!dateStr) return null;
   if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
@@ -115,6 +117,7 @@ function calculateBillSettlement(bills, payments, contacts) {
   });
 
   const billBalances = {};
+  const nowDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
 
   Object.keys(customerBills).forEach(custId => {
     const cBills = customerBills[custId];
@@ -122,59 +125,33 @@ function calculateBillSettlement(bills, payments, contacts) {
     const contact = contactMap[custId];
     const openingBalance = contact ? Number(contact.opening_balance || 0) : 0;
 
-    const sortedBills = [...cBills].sort((a, b) => {
-      const dateA = parseDate(a.invoice_date || a.bill_date || a.created_at);
-      const dateB = parseDate(b.invoice_date || b.bill_date || b.created_at);
-      return (dateA || 0) - (dateB || 0);
-    });
+    const rustBills = cBills.map(b => ({
+      id: String(b.id),
+      customer_id: String(b.customer_id),
+      invoice_no: b.invoice_no || '',
+      date: b.invoice_date || b.bill_date || b.created_at ? (parseDate(b.invoice_date || b.bill_date || b.created_at)?.toISOString().split('T')[0] || '') : '',
+      due_date: b.due_date || null,
+      grand_total: Number(b.grand_total !== undefined ? b.grand_total : (b.total !== undefined ? b.total : (b.total_amount || 0)))
+    }));
 
-    const sortedPayments = [...cPayments].sort((a, b) => {
-      const dateA = parseDate(a.payment_date || a.created_at);
-      const dateB = parseDate(b.payment_date || b.created_at);
-      return (dateA || 0) - (dateB || 0);
-    });
+    const rustPayments = cPayments.map(p => ({
+      id: String(p.id),
+      customer_id: String(p.customer_id),
+      reference_no: p.reference_number || p.reference_no || 'PMT',
+      date: p.payment_date || p.created_at ? (parseDate(p.payment_date || p.created_at)?.toISOString().split('T')[0] || '') : '',
+      amount: Number(p.amount !== undefined && p.amount !== null && p.amount !== '' ? p.amount : (p.credit_amount || 0)),
+      is_credit_note: p.type === 'CREDIT_NOTE' || Boolean(p.is_credit_note),
+      payment_medium: p.payment_medium || null
+    }));
 
-    const pQueue = sortedPayments.map(p => {
-      const val = Number(p.amount || p.credit_amount || 0);
-      return { id: p.id, total: val, remaining: val };
-    });
-
-    let availableCredit = 0;
-    let debtToSettleFirst = 0;
-
-    if (openingBalance < 0) {
-      availableCredit = Math.abs(openingBalance);
-    } else {
-      debtToSettleFirst = openingBalance;
+    const stmt = SuiteCoreBridge.calculateStatement(openingBalance, rustBills, rustPayments, nowDays);
+    if (!stmt || !stmt.fifo_result || !stmt.fifo_result.bill_settlements) {
+      throw new Error('[calculateBillSettlement] SuiteCore WebAssembly calculation failed');
     }
 
-    while (debtToSettleFirst > 0 && pQueue.length > 0) {
-      const p = pQueue[0];
-      const consumed = Math.min(debtToSettleFirst, p.remaining);
-      debtToSettleFirst -= consumed;
-      p.remaining -= consumed;
-      if (p.remaining <= 0) pQueue.shift();
-    }
-
-    sortedBills.forEach(bill => {
-      const billAmount = Number(bill.grand_total || bill.total || 0);
-      let remainingToSettle = billAmount;
-
-      if (availableCredit > 0) {
-        const consumed = Math.min(remainingToSettle, availableCredit);
-        remainingToSettle -= consumed;
-        availableCredit -= consumed;
-      }
-
-      while (remainingToSettle > 0 && pQueue.length > 0) {
-        const p = pQueue[0];
-        const consumed = Math.min(remainingToSettle, p.remaining);
-        remainingToSettle -= consumed;
-        p.remaining -= consumed;
-        if (p.remaining <= 0) pQueue.shift();
-      }
-
-      billBalances[bill.id] = Math.max(0, Number(remainingToSettle.toFixed(2)));
+    cBills.forEach(b => {
+      const s = stmt.fifo_result.bill_settlements[String(b.id)];
+      billBalances[b.id] = s ? s.remaining : Math.max(0, Number((b.grand_total || b.total || 0).toFixed(2)));
     });
   });
 
@@ -500,33 +477,31 @@ function calculateDashboardMetrics(db, user, options = {}) {
     rangeText
   };
 
-  // 9. Receivables Aging Buckets
-  let outstanding0to30 = 0;
-  let outstanding31to60 = 0;
-  let outstanding61Plus = 0;
-
+  // 9. Receivables Aging Buckets via Rust SuiteCore Analytics Engine
+  const unpaidItems = [];
   periodInvoices.forEach(bill => {
     const remaining = billBalances[bill.id] || 0;
     if (remaining > 0.01) {
       const billDate = parseDate(bill.created_at || bill.due_date);
-      if (billDate) {
-        const daysAgo = Math.floor((now - billDate) / (1000 * 60 * 60 * 24));
-        if (daysAgo <= 30) {
-          outstanding0to30 += remaining;
-        } else if (daysAgo <= 60) {
-          outstanding31to60 += remaining;
-        } else {
-          outstanding61Plus += remaining;
-        }
-      }
+      const daysAgo = billDate ? Math.max(0, Math.floor((now - billDate) / (1000 * 60 * 60 * 24))) : 0;
+      unpaidItems.push({
+        bill_id: String(bill.id),
+        days_elapsed: daysAgo,
+        remaining_amount: remaining
+      });
     }
   });
 
+  const rustAging = SuiteCoreBridge.calculateAging(unpaidItems, 0, true);
+  if (!rustAging) {
+    throw new Error('[calculateDashboardMetrics] SuiteCore WebAssembly calculateAging failed');
+  }
+
   const receivablesAging = {
-    outstanding0to30: Number(outstanding0to30.toFixed(2)),
-    outstanding31to60: Number(outstanding31to60.toFixed(2)),
-    outstanding61Plus: Number(outstanding61Plus.toFixed(2)),
-    totalOutstanding: Number((outstanding0to30 + outstanding31to60 + outstanding61Plus).toFixed(2))
+    outstanding0to30: rustAging.outstanding0to30,
+    outstanding31to60: rustAging.outstanding31to60,
+    outstanding61Plus: rustAging.outstanding61Plus,
+    totalOutstanding: rustAging.totalOutstanding
   };
 
   // 10. Top Products & Top Customers
@@ -770,7 +745,67 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
 
   const openingBalance = Number(customer.opening_balance || 0);
 
-  // 4. Run FIFO settlement map matching web customer-ledger.js
+  // 4. Run Rust SuiteCore FIFO settlement and customer statement generation
+  const nowDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const rustBills = rawBills.map(b => ({
+    id: String(b.id),
+    customer_id: String(b.customer_id),
+    invoice_no: b.invoice_no || '',
+    date: b.invoice_date || b.created_at ? (parseDate(b.invoice_date || b.created_at)?.toISOString().split('T')[0] || '') : '',
+    due_date: b.due_date || null,
+    grand_total: Number(b.grand_total !== undefined ? b.grand_total : (b.total_amount || 0))
+  }));
+
+  const rustPayments = rawPayments.map(p => ({
+    id: String(p.id),
+    customer_id: String(p.customer_id),
+    reference_no: p.reference_number || 'PMT',
+    date: p.payment_date || p.created_at ? (parseDate(p.payment_date || p.created_at)?.toISOString().split('T')[0] || '') : '',
+    amount: Number(p.type === 'CREDIT_NOTE' ? (p.credit_amount || 0) : (p.amount || 0)),
+    is_credit_note: p.type === 'CREDIT_NOTE',
+    payment_medium: p.payment_medium || null
+  }));
+
+  const rustStmt = SuiteCoreBridge.calculateStatement(openingBalance, rustBills, rustPayments, nowDays);
+  if (!rustStmt || !rustStmt.fifo_result) {
+    throw new Error('[calculateCustomerStatement] Rust SuiteCore WebAssembly calculation failed');
+  }
+
+  const settlementMap = rustStmt.fifo_result.bill_settlements;
+  const paymentAllocMap = rustStmt.fifo_result.payment_allocations;
+  const statementRows = rustStmt.statement_rows;
+  const rustSummary = rustStmt.summary;
+
+  // Unpaid items aging calculated via Rust Analytics Engine
+  const unpaidItems = [];
+  rawBills.forEach(b => {
+    const sInfo = settlementMap[String(b.id)];
+    if (sInfo && !sInfo.settled) {
+      unpaidItems.push({
+        bill_id: String(b.id),
+        days_elapsed: sInfo.days,
+        remaining_amount: Number(b.grand_total || b.total_amount || 0)
+      });
+    }
+  });
+
+  const rustAging = SuiteCoreBridge.calculateAging(unpaidItems, openingBalance, false);
+  if (!rustAging) {
+    throw new Error('[calculateCustomerStatement] Rust SuiteCore WebAssembly calculateAging failed');
+  }
+
+  const totalPurchases = rustSummary.total_purchases;
+  const currentDue = rustSummary.current_due;
+  const totalSettled = rustSummary.total_settled;
+  const paidPercent = rustSummary.paid_percent;
+  const totalPaid = rustSummary.total_paid;
+  const totalCredits = rustSummary.total_credits;
+  const totalCollected = rustSummary.total_collected;
+  const ageing0to7 = rustAging.ageing_0_to_7;
+  const ageing8to15 = rustAging.ageing_8_to_15;
+  const ageing16to30 = rustAging.ageing_16_to_30;
+  const ageingOver30 = rustAging.ageing_over_30;
+
   const sortedBills = [...rawBills].sort((a, b) => {
     const da = parseDate(a.invoice_date || a.created_at) || 0;
     const db = parseDate(b.invoice_date || b.created_at) || 0;
@@ -783,219 +818,9 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
     return da - db;
   });
 
-  const pQueue = sortedPayments.map(p => {
-    const isCredit = p.type === 'CREDIT_NOTE';
-    const total = Number(isCredit ? p.credit_amount : p.amount) || 0;
-    return {
-      id: p.id,
-      total,
-      remaining: total,
-      date: p.payment_date || p.created_at
-    };
-  });
-
-  let availableCredit = 0;
-  let debtToSettleFirst = 0;
-
-  if (openingBalance < 0) {
-    availableCredit = Math.abs(openingBalance);
-  } else {
-    debtToSettleFirst = openingBalance;
-  }
-
-  while (debtToSettleFirst > 0 && pQueue.length > 0) {
-    const p = pQueue[0];
-    const consumed = Math.min(debtToSettleFirst, p.remaining);
-    debtToSettleFirst -= consumed;
-    p.remaining -= consumed;
-    if (p.remaining <= 0) pQueue.shift();
-  }
-
-  const settlementMap = {};
-  sortedBills.forEach(bill => {
-    const billId = bill.id;
-    const billAmount = Number(bill.grand_total || bill.total_amount || 0);
-    let remainingToSettle = billAmount;
-    let lastCreditDate = null;
-
-    if (availableCredit > 0) {
-      const consumed = Math.min(remainingToSettle, availableCredit);
-      remainingToSettle -= consumed;
-      availableCredit -= consumed;
-      if (remainingToSettle <= 0) {
-        lastCreditDate = bill.invoice_date || bill.created_at;
-      }
-    }
-
-    while (remainingToSettle > 0 && pQueue.length > 0) {
-      const p = pQueue[0];
-      const consumed = Math.min(remainingToSettle, p.remaining);
-      remainingToSettle -= consumed;
-      p.remaining -= consumed;
-      if (p.remaining <= 0) pQueue.shift();
-      if (remainingToSettle <= 0) {
-        lastCreditDate = p.date;
-      }
-    }
-
-    const paidAmt = billAmount - remainingToSettle;
-    const invoiceDate = parseDate(bill.invoice_date || bill.created_at) || new Date();
-    if (remainingToSettle <= 0 && lastCreditDate) {
-      const settleDate = parseDate(lastCreditDate) || invoiceDate;
-      const diffTime = Math.max(0, settleDate - invoiceDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      settlementMap[billId] = {
-        settled: true,
-        days: diffDays || 1,
-        paid: Number(paidAmt.toFixed(2)),
-        remaining: 0,
-        total: billAmount,
-        status: 'PAID'
-      };
-    } else {
-      const now = new Date();
-      const diffTime = Math.max(0, now - invoiceDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      settlementMap[billId] = {
-        settled: false,
-        days: diffDays || 1,
-        paid: Number(paidAmt.toFixed(2)),
-        remaining: Number(remainingToSettle.toFixed(2)),
-        total: billAmount,
-        status: paidAmt > 0 ? 'PARTIAL' : 'UNPAID'
-      };
-    }
-  });
-
-  const paymentAllocMap = {};
-  sortedPayments.forEach(p => {
-    const isCredit = p.type === 'CREDIT_NOTE';
-    const total = Number(isCredit ? p.credit_amount : p.amount) || 0;
-    const match = pQueue.find(item => item.id === p.id);
-    const remaining = match ? match.remaining : 0;
-    const allocated = total - remaining;
-    paymentAllocMap[p.id] = {
-      allocated: Number(allocated.toFixed(2)),
-      remaining: Number(remaining.toFixed(2)),
-      total,
-      allocated_percent: total > 0 ? Math.min(100, Math.round((allocated / total) * 100)) : 100
-    };
-  });
-
-  // 5. Build Chronological Statement Rows
-  const combined = [];
-  sortedBills.forEach(b => {
-    const billAmt = Number(b.grand_total || b.total_amount || 0);
-    combined.push({
-      id: b.id,
-      dateObj: parseDate(b.invoice_date || b.created_at) || new Date(),
-      date: b.invoice_date || b.created_at,
-      type: 'BILL',
-      ref: b.invoice_no,
-      debit: billAmt,
-      credit: 0
-    });
-  });
-
-  sortedPayments.forEach(p => {
-    const isCredit = p.type === 'CREDIT_NOTE';
-    const pmtAmt = Number(isCredit ? p.credit_amount : p.amount) || 0;
-    combined.push({
-      id: p.id,
-      dateObj: parseDate(p.payment_date || p.created_at) || new Date(),
-      date: p.payment_date || p.created_at,
-      type: isCredit ? 'CREDIT NOTE' : 'PAYMENT',
-      ref: p.reference_number || 'PMT',
-      debit: 0,
-      credit: pmtAmt
-    });
-  });
-
-  combined.sort((a, b) => a.dateObj - b.dateObj);
-
-  let runningBalance = openingBalance;
-  const statementRows = [];
-
-  // Opening balance row
-  statementRows.push({
-    id: 'op-bal',
-    date: customer.created_at || null,
-    date_formatted: '-',
-    type: 'OPENING BALANCE',
-    reference: '-',
-    info_text: '-',
-    debit: openingBalance > 0 ? openingBalance : 0,
-    credit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
-    running_balance: Number(runningBalance.toFixed(2))
-  });
-
-  combined.forEach(item => {
-    let infoText = '-';
-    if (item.type === 'BILL') {
-      runningBalance += item.debit;
-      const sInfo = settlementMap[item.id];
-      if (sInfo) {
-        infoText = sInfo.settled ? `SETTLED IN ${sInfo.days}D` : `${sInfo.days}D OUTSTANDING`;
-      }
-    } else {
-      runningBalance -= item.credit;
-      const aInfo = paymentAllocMap[item.id];
-      if (aInfo) {
-        infoText = `ALLOCATED (${aInfo.allocated_percent}%)`;
-      }
-    }
-
-    statementRows.push({
-      id: item.id,
-      date: item.date,
-      date_formatted: item.dateObj ? item.dateObj.toISOString().split('T')[0] : 'N/A',
-      type: item.type,
-      reference: item.ref,
-      info_text: infoText,
-      debit: item.debit,
-      credit: item.credit,
-      running_balance: Number(runningBalance.toFixed(2))
-    });
-  });
-
-  // 6. Summary metrics & Aging
-  let totalPurchases = sortedBills.reduce((sum, b) => sum + Number(b.grand_total || b.total_amount || 0), 0);
-  if (openingBalance > 0) {
-    totalPurchases += openingBalance;
-  }
-
-  const currentDue = Number(runningBalance.toFixed(2));
-  const totalSettled = Math.max(0, totalPurchases - currentDue);
-  const paidPercent = totalPurchases > 0 ? Math.round((totalSettled / totalPurchases) * 100) : 100;
-
-  let ageing0to7 = 0;
-  let ageing8to15 = 0;
-  let ageing16to30 = 0;
-  let ageingOver30 = 0;
-
-  if (openingBalance > 0) {
-    ageingOver30 += openingBalance;
-  }
-
-  sortedBills.forEach(b => {
-    const info = settlementMap[b.id];
-    if (info && !info.settled) {
-      const days = info.days;
-      const amt = Number(b.grand_total || b.total_amount || 0);
-      if (days <= 7) ageing0to7 += amt;
-      else if (days <= 15) ageing8to15 += amt;
-      else if (days <= 30) ageing16to30 += amt;
-      else ageingOver30 += amt;
-    }
-  });
-
-  const totalPaid = sortedPayments.filter(p => p.type === 'PAYMENT').reduce((s, p) => s + Number(p.amount || 0), 0);
-  const totalCredits = sortedPayments.filter(p => p.type === 'CREDIT_NOTE').reduce((s, p) => s + Number(p.credit_amount || 0), 0);
-  const totalCollected = totalPaid + totalCredits;
-
   // 7. Enriched bills (newest first for standard display)
   const enrichedBills = [...sortedBills].reverse().map(b => {
-    const sInfo = settlementMap[b.id] || { settled: false, days: 0, paid: 0, remaining: Number(b.grand_total || 0), status: 'UNPAID' };
+    const sInfo = settlementMap[String(b.id)] || { settled: false, days: 0, paid: 0, remaining: Number(b.grand_total || 0), status: 'UNPAID' };
     const billAmt = Number(b.grand_total || b.total_amount || 0);
     return {
       id: b.id,
@@ -1026,7 +851,7 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
 
   // 8. Enriched payments (newest first)
   const enrichedPayments = [...sortedPayments].reverse().map(p => {
-    const aInfo = paymentAllocMap[p.id] || { allocated: 0, remaining: 0, allocated_percent: 0 };
+    const aInfo = paymentAllocMap[String(p.id)] || { allocated: 0, remaining: 0, allocated_percent: 0 };
     const isCredit = p.type === 'CREDIT_NOTE';
     const amount = Number(p.amount || 0);
     const creditAmount = Number(p.credit_amount || 0);

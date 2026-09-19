@@ -140,3 +140,88 @@ pub unsafe extern "C" fn suite_calculate_aging(ptr: *const u8, len: usize) -> *m
         }
     }
 }
+
+#[derive(Deserialize)]
+struct SummaryItemInput {
+    #[serde(default)]
+    amount: f64,
+    #[serde(default)]
+    discount_1_amount: f64,
+    #[serde(default)]
+    discount_2_amount: f64,
+    #[serde(default)]
+    gst_amount: f64,
+    #[serde(default)]
+    sgst_amount: f64,
+    #[serde(default)]
+    cgst_amount: f64,
+}
+
+#[derive(Deserialize)]
+struct SummaryRequest {
+    items: Vec<SummaryItemInput>,
+    #[serde(default)]
+    previous_due: f64,
+    #[serde(default = "default_true")]
+    round_off: bool,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_calculate_summary(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<SummaryRequest>(slice) {
+        Ok(req) => {
+            let mut total_amount = 0.0;
+            let mut total_discount = 0.0;
+            let mut total_gst = 0.0;
+            let mut total_sgst = 0.0;
+            let mut total_cgst = 0.0;
+
+            for item in &req.items {
+                total_amount += item.amount;
+                total_discount += item.discount_1_amount + item.discount_2_amount;
+                total_gst += item.gst_amount;
+                total_sgst += item.sgst_amount;
+                total_cgst += item.cgst_amount;
+            }
+
+            let subtotal_unrounded = total_amount - total_discount + total_gst;
+            let grand_total = if req.round_off {
+                subtotal_unrounded.round()
+            } else {
+                crate::types::round2(subtotal_unrounded)
+            };
+            let round_off = crate::types::round2(grand_total - subtotal_unrounded);
+            let projected_due = crate::types::round2(req.previous_due + grand_total);
+
+            let res = crate::finance::invoicing::bill::BillSummary {
+                subtotal: crate::types::round2(subtotal_unrounded),
+                total_amount: crate::types::round2(total_amount),
+                total_discount: crate::types::round2(total_discount),
+                total_gst: crate::types::round2(total_gst),
+                total_sgst: crate::types::round2(total_sgst),
+                total_cgst: crate::types::round2(total_cgst),
+                round_off,
+                grand_total,
+                previous_due: crate::types::round2(req.previous_due),
+                projected_due,
+                discountTotal: crate::types::round2(total_discount),
+                taxTotal: crate::types::round2(total_gst),
+                grandTotal: grand_total,
+                roundOff: round_off,
+            };
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}

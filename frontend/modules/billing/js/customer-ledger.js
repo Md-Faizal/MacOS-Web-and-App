@@ -183,87 +183,37 @@ function calculateSettlementMap(bills, payments, openingBalance = 0) {
   const paymentAllocMap = {};
   if (!bills || bills.length === 0) return { settlementMap, paymentAllocMap };
 
-  const sortedBills = [...bills].sort((a, b) => new Date(a.invoice_date || a.created_at) - new Date(b.invoice_date || b.created_at));
-  const sortedPayments = [...(payments || [])].sort((a, b) => new Date(a.payment_date || a.created_at) - new Date(b.payment_date || b.created_at));
+  if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+    const rustBills = bills.map(b => ({
+      id: String(b.id),
+      customer_id: String(b.customer_id || ''),
+      invoice_no: b.invoice_no || '',
+      date: b.invoice_date || b.created_at || '',
+      due_date: b.due_date || null,
+      grand_total: parseFloat(b.amount !== undefined ? b.amount : (b.grand_total || 0))
+    }));
 
-  const pQueue = sortedPayments.map(p => ({
-    id: p.id,
-    total: parseFloat(p.amount || p.credit_amount || 0),
-    remaining: parseFloat(p.amount || p.credit_amount || 0),
-    date: p.payment_date || p.created_at
-  }));
+    const rustPayments = (payments || []).map(p => ({
+      id: String(p.id),
+      customer_id: String(p.customer_id || ''),
+      reference_no: p.reference_number || 'PMT',
+      date: p.payment_date || p.created_at || '',
+      amount: parseFloat(p.amount !== undefined ? p.amount : (p.credit_amount || 0)),
+      is_credit_note: p.type === 'CREDIT_NOTE' || Boolean(p.is_credit_note),
+      payment_medium: p.payment_medium || null
+    }));
 
-  let availableCredit = 0;
-  let debtToSettleFirst = 0;
-  
-  if (openingBalance < 0) {
-    availableCredit = Math.abs(openingBalance);
-  } else {
-    debtToSettleFirst = openingBalance;
+    const nowDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    const stmt = window.SuiteCoreBridge.calculateStatement(parseFloat(openingBalance || 0), rustBills, rustPayments, nowDays);
+    if (stmt && stmt.fifo_result) {
+      return {
+        settlementMap: stmt.fifo_result.bill_settlements,
+        paymentAllocMap: stmt.fifo_result.payment_allocations
+      };
+    }
   }
 
-  while (debtToSettleFirst > 0 && pQueue.length > 0) {
-    const p = pQueue[0];
-    const consumed = Math.min(debtToSettleFirst, p.remaining);
-    debtToSettleFirst -= consumed;
-    p.remaining -= consumed;
-    if (p.remaining <= 0) pQueue.shift();
-  }
-
-  sortedBills.forEach(bill => {
-    const billId = bill.id;
-    const billAmount = parseFloat(bill.amount || 0);
-    let remainingToSettle = billAmount;
-    let lastCreditDate = null;
-
-    if (availableCredit > 0) {
-      const consumed = Math.min(remainingToSettle, availableCredit);
-      remainingToSettle -= consumed;
-      availableCredit -= consumed;
-      if (remainingToSettle <= 0) {
-        lastCreditDate = bill.invoice_date || bill.created_at;
-      }
-    }
-
-    while (remainingToSettle > 0 && pQueue.length > 0) {
-      const p = pQueue[0];
-      const consumed = Math.min(remainingToSettle, p.remaining);
-      remainingToSettle -= consumed;
-      p.remaining -= consumed;
-      if (p.remaining <= 0) pQueue.shift();
-      if (remainingToSettle <= 0) {
-        lastCreditDate = p.date;
-      }
-    }
-
-    const paidAmt = billAmount - remainingToSettle;
-    if (remainingToSettle <= 0 && lastCreditDate) {
-      const settleDate = new Date(lastCreditDate);
-      const invoiceDate = new Date(bill.invoice_date || bill.created_at);
-      const diffTime = Math.max(0, settleDate - invoiceDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      settlementMap[billId] = { settled: true, days: diffDays || 1, paid: paidAmt, total: billAmount };
-    } else {
-      const now = new Date();
-      const invoiceDate = new Date(bill.invoice_date || bill.created_at);
-      const diffTime = Math.max(0, now - invoiceDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      settlementMap[billId] = { settled: false, days: diffDays || 1, paid: paidAmt, total: billAmount };
-    }
-  });
-
-  // Track payment allocations
-  sortedPayments.forEach(p => {
-    const match = pQueue.find(item => item.id === p.id);
-    const remaining = match ? match.remaining : 0;
-    const total = parseFloat(p.amount || p.credit_amount || 0);
-    paymentAllocMap[p.id] = {
-      allocated: total - remaining,
-      total: total
-    };
-  });
-
-  return { settlementMap, paymentAllocMap };
+  throw new Error('[CustomerLedger] SuiteCore WebAssembly is required for calculateSettlementMap');
 }
 
 function getFilteredData() {

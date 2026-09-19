@@ -29,7 +29,19 @@ object BillCalculator {
             System.loadLibrary("suite_core")
             isNativeLoaded = true
         } catch (_: Throwable) {
-            isNativeLoaded = false
+            try {
+                val dllCandidate = java.io.File("shared/suite_core/target/release/suite_core.dll")
+                val altCandidate = java.io.File("../../shared/suite_core/target/release/suite_core.dll")
+                if (dllCandidate.exists()) {
+                    System.load(dllCandidate.canonicalPath)
+                    isNativeLoaded = true
+                } else if (altCandidate.exists()) {
+                    System.load(altCandidate.canonicalPath)
+                    isNativeLoaded = true
+                }
+            } catch (_: Throwable) {
+                isNativeLoaded = false
+            }
         }
     }
 
@@ -42,6 +54,14 @@ object BillCalculator {
         gst: Double,
         gstReverse: Byte,
         outPtr: DoubleArray
+    ): Int
+
+    @JvmStatic
+    private external fun calculateBillSummaryFast(
+        itemsPtr: DoubleArray,
+        itemsCount: Long,
+        roundOffEnabled: Byte,
+        outSummaryPtr: DoubleArray
     ): Int
 
     fun round2(value: Double): Double {
@@ -67,103 +87,42 @@ object BillCalculator {
     }
 
     /**
-     * Calculate line item financial details:
-     * - Reverse GST (4.77% base deduction when enabled)
-     * - Cascading discounts (disc1 on amount, disc2 on amount-after-disc1)
-     * - SGST / CGST split (50/50 of GST rate)
-     * - Scheme free items
+     * Calculate line item financial details via Rust SuiteCore JNI engine
      */
     fun calculateLineItem(
         rawItem: CalculateBillItemRequest,
         index: Int = 0
     ): CalculatedServerItem {
-        var rate = if (rawItem.rate > 0.0) rawItem.rate else (rawItem.mrp ?: 0.0)
+        val rate = if (rawItem.rate > 0.0) rawItem.rate else (rawItem.mrp ?: 0.0)
         val qty = if (rawItem.qty > 0.0) rawItem.qty else 1.0
         val disc1Percent = rawItem.disc1
         val disc2Percent = rawItem.disc2
         val gstReverse = rawItem.gstReverse
-
         val gstTotal = rawItem.gstPercent
-        val sgstPercent = gstTotal / 2.0
-        val cgstPercent = gstTotal / 2.0
 
-        if (isNativeLoaded) {
-            try {
-                val out = DoubleArray(7)
-                val code = calculateLineItemFast(
-                    rate, qty, disc1Percent, disc2Percent, gstTotal,
-                    if (gstReverse) 1 else 0, out
-                )
-                if (code == 0) {
-                    val amount = out[0]
-                    val disc1Amount = out[1]
-                    val disc2Amount = out[2]
-                    val gstAmount = out[3]
-                    val sgstAmount = out[4]
-                    val cgstAmount = out[5]
-                    val finalAmount = out[6]
-                    val freeCount = calculateFreeItems(qty, rawItem.scheme)
-                    val effectiveRate = if (gstReverse) rate * (1.0 - 0.0477) else rate
-                    val discountedRate = effectiveRate * (1.0 - disc1Percent / 100.0)
-
-                    return CalculatedServerItem(
-                        index = index,
-                        productId = rawItem.productId,
-                        productName = rawItem.productName ?: "Product",
-                        variantId = rawItem.variantId,
-                        batchId = rawItem.batchId,
-                        packValue = rawItem.packValue,
-                        packType = rawItem.packType,
-                        batchNo = rawItem.batchNo,
-                        expDate = rawItem.expDate,
-                        scheme = rawItem.scheme,
-                        free = freeCount,
-                        rate = round2(effectiveRate),
-                        discountedRate = round2(discountedRate),
-                        qty = qty,
-                        amount = round2(amount),
-                        discount1Percent = disc1Percent,
-                        discount1Amount = round2(disc1Amount),
-                        discount2Percent = disc2Percent,
-                        discount2Amount = round2(disc2Amount),
-                        gstPercent = gstTotal,
-                        gstAmount = round2(gstAmount),
-                        sgstAmount = round2(sgstAmount),
-                        cgstAmount = round2(cgstAmount),
-                        finalAmount = round2(finalAmount),
-                        gstReverse = gstReverse
-                    )
-                }
-            } catch (_: Throwable) {}
+        if (!isNativeLoaded) {
+            throw IllegalStateException("[BillCalculator] Rust SuiteCore native engine is not loaded.")
         }
 
-        // Reverse GST Logic: If gstReverse, apply 4.77% reduction to rate first
-        if (gstReverse) {
-            val baseRate = rate * (1.0 - 0.0477)
-            rate = baseRate
+        val out = DoubleArray(7)
+        val code = calculateLineItemFast(
+            rate, qty, disc1Percent, disc2Percent, gstTotal,
+            if (gstReverse) 1 else 0, out
+        )
+        if (code != 0) {
+            throw IllegalStateException("[BillCalculator] Rust SuiteCore calculateLineItemFast failed with code $code")
         }
 
-        // Step 1: Base Amount = rate * qty
-        val amount = rate * qty
-
-        // Step 2: Discount 1
-        val discount1Amount = amount * (disc1Percent / 100.0)
-        val amountAfterDisc1 = amount - discount1Amount
-        val discountedRate = rate * (1.0 - disc1Percent / 100.0)
-
-        // Step 3: Discount 2
-        val discount2Amount = amountAfterDisc1 * (disc2Percent / 100.0)
-        val amountAfterDisc2 = amountAfterDisc1 - discount2Amount
-
-        // Step 4: Taxes
-        val gstAmount = if (gstTotal > 0.0) amountAfterDisc2 * (gstTotal / 100.0) else 0.0
-        val sgstAmount = if (sgstPercent > 0.0) amountAfterDisc2 * (sgstPercent / 100.0) else 0.0
-        val cgstAmount = if (cgstPercent > 0.0) amountAfterDisc2 * (cgstPercent / 100.0) else 0.0
-
-        // Step 5: Final amount = discounted amount + tax
-        val finalAmountUnrounded = amountAfterDisc2 + gstAmount
-
+        val amount = out[0]
+        val disc1Amount = out[1]
+        val disc2Amount = out[2]
+        val gstAmount = out[3]
+        val sgstAmount = out[4]
+        val cgstAmount = out[5]
+        val finalAmount = out[6]
         val freeCount = calculateFreeItems(qty, rawItem.scheme)
+        val effectiveRate = if (gstReverse) rate * (1.0 - 0.0477) else rate
+        val discountedRate = effectiveRate * (1.0 - disc1Percent / 100.0)
 
         return CalculatedServerItem(
             index = index,
@@ -177,65 +136,66 @@ object BillCalculator {
             expDate = rawItem.expDate,
             scheme = rawItem.scheme,
             free = freeCount,
-            rate = round2(rate),
+            rate = round2(effectiveRate),
             discountedRate = round2(discountedRate),
             qty = qty,
             amount = round2(amount),
             discount1Percent = disc1Percent,
-            discount1Amount = round2(discount1Amount),
+            discount1Amount = round2(disc1Amount),
             discount2Percent = disc2Percent,
-            discount2Amount = round2(discount2Amount),
+            discount2Amount = round2(disc2Amount),
             gstPercent = gstTotal,
             gstAmount = round2(gstAmount),
             sgstAmount = round2(sgstAmount),
             cgstAmount = round2(cgstAmount),
-            finalAmount = round2(finalAmountUnrounded),
+            finalAmount = round2(finalAmount),
             gstReverse = gstReverse
         )
     }
 
     /**
-     * Calculate summary totals for a list of processed line items
+     * Calculate summary totals for a list of processed line items via Rust SuiteCore JNI engine
      */
     fun calculateBillSummary(
         items: List<CalculatedServerItem>,
         roundOffEnabled: Boolean = true
     ): CalculateBillSummary {
-        var totalAmount = 0.0
-        var totalDiscount = 0.0
-        var totalGst = 0.0
-        var totalSgst = 0.0
-        var totalCgst = 0.0
-
-        for (item in items) {
-            totalAmount += item.amount
-            totalDiscount += item.discount1Amount + item.discount2Amount
-            totalGst += item.gstAmount
-            totalSgst += item.sgstAmount
-            totalCgst += item.cgstAmount
+        if (!isNativeLoaded) {
+            throw IllegalStateException("[BillCalculator] Rust SuiteCore native engine is not loaded.")
         }
 
-        val subtotalUnrounded = totalAmount - totalDiscount + totalGst
-        val grandTotal = if (roundOffEnabled) {
-            Math.round(subtotalUnrounded).toDouble()
-        } else {
-            round2(subtotalUnrounded)
+        val flatItems = DoubleArray(items.size * 6)
+        for (i in items.indices) {
+            val it = items[i]
+            val base = i * 6
+            flatItems[base + 0] = it.amount
+            flatItems[base + 1] = it.discount1Amount
+            flatItems[base + 2] = it.discount2Amount
+            flatItems[base + 3] = it.gstAmount
+            flatItems[base + 4] = it.sgstAmount
+            flatItems[base + 5] = it.cgstAmount
         }
-        val roundOff = if (roundOffEnabled) {
-            round2(grandTotal - subtotalUnrounded)
-        } else {
-            0.0
+
+        val out = DoubleArray(8)
+        val code = calculateBillSummaryFast(
+            flatItems,
+            items.size.toLong(),
+            if (roundOffEnabled) 1 else 0,
+            out
+        )
+        if (code != 0) {
+            throw IllegalStateException("[BillCalculator] Rust SuiteCore calculateBillSummaryFast failed with code $code")
         }
 
         return CalculateBillSummary(
-            subtotal = round2(subtotalUnrounded),
-            totalAmount = round2(totalAmount),
-            totalDiscount = round2(totalDiscount),
-            totalGst = round2(totalGst),
-            totalSgst = round2(totalSgst),
-            totalCgst = round2(totalCgst),
-            roundOff = roundOff,
-            grandTotal = grandTotal
+            subtotal = out[0],
+            totalAmount = out[1],
+            totalDiscount = out[2],
+            totalGst = out[3],
+            totalSgst = out[4],
+            totalCgst = out[5],
+            roundOff = out[6],
+            grandTotal = out[7]
         )
     }
 

@@ -121,6 +121,29 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Calculate bill summary totals from array of processed line items
+   */
+  static calculateBillSummary(items, previousDue = 0.0, roundOff = true) {
+    if (this.isWasmLoaded()) {
+      const summaryItems = (items || []).map(it => ({
+        amount: parseFloat(it.amount || 0) || 0,
+        discount_1_amount: parseFloat(it.discount_1_amount || it.discount1Amount || 0) || 0,
+        discount_2_amount: parseFloat(it.discount_2_amount || it.discount2Amount || 0) || 0,
+        gst_amount: parseFloat(it.gst_amount || it.gstAmount || 0) || 0,
+        sgst_amount: parseFloat(it.sgst_amount || it.sgstAmount || 0) || 0,
+        cgst_amount: parseFloat(it.cgst_amount || it.cgstAmount || 0) || 0
+      }));
+      const res = this.callWasmJson('suite_calculate_summary', {
+        items: summaryItems,
+        previous_due: previousDue,
+        round_off: roundOff
+      });
+      if (res && res.grand_total !== undefined) return res;
+    }
+    return null;
+  }
+
+  /**
    * Calculate Customer Statement with chronological FIFO debt settlement
    */
   static calculateStatement(openingBalance, bills, payments, currentDateDays = 20454) {

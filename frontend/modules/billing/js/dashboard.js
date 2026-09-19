@@ -2310,90 +2310,72 @@ class BillingDashboard {
    * Returns a map of billId -> remaining balance.
    */
   calculateBillSettlement(bills, payments, contacts) {
-    const customerBills = {};
-    const customerPayments = {};
+    if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+      const customerBills = {};
+      const customerPayments = {};
 
-    bills.forEach(b => {
-      if (!customerBills[b.customer_id]) customerBills[b.customer_id] = [];
-      customerBills[b.customer_id].push(b);
-    });
-
-    payments.forEach(p => {
-      if (!customerPayments[p.customer_id]) customerPayments[p.customer_id] = [];
-      customerPayments[p.customer_id].push(p);
-    });
-
-    const contactMap = {};
-    contacts.forEach(c => {
-      contactMap[c.id] = c;
-    });
-
-    const billBalances = {};
-
-    Object.keys(customerBills).forEach(custId => {
-      const cBills = customerBills[custId];
-      const cPayments = customerPayments[custId] || [];
-      const contact = contactMap[custId];
-      const openingBalance = contact ? parseFloat(contact.opening_balance || 0) : 0;
-
-      const sortedBills = [...cBills].sort((a, b) => {
-        const dateA = this.parseDate(a.bill_date || a.created_at);
-        const dateB = this.parseDate(b.bill_date || b.created_at);
-        return (dateA || 0) - (dateB || 0);
+      bills.forEach(b => {
+        const cid = b.customer_id;
+        if (!customerBills[cid]) customerBills[cid] = [];
+        customerBills[cid].push(b);
       });
 
-      const sortedPayments = [...cPayments].sort((a, b) => {
-        const dateA = this.parseDate(a.payment_date || a.created_at);
-        const dateB = this.parseDate(b.payment_date || b.created_at);
-        return (dateA || 0) - (dateB || 0);
+      payments.forEach(p => {
+        const cid = p.customer_id;
+        if (!customerPayments[cid]) customerPayments[cid] = [];
+        customerPayments[cid].push(p);
       });
 
-      const pQueue = sortedPayments.map(p => ({
-        id: p.id,
-        total: parseFloat(p.amount || p.credit_amount || 0),
-        remaining: parseFloat(p.amount || p.credit_amount || 0)
-      }));
+      const contactMap = {};
+      contacts.forEach(c => {
+        contactMap[c.id] = c;
+      });
 
-      let availableCredit = 0;
-      let debtToSettleFirst = 0;
+      const billBalances = {};
+      const nowDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
 
-      if (openingBalance < 0) {
-        availableCredit = Math.abs(openingBalance);
-      } else {
-        debtToSettleFirst = openingBalance;
-      }
+      Object.keys(customerBills).forEach(custId => {
+        const cBills = customerBills[custId];
+        const cPayments = customerPayments[custId] || [];
+        const contact = contactMap[custId];
+        const openingBalance = contact ? parseFloat(contact.opening_balance || 0) : 0;
 
-      while (debtToSettleFirst > 0 && pQueue.length > 0) {
-        const p = pQueue[0];
-        const consumed = Math.min(debtToSettleFirst, p.remaining);
-        debtToSettleFirst -= consumed;
-        p.remaining -= consumed;
-        if (p.remaining <= 0) pQueue.shift();
-      }
+        const rustBills = cBills.map(b => ({
+          id: String(b.id),
+          customer_id: String(b.customer_id),
+          invoice_no: b.invoice_no || '',
+          date: b.bill_date || b.invoice_date || b.created_at || '',
+          due_date: b.due_date || null,
+          grand_total: parseFloat(b.total !== undefined ? b.total : (b.grand_total || 0))
+        }));
 
-      sortedBills.forEach(bill => {
-        const billAmount = parseFloat(bill.total || 0);
-        let remainingToSettle = billAmount;
+        const rustPayments = cPayments.map(p => ({
+          id: String(p.id),
+          customer_id: String(p.customer_id),
+          reference_no: p.reference_number || 'PMT',
+          date: p.payment_date || p.created_at || '',
+          amount: parseFloat(p.amount !== undefined ? p.amount : (p.credit_amount || 0)),
+          is_credit_note: p.type === 'CREDIT_NOTE' || Boolean(p.is_credit_note),
+          payment_medium: p.payment_medium || null
+        }));
 
-        if (availableCredit > 0) {
-          const consumed = Math.min(remainingToSettle, availableCredit);
-          remainingToSettle -= consumed;
-          availableCredit -= consumed;
+        const stmt = window.SuiteCoreBridge.calculateStatement(openingBalance, rustBills, rustPayments, nowDays);
+        if (stmt && stmt.fifo_result && stmt.fifo_result.bill_settlements) {
+          cBills.forEach(b => {
+            const s = stmt.fifo_result.bill_settlements[String(b.id)];
+            billBalances[b.id] = s ? s.remaining : parseFloat(b.total || 0);
+          });
+        } else {
+          cBills.forEach(b => {
+            billBalances[b.id] = parseFloat(b.total || 0);
+          });
         }
-
-        while (remainingToSettle > 0 && pQueue.length > 0) {
-          const p = pQueue[0];
-          const consumed = Math.min(remainingToSettle, p.remaining);
-          remainingToSettle -= consumed;
-          p.remaining -= consumed;
-          if (p.remaining <= 0) pQueue.shift();
-        }
-
-        billBalances[bill.id] = remainingToSettle;
       });
-    });
 
-    return billBalances;
+      return billBalances;
+    }
+
+    throw new Error('[Dashboard] SuiteCore WebAssembly is required for calculateBillSettlement');
   }
 
   /**

@@ -163,41 +163,26 @@ class BillCalculator {
    * @returns {Object} Bill summary: subtotal, total_discount, total_gst, round_off, grand_total
    */
   static calculateBillSummary(items) {
-    // Keep full precision during summation - NO rounding until the end
-    let total_amount = 0;
-    let total_discount = 0;
-    let total_gst = 0;
-    let total_sgst = 0;
-    let total_cgst = 0;
-
-    // Sum all line items with full precision
-    items.forEach(item => {
-      // Parse values but don't round them
-      total_amount += parseFloat(item.amount || 0) || 0;
-      total_discount += parseFloat(item.discount_1_amount || 0) || 0;
-      total_discount += parseFloat(item.discount_2_amount || 0) || 0;
-      total_gst += parseFloat(item.gst_amount || 0) || 0;
-      total_sgst += parseFloat(item.sgst_amount || 0) || 0;
-      total_cgst += parseFloat(item.cgst_amount || 0) || 0;
-    });
-
-    // Calculate grand total BEFORE rounding
-    const subtotal_unrounded = total_amount - total_discount + total_gst;
-
-    // Round to nearest rupee only at the very end
-    const grand_total = Math.round(subtotal_unrounded);
-    const round_off = parseFloat((grand_total - subtotal_unrounded).toFixed(2));
-
-    // NOW round all individual amounts for storage
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[BillCalculator] SuiteCore WebAssembly engine is not loaded. Cannot execute financial calculation.');
+    }
+    const summary = SuiteCoreBridge.calculateBillSummary(items, 0.0, true);
+    if (!summary) {
+      throw new Error('[BillCalculator] SuiteCore WebAssembly calculateBillSummary returned null');
+    }
     return {
-      subtotal: parseFloat(subtotal_unrounded.toFixed(2)),
-      total_amount: parseFloat(total_amount.toFixed(2)),
-      total_discount: parseFloat(total_discount.toFixed(2)),
-      total_gst: parseFloat(total_gst.toFixed(2)),
-      total_sgst: parseFloat(total_sgst.toFixed(2)),
-      total_cgst: parseFloat(total_cgst.toFixed(2)),
-      round_off: round_off,
-      grand_total: grand_total
+      subtotal: summary.subtotal,
+      total_amount: summary.total_amount,
+      total_discount: summary.total_discount,
+      total_gst: summary.total_gst,
+      total_sgst: summary.total_sgst,
+      total_cgst: summary.total_cgst,
+      round_off: summary.round_off,
+      grand_total: summary.grand_total,
+      discountTotal: summary.discountTotal,
+      taxTotal: summary.taxTotal,
+      grandTotal: summary.grandTotal,
+      roundOff: summary.roundOff
     };
   }
 
