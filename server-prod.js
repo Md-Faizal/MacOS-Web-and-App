@@ -123,7 +123,9 @@ const serverAll = http.createServer((req, res) => {
       
       // Fallback for SPA routing
       let targetHtml = 'index.html';
-      if (url.startsWith('public/product/') || url.startsWith('public/batch/')) {
+      if (url === 'customer-ledger' || url === 'customer-ledger.html') {
+        targetHtml = 'customer-ledger.html';
+      } else if (url === 'public-product' || url === 'public-product.html' || url.startsWith('public/product/') || url === 'public/product' || url.startsWith('public/batch/')) {
         targetHtml = 'public-product.html';
       }
       

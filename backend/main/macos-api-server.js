@@ -192,6 +192,10 @@ const staticOptions = {
 app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOptions));
+app.use('/assets', express.static(path.join(__dirname, '../../dist/assets'), staticOptions));
+app.use('/modules', express.static(path.join(__dirname, '../../frontend/modules'), staticOptions));
+app.use('/scripts', express.static(path.join(__dirname, '../../frontend/scripts'), staticOptions));
+app.use('/shared', express.static(path.join(__dirname, '../../frontend/shared'), staticOptions));
 
 // Serve large wallpaper assets from root to keep them out of frontend build
 const wallpaperPath = path.join(__dirname, '../../Wallpapers');
@@ -1172,6 +1176,30 @@ const renderApiDocumentationHtml = (doc) => `<!doctype html>
   </script>
 </body>
 </html>`;
+
+app.get(['/customer-ledger', '/customer-ledger.html'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/customer-ledger.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/customer-ledger.html'));
+});
+
+app.get(['/public-product', '/public-product.html'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/public-product.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/public-product.html'));
+});
+
+app.get(['/public/product', '/public/product/:sku', '/public/batch/:batchId'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/public-product.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/public-product.html'));
+});
 
 app.get('/api', (req, res) => {
   const userAgent = String(req.get('user-agent') || '');
