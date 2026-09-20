@@ -12,8 +12,9 @@
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.1) 100%);
-  backdrop-filter: blur(25px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+  background-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(25px) saturate(180%) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(25px) saturate(180%) brightness(1.05) !important;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-bottom: none;
   border-top-left-radius: 1rem;
@@ -24,6 +25,24 @@
   z-index: 1000002;
   animation: slideInUp 0.8s ease-out;
   transform: translateY(0);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.desktop-widgets-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(25px) saturate(180%) brightness(1.05);
+  -webkit-backdrop-filter: blur(25px) saturate(180%) brightness(1.05);
+}
+
+.desktop-widgets-panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .desktop-widgets-panel.show {

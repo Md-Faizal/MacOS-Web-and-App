@@ -174,6 +174,11 @@ class AnalyticsApp extends AppWindow {
     document.getElementById('analyticsPrintBtn')?.addEventListener('click', () => window.print());
   }
 
+  isExcludedCustomer(contact) {
+    if (!contact) return false;
+    return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
+  }
+
   normalizeContactsList(payload) {
     if (Array.isArray(payload)) return payload;
     if (Array.isArray(payload?.items)) return payload.items;
@@ -187,7 +192,7 @@ class AnalyticsApp extends AppWindow {
       const resp = await fetch('/api/contacts');
       const payload = await resp.json();
       const list = this.normalizeContactsList(payload);
-      this.customers = list.filter(c => !c.type || c.type === 'Customer' || c.type === 'customer');
+      this.customers = list.filter(c => (!c.type || c.type === 'Customer' || c.type === 'customer') && !this.isExcludedCustomer(c));
       this.renderCustomerList(this.customers);
     } catch (err) {
       console.error('Failed to load customers:', err);

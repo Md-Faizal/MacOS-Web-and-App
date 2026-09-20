@@ -41,6 +41,19 @@ const serverAll = http.createServer((req, res) => {
   const proto = req.headers['x-forwarded-proto'] || 'http';
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   
+  // Health endpoints must return live status instead of SPA fallback
+  if (req.url === '/healthz' || req.url === '/health' || req.url === '/api/healthz' || req.url === '/api/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'healthy',
+      ok: true,
+      service: 'frontend',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    }));
+    return;
+  }
+
   // API requests - proxy to backend
   if (req.url.startsWith('/api')) {
     proxy.web(req, res);

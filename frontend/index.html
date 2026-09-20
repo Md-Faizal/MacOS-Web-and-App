@@ -389,9 +389,9 @@
       align-items: center;
       gap: 24px;
       max-width: calc(100vw - 32px);
-      max-height: calc(100vh - 32px);
-      overflow-y: auto;
-      overflow-x: hidden;
+      max-height: none;
+      overflow: visible;
+      overscroll-behavior: contain;
       z-index: 20;
       opacity: 0;
       visibility: hidden;
@@ -412,6 +412,8 @@
       position: relative;
       width: min(460px, calc(100vw - 32px));
       min-height: 270px;
+      max-height: none;
+      overflow: visible;
       text-align: center;
     }
 

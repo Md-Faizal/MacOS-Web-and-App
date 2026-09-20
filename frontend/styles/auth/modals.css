@@ -13,7 +13,7 @@
   align-items: center;
   justify-content: center;
   max-width: calc(100vw - 32px);
-  max-height: 92vh;
+  max-height: none;
   z-index: 25;
   opacity: 0;
   visibility: hidden;
@@ -54,6 +54,7 @@
   align-items: center;
   box-sizing: border-box;
   overflow: visible;
+  max-height: none;
 }
 
 /* AVATAR & HEADER (Floating for main login, or inside dialogs) */

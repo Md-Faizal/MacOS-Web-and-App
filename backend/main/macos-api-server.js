@@ -482,9 +482,10 @@ app.use((err, req, res, next) => {
 });
 
 // API Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/api/healthz'], (req, res) => {
   res.json({
     status: 'healthy',
+    ok: true,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     apis: {
