@@ -84,7 +84,10 @@ class EditBillsPayments {
       const response = await fetch('/api/contacts');
       if (response.ok) {
         const result = await response.json();
-        return Array.isArray(result) ? result : (result.data || []);
+        const normalized = Array.isArray(result)
+          ? result
+          : (Array.isArray(result?.items) ? result.items : (Array.isArray(result?.data?.items) ? result.data.items : (Array.isArray(result?.data) ? result.data : [])));
+        return normalized;
       }
       return [];
     } catch (e) {
@@ -98,7 +101,10 @@ class EditBillsPayments {
       const response = await fetch('/api/products');
       if (response.ok) {
         const result = await response.json();
-        return Array.isArray(result) ? result : (result.data || []);
+        const normalized = Array.isArray(result)
+          ? result
+          : (Array.isArray(result?.items) ? result.items : (Array.isArray(result?.data?.items) ? result.data.items : (Array.isArray(result?.data) ? result.data : [])));
+        return normalized;
       }
       return [];
     } catch (e) {

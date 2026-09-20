@@ -317,15 +317,28 @@ export class ProductListApp extends AppWindow {
     this.checkBackendConnection();
   }
 
+  normalizeApiCollection(payload, fallback = []) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload) return fallback;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+    if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+    if (Array.isArray(payload.products)) return payload.products;
+    if (Array.isArray(payload.categories)) return payload.categories;
+    return fallback;
+  }
+
   async checkBackendConnection() {
     try {
       // Try to load products to check if API is available
       const products = await this.api.getProducts();
-      console.log('Products response:', products, 'Type:', typeof products, 'Is Array:', Array.isArray(products));
+      const normalizedProducts = this.normalizeApiCollection(products, []);
+      console.log('Products response:', products, 'Type:', typeof products, 'Is Array:', Array.isArray(products), 'Normalized Length:', normalizedProducts.length);
       
-      if (products && Array.isArray(products)) {
+      if (Array.isArray(normalizedProducts)) {
         this.apiEnabled = true;
-        console.log('✅ Backend connected for Products - ' + products.length + ' products available');
+        console.log('✅ Backend connected for Products - ' + normalizedProducts.length + ' products available');
         // Load products and categories after confirming backend is available
         await this.loadProducts();
         await this.loadCategoriesFromAPI();
@@ -352,8 +365,9 @@ export class ProductListApp extends AppWindow {
     
     try {
       const products = await this.api.getProducts();
-      console.log('✅ Products loaded from API:', products.length, 'products');
-      this.products = products.map(p => this.deserializeProductFromAPI(p));
+      const normalizedProducts = this.normalizeApiCollection(products, []);
+      console.log('✅ Products loaded from API:', normalizedProducts.length, 'products');
+      this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
       this.renderProductsView();
     } catch (error) {
       console.error('Error loading products from API:', error);
@@ -628,8 +642,9 @@ export class ProductListApp extends AppWindow {
       if (!this.products || this.products.length === 0) {
         try {
           const apiProds = await this.api.getProducts();
-          if (Array.isArray(apiProds)) {
-            this.products = apiProds.map(p => this.deserializeProductFromAPI(p));
+          const normalizedProducts = this.normalizeApiCollection(apiProds, []);
+          if (Array.isArray(normalizedProducts)) {
+            this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
           }
         } catch (e) {
           console.warn('Could not fetch products on demand:', e.message);
@@ -1395,10 +1410,11 @@ export class ProductListApp extends AppWindow {
     
     try {
       const categories = await this.api.getCategories();
-      console.log('Categories response:', categories, 'Type:', typeof categories, 'Is Array:', Array.isArray(categories));
+      const normalizedCategories = this.normalizeApiCollection(categories, []);
+      console.log('Categories response:', categories, 'Type:', typeof categories, 'Is Array:', Array.isArray(categories), 'Normalized Length:', normalizedCategories.length);
       
-      if (categories && Array.isArray(categories)) {
-        this.categories = categories; // Store full category objects with id and name
+      if (Array.isArray(normalizedCategories)) {
+        this.categories = normalizedCategories; // Store full category objects with id and name
         console.log('✅ Categories loaded from API:', this.categories.length, 'categories');
       } else {
         console.warn('⚠️ Categories response is not a valid array:', categories);

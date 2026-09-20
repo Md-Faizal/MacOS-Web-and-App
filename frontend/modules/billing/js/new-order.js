@@ -1193,17 +1193,27 @@ class OrdersView {
 
   async loadCustomersAndProducts() {
     try {
+      const normalizeCollection = payload => {
+        if (Array.isArray(payload)) return payload;
+        if (!payload) return [];
+        if (Array.isArray(payload.items)) return payload.items;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload.data?.items)) return payload.data.items;
+        if (Array.isArray(payload.contacts)) return payload.contacts;
+        if (Array.isArray(payload.products)) return payload.products;
+        return [];
+      };
       const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
       if (scoped && scoped.contacts && scoped.contacts.length > 0) {
         this.customers = scoped.contacts;
       } else {
         const customersRes = await fetch('/api/contacts');
         const custData = customersRes.ok ? await customersRes.json() : [];
-        this.customers = Array.isArray(custData) ? custData : (custData.data || []);
+        this.customers = normalizeCollection(custData);
       }
       const productsRes = await fetch('/api/products');
       const prodData = productsRes.ok ? await productsRes.json() : [];
-      this.products = Array.isArray(prodData) ? prodData : (prodData.data || []);
+      this.products = normalizeCollection(prodData);
     } catch (error) {
       console.error('Error loading data:', error);
       this.showNotification('Failed to load customers and products', 'error');
@@ -1216,10 +1226,19 @@ class OrdersView {
       const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
       const accessibleContactIds = scoped && isWorker ? new Set(scoped.contacts.map(c => c.id).filter(Boolean)) : null;
 
+      const normalizeCollection = payload => {
+        if (Array.isArray(payload)) return payload;
+        if (!payload) return [];
+        if (Array.isArray(payload.items)) return payload.items;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload.data?.items)) return payload.data.items;
+        return [];
+      };
+
       const res = await fetch('/api/billing/orders');
       if (res.ok) {
         const data = await res.json();
-        let orders = Array.isArray(data) ? data : (data.data || []);
+        let orders = normalizeCollection(data);
         
         // Ensure items array exists even if missing
         orders = orders.map(order => {

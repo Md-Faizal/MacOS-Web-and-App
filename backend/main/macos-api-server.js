@@ -572,47 +572,617 @@ app.get('/api/system/info', (req, res) => {
 });
 
 // API Documentation endpoint
-app.get('/api', (req, res) => {
-  res.json({
-    status: 'running',
-    message: 'MacOS API Server (Consolidated)',
-    version: '2.0.0',
-    note: 'All endpoints consolidated to Node.js backend',
-    endpoints: {
-      'billing': 'POST/GET - Manage invoices/bills',
-      'billing/:id': 'GET/PUT/DELETE - Manage specific invoice',
-      'billing/summary': 'GET - Get billing summary statistics',
-      'billing/preference/:customerName/:productName': 'GET - Get customer product preference',
-      'billing/preferences/:customerName': 'GET - Get all preferences for a customer',
-      'billing/preference': 'POST - Create/update customer preference',
-      'billing/preference/:customerName/:productName': 'DELETE - Delete customer preference',
-      'products': 'GET/POST - Manage product inventory (Product List App)',
-      'products/:id': 'GET/PUT/DELETE - Manage specific product (Product List App)',
-      'products/categories': 'GET/POST - Manage product categories (Product List App)',
-      'products/categories/:id': 'PUT/DELETE - Manage specific category (Product List App)',
-      'products/batches/:id': 'PUT/DELETE - Manage specific batch (Product List App)',
-      'contacts': 'GET/POST - Manage customers and vendors',
-      'contacts/:id': 'GET/PUT/DELETE - Manage specific contact',
-      'notes': 'GET/POST - Manage notes',
-      'calendar': 'GET/POST - Manage calendar events',
-      'analytics': 'GET - View analytics data',
-      'settings': 'GET/PUT - Manage settings',
-      'payments': 'GET/POST - Manage payment tracking (Billing App)',
-      'payments/:id': 'GET/PUT/DELETE - Manage specific payment (Billing App)',
-      'orders': 'GET/POST - Manage orders (Billing App)',
-      'orders/:id': 'GET/PUT/DELETE - Manage specific order (Billing App)',
-      'variants': 'GET/POST - Manage product variants (Billing/Product Apps)',
-      'variants/:id': 'GET/PUT/DELETE - Manage specific variant (Billing/Product Apps)',
-      'batches': 'GET/POST - Manage inventory batches (Billing/Product Apps)',
-      'batches/:id': 'GET/PUT/DELETE - Manage specific batch (Billing/Product Apps)',
-      'creditnotes': 'GET/POST - Manage credit notes (Billing App)',
-      'creditnotes/:id': 'GET/PUT/DELETE - Manage specific credit note (Billing App)',
-      'suggestions': 'GET - Get smart suggestions based on customer history',
-      'wallpapers': 'GET - Get all available wallpapers',
-      'wallpapers/:id': 'GET - Get specific wallpaper',
-      'wallpapers/category/:category': 'GET - Get wallpapers by category'
+const apiDocumentationDocument = {
+  service: 'MacOS Business Suite API',
+  status: 'running',
+  message: 'Consolidated enterprise API server for billing, products, contacts, notes, analytics, and mobile services',
+  version: '2.0.0',
+  release: '2026-09-20',
+  schema: 'v1',
+  environment: process.env.NODE_ENV || 'production',
+  host: 'mac.faizal.uk',
+  baseUrl: 'https://mac.faizal.uk/api',
+  docs: {
+    format: 'JSON-first, browser-friendly documentation',
+    compatibility: 'Accepts JSON for clients; renders HTML docs in browser requests',
+    auth: {
+      web: 'Cookie/session-based authentication for browser flows',
+      mobile: 'Bearer token support for native Android and stateless clients',
+      csrf: 'Browser CSRF protections remain active; mobile bearer requests are exempted',
+      headers: ['Authorization: Bearer <token>', 'X-App-Type: native_android', 'X-Client-Platform: android', 'X-API-Key: <key>']
+    },
+    conventions: {
+      success: 'Responses use success: true and standard data/meta payloads where applicable',
+      errors: 'Error responses use HTTP status codes and descriptive JSON error messages',
+      pagination: 'List endpoints support limit, offset, and search filters when applicable',
+      timestamps: 'ISO-8601 timestamps in UTC',
+      naming: 'Domain-owned services and canonical contracts are preferred over fragmented legacy responses'
+    },
+    standards: {
+      'response-shape': '{ success, data, meta, count, items? }',
+      'http-statuses': { ok: 200, created: 201, bad_request: 400, unauthorized: 401, forbidden: 403, not_found: 404, conflict: 409, server_error: 500 },
+      'rate-limits': 'Protective limits apply to high-volume endpoints and mobile sync traffic',
+      'cache': 'Public catalog endpoints may be cached; business data endpoints should use tenant-aware revalidation'
     }
-  });
+  },
+  domains: {
+    billing: {
+      summary: 'Invoices, bills, payments, credit notes, customer statements, and ledger operations',
+      routes: [
+        'GET /api/billing',
+        'POST /api/billing',
+        'GET /api/billing/:id',
+        'PUT /api/billing/:id',
+        'DELETE /api/billing/:id',
+        'GET /api/billing/summary',
+        'GET /api/billing/dashboard-metrics',
+        'GET /api/billing/customers/:id/statement',
+        'GET /api/billing/customer/:id/statement',
+        'GET /api/billing/invoices/payments',
+        'POST /api/billing/payments',
+        'GET /api/billing/orders',
+        'GET /api/billing/creditnotes'
+      ]
+    },
+    products: {
+      summary: 'Inventory, variants, batches, categories, and product-list management',
+      routes: [
+        'GET /api/products',
+        'POST /api/products',
+        'GET /api/products/:id',
+        'PUT /api/products/:id',
+        'DELETE /api/products/:id',
+        'GET /api/products/categories',
+        'POST /api/products/categories',
+        'GET /api/products/variants',
+        'POST /api/products/variants',
+        'GET /api/products/batches',
+        'POST /api/products/batches'
+      ]
+    },
+    contacts: {
+      summary: 'Customer and vendor records, profiles, and relationship metadata',
+      routes: [
+        'GET /api/contacts',
+        'POST /api/contacts',
+        'GET /api/contacts/:id',
+        'PUT /api/contacts/:id',
+        'DELETE /api/contacts/:id'
+      ]
+    },
+    analytics: {
+      summary: 'Executive KPIs, dashboard summaries, and reporting views',
+      routes: [
+        'GET /api/analytics',
+        'GET /api/analytics/dashboard',
+        'GET /api/analytics/summary'
+      ]
+    },
+    notes: {
+      summary: 'Notes, reminders, and activity-linked journaling',
+      routes: [
+        'GET /api/notes',
+        'POST /api/notes',
+        'GET /api/notes/:id',
+        'PUT /api/notes/:id',
+        'DELETE /api/notes/:id'
+      ]
+    },
+    system: {
+      summary: 'Health checks, status endpoints, configuration, and operational diagnostics',
+      routes: [
+        'GET /api/health',
+        'GET /api/status',
+        'GET /api/debug/notes',
+        'GET /api/android/update/check',
+        'GET /api/auth/status'
+      ]
+    }
+  },
+  examples: {
+    healthCheck: {
+      method: 'GET',
+      url: 'https://mac.faizal.uk/api/health',
+      response: {
+        success: true,
+        status: 'healthy',
+        timestamp: '2026-09-20T00:00:00.000Z',
+        service: 'MacOS Business Suite API'
+      }
+    },
+    billingMetrics: {
+      method: 'GET',
+      url: 'https://mac.faizal.uk/api/billing/dashboard-metrics',
+      response: {
+        success: true,
+        data: {
+          summary: {
+            totalBilled: 35829,
+            totalCollected: 12820,
+            amountDue: 23009
+          }
+        }
+      }
+    }
+  },
+  endpoints: {
+    'billing': 'POST/GET - Manage invoices/bills',
+    'billing/:id': 'GET/PUT/DELETE - Manage specific invoice',
+    'billing/summary': 'GET - Get billing summary statistics',
+    'billing/dashboard-metrics': 'GET - Get server-authoritative dashboard KPI payload',
+    'billing/customers/:id/statement': 'GET - Get FIFO-based customer statement',
+    'products': 'GET/POST - Manage product inventory (Product List App)',
+    'products/:id': 'GET/PUT/DELETE - Manage specific product (Product List App)',
+    'products/categories': 'GET/POST - Manage product categories (Product List App)',
+    'contacts': 'GET/POST - Manage customers and vendors',
+    'contacts/:id': 'GET/PUT/DELETE - Manage specific contact',
+    'notes': 'GET/POST - Manage notes',
+    'calendar': 'GET/POST - Manage calendar events',
+    'analytics': 'GET - View analytics data',
+    'settings': 'GET/PUT - Manage settings',
+    'health': 'GET - Service health and readiness check',
+    'auth/status': 'GET - Authentication status',
+    'wallpapers': 'GET - Get all available wallpapers',
+    'suggestions': 'GET - Get smart suggestions based on customer history'
+  }
+};
+
+const renderApiDocumentationHtml = (doc) => `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${doc.service}</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a2b;
+      --panel-alt: #1a2338;
+      --border: rgba(148, 163, 184, 0.22);
+      --text: #e5eefb;
+      --muted: #9fb2d3;
+      --accent: #6ee7b7;
+      --accent-2: #7dd3fc;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: linear-gradient(180deg, #0b1020 0%, #111827 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+    .hero {
+      background: linear-gradient(135deg, rgba(110,231,183,0.14), rgba(125,211,252,0.1));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 30px;
+      box-shadow: var(--shadow);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(110,231,183,0.12);
+      border: 1px solid rgba(110,231,183,0.35);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: clamp(2rem, 3vw, 3rem);
+      margin: 16px 0 8px;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 28px;
+    }
+    .card {
+      background: rgba(18, 26, 43, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.05rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+    .muted { color: var(--muted); }
+    code, pre {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+    code {
+      background: rgba(148,163,184,0.08);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px 8px;
+      color: #dbeafe;
+      font-size: 0.9em;
+    }
+    pre {
+      margin: 0;
+      background: rgba(2, 6, 23, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      overflow-x: auto;
+      color: #dbeafe;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+    li { margin-bottom: 8px; }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--text); font-weight: 700; }
+    td { color: var(--muted); }
+    .section {
+      margin-top: 30px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 22px 0 18px;
+    }
+    .search-box {
+      flex: 1 1 260px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .status-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(148,163,184,0.08);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .chip.success { color: var(--accent); border-color: rgba(110,231,183,0.35); }
+    .domain-panel {
+      border: 1px solid var(--border);
+      background: rgba(18, 26, 43, 0.9);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+    .domain-toggle {
+      width: 100%;
+      background: transparent;
+      color: var(--text);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-align: left;
+      padding: 18px 20px;
+      font: inherit;
+    }
+    .domain-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .domain-label {
+      font-size: 1.02rem;
+      font-weight: 700;
+      text-transform: capitalize;
+    }
+    .domain-summary {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .domain-chevron {
+      font-size: 22px;
+      color: var(--accent-2);
+      transition: transform 0.2s ease;
+    }
+    .domain-panel.open .domain-chevron { transform: rotate(180deg); }
+    .domain-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 16px 20px 20px;
+    }
+    .domain-panel.open .domain-body { display: block; }
+    .route-list {
+      display: grid;
+      gap: 10px;
+    }
+    .route-item {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.74);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .method-tag {
+      display: inline-block;
+      text-align: center;
+      padding: 6px 8px;
+      border-radius: 7px;
+      font-weight: 800;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(125,211,252,0.14);
+      color: var(--accent-2);
+    }
+    .method-tag.get { background: rgba(110,231,183,0.12); color: var(--accent); }
+    .method-tag.post { background: rgba(251,191,36,0.12); color: var(--warning); }
+    .method-tag.put, .method-tag.patch { background: rgba(125,211,252,0.12); color: var(--accent-2); }
+    .method-tag.delete { background: rgba(248,113,113,0.12); color: var(--danger); }
+    .route-path {
+      font-size: 14px;
+      color: #dbeafe;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .copy-btn, .example-btn {
+      border: 1px solid var(--border);
+      background: rgba(148,163,184,0.08);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .copy-btn:hover, .example-btn:hover { border-color: rgba(125,211,252,0.35); }
+    .example-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .example-btn.active {
+      background: rgba(110,231,183,0.12);
+      color: var(--accent);
+      border-color: rgba(110,231,183,0.35);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <span class="badge">API Platform</span>
+      <h1>${doc.service}</h1>
+      <div class="meta">
+        <span>Version ${doc.version}</span>
+        <span>Release ${doc.release}</span>
+        <span>Schema ${doc.schema}</span>
+        <span>Environment ${doc.environment}</span>
+      </div>
+      <p class="muted" style="margin-top: 18px; font-size: 1.05rem; max-width: 860px;">${doc.message}</p>
+      <p class="muted">Base URL: <code>${doc.baseUrl}</code></p>
+    </div>
+
+    <div class="toolbar">
+      <input id="apiSearch" class="search-box" type="text" placeholder="Search endpoints, domains, or examples..." />
+      <div class="status-chips">
+        <span class="chip success">Operational</span>
+        <span class="chip">JSON-first</span>
+        <span class="chip">Bearer + Session Auth</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Auth & Security</h2>
+        <ul>
+          <li>Web: Cookie/session authentication</li>
+          <li>Mobile: Bearer token support</li>
+          <li>CSRF protections remain enforced for browser flows</li>
+          <li>Native Android requests are treated as stateless clients</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Response Standards</h2>
+        <ul>
+          <li>JSON-first responses</li>
+          <li>Success envelope: <code>success, data, meta</code></li>
+          <li>HTTP status codes for all outcomes</li>
+          <li>ISO-8601 timestamps</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Operational Notes</h2>
+        <ul>
+          <li>Domain-specific service contracts</li>
+          <li>Canonical data normalization</li>
+          <li>Public catalog caching available</li>
+          <li>Internal system health is monitored continuously</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Domains</h2>
+      ${Object.entries(doc.domains).map(([domainName, domain]) => `
+        <section class="domain-panel open" data-domain="${domainName}">
+          <button class="domain-toggle" type="button" data-target="${domainName}">
+            <span class="domain-title-wrap">
+              <span class="domain-label">${domainName}</span>
+              <span class="domain-summary">${domain.summary}</span>
+            </span>
+            <span class="domain-chevron">▾</span>
+          </button>
+          <div class="domain-body">
+            <div class="route-list">
+              ${domain.routes.map(route => {
+                const [method, ...rest] = route.split(' ');
+                const path = rest.join(' ');
+                return `
+                  <div class="route-item" data-route="${route.toLowerCase()}">
+                    <span class="method-tag ${method.toLowerCase()}">${method}</span>
+                    <span class="route-path">${path}</span>
+                    <button class="copy-btn" type="button" data-copy="${route}">Copy</button>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </section>
+      `).join('')}
+    </div>
+
+    <div class="section">
+      <h2>Interactive Examples</h2>
+      <div class="example-toolbar">
+        ${Object.keys(doc.examples).map((key, index) => `
+          <button class="example-btn ${index === 0 ? 'active' : ''}" type="button" data-example="${key}">${key}</button>
+        `).join('')}
+      </div>
+      <pre id="exampleCode">${JSON.stringify(doc.examples.healthCheck, null, 2)}</pre>
+    </div>
+
+    <div class="section">
+      <h2>Standard Response Shape</h2>
+      <pre>{
+  "success": true,
+  "data": {
+    "items": [],
+    "count": 0
+  },
+  "meta": {
+    "generatedAt": "2026-09-20T00:00:00.000Z",
+    "status": "ready"
+  }
+}</pre>
+    </div>
+
+    <div class="section">
+      <p class="muted">This documentation endpoint is intentionally designed to be readable in a browser and machine-readable for API consumers.</p>
+    </div>
+  </div>
+
+  <script>
+    const apiSearch = document.getElementById('apiSearch');
+    const panels = Array.from(document.querySelectorAll('.domain-panel'));
+    const exampleButtons = Array.from(document.querySelectorAll('.example-btn'));
+    const exampleCode = document.getElementById('exampleCode');
+
+    const examplePayloads = ${JSON.stringify(doc.examples)};
+
+    function applySearch() {
+      const query = (apiSearch.value || '').toLowerCase().trim();
+      panels.forEach(panel => {
+        const domain = panel.dataset.domain || '';
+        const body = panel.querySelector('.domain-body');
+        const routes = Array.from(panel.querySelectorAll('.route-item'));
+        const matchesDomain = domain.toLowerCase().includes(query);
+        const matchesRoute = routes.some(route => (route.dataset.route || '').includes(query));
+        const show = !query || matchesDomain || matchesRoute;
+        panel.classList.toggle('hidden', !show);
+        if (show && query && !matchesDomain && matchesRoute) {
+          panel.classList.add('open');
+          body.style.display = 'block';
+        }
+      });
+    }
+
+    apiSearch.addEventListener('input', applySearch);
+
+    document.querySelectorAll('.domain-toggle').forEach(button => {
+      button.addEventListener('click', () => {
+        const panel = button.closest('.domain-panel');
+        panel.classList.toggle('open');
+      });
+    });
+
+    exampleButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.example;
+        exampleButtons.forEach(btn => btn.classList.toggle('active', btn === button));
+        exampleCode.textContent = JSON.stringify(examplePayloads[key], null, 2);
+      });
+    });
+
+    document.querySelectorAll('.copy-btn').forEach(button => {
+      button.addEventListener('click', async () => {
+        const text = button.dataset.copy || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          const previous = button.textContent;
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = previous; }, 1200);
+        } catch (err) {
+          button.textContent = 'Copy failed';
+          setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+        }
+      });
+    });
+  </script>
+</body>
+</html>`;
+
+app.get('/api', (req, res) => {
+  const userAgent = String(req.get('user-agent') || '');
+  const browserLike = /mozilla|chrome|safari|firefox|edg|opera/i.test(userAgent);
+  const prefersHtml = req.accepts(['html', 'json']) === 'html' || browserLike;
+
+  if (prefersHtml) {
+    return res.type('html').send(renderApiDocumentationHtml(apiDocumentationDocument));
+  }
+
+  return res.json(apiDocumentationDocument);
 });
 
 // Debug endpoint - check notes database status

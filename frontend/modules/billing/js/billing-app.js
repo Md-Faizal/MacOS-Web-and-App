@@ -1424,6 +1424,20 @@ export class BillingApp extends AppWindow {
 
   async loadBillingDataFromAPI() {
     if (!this.apiEnabled) throw new Error('API not enabled');
+
+    const normalizeCollection = (payload, fallback = []) => {
+      if (Array.isArray(payload)) return payload;
+      if (!payload) return fallback;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.data)) return payload.data;
+      if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+      if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+      if (Array.isArray(payload.contacts)) return payload.contacts;
+      if (Array.isArray(payload.transactions)) return payload.transactions;
+      if (Array.isArray(payload.payments)) return payload.payments;
+      return fallback;
+    };
+
     try {
       // Fetch bills with error handling
       let billsResponse = [];
@@ -1460,7 +1474,7 @@ export class BillingApp extends AppWindow {
         const resp = await fetch('/api/billing/orders');
         if (resp.ok) {
           const data = await resp.json();
-          ordersResponse = Array.isArray(data) ? data : (data.data || []);
+          ordersResponse = normalizeCollection(data, []);
         }
       } catch (ordersErr) {
         console.warn('Warning: Error fetching orders:', ordersErr.message);
@@ -1471,16 +1485,15 @@ export class BillingApp extends AppWindow {
       let productsResponse = [];
       try {
         const resp = await this.api.getProducts();
-        productsResponse = Array.isArray(resp) ? resp : (resp.data || []);
+        productsResponse = normalizeCollection(resp, []);
       } catch (prodErr) {
         console.warn('Warning: Error fetching products for billing search:', prodErr.message);
         productsResponse = [];
       }
 
-      // Handle both direct arrays and wrapped responses
-      const bills = Array.isArray(billsResponse) ? billsResponse : (billsResponse.data || billsResponse.transactions || []);
-      const payments = Array.isArray(paymentsResponse) ? paymentsResponse : (paymentsResponse.data || paymentsResponse.payments || []);
-      const contacts = Array.isArray(contactsResponse) ? contactsResponse : (contactsResponse.data || contactsResponse.contacts || []);
+      const bills = normalizeCollection(billsResponse, []);
+      const payments = normalizeCollection(paymentsResponse, []);
+      const contacts = normalizeCollection(contactsResponse, []);
 
       // normalize to billingData structure expected by ledger
       this.billingData = {

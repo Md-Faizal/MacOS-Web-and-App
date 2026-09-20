@@ -511,7 +511,15 @@ class BillEditor {
         const response = await fetch('/api/contacts');
         if (response.ok) {
           const result = await response.json();
-          const customers = Array.isArray(result) ? result : (result.data || []);
+          const normalizeCollection = payload => {
+            if (Array.isArray(payload)) return payload;
+            if (!payload) return [];
+            if (Array.isArray(payload.items)) return payload.items;
+            if (Array.isArray(payload.data)) return payload.data;
+            if (Array.isArray(payload.data?.items)) return payload.data.items;
+            return [];
+          };
+          const customers = normalizeCollection(result);
           this.allContacts = customers;
           
           if (this.allContacts.length > 0) {

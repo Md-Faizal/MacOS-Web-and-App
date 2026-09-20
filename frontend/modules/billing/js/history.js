@@ -158,9 +158,16 @@ class HistoryView {
   async fetchBills() {
     try {
       const response = await this.billingApp.api.getBills();
+      const normalizeCollection = payload => {
+        if (Array.isArray(payload)) return payload;
+        if (!payload) return [];
+        if (Array.isArray(payload.items)) return payload.items;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload.data?.items)) return payload.data.items;
+        return [];
+      };
       
-      // Extract data array from response if it's wrapped
-      let bills = Array.isArray(response) ? response : (response?.data || []);
+      let bills = normalizeCollection(response);
       
       if (!Array.isArray(bills)) {
         console.warn('Unexpected bills response format:', response);
@@ -177,9 +184,16 @@ class HistoryView {
   async fetchPayments() {
     try {
       const response = await this.billingApp.api.getPayments();
+      const normalizeCollection = payload => {
+        if (Array.isArray(payload)) return payload;
+        if (!payload) return [];
+        if (Array.isArray(payload.items)) return payload.items;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (Array.isArray(payload.data?.items)) return payload.data.items;
+        return [];
+      };
       
-      // Extract data array from response if it's wrapped
-      let payments = Array.isArray(response) ? response : (response?.data || []);
+      let payments = normalizeCollection(response);
       
       if (!Array.isArray(payments)) {
         console.warn('Unexpected payments response format:', response);
@@ -202,7 +216,15 @@ class HistoryView {
       const response = await fetch('/api/contacts');
       if (response.ok) {
         const result = await response.json();
-        const contactsArr = Array.isArray(result) ? result : (result?.data || []);
+        const normalizeCollection = payload => {
+          if (Array.isArray(payload)) return payload;
+          if (!payload) return [];
+          if (Array.isArray(payload.items)) return payload.items;
+          if (Array.isArray(payload.data)) return payload.data;
+          if (Array.isArray(payload.data?.items)) return payload.data.items;
+          return [];
+        };
+        const contactsArr = normalizeCollection(result);
         contactsArr.forEach(c => {
           if (c.exclude_from_stats === 1 || c.exclude_from_stats === '1' || c.exclude_from_stats === true) {
             excludedCustomerNames.add(c.name);

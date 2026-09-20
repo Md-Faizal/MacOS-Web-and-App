@@ -809,18 +809,26 @@ class ContactsApp extends AppWindow {
   }
 
   loadContactsFromAPI() {
+    const normalizeContactsPayload = (payload, fallback = []) => {
+      if (Array.isArray(payload)) return payload;
+      if (!payload) return fallback;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.data)) return payload.data;
+      if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+      if (payload.data && Array.isArray(payload.data.contacts)) return payload.data.contacts;
+      if (Array.isArray(payload.contacts)) return payload.contacts;
+      return fallback;
+    };
+
     return fetch(this.apiUrl, { credentials: 'same-origin' })
       .then(response => {
         if (!response.ok) throw new Error(`API error: ${response.statusText}`);
         return response.json();
       })
       .then(data => {
-        // Validate that data is an array
-        if (!Array.isArray(data)) {
-          throw new Error(`API returned invalid data type. Expected array, got ${typeof data}. Data: ${JSON.stringify(data)}`);
-        }
+        const contactsList = normalizeContactsPayload(data, []);
         
-        this.contacts = data.map(contact => ({
+        this.contacts = contactsList.map(contact => ({
           id: contact.id,
           name: contact.name,
           email: contact.email || '',

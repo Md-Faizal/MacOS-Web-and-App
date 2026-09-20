@@ -355,7 +355,16 @@ export class WorkerModals {
         const res = await fetch('/api/contacts');
         if (res.ok) {
           const data = await res.json();
-          this.allContacts = Array.isArray(data) ? data : (data.contacts || data.data || []);
+          const normalizeCollection = payload => {
+            if (Array.isArray(payload)) return payload;
+            if (!payload) return [];
+            if (Array.isArray(payload.items)) return payload.items;
+            if (Array.isArray(payload.data)) return payload.data;
+            if (Array.isArray(payload.data?.items)) return payload.data.items;
+            if (Array.isArray(payload.contacts)) return payload.contacts;
+            return [];
+          };
+          this.allContacts = normalizeCollection(data);
         }
       } catch (err) {
         console.error('Failed to fetch contacts:', err);
