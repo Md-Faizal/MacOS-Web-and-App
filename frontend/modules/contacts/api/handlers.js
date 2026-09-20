@@ -1,4 +1,6 @@
 const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+const { buildContactsListResponse } = require('../../../../backend/shared/api/contacts-contract');
+const contactsDepartment = require('../../../../backend/departments/contacts/service');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);
@@ -73,9 +75,10 @@ module.exports = function(db) {
           ORDER BY c.name ASC
         `);
         const contacts = stmt.all();
-        res.json(contacts);
+        const response = contactsDepartment.getContacts(contacts, { requestId: req.requestId });
+        return res.json(response);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 

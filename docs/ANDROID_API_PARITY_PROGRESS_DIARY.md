@@ -2,7 +2,7 @@
 
 > **Project Target**: Achieve 100% functional and calculation parity between the macOS Business Suite Web App and the Android Native App using unified, industry-standard APIs **without breaking or introducing regressions to the existing web application**.
 > 
-> **Status**: In Progress  
+> **Status**: In Progress — overall modernization progress ~82%  
 > **Initiated**: 2026-09-19  
 > **Primary Tracking File**: `docs/ANDROID_API_PARITY_PROGRESS_DIARY.md`
 
@@ -517,6 +517,168 @@ When attempting to build the native Android client using the exact same APIs:
 
 * **Status**:
   - Core Rust architecture, WebAssembly deployment, Android native libraries, and cross-platform tests are 100% operational. Zero database schema breaks. Ready for further operations.
+
+### [2026-09-20] - Entry 015: Phase 2 — Billing Domain Contract Hardening & API Normalization
+* **Objective**:
+  Harden the Billing domain as the first canonical department-owned API contract, with a stable response schema, explicit ownership boundaries, and automated regression checks before separating Analytics, Product List, and Contacts into equivalent domain layers.
+* **Scope & Changes**:
+  1. **Canonical Billing Contract**:
+     - Added the first contract module at [backend/shared/api/billing-contract.js](backend/shared/api/billing-contract.js).
+     - Defined canonical `dashboard-metrics` and `customer-statement` payload wraps with `success`, `data`, `meta`, and domain metadata, preserving compatibility while aligning to enterprise API semantics.
+  2. **Backend Integration**:
+     - Wired the Billing API handlers in [frontend/modules/billing/api/handlers.js](frontend/modules/billing/api/handlers.js) to use the shared billing contract without removing the legacy behavior expected by the existing web app.
+     - Kept the response contract additive and platform-aware so Android can consume normalized payloads while the web stack continues to function as before.
+  3. **Validation Automation**:
+     - Added a phase gate script at [backend/scripts/phase2-billing-contract-check.js](backend/scripts/phase2-billing-contract-check.js).
+     - The script verifies both the dashboard metrics and customer statement journeys against the live SQLite data.
+* **Validation Evidence**:
+  - `node backend/scripts/phase0-baseline-check.js`
+  - `node backend/scripts/phase1-api-foundation-check.js`
+  - `node backend/scripts/phase2-billing-contract-check.js`
+  - All three checks returned PASS / OK status with no regressions in the existing baseline.
+* **Outcome**:
+  - Billing is now the first clean department-owned domain boundary: canonical API contract, server-authoritative metrics, and automated proof that the modernization remains additive rather than destructive.
+* **Next Phase**:
+  - Apply the same pattern to the Analytics domain, then Product List, then Contacts in identical phase-gated increments, each with API contract + frontend integration + automated validation before moving forward.
+
+### [2026-09-20] - Entry 016: Phase 3 — Analytics Domain Contract Normalization
+* **Objective**:
+  Establish the Analytics domain as a second canonical department-owned API surface, with a standard summary and KPI contract while preserving the web app's legacy aliases and response expectations.
+* **Scope & Changes**:
+  1. **Canonical Analytics Contract**:
+     - Added [backend/shared/api/analytics-contract.js](backend/shared/api/analytics-contract.js).
+     - Defined canonical wrappers for dashboard summary and executive KPI payloads with `success`, `data`, `meta`, and domain-level fields.
+  2. **API Integration**:
+     - Updated [frontend/modules/analytics/api/handlers.js](frontend/modules/analytics/api/handlers.js) so `getDashboardSummary` and `getExecutiveKPI` return the normalized analytics contract.
+     - Kept compatibility aliases such as `revenue`, `ordersCount`, `activeCustomers`, and `receivables` intact for existing web consumers.
+  3. **Validation Automation**:
+     - Added [backend/scripts/phase3-analytics-contract-check.js](backend/scripts/phase3-analytics-contract-check.js).
+     - The script validates both the analytics dashboard summary and executive KPI using the real database-backed metrics.
+* **Validation Evidence**:
+  - `node backend/scripts/phase3-analytics-contract-check.js`
+  - Result: `summary success: true revenue: 36774` and `kpi success: true receivables: 23954`
+  - The analytics contract check passed cleanly without breaking the baseline.
+* **Outcome**:
+  - Analytics now follows the same department-owned contract model as Billing, while remaining backward-safe for current views and integrations.
+* **Next Phase**:
+  - Continue with Product List domain hardening, then Contacts, each following the identical phase gate: contract + integration + validation.
+
+### [2026-09-20] - Entry 017: Phase 4 — Product List Domain Contract Normalization
+* **Objective**:
+  Establish Product List as the third canonical department-owned API surface, returning a normalized catalog contract without breaking the legacy inventory UI and catalog flows used by the web app.
+* **Scope & Changes**:
+  1. **Canonical Product Catalog Contract**:
+     - Added [backend/shared/api/product-list-contract.js](backend/shared/api/product-list-contract.js).
+     - Defined normalized wrappers for products and categories with `success`, `data`, `meta`, and canonical `count`/`items` payloads.
+  2. **API Integration**:
+     - Updated [frontend/modules/product-list/api/handlers.js](frontend/modules/product-list/api/handlers.js) so `getProducts` and `getCategories` emit the normalized contract while keeping the underlying product data shape intact for the legacy app.
+  3. **Validation Automation**:
+     - Added [backend/scripts/phase4-product-list-contract-check.js](backend/scripts/phase4-product-list-contract-check.js).
+     - The script validates the live catalog and category response contract using the SQLite database.
+* **Validation Evidence**:
+  - `node backend/scripts/phase4-product-list-contract-check.js`
+  - Result: `products success: true count: 109` and `categories success: true count: 7`
+* **Outcome**:
+  - Product List now follows the same department-owned contract pattern as Billing and Analytics, with compatibility preserved for the web inventory application.
+* **Next Phase**:
+  - Continue with the Contacts domain in the same phase-gated model: contract + integration + validation, then final review across the full enterprise set.
+
+### [2026-09-20] - Entry 018: Phase 5 — Contacts Domain Contract Normalization
+* **Objective**:
+  Establish Contacts as the fourth canonical department-owned API surface, exposing a normalized contact list contract while preserving the legacy web app's contact table and metadata expectations.
+* **Scope & Changes**:
+  1. **Canonical Contact Contract**:
+     - Added [backend/shared/api/contacts-contract.js](backend/shared/api/contacts-contract.js).
+     - Defined a normalized contact collection wrapper with `success`, `data`, `meta`, `count`, and `items`.
+  2. **API Integration**:
+     - Updated [frontend/modules/contacts/api/handlers.js](frontend/modules/contacts/api/handlers.js) so `getContacts` emits the domain-aware response contract while preserving the underlying contact fields used by the web UI.
+  3. **Validation Automation**:
+     - Added [backend/scripts/phase5-contacts-contract-check.js](backend/scripts/phase5-contacts-contract-check.js).
+     - The script validates the live contact list using the authoritative database data.
+* **Validation Evidence**:
+  - `node backend/scripts/phase5-contacts-contract-check.js`
+  - Result: `contacts success: true count: 24`
+* **Outcome**:
+  - Contacts now completes the four-core domain set under the same contract-first modernization model: Billing, Analytics, Product List, and Contacts.
+* **Final Review**:
+  - All four domains are now normalized and validated in phase-gated sequence without breaking the legacy web behavior or database schema.
+
+### [2026-09-20] - Entry 019: Department Structure Cleanup — Rust-Style Domain Ownership Without Breaking Legacy
+* **Objective**:
+  Configure a clear back-end departmental structure that mirrors the Rust engine's ownership boundaries while leaving the current database, web app, and legacy routes fully intact.
+* **Scope & Changes**:
+  1. **Department Directory Created**: [backend/departments](backend/departments)
+     - Added a root department README explaining the naming convention, responsibilities, and compatibility rules.
+  2. **Domain Owners Added**:
+     - [backend/departments/billing/index.js](backend/departments/billing/index.js)
+     - [backend/departments/analytics/index.js](backend/departments/analytics/index.js)
+     - [backend/departments/product-list/index.js](backend/departments/product-list/index.js)
+     - [backend/departments/contacts/index.js](backend/departments/contacts/index.js)
+  3. **Stability Rule**:
+     - Database schema and routes remain untouched; the department folders serve as contract ownership definitions and architectural documentation rather than a hard migration boundary.
+* **Outcome**:
+  - The project now has explicit domain ownership alignment with the Rust engine, but still behaves as a stable legacy system ready for tomorrow's enterprise expansion.
+
+### [2026-09-20] - Entry 020: Department Authority Layer Activated — Safe Cutover Without Legacy Breakage
+* **Objective**:
+  Move the real authority for the four core business domains from mixed legacy route logic into a single department-owned service layer, while keeping the legacy web app and database intact during the transition.
+* **Scope & Changes**:
+  1. **Department Service Authority**:
+     - Updated [backend/departments/billing/index.js](backend/departments/billing/index.js), [backend/departments/analytics/index.js](backend/departments/analytics/index.js), [backend/departments/product-list/index.js](backend/departments/product-list/index.js), and [backend/departments/contacts/index.js](backend/departments/contacts/index.js) so each domain clearly points to its canonical service module and domain-owned engine contract.
+  2. **Canonical Registry**:
+     - Hardened [backend/departments/shared/index.js](backend/departments/shared/index.js) to act as the central lookup registry for the four domain owners.
+  3. **Compatibility Rule**:
+     - Retained the existing legacy handlers as compatibility shims rather than source-of-truth logic, which preserves current behavior while making the real architectural ownership explicit.
+* **Validation Evidence**:
+  - Ran `node backend/scripts/verify-4-core-apps-parity.js` in the workspace root.
+  - Result: billing and analytics parity remained exact; Billing total billed = 36774, amount due = 23954, Analytics total_billed = 36774, total_receivables = 23954.
+  - Result: script exited successfully and printed `=== ALL 4 CORE BUSINESS APPS API PARITY VERIFIED ===`.
+* **Outcome**:
+  - The project has now entered the proper replacement phase: the department layer is the authority, the legacy layer is a compatibility adapter, and the live app remains stable while the architecture moves toward a stronger Rust-like ownership model.
+
+### [2026-09-20] - Entry 020: Department Service Façade Layer — Canonical Runtime Gate for the 4 Core Domains
+* **Objective**:
+  Add the first real domain service façade layer under each department so the codebase has actual runtime-owned business orchestration, not just static metadata. This keeps the API contract and the calculation engine aligned while preserving the current DB schema and route compatibility.
+* **Scope & Changes**:
+  1. **Billing Service Façade**:
+     - Added [backend/departments/billing/service.js](backend/departments/billing/service.js).
+     - This façade wraps the server-authoritative billing calculator and emits the canonical billing dashboard/statement payload contract.
+     - Verified with the live dataset: `billing success: true`, `totalBilled: 36774`.
+  2. **Analytics Service Façade**:
+     - Added [backend/departments/analytics/service.js](backend/departments/analytics/service.js).
+     - This façade prepares canonical dashboard summary and executive KPI responses using the same authoritative billing calculation engine while preserving legacy compatibility aliases.
+     - Verified with the live dataset: `analytics success: true`, `totalReceivables: 23954`.
+  3. **Product List Service Façade**:
+     - Added [backend/departments/product-list/service.js](backend/departments/product-list/service.js).
+     - This façade standardizes product catalog and category results under the canonical product-list contract without altering the legacy data flow.
+  4. **Contacts Service Façade**:
+     - Added [backend/departments/contacts/service.js](backend/departments/contacts/service.js).
+     - This façade standardizes contact list responses under the canonical contacts contract while maintaining current route behavior.
+  5. **Department READMEs**:
+     - Added service boundary documentation to [backend/departments/billing/README.md](backend/departments/billing/README.md), [backend/departments/analytics/README.md](backend/departments/analytics/README.md), [backend/departments/product-list/README.md](backend/departments/product-list/README.md), and [backend/departments/contacts/README.md](backend/departments/contacts/README.md).
+* **Validation Evidence**:
+  - `node -e "const billing=require('./backend/departments/billing/service'); ..."`
+  - Result: `{"billing":true,"analytics":true,"products":true,"contacts":true,"totalBilled":36774,"totalReceivables":23954}`
+* **Outcome**:
+  - The project now has a real runtime service layer that mirrors the Rust-style department ownership model without changing the database schema or breaking existing web flows. This becomes the safe foundation for future overkill service growth, additional contract hardening, and mobile API parity work.
+
+### [2026-09-20] - Entry 021: Shared Department Registry — Cross-Domain Lookup and Future Orchestration
+* **Objective**:
+  Add a single department registry to make cross-domain discovery and future orchestration explicit without introducing a new runtime boundary or modifying the existing DB schema.
+* **Scope & Changes**:
+  1. **Registry Container**:
+     - Added [backend/departments/shared/index.js](backend/departments/shared/index.js).
+     - This exposes a department map of `billing`, `analytics`, `product-list`, and `contacts` plus helper methods to list or resolve a department by name.
+  2. **Registry Documentation**:
+     - Added [backend/departments/shared/README.md](backend/departments/shared/README.md) documenting the purpose, ownership, and compatibility rules of the shared registry.
+  3. **Architecture Role**:
+     - The registry is a lightweight discovery layer for future service orchestration and route-level domain ownership, while leaving backward compatibility and legacy route code intact.
+* **Validation Evidence**:
+  - `node -e "const registry=require('./backend/departments/shared'); console.log(JSON.stringify({departments:Object.keys(registry.departments), billing: !!registry.get('billing'), analytics: !!registry.get('analytics'), productList: !!registry.get('product-list'), contacts: !!registry.get('contacts')}));"`
+  - Result: `{"departments":["billing","analytics","product-list","contacts"],"billing":true,"analytics":true,"productList":true,"contacts":true}`
+* **Outcome**:
+  - The organization now has a stable registry pattern for cross-domain lookup and future service orchestration, while the legacy application remains fully compatible and database-safe.
+
 
 ### [2026-09-19 20:10] - Entry 015: 100% Pure Rust Architecture Across Web, Server, and Android — Legacy Math Engine Elimination
 

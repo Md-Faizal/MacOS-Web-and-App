@@ -746,14 +746,16 @@ fun BillRecordCard(
     settlement: FifoSettlementCalculator.SettlementInfo?,
     onClick: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     OutlinedCard(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        onClick = { expanded = !expanded },
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                Column {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(bill.billNumber.ifEmpty { "INV-${bill.id}" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(bill.date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -764,6 +766,52 @@ fun BillRecordCard(
                 Text("Billed Amount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("₹${"%,.2f".format(bill.grandTotal)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             }
+
+            if (settlement != null) {
+                Spacer(Modifier.height(6.dp))
+                Surface(
+                    color = if (settlement.isSettled) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (settlement.isSettled) "Settled in ${settlement.days}d" else "${settlement.days}d outstanding",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (settlement.isSettled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Open") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Edit") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Delete") }
+                    }
+                }
+            }
         }
     }
 }
@@ -773,15 +821,16 @@ fun PaymentRecordCard(
     p: PaymentRecord,
     onClick: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val isCredit = p.safeType.contains("CREDIT", ignoreCase = true)
     OutlinedCard(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        onClick = { expanded = !expanded },
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(p.referenceNo ?: (if (isCredit) "Credit Note" else "Payment"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(com.example.macosbusinesssuite.util.DateTimeUtils.formatDisplayDate(p.safePaymentDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -792,6 +841,36 @@ fun PaymentRecordCard(
                 Text(if (isCredit) "Credit Value" else "Paid Amount", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("₹${"%,.2f".format(p.effectiveAmount)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, color = Color(0xFF2E7D32))
             }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Open") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Receipt") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Delete") }
+                    }
+                }
+            }
         }
     }
 }
@@ -801,6 +880,7 @@ fun StatementRowCard(
     row: StatementRow,
     onClick: () -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
     val isDebit = row.debit > 0
     val isCredit = row.credit > 0
     val isOpening = row.type.contains("OPENING", ignoreCase = true)
@@ -808,8 +888,8 @@ fun StatementRowCard(
     val isCreditNote = row.type.contains("CREDIT", ignoreCase = true)
 
     OutlinedCard(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        onClick = { expanded = !expanded },
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -904,6 +984,36 @@ fun StatementRowCard(
                         fontWeight = FontWeight.Black,
                         color = if (row.runningBalance > 0) MaterialTheme.colorScheme.onSurface else Color(0xFF2E7D32)
                     )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Open") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Edit") }
+                        TextButton(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) { Text("Delete") }
+                    }
                 }
             }
         }
@@ -1215,23 +1325,25 @@ private fun buildStatementRows(
     
     sorted.forEach { (ms, item) ->
         when (item) {
-            is LedgerRecordItem.BillRecord -> { 
+            is LedgerRecordItem.BillRecord -> {
                 balance += item.bill.grandTotal
                 val sInfo = item.settlementInfo
                 val infoText = if (sInfo != null) {
                     if (sInfo.isSettled) "SETTLED IN ${sInfo.days}D" else "${sInfo.days}D OUTSTANDING"
                 } else "-"
                 val ref = item.bill.billNumber.ifBlank { "INV-${item.bill.id}" }
-                rows.add(StatementRow(ms, item.bill.date, "INVOICE", ref, item.bill.grandTotal, 0.0, balance, item, infoText)) 
+                rows.add(StatementRow(ms, item.bill.date, "INVOICE", ref, item.bill.grandTotal, 0.0, balance, item, infoText))
             }
-            is LedgerRecordItem.PaymentItem -> { 
+            is LedgerRecordItem.PaymentItem -> {
                 val isCr = item.payment.type.uppercase() == "CREDIT_NOTE"
-                val amt = if(isCr) item.payment.creditAmount else item.payment.amount
+                val amt = if (isCr) item.payment.creditAmount else item.payment.amount
                 balance -= amt
                 val ref = item.payment.referenceNo?.takeIf { it.isNotBlank() } ?: if (isCr) "Credit Note" else "Payment"
-                rows.add(StatementRow(ms, item.payment.paymentDate.ifBlank { item.payment.createdAt ?: "" }, if(isCr) "CREDIT NOTE" else "PAYMENT", ref, 0.0, amt, balance, item, "-"))
+                rows.add(StatementRow(ms, item.payment.paymentDate.ifBlank { item.payment.createdAt ?: "" }, if (isCr) "CREDIT NOTE" else "PAYMENT", ref, 0.0, amt, balance, item, "-"))
             }
-            else -> {}
+            is LedgerRecordItem.OpeningBalanceRecord -> {
+                // no-op: opening balance rows are already inserted above
+            }
         }
     }
     return rows.reversed()
@@ -1248,7 +1360,7 @@ private fun filterBillsByPeriod(bills: List<Bill>, p: DateFilterPeriod): List<Bi
             DateFilterPeriod.LAST_3_MONTHS -> ((now.get(Calendar.YEAR)-cal.get(Calendar.YEAR))*12 + now.get(Calendar.MONTH)-cal.get(Calendar.MONTH)) in 0..3
             DateFilterPeriod.LAST_6_MONTHS -> ((now.get(Calendar.YEAR)-cal.get(Calendar.YEAR))*12 + now.get(Calendar.MONTH)-cal.get(Calendar.MONTH)) in 0..6
             DateFilterPeriod.THIS_YEAR -> cal.get(Calendar.YEAR) == now.get(Calendar.YEAR)
-            else -> true
+            DateFilterPeriod.ALL -> true
         }
     }
 }
@@ -1264,7 +1376,7 @@ private fun filterPaymentsByPeriod(pmts: List<PaymentRecord>, p: DateFilterPerio
             DateFilterPeriod.LAST_3_MONTHS -> ((now.get(Calendar.YEAR)-cal.get(Calendar.YEAR))*12 + now.get(Calendar.MONTH)-cal.get(Calendar.MONTH)) in 0..3
             DateFilterPeriod.LAST_6_MONTHS -> ((now.get(Calendar.YEAR)-cal.get(Calendar.YEAR))*12 + now.get(Calendar.MONTH)-cal.get(Calendar.MONTH)) in 0..6
             DateFilterPeriod.THIS_YEAR -> cal.get(Calendar.YEAR) == now.get(Calendar.YEAR)
-            else -> true
+            DateFilterPeriod.ALL -> true
         }
     }
 }

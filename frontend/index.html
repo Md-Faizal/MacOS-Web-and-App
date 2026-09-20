@@ -6,28 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MacOS</title>
 
-  <!-- Critical Inline CSS: Eliminates white flash during initial page load -->
-  <style>
-    html, body {
-      background-color: #000000 !important;
-      background: #000000 !important;
-      color: #ffffff;
-      margin: 0;
-      padding: 0;
-      overflow: hidden !important;
-    }
-  </style>
-
   <!-- PWA Meta Tags -->
   <meta name="description"
     content="A beautiful MacOS-inspired web application with wallpaper management and productivity tools">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#667eea">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MacOS">
   <link rel="apple-touch-icon" href="/assets/Images/Favicon.png">
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/assets/Images/Favicon.png" type="image/png">
 
   <script src="/scripts/shared/csrf.js"></script>
 
@@ -35,7 +22,9 @@
     // Industrial Standard Session Termination: Clear session on backend AND frontend when landing on login page
     (async function() {
       try {
+        // Clear robust flag
         sessionStorage.removeItem('macos_session_active');
+        // Clear backend cookie
         await fetch('/api/auth/logout', { method: 'POST' });
         console.log('✓ Session terminated (Flag cleared & Backend logout)');
       } catch (err) {
@@ -46,49 +35,937 @@
     // Handle browser extension messages gracefully to suppress "Unchecked runtime.lastError" warnings
     if (window.chrome && window.chrome.runtime) {
       window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        // Silently ignore messages from extensions
         try {
           sendResponse({});
-        } catch (e) {}
-        return true;
+        } catch (e) {
+          // Port might be closed, ignore
+        }
+        return true; // Keep the message channel open
       });
     }
   </script>
 
-  <!-- Typography & Google Fonts -->
+  <link rel="icon" href="/assets/Images/Favicon.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- External Libraries -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
   <script src="https://accounts.google.com/gsi/client" async defer data-cfasync="false"></script>
-  <script type="module" src="/modules/product-list/js/qrcode.min.js"></script>
-
-  <!-- Modular Stylesheets -->
+  <script src="/modules/product-list/js/qrcode.min.js"></script>
   <link rel="stylesheet" href="/styles/clock-display/modules/clock-display.css">
   <link rel="stylesheet" href="/styles/weather/modules/weather.css">
   <link rel="stylesheet" href="/shared/connectivity.css">
-  <link rel="stylesheet" href="/styles/auth/lockscreen.css">
-  <link rel="stylesheet" href="/styles/auth/modals.css">
 
-  <!-- MacOS Cursor -->
-  <link rel="stylesheet" href="/shared/macos-cursor.css">
+  <style>
+    /* BASE RESET */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+
+    /* CLOCK WRAPPER */
+    .clock-container {
+      position: absolute;
+      top: 11vh;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: fadeInSimple 1.5s ease-out;
+    }
+
+    /* ========================================
+       TOP BAR - SYSTEM STATUS & CONTROLS
+       ======================================== */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 20;
+    }
+
+    .top-bar-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .top-bar-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+
+    /* WEATHER DISPLAY FOR HOMEPAGE - TOP RIGHT */
+    .homepage-weather-display {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+      white-space: nowrap;
+      transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
+    }
+
+    .homepage-weather-display.light-bg {
+      color: #000000;
+      text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+    }
+
+    .homepage-weather-display.dark-bg {
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+
+    body.login-active .homepage-weather-display {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .homepage-weather-icon {
+      font-size: 1rem;
+      line-height: 1;
+      filter: brightness(0) invert(1);
+    }
+
+    .homepage-weather-display.light-bg .homepage-weather-icon {
+      filter: brightness(0);
+    }
+
+    /* WEATHER DISPLAY FOR HOMEPAGE - OLD */
+    .homepage-weather {
+      display: none;
+    }
+
+    /* DATE STYLE */
+    .date {
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: -10px;
+      letter-spacing: 0.5px;
+    }
+
+    /* THE LIQUID GLASS TIME STYLE */
+    .time {
+      font-size: 7.5rem;
+      font-weight: 800;
+      letter-spacing: -4px;
+      line-height: 1.2;
+
+      background: linear-gradient(to bottom,
+          rgba(255, 255, 255, 0.8) 0%,
+          rgba(255, 255, 255, 0.4) 100%);
+
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      position: relative;
+      animation: softFadeIn 1.5s ease-out forwards;
+    }
+
+    .time::after {
+      content: attr(data-time);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.2);
+      color: transparent;
+      opacity: 0.5;
+    }
+
+    /* LOGIN PAGE CLOCK - TOP RIGHT */
+    /* USER PROFILE STYLES */
+    .user-profile {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: white;
+      animation: fadeInSimple 2s ease-out;
+    }
+
+    .avatar,
+    .username,
+    .hint {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      margin-bottom: 12px;
+      background: #d1d1d6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 32px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    }
+
+    .profile-menu {
+      position: absolute;
+      top: 0;
+      left: calc(100% + 12px);
+      min-width: 130px;
+      padding: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+      backdrop-filter: blur(20px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(0) translateX(-6px);
+      transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+      z-index: 25;
+    }
+
+    .profile-menu.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0) translateX(0);
+    }
+
+    .profile-menu button {
+      width: 100%;
+      padding: 7px 12px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #1d1d1f;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .profile-menu button:hover {
+      background: #e53935;
+      color: #ffffff;
+    }
+
+    .username {
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      margin-bottom: 4px;
+    }
+
+    .hint {
+      font-size: 0.85rem;
+      font-weight: 400;
+      opacity: 0.75;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .hint:hover {
+      opacity: 1;
+    }
+
+    .hint span {
+      display: inline-block;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    /* ERROR SHAKE ANIMATION */
+    .error-shake {
+      animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+      border-color: rgba(255, 59, 48, 0.5) !important;
+    }
+
+    @keyframes shake {
+
+      10%,
+      90% {
+        transform: translate3d(-1px, 0, 0);
+      }
+
+      20%,
+      80% {
+        transform: translate3d(2px, 0, 0);
+      }
+
+      30%,
+      50%,
+      70% {
+        transform: translate3d(-4px, 0, 0);
+      }
+
+      40%,
+      60% {
+        transform: translate3d(4px, 0, 0);
+      }
+    }
+
+    .hint-separator {
+      padding: 0 4px;
+    }
+
+    .avatar:hover {
+      transform: scale(1.05);
+    }
+
+    .username:hover {
+      opacity: 0.8;
+    }
+
+    /* BLUR OVERLAY */
+    .blur-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      backdrop-filter: blur(20px);
+      background: rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+      z-index: 10;
+    }
+
+    .blur-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    /* LOGIN MODAL */
+    .login-modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      z-index: 20;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.4s ease;
+    }
+
+    .login-modal.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .account-preference-modal {
+      z-index: 30;
+    }
+
+    .account-preference-content {
+      position: relative;
+      width: min(460px, calc(100vw - 32px));
+      min-height: 270px;
+      text-align: center;
+    }
+
+    .preference-popup {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: min(320px, calc(100vw - 64px));
+      min-height: 0;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+      padding: 18px 18px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      border-radius: 17px;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(225, 239, 255, 0.42)), rgba(225, 239, 255, 0.48);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.72), 0 20px 42px rgba(8, 28, 52, 0.42), 0 5px 12px rgba(8, 28, 52, 0.18);
+      backdrop-filter: blur(30px) saturate(135%);
+      -webkit-backdrop-filter: blur(30px) saturate(135%);
+    }
+
+    .preference-popup .profile-avatar-large,
+    .preference-popup .profile-name {
+      display: none;
+    }
+
+    .preference-popup .preference-warning-icon {
+      display: block;
+      margin: 0 auto 10px;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    #accountPreferenceModal .account-preference-content > div:not(.preference-popup)[style*="display: block"],
+    #accountPreferenceModal .account-preference-content > div:not(.preference-popup):not([style*="display: none"]) {
+      animation: preferenceStepIn 280ms ease-out both;
+    }
+
+    .preference-popup[style*="display: block"] {
+      animation: preferencePopupIn 280ms ease-out both;
+    }
+
+    .preference-popup-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.32);
+      color: rgba(18, 35, 52, 0.78);
+      font-size: 1rem;
+      line-height: 20px;
+      cursor: pointer;
+    }
+
+    .preference-popup-close:hover {
+      background: #e53935;
+      color: #ffffff;
+    }
+
+    @keyframes preferenceStepIn {
+      from {
+        opacity: 0;
+        filter: blur(8px);
+        transform: scale(0.98) translateY(4px);
+      }
+      to {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    @keyframes preferencePopupIn {
+      from {
+        opacity: 0;
+        filter: blur(8px);
+        transform: translate(-50%, -50%) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        filter: blur(0);
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    .preference-popup p {
+      margin: 0 0 16px;
+      color: rgba(18, 35, 52, 0.88) !important;
+      font-size: 0.78rem !important;
+      line-height: 1.4;
+      text-align: left;
+    }
+
+    .preference-popup > div[style*="display: flex"] {
+      gap: 8px !important;
+    }
+
+    .preference-popup .login-button {
+      min-height: 32px;
+      margin-top: 0;
+      padding: 7px 14px;
+      border-color: rgba(255, 255, 255, 0.48);
+      background: rgba(255, 255, 255, 0.38);
+      color: rgba(18, 35, 52, 0.86);
+      font-size: 0.76rem;
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.4);
+    }
+
+    .preference-popup .login-button:last-child {
+      border-color: rgba(255, 255, 255, 0.48);
+      background: rgba(255, 255, 255, 0.38);
+      color: rgba(18, 35, 52, 0.86);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.8), 0 4px 12px rgba(0, 0, 0, 0.16);
+    }
+
+    #rememberAccountWarningStep .login-button:last-child {
+      border-color: #0071E3;
+      background: #0071E3;
+      color: #ffffff;
+    }
+
+    #rememberAccountWarningStep .login-button:last-child:hover {
+      border-color: #005BB5;
+      background: #005BB5;
+    }
+
+    #rememberAccountBtn,
+    #chooseTouchIdBtn {
+      border-color: #0071E3;
+      background: #0071E3;
+      color: #ffffff;
+    }
+
+    #rememberAccountBtn:hover,
+    #chooseTouchIdBtn:hover {
+      border-color: #005BB5;
+      background: #005BB5;
+      color: #ffffff;
+    }
+
+    .preference-dismiss-option {
+      appearance: none;
+      font: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin: 0 0 12px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 120, 120, 0.5);
+      border-radius: 8px;
+      background: rgba(150, 28, 38, 0.42);
+      color: rgba(255, 240, 240, 0.92);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 6px 18px rgba(90, 0, 0, 0.2);
+      backdrop-filter: blur(18px);
+      cursor: pointer;
+    }
+
+    .preference-dismiss-option:hover {
+      background: rgba(180, 38, 48, 0.55);
+      border-color: rgba(255, 170, 170, 0.7);
+    }
+
+    .modal-avatar {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 48px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-username {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .password-wrapper {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .password-field-container {
+      position: relative;
+      width: 360px;
+    }
+
+    .password-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 8px;
+      display: block;
+      text-align: left;
+    }
+
+    .password-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-input {
+      width: 100%;
+      padding: 10px 76px 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.25);
+      color: white;
+      font-size: 0.95rem;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      outline: none;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 6px 6px rgba(0, 0, 0, 0.2), 0 0 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .password-input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .password-text-input {
+      padding-right: 12px;
+    }
+
+    .password-input:focus {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+
+    .password-select {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 100%;
+      padding: 10px 36px 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.25);
+      color: white;
+      font-size: 0.95rem;
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      outline: none;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 6px 6px rgba(0, 0, 0, 0.2), 0 0 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .password-select-wrapper {
+      position: relative;
+    }
+
+    .password-select-wrapper::after {
+      content: '➜';
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 1.1rem;
+      pointer-events: none;
+      transform: translateY(-50%);
+    }
+
+    .password-select:focus {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+    }
+
+    .password-select option {
+      color: #1d1d1f;
+      background: #ffffff;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font-size: 1.2rem;
+      padding: 4px;
+      transition: color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .password-toggle:hover {
+      color: rgba(255, 255, 255, 1);
+    }
+
+    .password-input-wrapper > .password-toggle:not(.password-action-toggle) {
+      right: 38px;
+    }
+
+    .password-input-wrapper.password-no-action > .password-toggle:not(.password-action-toggle) {
+      right: 10px;
+    }
+
+    .password-input-wrapper.password-no-action .password-input {
+      padding-right: 40px;
+    }
+
+    .password-action-toggle {
+      right: 6px;
+      width: 25px;
+      height: 25px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.72);
+      font-size: 1.05rem;
+      font-weight: 800;
+      line-height: 22px;
+      color: rgba(18, 35, 52, 0.86);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.8), 0 3px 10px rgba(20, 50, 80, 0.16);
+      backdrop-filter: blur(16px) saturate(135%);
+      -webkit-backdrop-filter: blur(16px) saturate(135%);
+    }
+
+    .password-action-toggle:hover {
+      color: #ffffff;
+      background: #0071E3;
+      border-color: rgba(165, 215, 255, 0.8);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.28), 0 4px 12px rgba(24, 72, 120, 0.3);
+    }
+
+    .login-links-row {
+      position: relative;
+      width: 360px; /* Matches password field width */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .touchid-text {
+      font-size: 0.85rem;
+      color: #fff;
+      text-decoration: none;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.2s ease;
+    }
+
+    .touchid-text:hover {
+      opacity: 0.8;
+    }
+
+    .forgot-password-link {
+      position: absolute;
+      right: 0;
+    }
+
+    .login-button {
+      margin-top: 8px;
+      padding: 10px 28px;
+      background: rgba(255, 255, 255, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      color: white;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      display: none;
+    }
+
+    #googleSignInButton {
+      display: flex;
+      justify-content: center;
+      width: min(360px, calc(100vw - 64px));
+    }
+
+    .login-button:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.6);
+      color: white;
+    }
+
+    .login-button:active {
+      transform: scale(0.98);
+    }
+
+    /* HIDE CLOCK AND PROFILE WHEN LOGIN ACTIVE */
+    body.login-active .clock-container,
+    body.login-active .user-profile {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translate(-50%, -100vh) !important;
+      transition: none !important;
+    }
+
+    @keyframes softFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes fadeInSimple {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @media (max-width: 1024px) {
+      .password-field-container {
+        width: 320px;
+      }
+      .login-links-row {
+        width: 320px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .time {
+        font-size: 5rem;
+        letter-spacing: -2px;
+      }
+
+      .date {
+        font-size: 1.1rem;
+      }
+
+      .password-field-container {
+        width: 280px;
+      }
+      .login-links-row {
+        width: 280px;
+      }
+
+      #touchidText {
+        position: absolute;
+        left: 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .password-field-container {
+        width: 240px;
+      }
+      .login-links-row {
+        width: 240px;
+      }
+
+      .password-input {
+        padding: 10px 70px 10px 12px;
+        font-size: 0.9rem;
+      }
+
+      .password-input-wrapper.password-no-action .password-input {
+        padding-right: 36px;
+      }
+
+      .password-toggle {
+        font-size: 1rem;
+      }
+    }
+
+    /* WALLPAPER BACKGROUND */
+    #wallpaperBackground {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      pointer-events: none;
+    }
+
+    /* Keep wallpaper video playing during login modal */
+    #wallpaperBackground video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Elements follow drag */
+    .draggable-content {
+      transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.5s ease-out;
+      will-change: transform, opacity;
+      /* Ensure base state has centering */
+      transform: translateX(-50%);
+    }
+
+    /* State: Dragging - Instant feedback */
+    body[data-unlock-state="dragging"] .draggable-content {
+      transition: none !important;
+    }
+
+    /* State: Unlocking - Fly out smoothly (CSS fallback) */
+    body[data-unlock-state="unlocking"] .draggable-content {
+      transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.6s ease-out !important;
+      transform: translate(-50%, -100vh) !important;
+      opacity: 0 !important;
+    }
+
+    /* State: Finished - Hidden by login-active but maintaining position */
+    body[data-unlock-state="finished"] .draggable-content {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      transform: translate(-50%, -100vh) !important;
+      transition: none !important;
+    }
+
+    /* AUTOFILL DETECTION */
+    @keyframes onAutofillStart { from {} to {} }
+    input:-webkit-autofill {
+      animation-name: onAutofillStart;
+    }
+  </style>
 </head>
 
 <body data-unlock-state="locked">
 
-  <!-- Wallpaper Background Engine Container -->
-  <div id="wallpaperBackground">
-    <div id="wallpaper-layer-a" class="wallpaper-layer" style="z-index: 1;"></div>
-    <div id="wallpaper-layer-b" class="wallpaper-layer" style="z-index: 0;"></div>
-  </div>
+  <!-- ========================================
+       TOP BAR - SYSTEM STATUS & CONTROLS
+       ======================================== -->
 
-  <!-- Full-Screen Frosted Blur Overlay for Active Modals/Login -->
+  <!-- Wallpaper Background - Backup hardcoded wallpaper -->
+  <div id="wallpaperBackground"
+    style="background-image: url('/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg');"></div>
+
+  <!-- Blur Overlay -->
   <div class="blur-overlay" id="blurOverlay"></div>
 
-  <!-- ========================================
-       TOP BAR - SYSTEM STATUS & WEATHER
-       ======================================== -->
-  <header class="top-bar">
+  <!-- Top Bar Container -->
+  <div class="top-bar">
+
+    <!-- Top Bar Center: Homepage Weather Display -->
     <div class="top-bar-center">
       <div class="homepage-weather-display weather-display homepage" id="homepageWeatherDisplay">
         <span class="homepage-weather-icon weather-icon" id="homepageWeatherIcon">☁️</span>
@@ -96,76 +973,48 @@
       </div>
     </div>
 
+    <!-- Top Bar Right: Login Clock and Weather Display (hidden by default) -->
     <div class="top-bar-right">
-      <div class="login-page-clock" id="loginPageClock">
+      <div class="login-page-clock hidden-by-default" id="loginPageClock">
+        <!-- Weather Display -->
         <div class="weather-display login" id="loginWeatherDisplay">
           <span class="weather-icon" id="loginWeatherIcon">☁️</span>
           <span class="weather-temp" id="loginWeatherTemp">--°</span>
         </div>
+
+        <!-- Clock Display -->
         <div id="loginClockDisplay" class="login-clock-display">Loading...</div>
       </div>
     </div>
-  </header>
 
-  <!-- ========================================
-       LOCK SCREEN SURFACE (Swipe/Click to Unlock)
-       ======================================== -->
-  <main class="clock-container draggable-content">
-    <div class="date" id="dateDisplay">Loading...</div>
-    <div class="time" id="timeDisplay" data-time="00:00">00:00</div>
-  </main>
+  </div>
 
-  <footer class="user-profile draggable-content" id="lockscreenUserProfile">
-    <!-- Multi-User List View (Rendered dynamically when multiple/remembered users exist) -->
-    <div class="multi-user-container" id="multiUserContainer" style="display: none;">
-      <div class="multi-user-list" id="multiUserList" role="list"></div>
-    </div>
-
-    <!-- Single User / Default Fallback View -->
-    <div class="single-user-view" id="singleUserContainer">
-      <div class="avatar" id="profileAvatar" aria-label="Account options" title="Right-click for account options">
-        <img src="/assets/Images/DefaultUser.png" alt="Profile">
-      </div>
-      <div class="profile-menu" id="profileMenu" role="menu">
-        <button id="forgetRememberedAccountBtn" type="button" role="menuitem">Forget this account</button>
-      </div>
-      <div class="username" id="profileUsername">Sign in</div>
-      <div class="hint" id="profileHint">
-        <span id="hintPassword">Enter Password</span>
-      </div>
-    </div>
-  </footer>
-
-  <!-- ========================================
-       MODAL SYSTEM (macOS Lockscreen & Dialogs)
-       ======================================== -->
-
-  <!-- 1. Main Login Modal (Floating native lockscreen style - no card wrapper) -->
   <div class="login-modal" id="loginModal">
-    <div class="modal-avatar">
-      <img src="/assets/Images/DefaultUser.png" alt="Profile">
-    </div>
+    <div class="modal-avatar">🧑‍💻</div>
     <div class="modal-username" id="modalUsername">Sign in</div>
-    
     <div class="password-wrapper">
-      <div id="passwordProtectionSection" style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+      <!-- Password Section -->
+      <div id="passwordProtectionSection"
+        style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
         <div class="password-field-container" id="loginIdentifierField">
-          <label class="password-label" for="loginIdentifierInput">Username or email</label>
-          <input type="text" class="password-input password-text-input" id="loginIdentifierInput" placeholder="Username or email" autocomplete="username">
+          <label class="password-label">Username or email</label>
+          <input type="text" class="password-input password-text-input" id="loginIdentifierInput" placeholder="Username or email"
+            autocomplete="username">
         </div>
-
         <div class="password-field-container" id="recoveryIdentityField" style="display: none;">
-          <label class="password-label">Account</label>
+          <label class="password-label" style="display: block;">Account</label>
           <div class="password-input" id="recoveryIdentityDisplay" aria-live="polite"></div>
         </div>
-
         <div class="password-field-container" id="loginPasswordField">
-          <label class="password-label" for="loginPasswordInput">Password</label>
+          <label class="password-label">Password</label>
           <div class="password-input-wrapper">
-            <input type="password" class="password-input" id="loginPasswordInput" placeholder="password" autocomplete="current-password">
-            <button class="password-toggle password-action-toggle" id="loginPasswordActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-            <button class="password-toggle" id="passwordToggleBtn" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <input type="password" class="password-input" id="loginPasswordInput" placeholder="password"
+              autocomplete="off">
+            <button class="password-toggle password-action-toggle" id="loginPasswordActionBtn" type="button"
+              aria-label="Continue" title="Continue">➜</button>
+            <button class="password-toggle" id="passwordToggleBtn">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -175,40 +1024,41 @@
 
         <div class="login-links-row">
           <a class="touchid-text" id="touchidText" style="display: none;">(Touch ID)</a>
-          <a class="touchid-text forgot-password-link" id="forgotPasswordText" style="font-size: 0.78rem; opacity: 0.65;">Forgot Password?</a>
+          <a class="touchid-text forgot-password-link" id="forgotPasswordText"
+            style="font-size: 0.75rem; opacity: 0.6;">Forgot Password?</a>
         </div>
 
-        <!-- Google Sign-In Container (Hidden during Forgot Password flow) -->
-        <div id="googleSignInSection" style="width: 100%; margin-top: 10px; text-align: center;">
-          <div style="color: rgba(255,255,255,0.55); font-size: 0.78rem; margin-bottom: 8px;">or</div>
+        <div style="width: 100%; margin-top: 12px; text-align: center;">
+          <div style="color: rgba(255,255,255,0.55); font-size: 0.75rem; margin-bottom: 8px;">or</div>
           <div id="googleSignInButton" aria-label="Continue with Google"></div>
         </div>
 
-        <!-- Password Recovery Challenge Section (Security Question or Recovery Key) -->
         <div id="securityQuestionSection" style="display: none; width: 100%;">
-          <div id="challengeQuestionDisplay" style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin-bottom: 10px; font-weight: 500; text-align: center;"></div>
+          <div id="challengeQuestionDisplay"
+            style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 10px; font-weight: 500; text-align: center;">
+          </div>
           <div class="password-field-container" style="width: 100%;">
-            <label class="password-label" id="securityAnswerLabel" for="securityAnswerInput">Security Answer</label>
             <div class="password-input-wrapper">
-              <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer" autocomplete="off">
-              <button class="password-toggle password-action-toggle" id="verifyAnswerActionBtn" type="button" aria-label="Verify" title="Verify">➜</button>
+              <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer"
+                autocomplete="off">
+              <button class="password-toggle password-action-toggle" id="verifyAnswerActionBtn" type="button"
+                aria-label="Verify answer" title="Verify answer">➜</button>
             </div>
           </div>
-          <div style="display: flex; gap: 8px; width: 100%; margin-top: 10px;">
-            <button class="login-button" id="cancelRecoveryBtn" type="button" style="flex: 1;">Cancel</button>
-            <button class="login-button btn-primary" id="verifyAnswerBtn" type="button" style="flex: 1.4;">Verify</button>
-          </div>
+          <button class="login-button" id="verifyAnswerBtn" style="margin-top: 10px;">Verify Answer</button>
         </div>
 
-        <!-- New Password Reset Section -->
-        <div id="passwordResetSection" style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
-          <div style="color: rgba(255,255,255,0.85); font-size: 0.9rem; margin-bottom: 4px;">Set New Password</div>
+        <!-- New Password Section -->
+        <div id="passwordResetSection"
+          style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+          <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 5px;">Set New Password</div>
           <div class="password-field-container">
-            <label class="password-label" for="resetNewPassword">New Password</label>
             <div class="password-input-wrapper password-no-action">
-              <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password" autocomplete="new-password">
-              <button class="password-toggle" id="resetNewToggleBtn" type="button" aria-label="Toggle password visibility">
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password"
+                autocomplete="off">
+              <button class="password-toggle" id="resetNewToggleBtn" type="button">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
@@ -216,51 +1066,50 @@
             </div>
           </div>
           <div class="password-field-container">
-            <label class="password-label" for="resetConfirmPassword">Confirm Password</label>
             <div class="password-input-wrapper">
-              <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password" autocomplete="new-password">
-              <button class="password-toggle password-action-toggle" id="resetConfirmActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-              <button class="password-toggle" id="resetConfirmToggleBtn" type="button" aria-label="Toggle password visibility">
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password"
+                autocomplete="off">
+              <button class="password-toggle password-action-toggle" id="resetConfirmActionBtn" type="button"
+                aria-label="Continue" title="Continue">➜</button>
+              <button class="password-toggle" id="resetConfirmToggleBtn" type="button">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
               </button>
             </div>
           </div>
-          <button class="login-button btn-primary" id="confirmResetBtn" style="margin-top: 6px; width: 100%;">Save & Sign In</button>
+          <button class="login-button" id="confirmResetBtn" style="margin-top: 5px;">Save & Sign In</button>
         </div>
       </div>
 
+      <!-- No Password Section -->
       <div id="noPasswordSection" style="display: none; width: 100%; text-align: center;">
-        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 16px;">Password protection is off</div>
-        <button class="login-button btn-primary" id="unlockButton">Sign In Without Password</button>
-      </div>
-
-      <!-- Switch User Button (Visible when multiple accounts or an active remembered account is selected) -->
-      <div class="switch-user-row" id="switchUserRow" style="display: none;">
-        <button class="switch-user-btn" id="switchUserBtn" type="button">
-          <span>◀</span> Switch User
-        </button>
+        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 20px;">Password protection is off</div>
+        <button class="login-button" id="unlockButton">Sign In Without Password</button>
       </div>
     </div>
   </div>
 
-  <!-- 2. Touch ID Setup Modal -->
+  <!-- Setup modal is now purely redirected to Profile, but we keep a simple version if needed for first-time prompt -->
   <div id="touchIdSetupModal" class="login-modal">
-    <div class="login-modal-content" style="max-width: 340px; text-align: center;">
+    <div class="login-modal-content" style="width: 100%; max-width: 300px;">
       <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🤚</div>
-      <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Touch ID</div>
-      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 18px; line-height: 1.4;">
+      <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Touch ID</div>
+      <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px; text-align: center;">
         Enter your password to enable Touch ID for this account.
       </p>
-      <div class="password-field-container" style="width: 100%; margin-bottom: 16px;">
-        <label class="password-label" for="setupPasswordInput">Password</label>
+      <div class="password-field-container" style="width: 100%; margin-bottom: 15px;">
+        <label class="password-label">Password</label>
         <div class="password-input-wrapper">
-          <input type="password" id="setupPasswordInput" class="password-input" placeholder="Password" autocomplete="current-password">
-          <button class="password-toggle password-action-toggle" id="setupPasswordActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-          <button class="password-toggle" id="setupPasswordToggleBtn" type="button" aria-label="Toggle password visibility">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <input type="password" id="setupPasswordInput" class="password-input" placeholder="Password"
+            autocomplete="current-password">
+          <button class="password-toggle password-action-toggle" id="setupPasswordActionBtn" type="button"
+            aria-label="Continue" title="Continue">➜</button>
+          <button class="password-toggle" id="setupPasswordToggleBtn">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
@@ -269,113 +1118,112 @@
       </div>
       <div style="display: flex; gap: 10px; width: 100%;">
         <button class="login-button" id="cancelTouchIdSetup" style="flex: 1;">Cancel</button>
-        <button class="login-button btn-primary" id="confirmTouchIdSetup" style="flex: 1.6;">Enable Touch ID</button>
+        <button class="login-button" id="confirmTouchIdSetup" style="flex: 2;">Enable Touch ID</button>
       </div>
     </div>
   </div>
 
-  <!-- 3. Account Preferences Modal (Remember Account / Touch ID) -->
+  <div class="clock-container draggable-content">
+    <div class="date" id="dateDisplay">Loading...</div>
+    <div class="time" id="timeDisplay" data-time="00:00">00:00</div>
+  </div>
+
+  <div class="user-profile draggable-content">
+    <div class="avatar" id="profileAvatar" aria-label="Account options" title="Right-click for account options">🧑‍💻</div>
+    <div class="profile-menu" id="profileMenu" role="menu">
+      <button id="forgetRememberedAccountBtn" type="button" role="menuitem">Log out</button>
+    </div>
+    <div class="username" id="profileUsername">Sign in</div>
+    <div class="hint" id="profileHint">
+      <span id="hintPassword">Enter Password</span>
+    </div>
+  </div>
+
+  </div>
+
   <div id="accountPreferenceModal" class="login-modal account-preference-modal">
-    <div class="login-modal-content account-preference-content" style="max-width: 380px; text-align: center;">
-      <!-- Step: Remember Account -->
-      <div id="rememberAccountStep" style="width: 100%;">
+    <div class="login-modal-content account-preference-content">
+      <div id="rememberAccountStep">
         <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🔐</div>
-        <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Remember this account?</div>
-        <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.4;">
+        <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Remember this account?</div>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px;">
           Remember your username or email on this device. Future sign-ins will show this account and ask only for your password.
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
-          <button class="login-button" id="dontRememberAccountBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="rememberAccountBtn" type="button" style="flex: 1.2;">Remember</button>
+          <button class="login-button" id="dontRememberAccountBtn" type="button" style="display: block; flex: 1;">Not Now</button>
+          <button class="login-button" id="rememberAccountBtn" type="button" style="display: block; flex: 1;">Remember</button>
         </div>
       </div>
 
-      <!-- Popup: Remember Account Warning -->
       <div id="rememberAccountWarningStep" class="preference-popup" style="display: none;">
-        <div class="preference-warning-icon">⚠️</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Public Device Warning</div>
-        <p>
-          Anyone who uses this device may see this account. Do not choose this on a shared or public computer.
+        <div class="profile-avatar-large preference-warning-icon">⚠️</div>
+        <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Remember this account?</div>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px;">
+          Anyone who uses this device may see this account. Do not choose this on a shared, public, or untrusted computer.
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
-          <button class="login-button" id="cancelRememberAccountBtn" type="button" style="flex: 1;">Cancel</button>
-          <button class="login-button btn-primary" id="confirmRememberAccountBtn" type="button" style="flex: 1.2;">Confirm</button>
+          <button class="login-button" id="cancelRememberAccountBtn" type="button" style="display: block; flex: 1;">Cancel</button>
+          <button class="login-button" id="confirmRememberAccountBtn" type="button" style="display: block; flex: 1;">Confirm</button>
         </div>
       </div>
 
-      <!-- Popup: Remember Account Dismiss Confirmation -->
       <div id="rememberAccountDismissStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeRememberDismissStep" type="button" aria-label="Close">×</button>
-        <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without remembering?</div>
-        <p>This device will not keep your account details for the next sign-in.</p>
-        <button class="preference-dismiss-option" id="rememberAccountDontAskOption" type="button">
+        <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">↩</div>
+        <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Continue without remembering?</div>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px;">
+          This device will not keep your account details for the next sign-in.
+        </p>
+        <button class="preference-dismiss-option" id="rememberAccountDontAskOption" type="button" style="font-size: 0.8rem;">
           Don't ask again on this device
         </button>
-        <button class="login-button" id="confirmDontRememberAccountBtn" type="button" style="width: 100%;">Continue without remembering</button>
+        <button class="login-button" id="confirmDontRememberAccountBtn" type="button" style="display: block; width: 100%;">Continue without remembering</button>
       </div>
 
-      <!-- Step: Touch ID Choice -->
-      <div id="touchIdChoiceStep" style="display: none; width: 100%;">
+      <div id="touchIdChoiceStep" style="display: none;">
         <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🤚</div>
-        <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Use Touch ID next time?</div>
-        <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.4;">
-          Use this device's biometric security for faster sign-in while keeping password login available.
+        <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Use Touch ID next time?</div>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px;">
+          Use this device's security feature for faster sign-in while keeping password login available.
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
-          <button class="login-button" id="skipTouchIdBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="chooseTouchIdBtn" type="button" style="flex: 1.2;">Set Up</button>
+          <button class="login-button" id="skipTouchIdBtn" type="button" style="display: block; flex: 1;">Not Now</button>
+          <button class="login-button" id="chooseTouchIdBtn" type="button" style="display: block; flex: 1;">Set Up</button>
         </div>
       </div>
 
-      <!-- Popup: Touch ID Dismiss Confirmation -->
       <div id="touchIdDismissStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeTouchIdDismissStep" type="button" aria-label="Close">×</button>
-        <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without Touch ID?</div>
-        <p>You can still use your password and enable Touch ID later in Settings.</p>
-        <button class="preference-dismiss-option" id="touchIdDontAskOption" type="button">
+        <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">↩</div>
+        <div class="profile-name" style="margin-bottom: 10px; font-size: 1.2rem;">Continue without Touch ID?</div>
+        <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px;">
+          You can still use your password and enable Touch ID later in Settings.
+        </p>
+        <button class="preference-dismiss-option" id="touchIdDontAskOption" type="button" style="font-size: 0.8rem;">
           Don't ask again on this device
         </button>
-        <button class="login-button" id="confirmSkipTouchIdBtn" type="button" style="width: 100%;">Continue without Touch ID</button>
-      </div>
-
-      <!-- Popup: Touch ID Setup Failed (Direct retry, not now, don't show again) -->
-      <div id="touchIdFailedStep" class="preference-popup" style="display: none;">
-        <button class="preference-popup-close" id="closeTouchIdFailedStep" type="button" aria-label="Close">×</button>
-        <div class="preference-warning-icon">⚠️</div>
-        <div class="profile-name" id="touchIdFailedTitle" style="display: block; margin-bottom: 8px; font-size: 1.15rem;">Touch ID Setup Failed</div>
-        <p id="touchIdFailedMessage">Biometric setup could not be completed. You can try again or continue using your password.</p>
-        <button class="preference-dismiss-option" id="touchIdFailedDontAskBtn" type="button">
-          Don't show again on this device
-        </button>
-        <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px;">
-          <button class="login-button" id="touchIdFailedNotNowBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="touchIdFailedRetryBtn" type="button" style="flex: 1.4;">Retry Touch ID</button>
-        </div>
+        <button class="login-button" id="confirmSkipTouchIdBtn" type="button" style="display: block; width: 100%;">Continue without Touch ID</button>
       </div>
     </div>
   </div>
 
-  <!-- 4. Worker Pending Approval Modal -->
   <div class="login-modal" id="workerPendingModal">
-    <div class="login-modal-content" style="max-width: 360px; text-align: center;">
+    <div class="login-modal-content" style="width: 100%; max-width: 360px; text-align: center;">
       <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🔐</div>
       <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Waiting for approval</div>
       <p id="workerPendingMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 14px;">Share this code with the owner.</p>
-      <div id="workerInviteCode" style="font-size: 2rem; letter-spacing: 0.25rem; font-weight: 800; margin-bottom: 12px; color: #ffffff;"></div>
-      <img id="workerInviteQr" alt="Worker approval QR code" style="width: 180px; height: 180px; background: white; padding: 8px; border-radius: 12px; display: none; margin: 0 auto 16px;">
-      <button class="login-button" id="cancelWorkerPendingBtn" type="button" style="width: 100%;">Back to sign in</button>
+      <div id="workerInviteCode" style="font-size: 2rem; letter-spacing: 0.25rem; font-weight: 800; margin-bottom: 12px;"></div>
+      <img id="workerInviteQr" alt="Worker approval QR code" style="width: 180px; height: 180px; background: white; padding: 8px; display: none; margin: 0 auto 16px;">
+      <button class="login-button" id="cancelWorkerPendingBtn" type="button">Back to sign in</button>
     </div>
   </div>
 
-  <!-- 5. Owner Google Account Link Modal -->
   <div class="login-modal" id="ownerLinkModal">
-    <div class="login-modal-content" style="max-width: 360px; text-align: center;">
+    <div class="login-modal-content" style="width: 100%; max-width: 340px; text-align: center;">
       <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Link Google to your account</div>
-      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 16px; line-height: 1.4;">Confirm your existing password once. Google will then sign in directly to your account.</p>
+      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 14px;">Confirm your existing local password once. Google will then sign in to the same owner account.</p>
       <div class="password-field-container" style="width: 100%;">
-        <label class="password-label" for="ownerLinkPassword">Password</label>
+        <label class="password-label">Password</label>
         <div class="password-input-wrapper">
           <input type="password" id="ownerLinkPassword" class="password-input" placeholder="password" autocomplete="current-password">
           <button class="password-toggle password-action-toggle" id="ownerLinkActionBtn" type="button" aria-label="Link and continue" title="Link and continue">➜</button>
@@ -387,181 +1235,1588 @@
           </button>
         </div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 14px;">
-        <button class="login-button btn-primary" id="confirmOwnerLinkBtn" type="button">Link and continue</button>
-        <button class="login-button" id="cancelOwnerLinkBtn" type="button">Cancel</button>
-      </div>
+      <button class="login-button" id="confirmOwnerLinkBtn" type="button" style="margin-top: 12px; display: block;">Link and continue</button>
+      <button class="login-button" id="cancelOwnerLinkBtn" type="button" style="margin-top: 8px;">Cancel</button>
     </div>
   </div>
 
-  <!-- 6. Worker Local Account Creation Modal -->
   <div class="login-modal" id="workerCredentialModal">
-    <div class="login-modal-content" style="max-width: 390px; text-align: center;">
-      <div id="workerPasswordInputStep" style="width: 100%;">
-        <div class="profile-avatar-large" style="margin-bottom: 8px; font-size: 38px;">🔑</div>
-        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Create a Local Account</div>
-        <p style="color: rgba(255, 255, 255, 0.78); font-size: 0.84rem; line-height: 1.45; margin-bottom: 16px;">
-          Set up alternative login credentials linked with your Google account. Google remains your primary sign-in.
-        </p>
-
-        <!-- Smart Identifier Field (Email / Username) -->
-        <div class="password-field-container" style="width: 100%; margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="password-label" id="workerIdentifierLabel" for="workerIdentifierInput" style="margin-bottom: 0;">Email address</label>
-            <div class="identifier-type-switcher" style="display: flex; background: rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 2px; gap: 2px;">
-              <button type="button" id="workerTypeEmailBtn" style="background: rgba(255, 255, 255, 0.3); color: #fff; border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Email</button>
-              <button type="button" id="workerTypeUsernameBtn" style="background: transparent; color: rgba(255, 255, 255, 0.65); border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Username</button>
-            </div>
-          </div>
-          <div class="password-input-wrapper">
-            <input type="text" id="workerIdentifierInput" class="password-input password-text-input" placeholder="name@example.com" autocomplete="username">
-          </div>
-          <div id="workerIdentifierStatus" style="display: none; font-size: 0.76rem; margin-top: 4px; text-align: left; transition: all 0.2s;"></div>
-          <div id="workerGoogleEmailCheckboxContainer">
-            <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); cursor: pointer; text-align: left;">
-              <input type="checkbox" id="workerUseGoogleEmailCheckbox" checked style="accent-color: #0071E3; cursor: pointer; width: 15px; height: 15px;">
-              <span>Use same as Google email</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Password Field -->
-        <div class="password-field-container" style="width: 100%; margin-bottom: 12px;">
-          <label class="password-label" for="workerNewPassword">Password</label>
-          <div class="password-input-wrapper">
-            <input type="password" id="workerNewPassword" class="password-input" placeholder="Password" autocomplete="new-password">
-            <button class="password-toggle" id="workerNewPasswordToggle" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Confirm Password Field -->
-        <div class="password-field-container" style="width: 100%; margin-bottom: 18px;">
-          <label class="password-label" for="workerConfirmPassword">Confirm password</label>
-          <div class="password-input-wrapper">
-            <input type="password" id="workerConfirmPassword" class="password-input" placeholder="Confirm password" autocomplete="new-password">
-            <button class="password-toggle" id="workerConfirmPasswordToggle" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
-          <button class="login-button" id="skipWorkerPasswordBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="saveWorkerPasswordBtn" type="button" style="flex: 1.4;">Continue</button>
-        </div>
-      </div>
-
-      <!-- Step 2: Security Question Step -->
-      <div id="workerSecurityQuestionStep" style="width: 100%; display: none;">
-        <div class="profile-avatar-large" style="margin-bottom: 8px; font-size: 38px;">🛡️</div>
-        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Security Question</div>
-        <p style="color: rgba(255, 255, 255, 0.78); font-size: 0.84rem; line-height: 1.45; margin-bottom: 16px;">
-          Choose a security question to secure and recover your local account credentials.
-        </p>
-
-        <!-- Question Dropdown -->
-        <div class="password-field-container" style="width: 100%; margin-bottom: 12px; text-align: left;">
-          <label class="password-label" for="workerSecurityQuestionSelect">Select a question</label>
-          <div class="password-input-wrapper">
-            <select id="workerSecurityQuestionSelect" class="password-input password-text-input" style="cursor: pointer; appearance: auto; -webkit-appearance: auto; padding-right: 12px; background: rgba(30, 30, 30, 0.75); color: #ffffff;">
-              <option value="" disabled selected>Choose a security question...</option>
-              <option value="What was the name of your first pet?">What was the name of your first pet?</option>
-              <option value="In what city were you born?">In what city were you born?</option>
-              <option value="What was your childhood nickname?">What was your childhood nickname?</option>
-              <option value="What is the name of your favorite book?">What is the name of your favorite book?</option>
-              <option value="What was the model of your first car?">What was the model of your first car?</option>
-              <option value="What school did you attend for sixth grade?">What school did you attend for sixth grade?</option>
-              <option value="What is the name of your favorite childhood friend?">What is the name of your favorite childhood friend?</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Answer Input -->
-        <div class="password-field-container" style="width: 100%; margin-bottom: 18px; text-align: left;">
-          <label class="password-label" for="workerSecurityAnswerInput">Your Answer</label>
-          <div class="password-input-wrapper">
-            <input type="text" id="workerSecurityAnswerInput" class="password-input password-text-input" placeholder="Secret answer" autocomplete="off">
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
-          <button class="login-button" id="backToWorkerCredentialsBtn" type="button" style="flex: 1;">Back</button>
-          <button class="login-button btn-primary" id="saveWorkerSecurityBtn" type="button" style="flex: 1.4;">Save Account</button>
-        </div>
-      </div>
-
-      <!-- Dismissal Confirmation Popup -->
-      <div id="workerPasswordDismissStep" class="preference-popup" style="display: none;">
-        <button class="preference-popup-close" id="closeWorkerDismissStep" type="button" aria-label="Close">×</button>
-        <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem; color: #ffffff;">Continue without local credentials?</div>
-        <p>You can continue signing in with Google and set up a local account anytime in Settings.</p>
-        <button class="preference-dismiss-option" id="dontAskWorkerPasswordBtn" type="button">
-          Don't ask again on this device
-        </button>
-        <button class="login-button" id="confirmWorkerJustThisTimeBtn" type="button" style="width: 100%;">Not Now</button>
-      </div>
+    <div class="login-modal-content" style="width: 100%; max-width: 360px; text-align: center;">
+      <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Create a local password?</div>
+      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 14px;">Google remains your sign-in. A local password is optional and can be added later in Settings.</p>
+      <input type="password" id="workerNewPassword" class="password-input" placeholder="New password" autocomplete="new-password">
+      <input type="password" id="workerConfirmPassword" class="password-input" placeholder="Confirm password" autocomplete="new-password" style="margin-top: 8px;">
+      <button class="login-button" id="saveWorkerPasswordBtn" type="button" style="margin-top: 12px;">Save password</button>
+      <button class="login-button" id="skipWorkerPasswordBtn" type="button" style="margin-top: 8px;">Skip for now</button>
+      <button class="preference-dismiss-option" id="dontAskWorkerPasswordBtn" type="button" style="margin-top: 10px;">Don't show again on this device</button>
     </div>
   </div>
 
-  <!-- 7. Remove Account Confirmation Modal -->
-  <div class="login-modal remove-account-modal" id="removeAccountModal">
-    <div class="login-modal-content">
-      <div class="remove-account-avatar" id="removeAccountAvatar">
-        <img src="/assets/Images/DefaultUser.png" alt="User">
-      </div>
-      <div class="profile-name" id="removeAccountTitle" style="margin-bottom: 8px; font-size: 1.15rem;">Remove Account?</div>
-      <p id="removeAccountMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 18px; line-height: 1.45;">
-        This account shortcut will be removed from the lock screen on this Mac.
-      </p>
-      <div style="display: flex; gap: 10px; width: 100%;">
-        <button class="login-button" id="cancelRemoveAccountBtn" type="button" style="flex: 1;">Cancel</button>
-        <button class="login-button btn-primary" id="confirmRemoveAccountBtn" type="button" style="flex: 1.2; background: #ff453a; border-color: #ff453a;">Remove</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Standardized App Services & Modules -->
-  <script type="module">
-    import { profileManager } from '/scripts/auth/profiles.js';
-    import { AuthController } from '/scripts/auth/auth-controller.js';
-    window.profileManager = profileManager;
-    window.authController = new AuthController();
-  </script>
-
-  <script type="module" src="/scripts/clock-display/modules/clock.js"></script>
-  <script type="module" src="/scripts/weather/modules/weather.js"></script>
-  <script type="module" src="/shared/wallpaper-engine.js"></script>
-
-  <!-- PWA Service Worker Registration & Connectivity Monitor -->
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    // Login modal functionality
+    const blurOverlay = document.getElementById('blurOverlay');
+    const loginModal = document.getElementById('loginModal');
+    const loginIdentifierInput = document.getElementById('loginIdentifierInput');
+    const loginIdentifierField = document.getElementById('loginIdentifierField');
+    const recoveryIdentityField = document.getElementById('recoveryIdentityField');
+    const recoveryIdentityDisplay = document.getElementById('recoveryIdentityDisplay');
+    const passwordInput = document.getElementById('loginPasswordInput');
+    const passwordToggle = document.getElementById('passwordToggleBtn');
+    const loginButton = document.getElementById('loginButton');
+    const touchidText = document.getElementById('touchidText');
+    const modalUsername = document.getElementById('modalUsername');
+    const profileAvatar = document.getElementById('profileAvatar');
+    const profileMenu = document.getElementById('profileMenu');
+    const forgetRememberedAccountBtn = document.getElementById('forgetRememberedAccountBtn');
+    const profileUsername = document.getElementById('profileUsername');
+    const profileHint = document.getElementById('profileHint');
+    const loginClockDisplay = document.getElementById('loginClockDisplay');
+    let loginAutoSubmitTimer;
+    let answerAutoSubmitTimer;
+    let touchIdAutoSubmitTimer;
+    let touchIdRegistrationInFlight = false;
+    let answerVerificationInFlight = false;
+    let passwordProtectionEnabled = true;
+    let pendingGoogleCredential = null;
+    let pendingWorkerInvite = null;
+
+    // Touch ID Setup / Generic Security Setup
+    const touchIdSetupModal = document.getElementById('touchIdSetupModal');
+    const ownerLinkModal = document.getElementById('ownerLinkModal');
+    const workerPendingModal = document.getElementById('workerPendingModal');
+    const setupPasswordInput = document.getElementById('setupPasswordInput'); // Used in some biometric registration logic
+    const accountPreferenceModal = document.getElementById('accountPreferenceModal');
+    const rememberAccountStep = document.getElementById('rememberAccountStep');
+    const rememberAccountWarningStep = document.getElementById('rememberAccountWarningStep');
+    const rememberAccountDismissStep = document.getElementById('rememberAccountDismissStep');
+    const touchIdChoiceStep = document.getElementById('touchIdChoiceStep');
+    const touchIdDismissStep = document.getElementById('touchIdDismissStep');
+
+    const hintTouchId = document.getElementById('hintTouchId');
+    const hintPassword = document.getElementById('hintPassword');
+
+    // Biometric setup buttons
+    const cancelTouchIdSetup = document.getElementById('cancelTouchIdSetup');
+    const confirmTouchIdSetup = document.getElementById('confirmTouchIdSetup');
+
+    // Weather displays - will be initialized later
+    let homepageWeatherDisplay = null;
+    let loginWeatherDisplay = null;
+
+    let homeTimeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+
+    // Update the homepage clock and date display
+    function updateHomepageClock() {
+      let now = new Date();
+
+      // Apply Global Settings
+      if (homeTimeSettings.mode === 'location' && homeTimeSettings.timezone) {
+        try {
+          const locStr = now.toLocaleString('en-US', { timeZone: homeTimeSettings.timezone });
+          now = new Date(locStr);
+        } catch (e) {
+          console.error('Invalid timezone:', homeTimeSettings.timezone);
+        }
+      } else if (homeTimeSettings.mode === 'manual' && homeTimeSettings.manualOffset) {
+        now = new Date(now.getTime() + homeTimeSettings.manualOffset);
+      }
+
+      // Format Date: "Tue Jul 8"
+      const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
+      const dateStr = now.toLocaleDateString('en-US', dateOptions).replace(',', '');
+
+      // Format Time: 12-hour style (no AM/PM)
+      let hours = now.getHours();
+      if (hours === 0) {
+        hours = 12;
+      } else if (hours > 12) {
+        hours = hours - 12;
+      }
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const timeStr = `${hours.toString().padStart(2, '0')}:${minutes}`;
+
+      // Update DOM elements
+      const dateElement = document.getElementById('dateDisplay');
+      const timeElement = document.getElementById('timeDisplay');
+
+      if (dateElement) {
+        dateElement.textContent = dateStr;
+      }
+
+      if (timeElement) {
+        timeElement.textContent = timeStr;
+        timeElement.setAttribute('data-time', timeStr);
+      }
+    }
+
+    // Listen for sync
+    window.addEventListener('mac-time-sync', (e) => {
+      homeTimeSettings = e.detail;
+      updateHomepageClock();
+    });
+    
+    // Initial and periodic updates
+    updateHomepageClock();
+    setInterval(updateHomepageClock, 1000);
+
+    function updateLoginPageClock() {
+      let now = new Date();
+      if (homeTimeSettings.mode === 'location' && homeTimeSettings.timezone) {
+        try {
+          const locStr = now.toLocaleString('en-US', { timeZone: homeTimeSettings.timezone });
+          now = new Date(locStr);
+        } catch (e) {
+          console.error('Invalid timezone:', homeTimeSettings.timezone);
+        }
+      } else if (homeTimeSettings.mode === 'manual' && homeTimeSettings.manualOffset) {
+        now = new Date(now.getTime() + homeTimeSettings.manualOffset);
+      }
+
+      const weekday = now.toLocaleDateString('en-US', { weekday: 'short' });
+      const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      let hours = now.getHours();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const formatted = `${weekday} ${monthDay} ${hours}:${minutes} ${ampm}`;
+
+      const el = document.getElementById('loginClockDisplay');
+      if (el) {
+        el.textContent = formatted;
+      }
+    }
+
+    function getBackgroundBrightness() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = function () {
+        try {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+
+          // Sample brightness from multiple points in the image
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          let brightness = 0;
+
+          // Sample every 10th pixel for performance
+          for (let i = 0; i < data.length; i += 40) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            brightness += (r * 299 + g * 587 + b * 114) / 1000;
+          }
+
+          brightness = brightness / (data.length / 40);
+
+          // Only use black text for very bright/white backgrounds (>200 brightness)
+          const bgClass = brightness > 200 ? 'light-bg' : 'dark-bg';
+          const bgClassRemove = brightness > 200 ? 'dark-bg' : 'light-bg';
+
+          if (loginPageClock) {
+            loginPageClock.classList.remove(bgClassRemove);
+            loginPageClock.classList.add(bgClass);
+          }
+
+          const weatherElement = document.getElementById('homepageWeatherDisplay');
+          if (weatherElement) {
+            weatherElement.classList.remove(bgClassRemove);
+            weatherElement.classList.add(bgClass);
+          }
+        } catch (e) {
+          console.error('Error in getBackgroundBrightness img.onload:', e);
+        }
+      };
+
+      img.src = '/assets/Wallpaper/Static/tahoe-beach/tahoe-beach.light.jpg';
+    }
+
+    function activateLoginState() {
+      document.body.classList.add('login-active');
+      if (blurOverlay) blurOverlay.classList.add('active');
+      if (loginPageClock) loginPageClock.classList.add('active');
+
+      // Keep wallpaper video playing during login
+      const wallpaperBg = document.getElementById('wallpaperBackground');
+      if (wallpaperBg) {
+        const video = wallpaperBg.querySelector('video');
+        if (video && video.paused) {
+          video.play().catch(() => { });
+        }
+      }
+
+      getBackgroundBrightness();
+      updateLoginPageClock();
+    }
+
+    async function openLoginModal() {
+      await checkSecurityStatus();
+
+      activateLoginState();
+      if (loginModal) loginModal.classList.add('active');
+      const remembered = localStorage.getItem('macos_remember_account') === 'true';
+      if (loginIdentifierField) loginIdentifierField.style.display = remembered ? 'none' : 'block';
+      if (passwordInput) {
+        setTimeout(() => {
+          if (document.getElementById('passwordProtectionSection').style.display !== 'none') {
+            passwordInput.focus();
+          }
+        }, 300);
+      }
+    }
+
+    function closeLoginModal() {
+      document.body.classList.remove('login-active');
+      if (blurOverlay) blurOverlay.classList.remove('active');
+      if (loginModal) loginModal.classList.remove('active');
+      if (touchIdSetupModal) touchIdSetupModal.classList.remove('active');
+      if (accountPreferenceModal) accountPreferenceModal.classList.remove('active');
+      if (ownerLinkModal) ownerLinkModal.classList.remove('active');
+      if (workerPendingModal) workerPendingModal.classList.remove('active');
+      pendingGoogleCredential = null;
+      pendingWorkerInvite = null;
+      if (loginPageClock) loginPageClock.classList.remove('active');
+      if (passwordInput) passwordInput.value = '';
+      if (loginIdentifierInput) {
+        loginIdentifierInput.value = localStorage.getItem('macos_user_identifier') || '';
+      }
+      if (passwordInput) passwordInput.type = 'password';
+      if (setupPasswordInput) setupPasswordInput.value = '';
+
+      resetLoginForm();
+
+      // Resume wallpaper video after modal closes
+      const wallpaperBg = document.getElementById('wallpaperBackground');
+      if (wallpaperBg) {
+        const video = wallpaperBg.querySelector('video');
+        if (video && video.paused) {
+          video.play().catch(() => { });
+        }
+      }
+
+      // Cleanup swipe visuals
+      document.body.setAttribute('data-unlock-state', 'locked');
+      resetDragVisuals();
+    }
+
+    function resetLoginForm() {
+      const identifierField = document.getElementById('loginIdentifierField');
+      const passwordField = document.getElementById('loginPasswordField');
+      const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
+      if (identifierField) identifierField.style.display = isRemembered ? 'none' : 'block';
+      if (recoveryIdentityField) recoveryIdentityField.style.display = 'none';
+      if (passwordField) passwordField.style.display = 'block';
+
+      const tText = document.getElementById('touchidText');
+      if (tText) tText.style.display = 'none';
+
+      const fText = document.getElementById('forgotPasswordText');
+      if (fText) fText.style.display = 'block';
+
+      const sQuest = document.getElementById('securityQuestionSection');
+      if (sQuest) sQuest.style.display = 'none';
+
+      const pReset = document.getElementById('passwordResetSection');
+      if (pReset) pReset.style.display = 'none';
+
+      // Clear reset fields
+      const rnPass = document.getElementById('resetNewPassword');
+      if (rnPass) rnPass.value = '';
+
+      const rcPass = document.getElementById('resetConfirmPassword');
+      if (rcPass) rcPass.value = '';
+
+      const sAns = document.getElementById('securityAnswerInput');
+      if (sAns) sAns.value = '';
+
+      if (rememberAccountStep) rememberAccountStep.style.display = 'block';
+      if (rememberAccountWarningStep) rememberAccountWarningStep.style.display = 'none';
+      if (rememberAccountDismissStep) rememberAccountDismissStep.style.display = 'none';
+      if (touchIdChoiceStep) touchIdChoiceStep.style.display = 'none';
+      if (touchIdDismissStep) touchIdDismissStep.style.display = 'none';
+    }
+
+    function togglePasswordVisibility() {
+      const eyeIcon = document.getElementById('eyeIcon');
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        eyeIcon.style.strokeDasharray = '0';
+      } else {
+        passwordInput.type = 'password';
+        eyeIcon.style.strokeDasharray = '0';
+      }
+    }
+
+    function handleTouchID() {
+      const isEnabled = localStorage.getItem('touchIdEnabled') === 'true';
+
+      if (localStorage.getItem('macos_remember_account') !== 'true') {
+        openLoginModal();
+        return;
+      }
+
+      activateLoginState();
+
+      if (!isEnabled) {
+        if (loginModal) loginModal.classList.remove('active');
+        if (touchIdSetupModal) touchIdSetupModal.classList.add('active');
+        if (setupPasswordInput) setTimeout(() => setupPasswordInput.focus(), 300);
+      } else {
+        authenticateBiometrics();
+      }
+    }
+
+    function base64UrlToBytes(value) {
+      const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
+      return Uint8Array.from(atob(padded), character => character.charCodeAt(0));
+    }
+
+    function bytesToBase64Url(value) {
+      return btoa(String.fromCharCode(...new Uint8Array(value)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function serializeCredential(credential) {
+      const response = credential.response;
+      const result = {
+        id: credential.id,
+        rawId: bytesToBase64Url(credential.rawId),
+        type: credential.type,
+        response: {
+          clientDataJSON: bytesToBase64Url(response.clientDataJSON)
+        }
+      };
+
+      if (response.attestationObject) {
+        result.response.attestationObject = bytesToBase64Url(response.attestationObject);
+      }
+      if (response.authenticatorData) {
+        result.response.authenticatorData = bytesToBase64Url(response.authenticatorData);
+        result.response.signature = bytesToBase64Url(response.signature);
+        result.response.userHandle = response.userHandle ? bytesToBase64Url(response.userHandle) : null;
+      }
+      return result;
+    }
+
+    function prepareRegistrationOptions(options) {
+      options.challenge = base64UrlToBytes(options.challenge);
+      options.user.id = base64UrlToBytes(options.user.id);
+      (options.excludeCredentials || []).forEach(credential => {
+        credential.id = base64UrlToBytes(credential.id);
+      });
+      return options;
+    }
+
+    function prepareAuthenticationOptions(options) {
+      options.challenge = base64UrlToBytes(options.challenge);
+      (options.allowCredentials || []).forEach(credential => {
+        credential.id = base64UrlToBytes(credential.id);
+      });
+      return options;
+    }
+
+    async function registerBiometrics() {
+      if (touchIdRegistrationInFlight) return;
+      const password = setupPasswordInput.value;
+      if (!password) {
+        alert('Please enter your password.');
+        return;
+      }
+
+      const returnToTouchIdChoice = (message) => {
+        touchIdSetupModal.classList.remove('active');
+        touchIdChoiceStep.style.display = 'block';
+        accountPreferenceModal.classList.add('active');
+        if (message) alert(message);
+      };
+
+      touchIdRegistrationInFlight = true;
+      try {
+        // FIRST: Verify password with backend
+        const authRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: loginIdentifierInput.value.trim(), password })
+        });
+
+        if (!authRes.ok) {
+          const authData = await authRes.json();
+          alert(authData.error || 'Incorrect password');
+          return;
+        }
+
+        if (!window.PublicKeyCredential) {
+          alert('Biometric authentication is not supported by your browser.');
+          return;
+        }
+
+        const optionsRes = await fetch('/api/auth/webauthn/registration-options');
+        if (!optionsRes.ok) throw new Error('Unable to prepare Touch ID setup');
+        const options = prepareRegistrationOptions(await optionsRes.json());
+        const credential = await navigator.credentials.create({ publicKey: options });
+
+        if (credential) {
+          const verifyRes = await fetch('/api/auth/webauthn/registration-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(serializeCredential(credential))
+          });
+          if (!verifyRes.ok) throw new Error('Touch ID registration was not verified');
+
+          localStorage.setItem('touchIdEnabled', 'true');
+          sessionStorage.setItem('macos_session_active', 'true');
+
+          alert('✓ Touch ID setup successful!');
+          updateLoginHint();
+          goHome();
+        }
+      } catch (err) {
+        console.error('Biometric registration failed:', err);
+        if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+          returnToTouchIdChoice('Touch ID setup was cancelled. You can continue with your password or try again.');
+          return;
+        }
+        returnToTouchIdChoice('Touch ID setup could not be completed. Please try again or continue with your password.');
+      } finally {
+        touchIdRegistrationInFlight = false;
+      }
+    }
+
+    async function authenticateBiometrics() {
+      try {
+        const identifier = localStorage.getItem('macos_user_identifier');
+        if (!identifier) throw new Error('Remembered account not found');
+        const optionsRes = await fetch(`/api/auth/webauthn/authentication-options?identifier=${encodeURIComponent(identifier)}`);
+        if (!optionsRes.ok) throw new Error('Touch ID is not configured');
+        const options = prepareAuthenticationOptions(await optionsRes.json());
+        const assertion = await navigator.credentials.get({ publicKey: options });
+ 
+        if (assertion) {
+          const { deviceName, deviceType } = await getDeviceInfo();
+          const response = await fetch('/api/auth/webauthn/authentication-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              identifier,
+              deviceName, 
+              deviceType,
+              response: serializeCredential(assertion)
+            })
+          });
+ 
+          if (response.ok) {
+            // Set robust session flag
+            sessionStorage.setItem('macos_session_active', 'true');
+            
+            closeLoginModal();
+            setTimeout(() => {
+              window.location.href = './home.html';
+            }, 300);
+          } else {
+            const data = await response.json();
+            alert(data.error || 'Biometric login failed');
+          }
+        }
+      } catch (err) {
+        console.error('Biometric authentication failed:', err);
+        if (err.name !== 'NotAllowedError') {
+          alert('Biometric authentication failed. Please enter your password.');
+        }
+        closeLoginModal();
+      }
+    }
+
+    async function syncProfile() {
+      // Show cached identity only when the user explicitly chose to remember it.
+      const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
+      const cachedName = localStorage.getItem('macos_user_display_name');
+      const cachedPicture = localStorage.getItem('macos_user_display_picture');
+      
+      const avatarElements = [
+        document.querySelector('.modal-avatar'),
+        document.getElementById('profileAvatar')
+      ];
+      const usernameElements = [
+        document.getElementById('modalUsername'),
+        document.getElementById('profileUsername')
+      ];
+
+      if (isRemembered && cachedName) {
+        usernameElements.forEach(el => { if (el) el.textContent = cachedName; });
+      } else {
+        usernameElements.forEach(el => { if (el) el.textContent = 'Sign in'; });
+      }
+
+      if (loginIdentifierInput) {
+        loginIdentifierInput.value = isRemembered ? (localStorage.getItem('macos_user_identifier') || '') : '';
+      }
+
+      avatarElements.forEach(el => {
+        if (el) {
+          if (isRemembered && cachedPicture) {
+            el.innerHTML = `<img src="${cachedPicture}" alt="Profile" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            el.style.background = 'transparent';
+          } else {
+            el.innerHTML = '🧑‍💻';
+            el.style.background = '';
+          }
+        }
       });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      if (typeof WeatherDisplay !== 'undefined') {
-        window.homepageWeatherDisplay = new WeatherDisplay('homepageWeatherDisplay', { useMetricUnits: true });
-        window.loginWeatherDisplay = new WeatherDisplay('loginWeatherDisplay', { useMetricUnits: true });
+    function updateLoginHint() {
+      const isRemembered = localStorage.getItem('macos_remember_account') === 'true';
+      const touchIdEnabled = localStorage.getItem('touchIdEnabled') === 'true';
+      if (!profileHint) return;
+
+      if (touchidText) touchidText.style.display = passwordProtectionEnabled && touchIdEnabled && isRemembered ? 'block' : 'none';
+
+      profileHint.innerHTML = !passwordProtectionEnabled
+        ? '<span id="hintPassword">Sign in with username or email</span>'
+        : touchIdEnabled && isRemembered
+        ? '<span id="hintTouchId">Touch ID</span> <span class="hint-separator">or</span> <span id="hintPassword">Enter Password</span>'
+        : '<span id="hintPassword">Enter Password</span>';
+
+      document.getElementById('hintTouchId')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        handleTouchID();
+      });
+      document.getElementById('hintPassword')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openLoginModal();
+      });
+    }
+
+    function closeProfileMenu() {
+      if (profileMenu) profileMenu.classList.remove('active');
+    }
+
+    async function forgetRememberedAccount() {
+      localStorage.removeItem('macos_remember_account');
+      localStorage.removeItem('macos_remember_prompt_dismissed');
+      localStorage.removeItem('macos_user_identifier');
+      localStorage.removeItem('macos_user_display_name');
+      localStorage.removeItem('macos_user_display_picture');
+      localStorage.removeItem('touchIdEnabled');
+      localStorage.removeItem('touchIdCredId');
+      sessionStorage.removeItem('macos_session_active');
+      closeProfileMenu();
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (error) {
+        console.warn('Backend logout could not be completed:', error);
+      }
+      await syncProfile();
+      updateLoginHint();
+    }
+
+    // Sync profile across tabs and on local updates
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'macos_user_display_name' || e.key === 'macos_user_display_picture') {
+        syncProfile();
+      }
+    });
+    window.addEventListener('macos-profile-updated', () => syncProfile());
+
+    // Auto-login on autofill
+    if (passwordInput) {
+      passwordInput.addEventListener('animationstart', (e) => {
+        if (e.animationName === 'onAutofillStart' && passwordInput.value) {
+          handleLogin();
+        }
+      });
+
+      passwordInput.addEventListener('input', () => {
+        clearTimeout(loginAutoSubmitTimer);
+        if (!loginIdentifierInput.value.trim() || !passwordInput.value ||
+            loginModal?.classList.contains('active') !== true) return;
+
+        loginAutoSubmitTimer = setTimeout(() => handleLogin(), 900);
+      });
+    }
+
+    if (setupPasswordInput) {
+      setupPasswordInput.addEventListener('animationstart', (e) => {
+        if (e.animationName === 'onAutofillStart' && setupPasswordInput.value) {
+          registerBiometrics();
+        }
+      });
+
+      setupPasswordInput.addEventListener('input', () => {
+        clearTimeout(touchIdAutoSubmitTimer);
+        if (!setupPasswordInput.value || touchIdSetupModal?.classList.contains('active') !== true) return;
+
+        touchIdAutoSubmitTimer = setTimeout(() => registerBiometrics(), 900);
+      });
+    }
+
+    async function checkSecurityStatus() {
+      try {
+        const res = await fetch('/api/auth/status');
+        const data = await res.json();
+        passwordProtectionEnabled = data.passwordSet === true;
+
+        const passwordSection = document.getElementById('passwordProtectionSection');
+        const noPasswordSection = document.getElementById('noPasswordSection');
+        const hintElement = document.getElementById('profileHint');
+
+        if (passwordSection) passwordSection.style.display = 'flex';
+        const passwordField = document.getElementById('loginPasswordField');
+        const forgotPassword = document.getElementById('forgotPasswordText');
+        const touchIdText = document.getElementById('touchidText');
+        if (noPasswordSection) noPasswordSection.style.display = 'none';
+        if (passwordField) passwordField.style.display = 'block';
+        if (forgotPassword) forgotPassword.style.display = 'block';
+        if (touchIdText) touchIdText.style.display = 'none';
+        updateLoginHint();
+      } catch (err) {
+        console.error('Status check failed:', err);
+      }
+    }
+
+    async function getDeviceInfo() {
+      const userAgent = navigator.userAgent;
+      let deviceName = 'Generic Device';
+      let deviceType = /Mobi|Android/i.test(userAgent) ? 'Mobile' : 'Desktop';
+      
+      // 0. Try local system info API (High Fidelity detection for local machine and matching platforms)
+      try {
+        const res = await fetch('/api/system/info');
+        if (res.ok) {
+          const data = await res.json();
+          const clientPlatform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+          const platformMatch = (data.platform === 'win32' && clientPlatform.includes('win')) ||
+                                (data.platform === 'darwin' && (clientPlatform.includes('mac') || clientPlatform.includes('iphone'))) ||
+                                (data.platform === 'linux' && clientPlatform.includes('linux'));
+
+          if (platformMatch && data.model && !data.model.toLowerCase().includes('generic') && !data.model.toLowerCase().includes('pc')) {
+            deviceName = data.model;
+          } else if (data.hostname && !data.hostname.toLowerCase().includes('localhost')) {
+            // Heuristic: If hostname looks like hardware (e.g., "HP-Desktop"), use it as a hint for generic desktops
+            // ONLY if the client platform family matches the likely hostname brand
+            const lowerHostname = data.hostname.toLowerCase();
+            const clientPlatform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+
+            if (lowerHostname.includes('hp') && clientPlatform.includes('win')) {
+              deviceName = 'HP Slim Desktop';
+            } else if (lowerHostname.includes('mac') && data.platform === 'darwin') {
+              // Only adopt MacBook Pro if the server is actually a Mac and contains 'mac' in hostname
+              // This avoids false positives on "MacOS-Project" Linux VMs
+              deviceName = 'MacBook Pro';
+            } else if (lowerHostname.includes('dell') && clientPlatform.includes('win')) {
+              deviceName = 'Dell Desktop';
+            } else if (!platformMatch && deviceType === 'Desktop') {
+              // If it's a generic desktop and the hostname is something like "HP-XXXX", use it
+              if (lowerHostname.includes('-') && lowerHostname.length > 5) {
+                deviceName = data.hostname;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('System info API failed:', e);
       }
 
-      if (typeof ClockDisplay !== 'undefined') {
-        window.loginClockComponent = new ClockDisplay('loginClockDisplay', { format: '12h', showComma: false });
+      // 1. Try modern Client Hints API for high-entropy model data
+      if (deviceName === 'Generic Device' && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+        try {
+          const hints = await navigator.userAgentData.getHighEntropyValues(['model', 'platform', 'platformVersion']);
+          if (hints.model) {
+            deviceName = hints.model;
+            // Add brand if possible
+            if (userAgent.includes('Samsung')) deviceName = 'Samsung ' + deviceName;
+            else if (userAgent.includes('Pixel')) deviceName = 'Google ' + deviceName;
+          } else if (hints.platform) {
+            deviceName = hints.platform + ' PC';
+          }
+        } catch (e) {
+          console.warn('UserAgentData hints failed:', e);
+        }
+      }
+
+      // 2. Fallback/Regex-based detection for legacy or restricted environments
+      if (deviceName === 'Generic Device' || deviceName.includes('PC')) {
+        if (userAgent.includes('iPhone')) {
+          // Detect specific iPhone models from UA if possible (often just "iPhone")
+          deviceName = 'iPhone';
+          if (window.screen.height >= 844) deviceName = 'iPhone 15 Pro'; // Mocking/Estimating for demo
+        } else if (userAgent.includes('iPad')) {
+          deviceName = 'iPad Pro';
+        } else if (userAgent.includes('Macintosh')) {
+          deviceName = 'MacBook Pro';
+        } else if (userAgent.includes('Windows')) {
+          // Extract specific Windows version or common hardware marks
+          deviceName = 'Windows PC';
+          if (userAgent.includes('x64')) deviceName += ' (x64)';
+        } else if (userAgent.includes('Android')) {
+          const modelMatch = userAgent.match(/Android.*;\s*([^;)]+)\s*[);]/);
+          if (modelMatch && modelMatch[1]) {
+            deviceName = modelMatch[1].trim();
+          } else {
+            deviceName = 'Android Device';
+          }
+        }
+      }
+
+      // Add a touch of personalization if not already specific
+      const genericNames = ['Windows PC', 'MacBook Pro', 'iPhone', 'Generic Device'];
+      if (genericNames.some(name => deviceName.includes(name))) {
+        const firstName = profileUsername.textContent.split(' ')[0];
+        deviceName = `${firstName}'s ${deviceName}`;
+      }
+      
+      return { deviceName, deviceType };
+    }
+
+    function goHome() {
+      sessionStorage.setItem('macos_session_active', 'true');
+      if (accountPreferenceModal) accountPreferenceModal.classList.remove('active');
+      if (touchIdSetupModal) touchIdSetupModal.classList.remove('active');
+      closeLoginModal();
+      window.location.replace('./home.html');
+    }
+
+    async function loadAuthenticatedProfile() {
+      try {
+        const response = await fetch('/api/profile');
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.profile || null;
+      } catch (error) {
+        console.warn('Profile cache update failed:', error);
+        return null;
+      }
+    }
+
+    function showRememberAccountPrompt(identifier, profile) {
+      const rememberDismissed = localStorage.getItem('macos_remember_prompt_dismissed') === 'true';
+      const accountIsRemembered = localStorage.getItem('macos_remember_account') === 'true';
+
+      const saveRememberedProfile = () => {
+        localStorage.setItem('macos_remember_account', 'true');
+        localStorage.setItem('macos_user_identifier', identifier);
+        if (profile?.display_name) localStorage.setItem('macos_user_display_name', profile.display_name);
+        if (profile?.display_picture) localStorage.setItem('macos_user_display_picture', profile.display_picture);
+        syncProfile();
+      };
+
+      const discardRememberedProfile = () => {
+        localStorage.removeItem('macos_remember_account');
+        localStorage.removeItem('macos_user_identifier');
+        localStorage.removeItem('macos_user_display_name');
+        localStorage.removeItem('macos_user_display_picture');
+        syncProfile();
+      };
+
+      const showTouchIdChoice = () => {
+        if (localStorage.getItem('touchIdEnabled') === 'true' ||
+            localStorage.getItem('macos_touchid_prompt_dismissed') === 'true') {
+          goHome();
+          return;
+        }
+        loginModal.classList.remove('active');
+        rememberAccountStep.style.display = 'none';
+        rememberAccountWarningStep.style.display = 'none';
+        touchIdChoiceStep.style.display = 'block';
+        accountPreferenceModal.classList.add('active');
+      };
+
+      if (accountIsRemembered) {
+        showTouchIdChoice();
+      } else if (rememberDismissed) {
+        goHome();
+      } else {
+        rememberAccountStep.style.display = 'block';
+        rememberAccountWarningStep.style.display = 'none';
+        rememberAccountDismissStep.style.display = 'none';
+        touchIdChoiceStep.style.display = 'none';
+        touchIdDismissStep.style.display = 'none';
+      }
+      loginModal.classList.remove('active');
+      accountPreferenceModal.classList.add('active');
+
+      const continueWithoutRemembering = () => {
+        localStorage.setItem('macos_remember_prompt_dismissed', 'true');
+        discardRememberedProfile();
+        goHome();
+      };
+
+      const continueWithoutTouchId = () => {
+        localStorage.setItem('macos_touchid_prompt_dismissed', 'true');
+        goHome();
+      };
+
+      document.getElementById('dontRememberAccountBtn').onclick = () => {
+        rememberAccountDismissStep.style.display = 'block';
+      };
+
+      document.getElementById('closeRememberDismissStep').onclick = () => {
+        rememberAccountDismissStep.style.display = 'none';
+      };
+
+      document.getElementById('rememberAccountBtn').onclick = () => {
+        rememberAccountWarningStep.style.display = 'block';
+      };
+
+      document.getElementById('cancelRememberAccountBtn').onclick = () => {
+        rememberAccountWarningStep.style.display = 'none';
+      };
+
+      document.getElementById('rememberAccountDontAskOption').onclick = continueWithoutRemembering;
+      document.getElementById('confirmDontRememberAccountBtn').onclick = () => {
+        discardRememberedProfile();
+        goHome();
+      };
+
+      document.getElementById('confirmRememberAccountBtn').onclick = () => {
+        saveRememberedProfile();
+        showTouchIdChoice();
+      };
+
+      document.getElementById('skipTouchIdBtn').onclick = () => {
+        touchIdDismissStep.style.display = 'block';
+      };
+
+      document.getElementById('closeTouchIdDismissStep').onclick = () => {
+        touchIdDismissStep.style.display = 'none';
+      };
+
+      document.getElementById('touchIdDontAskOption').onclick = continueWithoutTouchId;
+      document.getElementById('confirmSkipTouchIdBtn').onclick = goHome;
+
+      document.getElementById('chooseTouchIdBtn').onclick = () => {
+        accountPreferenceModal.classList.remove('active');
+        touchIdSetupModal.classList.add('active');
+        setupPasswordInput.focus();
+      };
+    }
+
+    async function finishAuthenticatedLogin(data, identifier) {
+      sessionStorage.setItem('macos_session_active', 'true');
+      const profile = await loadAuthenticatedProfile();
+      if (data.role === 'worker' && data.user && !data.user.hasLocalPassword && localStorage.getItem('worker_password_prompt_dismissed') !== 'true') {
+        await showWorkerCredentialPrompt();
+      }
+      showRememberAccountPrompt(identifier, profile);
+    }
+
+    async function showWorkerCredentialPrompt() {
+      const modal = document.getElementById('workerCredentialModal');
+      if (!modal) return;
+      modal.classList.add('active');
+      return new Promise(resolve => {
+        const close = () => { modal.classList.remove('active'); resolve(); };
+        document.getElementById('skipWorkerPasswordBtn').onclick = close;
+        document.getElementById('dontAskWorkerPasswordBtn').onclick = () => {
+          localStorage.setItem('worker_password_prompt_dismissed', 'true');
+          close();
+        };
+        document.getElementById('saveWorkerPasswordBtn').onclick = async () => {
+          const password = document.getElementById('workerNewPassword').value;
+          const confirmation = document.getElementById('workerConfirmPassword').value;
+          if (!password || password !== confirmation) return alert('Passwords do not match.');
+          const response = await fetch('/api/auth/update-security', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newPassword: password })
+          });
+          if (!response.ok) return alert((await response.json()).error || 'Unable to save password.');
+          close();
+        };
+      });
+    }
+
+    function showWorkerPending(data) {
+      const modal = document.getElementById('workerPendingModal');
+      loginModal?.classList.remove('active');
+      document.getElementById('ownerLinkModal')?.classList.remove('active');
+      document.getElementById('workerInviteCode').textContent = data.inviteCode || '';
+      const qr = document.getElementById('workerInviteQr');
+      const canvas = document.createElement('canvas');
+      if (window.QRCode && data.inviteCode) {
+        window.QRCode.toCanvas(canvas, data.inviteCode, { width: 180, margin: 1, errorCorrectionLevel: 'H' });
+        qr.src = canvas.toDataURL('image/png');
+        qr.style.display = 'block';
+      } else if (data.inviteQr) {
+        qr.src = data.inviteQr;
+        qr.style.display = 'block';
+      }
+      modal.classList.add('active');
+      pendingWorkerInvite = data.inviteCode;
+      const poll = async () => {
+        if (!pendingWorkerInvite) return;
+        const response = await fetch(`/api/auth/worker/status?inviteCode=${encodeURIComponent(pendingWorkerInvite)}`);
+        if (!response.ok) return;
+        const status = await response.json();
+        if (status.approved) {
+          pendingWorkerInvite = null;
+          modal.classList.remove('active');
+          if (pendingGoogleCredential) {
+            await handleGoogleCredential(pendingGoogleCredential);
+          } else {
+            alert('Your access was approved. Sign in with Google again to continue.');
+          }
+        } else if (pendingWorkerInvite) {
+          setTimeout(poll, 4000);
+        }
+      };
+      poll();
+    }
+
+    async function handleGoogleCredential(response, linkPassword = null) {
+      try {
+        if (!response?.credential) throw new Error('Google did not return an ID token. Please try again.');
+        const { deviceName, deviceType } = await getDeviceInfo();
+        const body = { idToken: response.credential, deviceName, deviceType };
+        if (linkPassword) body.linkPassword = linkPassword;
+        const result = await fetch('/api/auth/google/worker-login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await result.json();
+        if (result.status === 409 && data.requiresLinking) {
+        pendingGoogleCredential = response;
+        loginModal?.classList.remove('active');
+        accountPreferenceModal?.classList.remove('active');
+        touchIdSetupModal?.classList.remove('active');
+        document.getElementById('ownerLinkModal').classList.add('active');
+        document.getElementById('ownerLinkPassword').focus();
+        } else if (data.status === 'pending') {
+        pendingGoogleCredential = response;
+        loginModal?.classList.remove('active');
+        ownerLinkModal?.classList.remove('active');
+        showWorkerPending(data);
+        } else if (result.ok) {
+        await finishAuthenticatedLogin(data, data.user?.email || '');
+        } else {
+          alert(data.message || data.error || 'Google sign-in failed.');
+        }
+      } catch (error) {
+        console.error('[Google] Login request failed:', error);
+        alert(error.message || 'Google sign-in failed. Please try again.');
+      }
+    }
+
+    async function startGoogleSignIn() {
+      if (!window.google?.accounts?.id) return alert('Google sign-in is still loading. Please try again.');
+      const configResponse = await fetch('/api/auth/google/config');
+      const config = await configResponse.json();
+      if (!configResponse.ok) return alert(config.error || 'Google sign-in is not configured.');
+      window.google.accounts.id.initialize({ client_id: config.clientId, callback: handleGoogleCredential });
+      window.google.accounts.id.prompt();
+    }
+
+    async function initializeGoogleOneTap() {
+      if (!window.google?.accounts?.id) {
+        setTimeout(initializeGoogleOneTap, 500);
+        return;
+      }
+      try {
+        const configResponse = await fetch('/api/auth/google/config');
+        const config = await configResponse.json();
+        if (!configResponse.ok) return;
+        window.google.accounts.id.initialize({
+          client_id: config.clientId,
+          callback: handleGoogleCredential,
+          auto_select: false,
+          use_fedcm_for_prompt: false,
+          cancel_on_tap_outside: false
+        });
+        const buttonContainer = document.getElementById('googleSignInButton');
+        if (buttonContainer) {
+          const buttonWidth = Math.floor(buttonContainer.getBoundingClientRect().width);
+          window.google.accounts.id.renderButton(buttonContainer, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            width: buttonWidth
+          });
+        }
+        window.google.accounts.id.prompt(notification => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            console.info('[Google] One Tap unavailable:', notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || 'browser decision');
+          }
+        });
+      } catch (error) {
+        console.warn('[Google] One Tap initialization failed:', error.message);
+      }
+    }
+
+    async function handleLogin() {
+      const identifier = loginIdentifierInput.value.trim();
+      const password = passwordInput.value;
+      const passwordRequired = document.getElementById('loginPasswordField')?.style.display !== 'none';
+      if (!identifier || (passwordRequired && !password)) {
+        // Just shake or ignore if empty, matching macOS behavior
+        const invalidInput = passwordRequired ? passwordInput : loginIdentifierInput;
+        invalidInput.classList.add('error-shake');
+        setTimeout(() => invalidInput.classList.remove('error-shake'), 500);
+        return;
+      }
+
+      const { deviceName, deviceType } = await getDeviceInfo();
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, password, deviceName, deviceType })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          await finishAuthenticatedLogin(data, identifier);
+        } else {
+          // EXPLICIT LOGIN ERROR: Feedback provided
+          passwordInput.classList.add('error-shake');
+          setTimeout(() => passwordInput.classList.remove('error-shake'), 500);
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
+      } catch (err) {
+        console.error('Login error:', err);
+        alert('Could not connect to authentication server');
+      }
+    }
+
+    async function handleUnlock() {
+      return handleLogin();
+    }
+
+    async function handleForgotPassword() {
+      const identifier = loginIdentifierInput.value.trim();
+      if (!identifier) {
+        loginIdentifierInput.focus();
+        loginIdentifierInput.classList.add('error-shake');
+        setTimeout(() => loginIdentifierInput.classList.remove('error-shake'), 500);
+        return;
+      }
+
+      try {
+        loginIdentifierField.style.display = 'none';
+        recoveryIdentityField.style.display = 'block';
+        recoveryIdentityDisplay.textContent = identifier;
+        const response = await fetch(`/api/auth/challenge?identifier=${encodeURIComponent(identifier)}`);
+        const data = await response.json();
+
+        if (data.question) {
+          document.getElementById('loginPasswordField').style.display = 'none';
+          // Fix: loginButton was removed earlier, so we don't try to hide it anymore
+          document.getElementById('touchidText').style.display = 'none';
+          document.getElementById('forgotPasswordText').style.display = 'none';
+
+          const questionSection = document.getElementById('securityQuestionSection');
+          const questionDisplay = document.getElementById('challengeQuestionDisplay');
+
+          questionDisplay.textContent = data.question;
+          questionSection.style.display = 'block';
+
+          document.getElementById('verifyAnswerBtn').onclick = async () => {
+            if (answerVerificationInFlight) return;
+            const answer = document.getElementById('securityAnswerInput').value;
+            if (!answer) return;
+
+            answerVerificationInFlight = true;
+            const verifyButton = document.getElementById('verifyAnswerBtn');
+            if (verifyButton) verifyButton.disabled = true;
+            try {
+              const vRes = await fetch('/api/auth/verify-answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answer, identifier })
+              });
+
+              if (vRes.ok) {
+                const vData = await vRes.json();
+              // Set robust session flag (elevation counts as active session)
+              sessionStorage.setItem('macos_session_active', 'true');
+
+              // Transition to Reset Section
+              questionSection.style.display = 'none';
+              const resetSection = document.getElementById('passwordResetSection');
+              resetSection.style.display = 'flex';
+
+              // Handle Reset Password Confirmation
+              document.getElementById('confirmResetBtn').onclick = async () => {
+                const newPassword = document.getElementById('resetNewPassword').value;
+                const confirmPassword = document.getElementById('resetConfirmPassword').value;
+
+                if (!newPassword || newPassword !== confirmPassword) {
+                  alert('Passwords do not match');
+                  return;
+                }
+
+                const updateRes = await fetch('/api/auth/update-security', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ newPassword })
+                });
+
+                if (updateRes.ok) {
+                  alert('✓ Password updated successfully! Please sign in with your new password.');
+
+                  // Reset modal UI to standard login state
+                  resetLoginForm();
+                  document.getElementById('forgotPasswordText').style.display = 'block';
+
+                  // Clear fields
+                  document.getElementById('resetNewPassword').value = '';
+                  document.getElementById('resetConfirmPassword').value = '';
+                  document.getElementById('securityAnswerInput').value = '';
+                  passwordInput.value = '';
+                  passwordInput.focus();
+                } else {
+                  const errData = await updateRes.json();
+                  alert(errData.error || 'Failed to update password');
+                }
+              };
+              } else {
+                alert('Incorrect answer');
+              }
+            } finally {
+              answerVerificationInFlight = false;
+              if (verifyButton) verifyButton.disabled = false;
+            }
+          };
+          document.getElementById('verifyAnswerActionBtn').onclick = () => {
+            document.getElementById('verifyAnswerBtn').click();
+          };
+        } else {
+          alert('Security questions not set up. Use your recovery key.');
+        }
+      } catch (err) {
+        console.error('Challenge error:', err);
+      }
+    }
+
+    // Modal Triggers
+    const oldOpenLoginModal = openLoginModal;
+    openLoginModal = function () {
+      oldOpenLoginModal();
+      checkSecurityStatus();
+    };
+
+    const unlockBtn = document.getElementById('unlockButton');
+    if (unlockBtn) unlockBtn.addEventListener('click', handleUnlock);
+    document.getElementById('cancelWorkerPendingBtn')?.addEventListener('click', () => {
+      pendingWorkerInvite = null;
+      document.getElementById('workerPendingModal')?.classList.remove('active');
+    });
+    document.getElementById('cancelOwnerLinkBtn')?.addEventListener('click', () => {
+      pendingGoogleCredential = null;
+      document.getElementById('ownerLinkModal')?.classList.remove('active');
+      loginModal?.classList.add('active');
+    });
+    document.getElementById('confirmOwnerLinkBtn')?.addEventListener('click', async () => {
+      const password = document.getElementById('ownerLinkPassword').value;
+      if (!password || !pendingGoogleCredential) return;
+      document.getElementById('ownerLinkModal').classList.remove('active');
+      const credential = pendingGoogleCredential;
+      pendingGoogleCredential = null;
+      await handleGoogleCredential(credential, password);
+    });
+    document.getElementById('ownerLinkActionBtn')?.addEventListener('click', () => {
+      document.getElementById('confirmOwnerLinkBtn')?.click();
+    });
+    document.getElementById('ownerLinkPasswordToggle')?.addEventListener('click', () => {
+      const input = document.getElementById('ownerLinkPassword');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+    document.getElementById('ownerLinkPassword')?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') document.getElementById('confirmOwnerLinkBtn')?.click();
+    });
+    initializeGoogleOneTap();
+
+    const proceedBtn = document.getElementById('proceedToHome');
+    if (proceedBtn) proceedBtn.addEventListener('click', () => {
+      handleUnlock();
+    });
+
+    // Add click listeners to profile elements
+    if (profileAvatar) profileAvatar.addEventListener('click', openLoginModal);
+    if (profileAvatar) {
+      profileAvatar.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (localStorage.getItem('macos_remember_account') === 'true') {
+          profileMenu?.classList.add('active');
+        }
+      });
+    }
+    if (forgetRememberedAccountBtn) {
+      forgetRememberedAccountBtn.addEventListener('click', forgetRememberedAccount);
+    }
+    if (profileUsername) profileUsername.addEventListener('click', openLoginModal);
+
+    document.addEventListener('click', (event) => {
+      if (profileMenu?.classList.contains('active') &&
+          !profileMenu.contains(event.target) && event.target !== profileAvatar) {
+        closeProfileMenu();
       }
     });
 
+    if (hintTouchId) {
+      hintTouchId.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleTouchID();
+      });
+    }
+
+    if (hintPassword) {
+      hintPassword.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLoginModal();
+      });
+    }
+
+    // Login button click
+    if (loginButton) {
+      // Button is now removed from HTML, but we keep the logic here 
+      // in case we need to re-enable it or for reference.
+      // loginButton.addEventListener('click', handleLogin);
+    }
+
+    // Password toggle button
+    if (passwordToggle) passwordToggle.addEventListener('click', togglePasswordVisibility);
+
+    // Touch ID text click
+    if (touchidText) touchidText.addEventListener('click', handleTouchID);
+
+    // Forgot Password click
+    const forgotPasswordText = document.getElementById('forgotPasswordText');
+    if (forgotPasswordText) forgotPasswordText.addEventListener('click', handleForgotPassword);
+
+    // Password input - Enter key to submit
+    if (passwordInput) {
+      passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation(); // Prevent global document listener from double-firing
+          const isNoPass = document.getElementById('noPasswordSection')?.style.display !== 'none';
+          if (isNoPass) handleUnlock();
+          else handleLogin();
+        }
+      });
+    }
+
+    // Touch ID Setup buttons
+    if (cancelTouchIdSetup) cancelTouchIdSetup.addEventListener('click', goHome);
+    if (confirmTouchIdSetup) confirmTouchIdSetup.addEventListener('click', registerBiometrics);
+    if (setupPasswordInput) {
+      setupPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          registerBiometrics();
+        }
+      });
+    }
+
+    const securityAnswerInput = document.getElementById('securityAnswerInput');
+    if (securityAnswerInput) {
+      securityAnswerInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('verifyAnswerBtn')?.click();
+        }
+      });
+
+      securityAnswerInput.addEventListener('input', () => {
+        clearTimeout(answerAutoSubmitTimer);
+        if (!securityAnswerInput.value ||
+            document.getElementById('securityQuestionSection')?.style.display === 'none') return;
+
+        answerAutoSubmitTimer = setTimeout(() => {
+          document.getElementById('verifyAnswerBtn')?.click();
+        }, 900);
+      });
+    }
+
+    const resetNewPasswordInput = document.getElementById('resetNewPassword');
+    if (resetNewPasswordInput) {
+      resetNewPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('resetConfirmPassword')?.focus();
+        }
+      });
+    }
+
+    const resetConfirmPasswordInput = document.getElementById('resetConfirmPassword');
+    if (resetConfirmPasswordInput) {
+      resetConfirmPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          document.getElementById('confirmResetBtn')?.click();
+        }
+      });
+    }
+
+    const setupPasswordToggleBtn = document.getElementById('setupPasswordToggleBtn');
+    if (setupPasswordToggleBtn) {
+      setupPasswordToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('setupPasswordInput');
+        if (input) {
+          input.type = input.type === 'password' ? 'text' : 'password';
+        }
+      });
+    }
+
+    document.getElementById('loginPasswordActionBtn')?.addEventListener('click', handleLogin);
+    document.getElementById('resetConfirmActionBtn')?.addEventListener('click', () => {
+      document.getElementById('confirmResetBtn')?.click();
+    });
+    document.getElementById('setupPasswordActionBtn')?.addEventListener('click', registerBiometrics);
+
+    // Reset password section toggles
+    const resetNewToggleBtn = document.getElementById('resetNewToggleBtn');
+    if (resetNewToggleBtn) {
+      resetNewToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('resetNewPassword');
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    }
+
+    const resetConfirmToggleBtn = document.getElementById('resetConfirmToggleBtn');
+    if (resetConfirmToggleBtn) {
+      resetConfirmToggleBtn.addEventListener('click', () => {
+        const input = document.getElementById('resetConfirmPassword');
+        input.type = input.type === 'password' ? 'text' : 'password';
+      });
+    }
+
+    // Close modal when clicking blur overlay
+    if (blurOverlay) blurOverlay.addEventListener('click', closeLoginModal);
+
+    // Update login page clock when visible
+    let loginClockInterval;
+
+    if (loginPageClock) {
+      const observer = new MutationObserver(() => {
+        if (loginPageClock.classList.contains('active')) {
+          if (loginClockInterval) clearInterval(loginClockInterval);
+          loginClockInterval = setInterval(updateLoginPageClock, 1000);
+        } else {
+          if (loginClockInterval) clearInterval(loginClockInterval);
+        }
+      });
+
+      observer.observe(loginPageClock, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // Bottom-to-top drag gesture to open login
+    let isDragging = false;
+    let dragStartY = 0;
+    let dragThreshold = window.innerHeight / 2; // Default, will re-calc on window resize
+    
+    window.addEventListener('resize', () => {
+      dragThreshold = window.innerHeight / 2;
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      // Only start drag on homepage (not during login or transition)
+      const currentState = document.body.getAttribute('data-unlock-state');
+      if (currentState === 'locked') {
+        isDragging = true;
+        dragStartY = e.clientY;
+        document.body.setAttribute('data-unlock-state', 'dragging');
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const currentY = e.clientY;
+        const dragDistance = dragStartY - currentY; // Positive = upward
+
+        // VISUAL FEEDBACK: Move elements with drag
+        if (dragDistance > 0) {
+          const dragTranslate = Math.min(dragDistance, dragThreshold * 1.1);
+          
+          document.querySelectorAll('.draggable-content').forEach(el => {
+            el.style.transform = `translate(-50%, -${dragTranslate}px)`;
+          });
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      
+      const currentY = e.clientY;
+      const dragDistance = dragStartY - currentY;
+      
+      isDragging = false;
+
+      if (dragDistance > dragThreshold) {
+        // SUCCESS: Fly out
+        executeUnlockSequence();
+      } else {
+        // CANCEL: Snap back
+        document.body.setAttribute('data-unlock-state', 'locked');
+        resetDragVisuals();
+      }
+    });
+
+    function executeUnlockSequence() {
+      document.body.setAttribute('data-unlock-state', 'unlocking');
+      
+      // APPLY EXIT ANIMATION DIRECTLY (Industrial Standard)
+      document.querySelectorAll('.draggable-content').forEach(el => {
+        el.style.transition = 'transform 0.8s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.6s ease-out';
+        el.style.transform = 'translate(-50%, -100vh)';
+        el.style.opacity = '0';
+      });
+
+      // Precise handover to login modal
+      const firstEl = document.querySelector('.draggable-content');
+      if (firstEl) {
+        const onTransitionEnd = (e) => {
+          if (e.propertyName === 'transform') {
+            firstEl.removeEventListener('transitionend', onTransitionEnd);
+            document.body.setAttribute('data-unlock-state', 'finished');
+            openLoginModal();
+          }
+        };
+        firstEl.addEventListener('transitionend', onTransitionEnd);
+        
+        // Backup timeout in case transitionend fails
+        setTimeout(() => {
+          if (document.body.getAttribute('data-unlock-state') === 'unlocking') {
+            document.body.setAttribute('data-unlock-state', 'finished');
+            openLoginModal();
+          }
+        }, 1000);
+      } else {
+        openLoginModal();
+      }
+    }
+
+    function resetDragVisuals() {
+      document.querySelectorAll('.draggable-content').forEach(el => {
+        el.style.transition = ''; // Restore CSS-defined transitions
+        el.style.transform = ''; // Reverts to translateX(-50%) from CSS
+        el.style.opacity = '';
+      });
+    }
+
+    // Touch gesture support
+    document.addEventListener('touchstart', (e) => {
+      const currentState = document.body.getAttribute('data-unlock-state');
+      if (currentState === 'locked') {
+        isDragging = true;
+        dragStartY = e.touches[0].clientY;
+        document.body.setAttribute('data-unlock-state', 'dragging');
+      }
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (isDragging) {
+        const currentY = e.touches[0].clientY;
+        const dragDistance = dragStartY - currentY;
+
+        if (dragDistance > 0) {
+          const dragTranslate = Math.min(dragDistance, dragThreshold * 1.1);
+          document.querySelectorAll('.draggable-content').forEach(el => {
+            el.style.transform = `translate(-50%, -${dragTranslate}px)`;
+          });
+        }
+      }
+    });
+
+    document.addEventListener('touchend', (e) => {
+      if (!isDragging) return;
+      
+      const currentY = e.changedTouches[0].clientY;
+      const dragDistance = dragStartY - currentY;
+      
+      isDragging = false;
+
+      if (dragDistance > dragThreshold) {
+        executeUnlockSequence();
+      } else {
+        document.body.setAttribute('data-unlock-state', 'locked');
+        resetDragVisuals();
+      }
+    });
+
+    // Global keydown listener to open login modal when typing on desktop
+    document.addEventListener('keydown', (e) => {
+      // If login modal is active, Esc should close it
+      if (document.body.classList.contains('login-active')) {
+        if (e.key === 'Escape') {
+          if (touchIdSetupModal.classList.contains('active')) {
+            touchIdSetupModal.classList.remove('active');
+            touchIdChoiceStep.style.display = 'block';
+            accountPreferenceModal.classList.add('active');
+          } else {
+            closeLoginModal();
+          }
+        } else if (e.key === 'Enter') {
+          // If login modal is active, try to submit
+          const isNoPass = document.getElementById('noPasswordSection')?.style.display !== 'none';
+          if (isNoPass) handleUnlock();
+          else handleLogin();
+        }
+      } else {
+        // If on lock screen, Enter opens login modal or unlocks if no password
+        // Also check if no modifier keys are held down (to avoid triggering on shortcuts like Ctrl+R)
+        const isPrintableKey = typeof e.key === 'string' && e.key.length === 1;
+        const isEnter = e.key === 'Enter';
+        const noModifiers = !e.ctrlKey && !e.altKey && !e.metaKey;
+
+        if ((isPrintableKey || isEnter) && noModifiers) {
+          openLoginModal();
+
+          // Focus immediately to capture the keystroke
+          if (passwordInput) {
+            passwordInput.focus();
+          }
+        }
+      }
+    });
+  </script>
+
+  <!-- Standardized Components -->
+  <script src="/scripts/clock-display/modules/clock.js"></script>
+  <script src="/scripts/weather/modules/weather.js"></script>
+  <!-- Unified Wallpaper Engine -->
+
+  <!-- Main Components -->
+
+  <!-- Service Worker Registration for PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('✓ Service Worker registered successfully:', registration);
+          })
+          .catch(error => {
+            console.log('✗ Service Worker registration failed:', error);
+          });
+      });
+    }
+
+    // Initialize Weather Displays
+    if (typeof WeatherDisplay !== 'undefined') {
+      window.homepageWeatherDisplay = new WeatherDisplay('homepageWeatherDisplay', { useMetricUnits: true });
+      window.loginWeatherDisplay = new WeatherDisplay('loginWeatherDisplay', { useMetricUnits: true });
+    }
+
+    // Initialize Login Page Clock Display
+    if (typeof ClockDisplay !== 'undefined') {
+      window.loginClockComponent = new ClockDisplay('loginClockDisplay', { format: '12h', showComma: false });
+    }
+
+    // Connectivity Status Monitor & Toast
     (function () {
       let toast = document.createElement('div');
       toast.id = 'connectivity-toast';
@@ -573,21 +2828,30 @@
         toast.className = `connectivity-toast active ${type}`;
         if (timeout) {
           clearTimeout(timer);
-          timer = setTimeout(() => { toast.classList.remove('active'); }, timeout);
+          timer = setTimeout(() => {
+            toast.classList.remove('active');
+          }, timeout);
         }
       }
-      window.addEventListener('offline', () => showToast('No connection', 'offline', 3000));
-      window.addEventListener('online', () => {
-        if (toast.classList.contains('offline')) showToast('Back online', 'online', 3000);
-        else toast.classList.remove('active');
-      });
-      if (!navigator.onLine) showToast('No connection', 'offline', 3000);
+      function onOffline() {
+        showToast('No connection', 'offline', 3000);
+      }
+      function onOnline() {
+        if (toast.classList.contains('offline')) {
+          showToast('Back online', 'online', 3000);
+        } else {
+          toast.classList.remove('active');
+        }
+      }
+      window.addEventListener('offline', onOffline);
+      window.addEventListener('online', onOnline);
+      if (!navigator.onLine) onOffline();
     })();
-  </script>
 
-  <!-- MacOS Cursor Engine -->
-  <script src="/shared/macos-cursor-assets.js"></script>
-  <script src="/shared/macos-cursor.js" defer></script>
+    // Initial security and profile check
+    checkSecurityStatus();
+    syncProfile();
+  </script>
 </body>
 
 </html>

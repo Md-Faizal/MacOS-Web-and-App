@@ -367,8 +367,8 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 // 3. Ledger Customers
                 try {
                     val ledgerResp = api.getLedgerCustomers()
-                    if (ledgerResp.isSuccessful) {
-                        _ledgerCustomers.value = ledgerResp.body() ?: emptyList()
+                    if (ledgerResp.isSuccessful && ledgerResp.body() != null) {
+                        _ledgerCustomers.value = parseJsonArray(ledgerResp.body()!!, gson, object : TypeToken<List<LedgerCustomer>>() {}.type)
                     }
                 } catch (e: Exception) {
                     Log.e("BillingViewModel", "Error loading ledger customers", e)
@@ -541,8 +541,8 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
             val calculatedBalance = openingBalance + totalBilled - totalCollected
 
             val status = when {
-                calculatedBalance < 0 -> "CREDIT"
-                calculatedBalance > 0 -> {
+                calculatedBalance < 0.0 -> "CREDIT"
+                calculatedBalance > 0.0 -> {
                     val hasOverdue = cBills.any { b ->
                         val date = com.example.macosbusinesssuite.domain.calculation.FifoSettlementCalculator.parseDate(b.date)
                         if (date != null) {
@@ -555,16 +555,42 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                 else -> "CLEAR"
             }
 
-            mergedMap[key] = com.example.macosbusinesssuite.data.model.LedgerCustomer(
+            val apiCust = apiMap[key] ?: apiMap[customerId] ?: apiMap[customerName.trim().lowercase(java.util.Locale.US)]
+            val balance = apiCust?.balance ?: calculatedBalance
+            val daysOverdue = if (apiCust != null && apiCust.daysOverdue > 0) apiCust.daysOverdue else (if (status == "OVERDUE") 30 else 0)
+            val lastBill = apiCust?.lastBillDate ?: cBills.maxByOrNull { com.example.macosbusinesssuite.domain.calculation.FifoSettlementCalculator.parseDate(it.date)?.time ?: 0L }?.date
+            val lastPayment = apiCust?.lastPaymentDate ?: cPayments.maxByOrNull { com.example.macosbusinesssuite.domain.calculation.FifoSettlementCalculator.parseDate(it.safePaymentDate)?.time ?: 0L }?.safePaymentDate
+            val totalBillsCount = if (apiCust != null && apiCust.totalBills > 0) apiCust.totalBills else cBills.size
+            val totalPaymentsCount = if (apiCust != null && apiCust.totalPayments > 0) apiCust.totalPayments else cPayments.size
+            val totalDebit = if (apiCust != null && apiCust.totalDebit > 0.0) apiCust.totalDebit else totalBilled
+            val totalCredit = if (apiCust != null && apiCust.totalCredit > 0.0) apiCust.totalCredit else totalCollected
+            val activeState = apiCust?.activeState ?: contact?.active ?: "ACTIVE"
+            val excludeStats = apiCust?.excludeFromStats ?: (contact?.excludeFromStats == 1)
+
+            val canonicalKey = customerId.ifBlank { customerName.trim().lowercase(java.util.Locale.US) }
+            mergedMap[canonicalKey] = com.example.macosbusinesssuite.data.model.LedgerCustomer(
                 customerId = customerId,
                 customerName = customerName,
                 phone = phone,
-                balance = calculatedBalance,
-                status = status
+                balance = balance,
+                openingBalance = openingBalance,
+                status = apiCust?.status ?: status,
+                excludeFromStats = excludeStats,
+                activeState = activeState,
+                lastBillDate = lastBill,
+                lastPaymentDate = lastPayment,
+                daysOverdue = daysOverdue,
+                totalDebit = totalDebit,
+                totalCredit = totalCredit,
+                totalBills = totalBillsCount,
+                totalPayments = totalPaymentsCount,
+                currentDue = apiCust?.currentDue ?: calculatedBalance
             )
         }
 
-        _ledgerCustomers.value = mergedMap.values.sortedBy { it.customerName.lowercase() }
+        _ledgerCustomers.value = mergedMap.values
+            .distinctBy { it.customerId.ifBlank { it.customerName.trim().lowercase(java.util.Locale.US) } }
+            .sortedBy { it.customerName.lowercase() }
     }
 
 
@@ -1273,7 +1299,7 @@ class BillingViewModel(application: Application) : AndroidViewModel(application)
                         api.exportInvoicePdf(requestMap)
                     }
                     "payment" -> {
-                        requestMap["paymentId"] = idOrNo
+                        requestMap["paymentId"] = idOrNo.toIntOrNull() ?: idOrNo
                         api.exportPaymentPdf(requestMap)
                     }
                     "opening-balance" -> {

@@ -355,14 +355,18 @@ fun M3CustomerLedgerCard(
 ) {
     val isCredit = customer.balance < 0
     val isClear = customer.balance == 0.0
+    val isOverdue = customer.daysOverdue > 0
     val absBalance = abs(customer.balance)
     val initial = customer.customerName.take(1).uppercase()
+    var expanded by remember(customer.customerId, customer.customerName) { mutableStateOf(false) }
 
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp)
+    ElevatedCard(
+        onClick = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -371,15 +375,15 @@ fun M3CustomerLedgerCard(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(40.dp)
+                    color = if (isCredit) Color(0xFFE8F5E9) else if (isOverdue) Color(0xFFFFF3E0) else MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = initial,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = if (isCredit) Color(0xFF2E7D32) else if (isOverdue) Color(0xFFE65100) else MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -424,43 +428,93 @@ fun M3CustomerLedgerCard(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                         color = when {
-                            isCredit -> Color(0xFF2E7D32) // Standard Green
+                            isCredit -> Color(0xFF2E7D32)
                             isClear -> MaterialTheme.colorScheme.onSurface
-                            customer.daysOverdue > 0 -> MaterialTheme.colorScheme.error
+                            isOverdue -> MaterialTheme.colorScheme.error
                             else -> MaterialTheme.colorScheme.primary
                         }
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconButton(onClick = onWhatsAppShare) {
-                        Icon(Icons.Default.Chat, "WhatsApp", tint = Color(0xFF25D366))
-                    }
-                    IconButton(onClick = onShareLink) {
-                        Icon(Icons.Default.Share, "Share", tint = MaterialTheme.colorScheme.primary)
-                    }
-                    Button(
-                        onClick = onClick,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("View Ledger", fontSize = 12.sp)
-                    }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = if (isOverdue) "${customer.daysOverdue}d overdue" else if (isClear) "Settled" else "Current",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (customer.lastBillDate != null || customer.lastPaymentDate != null) {
+                            val latest = listOfNotNull(customer.lastBillDate, customer.lastPaymentDate)
+                                .maxByOrNull { it ?: "" } ?: ""
+                            "Updated ${getDaysAgoLabel(latest)}"
+                        } else "No recent activity",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
-            if (customer.lastBillDate != null || customer.lastPaymentDate != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(modifier = Modifier.alpha(0.3f))
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    customer.lastBillDate?.let {
-                        Text("Last Bill: ${getDaysAgoLabel(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    customer.lastPaymentDate?.let {
-                        Text("Last Pmt: ${getDaysAgoLabel(it)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (customer.lastBillDate != null) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Last Bill ${getDaysAgoLabel(customer.lastBillDate)}") },
+                        enabled = false
+                    )
+                }
+                if (customer.lastPaymentDate != null) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Last Pmt ${getDaysAgoLabel(customer.lastPaymentDate)}") },
+                        enabled = false
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(modifier = Modifier.alpha(0.4f))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onWhatsAppShare,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("WhatsApp")
+                        }
+                        OutlinedButton(
+                            onClick = onShareLink,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Share")
+                        }
+                        Button(
+                            onClick = onClick,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Text("Open")
+                        }
                     }
                 }
             }

@@ -233,7 +233,7 @@ interface ApiService {
     ): Response<CustomerPreference>
 
     @GET("billing/ledger/customers")
-    suspend fun getLedgerCustomers(): Response<List<LedgerCustomer>>
+    suspend fun getLedgerCustomers(): Response<com.google.gson.JsonElement>
 
     @GET("billing/invoices/payments")
     suspend fun getPayments(@Query("limit") limit: Int = 10000): Response<com.google.gson.JsonElement>

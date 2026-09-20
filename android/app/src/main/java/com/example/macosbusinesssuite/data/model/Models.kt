@@ -390,7 +390,10 @@ data class Bill(
     val status: String = "Paid",
     @SerializedName("payment_mode", alternate = ["paymentMode"]) val paymentMode: String = "Cash",
     val notes: String? = null
-)
+) {
+    val totalDiscount: Double get() = discountTotal
+    val totalTax: Double get() = taxTotal
+}
 
 data class CreateBillRequest(
     @SerializedName("customer_id") val customerId: String? = null,
@@ -573,12 +576,18 @@ data class LedgerCustomer(
     @SerializedName("customerName", alternate = ["name", "customer_name"]) val customerName: String = "",
     val phone: String? = null,
     @SerializedName("balance", alternate = ["amountDue", "total_outstanding", "current_due"]) val balance: Double = 0.0,
+    @SerializedName("opening_balance", alternate = ["openingBalance"]) val openingBalance: Double = 0.0,
     val status: String = "Clear",
     @SerializedName("exclude_from_stats", alternate = ["exclude_stats", "excludeFromStats"]) val excludeFromStats: Boolean = false,
     @SerializedName("active", alternate = ["active_state", "status_active"]) val activeState: String = "ACTIVE",
     @SerializedName("last_bill_date", alternate = ["lastBillDate", "last_bill"]) val lastBillDate: String? = null,
     @SerializedName("last_payment_date", alternate = ["lastPaymentDate", "last_payment"]) val lastPaymentDate: String? = null,
-    @SerializedName("days_overdue", alternate = ["daysOverdue", "overdue_days"]) val daysOverdue: Int = 0
+    @SerializedName("days_overdue", alternate = ["daysOverdue", "overdue_days"]) val daysOverdue: Int = 0,
+    @SerializedName("total_debit", alternate = ["totalDebit", "total_bills_amount"]) val totalDebit: Double = 0.0,
+    @SerializedName("total_credit", alternate = ["totalCredit", "total_payments_amount"]) val totalCredit: Double = 0.0,
+    @SerializedName("total_bills", alternate = ["totalBills", "bills_count"]) val totalBills: Int = 0,
+    @SerializedName("total_payments", alternate = ["totalPayments", "payments_count"]) val totalPayments: Int = 0,
+    @SerializedName("current_due", alternate = ["currentDue"]) val currentDue: Double = 0.0
 )
 
 data class PaymentRecord(
@@ -591,29 +600,33 @@ data class PaymentRecord(
     @SerializedName("payment_mode", alternate = ["paymentMode"]) val paymentMode: String = "Cash",
     @SerializedName("payment_medium", alternate = ["paymentMedium", "method"]) val paymentMedium: String = "Cash",
     @SerializedName("reference_no", alternate = ["reference_number", "referenceNo"]) val referenceNo: String? = null,
-    @SerializedName("payment_date", alternate = ["created_at", "paymentDate"]) val paymentDate: String = "",
+    @SerializedName("payment_date", alternate = ["paymentDate", "date"]) val paymentDate: String = "",
     @SerializedName("created_at") val createdAt: String? = null,
-    @SerializedName("attachment_data", alternate = ["attachmentData", "attachment"]) val attachmentData: String? = null
+    @SerializedName("attachment_data", alternate = ["attachmentData", "attachment"]) val attachmentData: String? = null,
+    val notes: String? = null,
+    val reason: String? = null
 ) {
     val safeCustomerName: String
-        get() = (customerName as String?).takeIf { !it.isNullOrBlank() } ?: "Customer"
+        get() = customerName.takeIf { it.isNotBlank() } ?: "Customer"
 
     val safeType: String
-        get() = (type as String?).takeIf { !it.isNullOrBlank() } ?: "PAYMENT"
+        get() = type.takeIf { it.isNotBlank() } ?: "PAYMENT"
 
     val safePaymentDate: String
-        get() = (paymentDate as String?).takeIf { !it.isNullOrBlank() } ?: createdAt ?: ""
+        get() = paymentDate.takeIf { it.isNotBlank() } ?: createdAt ?: ""
 
     val safePaymentMedium: String
-        get() = (paymentMedium as String?).takeIf { !it.isNullOrBlank() } ?: (paymentMode as String?).takeIf { !it.isNullOrBlank() } ?: "Cash"
+        get() = paymentMedium.takeIf { it.isNotBlank() } ?: paymentMode.takeIf { it.isNotBlank() } ?: "Cash"
 
     val effectiveAmount: Double
         get() {
             val t = safeType
+            val cr = creditAmount
+            val am = amount
             if (t.equals("CREDIT_NOTE", ignoreCase = true) || t.contains("CREDIT", true) || t.contains("CN", true)) {
-                return if (creditAmount > 0.0) creditAmount else amount
+                return if (cr > 0.0) cr else am
             }
-            return if (amount > 0.0) amount else creditAmount
+            return if (am > 0.0) am else cr
         }
 }
 

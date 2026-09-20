@@ -57,17 +57,13 @@ const serverAll = http.createServer((req, res) => {
   if (url.match(/^(assets|Assets)\/Wallpaper\/Static\/tahoe-beach\/tahoe-beach\.light\.jpg$/i) || 
       url.match(/^(assets|Assets)\/Images\/Wallpaper\/Static\/tahoe-beach\/tahoe-beach\.light\.jpg$/i)) {
     res.writeHead(200, { 'Content-Type': 'image/jpeg' });
-    filePath = path.join(__dirname, 'storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg');
+    filePath = path.join(__dirname, 'Wallpapers/Static/tahoe-beach/tahoe-beach.light.jpg');
     fs.createReadStream(filePath).pipe(res);
     return;
   } 
   
-  // Handle storage/ requests directly
-  if (url.startsWith('storage/')) {
-    filePath = path.join(__dirname, url);
-  }
   // 2. Handle /Assets/Wallpaper/... or /assets/Wallpaper/... requests
-  else if (url.match(/^(assets|Assets)\/Wallpaper\/.*\.(jpg|jpeg|png|gif|svg|webp|ico|avif)$/i)) {
+  if (url.match(/^(assets|Assets)\/Wallpaper\/.*\.(jpg|jpeg|png|gif|svg|webp|ico|avif)$/i)) {
     const relativePath = url.replace(/^(assets|Assets)\/Wallpaper\//i, '');
     filePath = path.join(__dirname, 'Wallpapers', relativePath);
   }
@@ -82,20 +78,11 @@ const serverAll = http.createServer((req, res) => {
   }
   else {
     filePath = path.join(DIST_DIR, url);
-    // Fallback search across dist/frontend, project root, frontend/, and frontend/public
+    // Fallback to frontend directory if not found at root
     if (!fs.existsSync(filePath)) {
-      const candidates = [
-        path.join(DIST_DIR, 'frontend', url),
-        path.join(__dirname, url),
-        path.join(__dirname, 'frontend', url),
-        path.join(__dirname, 'frontend', 'public', url),
-        path.join(DIST_DIR, 'scripts', 'shared', path.basename(url))
-      ];
-      for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-          filePath = candidate;
-          break;
-        }
+      const frontendPath = path.join(DIST_DIR, 'frontend', url);
+      if (fs.existsSync(frontendPath)) {
+        filePath = frontendPath;
       }
     }
   }

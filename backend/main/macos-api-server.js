@@ -1,6 +1,5 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 
 // Load environment variables from common dotenv convention:
 // - .env
@@ -64,15 +63,17 @@ const { router: logsRouter, initializeDatabase: initLogs } = require('../core/lo
 const qrRouter = require('../core/qr-routing')(globalDb);
 
 // Auth Module
-const permissionsHelper = require('../core/auth/permissions')(globalDb);
-const authModule = require('../core/auth/auth')(globalDb, permissionsHelper);
+const authModule = require('../core/auth/auth')(globalDb);
 const profileModule = require('../core/auth/profile')(globalDb);
 const oauthModule = require('../core/auth/oauth')(globalDb);
+const permissionsHelper = require('../core/auth/permissions')(globalDb);
 const workerGoogleAuth = require('../core/auth/worker-google-auth')(globalDb, permissionsHelper);
 const adminAuth = require('../core/auth/admin')(globalDb);
 const createAuditService = require('../core/auth/audit-service');
 
 const app = express();
+const { attachResponseHelpers, sendSuccess, sendError } = require('../shared/api/response');
+const { toLegacyShape } = require('../shared/api/compat');
 const auditService = createAuditService(globalDb);
 try {
   auditService.purgeExpired();
@@ -94,6 +95,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(attachResponseHelpers);
+
 // Trust proxy headers (X-Forwarded-Proto, etc.) for production environments
 // This ensures req.protocol is 'https' when running behind Nginx/Proxy
 app.set('trust proxy', 1);
@@ -103,7 +106,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (isProd || isVM) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
@@ -114,13 +117,10 @@ try {
   wallpaperRouter = require('../core/wallpaper');
 } catch (err) {
   console.error('[Wallpaper] Could not load API extensions:', err.message);
-  // Provide graceful fallback to prevent crash or failed container probes
+  // Provide fallback to prevent crash
   wallpaperRouter = require('express').Router();
   wallpaperRouter.get('/', (req, res) => {
-    res.status(200).json({ success: true, count: 0, wallpapers: [], warning: 'Wallpaper API degraded: ' + err.message });
-  });
-  wallpaperRouter.get('/marketplace', (req, res) => {
-    res.status(200).json({ success: true, count: 0, catalog: [] });
+    res.status(500).json({ error: 'Wallpaper API not loaded', details: err.message });
   });
 }
 
@@ -130,37 +130,19 @@ app.use(cookieParser());
 
 app.use((req, res, next) => {
   const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
-  const isHttps = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https';
   if (!req.cookies?.csrf_token) {
     res.cookie('csrf_token', csrfToken, {
       httpOnly: false,
-      secure: isHttps,
+      secure: isProd || isVM || req.protocol === 'https',
       sameSite: 'Strict',
       maxAge: 12 * 60 * 60 * 1000,
       path: '/'
     });
   }
 
-  const isAuthEntrypoint = [
-    '/api/auth/login',
-    '/api/auth/google/worker-login',
-    '/api/auth/mobile/refresh',
-    '/api/auth/verify-answer',
-    '/api/auth/challenge',
-    '/api/auth/update-security'
-  ].includes(req.path);
-
-  // Industry Standard: CSRF protection applies strictly to ambient browser cookie sessions.
-  // Stateless mobile API clients using Bearer tokens or explicitly identified native platforms
-  // cannot be forged via cross-site browser requests and MUST NOT be blocked by web CSRF checks.
-  const isAndroidClient = (req.get('x-app-type') === 'native_android') ||
-                          ((req.get('x-client-platform') || '').toLowerCase() === 'android');
-  const hasBearerToken = (req.get('authorization') || '').startsWith('Bearer ');
-  const isNativeOrBearerAuth = isAndroidClient || hasBearerToken;
-
-  const hasBrowserSession = !isNativeOrBearerAuth && !!req.cookies?.auth_session;
+  const hasBrowserSession = !!req.cookies?.auth_session;
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (!isAuthEntrypoint && hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
+  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
     return res.status(403).json({ error: 'CSRF validation failed' });
   }
   next();
@@ -207,38 +189,18 @@ const staticOptions = {
   }
 };
 
-const distPath = path.join(__dirname, '../../dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath, staticOptions));
-  app.use('/assets', express.static(path.join(distPath, 'assets'), {
-    maxAge: '1y',
-    immutable: true,
-    setHeaders: staticOptions.setHeaders
-  }));
-}
 app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOptions));
 
-// Serve modern storage hierarchy (wallpapers, uploads, generated assets)
-const storagePath = path.join(__dirname, '../../storage');
-app.use('/storage', express.static(storagePath, staticOptions));
+// Serve large wallpaper assets from root to keep them out of frontend build
+const wallpaperPath = path.join(__dirname, '../../Wallpapers');
+app.use('/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
+app.use('/api/assets/Wallpaper', express.static(wallpaperPath, staticOptions));
 
-// Legacy Wallpaper fallback routing (/assets/Wallpaper/* or /Assets/Wallpaper/*)
-app.use(['/assets/Wallpaper', '/Assets/Wallpaper'], (req, res, next) => {
-  const parts = req.path.split('/').filter(Boolean);
-  if (parts.length >= 2) {
-    const folder = parts[parts.length - 2];
-    const filename = parts[parts.length - 1];
-    const candidatePath = path.join(__dirname, '../../storage/wallpapers/builtin', folder, filename);
-    if (fs.existsSync(candidatePath)) {
-      const ext = path.extname(candidatePath).toLowerCase();
-      if (mimeTypes[ext]) res.setHeader('Content-Type', mimeTypes[ext]);
-      return res.sendFile(candidatePath);
-    }
-  }
-  next();
-});
+// Lowercase aliases for robustness
+app.use('/assets/wallpaper', express.static(wallpaperPath, staticOptions));
+app.use('/api/assets/wallpaper', express.static(wallpaperPath, staticOptions));
 
 // CORS (configurable)
 // Use comma-separated origins, e.g.:
@@ -262,8 +224,8 @@ const defaultProductionOrigins = new Set([
 function isOriginAllowed(origin) {
   if (!origin) return true; // same-origin / curl / server-to-server
   if (corsOrigins.length > 0) return corsOrigins.includes(origin);
-  // Allow local development and SSH port tunnels on any port
-  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  // In dev, Vite may pick the next available port (5174+). Allow localhost/127.0.0.1 on any port.
+  if (isDev && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
   if (isDev) return defaultDevOrigins.has(origin);
   return defaultProductionOrigins.has(origin);
 }
@@ -300,13 +262,10 @@ const rateLimitedPaths = new Set([
 app.use((req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
 
-  const isAndroidClient = (req.get('x-app-type') === 'native_android') ||
-                          ((req.get('x-client-platform') || '').toLowerCase() === 'android');
-
   const origin = req.headers.origin || (() => {
     try { return new URL(req.headers.referer || '').origin; } catch { return null; }
   })();
-  if (!isAndroidClient && !isOriginAllowed(origin)) {
+  if (!isOriginAllowed(origin)) {
     return res.status(403).json({ error: 'Request origin is not allowed' });
   }
 
@@ -405,16 +364,11 @@ app.get('/api/auth/devices', authModule.authMiddleware, authModule.getDevices);
 app.delete('/api/auth/devices/:id', authModule.authMiddleware, authModule.logoutDevice);
 app.delete('/api/auth/devices', authModule.authMiddleware, authModule.logoutAllDevices);
 app.get('/api/auth/devices/:id/history', authModule.authMiddleware, authModule.getDeviceHistory);
-app.get('/api/auth/verify', authModule.authMiddleware, (req, res) => {
-  const permissions = permissionsHelper && req.user.role === 'worker' ? permissionsHelper.getUserPermissionsSnapshot(req.user.id, 'worker') : null;
-  res.json({ success: true, authenticated: true, user: req.user, permissions });
-});
+app.get('/api/auth/verify', authModule.authMiddleware, authModule.verify);
 app.post('/api/auth/logout', authModule.logout);
 app.get('/api/auth/status', authModule.getStatus);
-app.get('/api/auth/check-username', authModule.checkUsername);
 app.get('/api/auth/questions', authModule.getSecurityQuestions);
 app.get('/api/auth/challenge', authModule.getChallengeQuestion);
-app.post('/api/auth/challenge', authModule.verifyAnswer);
 app.post('/api/auth/verify-answer', authModule.verifyAnswer);
 app.get('/api/auth/verify-answer', (req, res) => {
   res.setHeader('Allow', 'POST');
@@ -424,8 +378,6 @@ app.get('/api/auth/webauthn/registration-options', authModule.authMiddleware, au
 app.post('/api/auth/webauthn/registration-verify', authModule.authMiddleware, authModule.verifyWebAuthnRegistration);
 app.get('/api/auth/webauthn/authentication-options', authModule.getWebAuthnAuthenticationOptions);
 app.post('/api/auth/webauthn/authentication-verify', authModule.verifyWebAuthnAuthentication);
-app.post('/api/auth/mobile/biometric/register', authModule.authMiddleware, authModule.registerMobileBiometric);
-app.delete('/api/auth/mobile/biometric', authModule.authMiddleware, authModule.revokeMobileBiometric);
 app.post('/api/auth/update-security', authModule.authMiddleware, authModule.updateSecurity);
 
 // Owner administration routes
@@ -433,15 +385,7 @@ app.get('/api/admin/users', authModule.authMiddleware, adminAuth.ownerOnly, admi
 app.get('/api/admin/notifications', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getNotifications);
 app.get('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getPermissions);
 app.post('/api/admin/users/:userId/approve', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveUser);
-app.post('/api/admin/users/:userId/approve-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveDeletion);
-app.post('/api/admin/users/:userId/reject-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.rejectDeletion);
-app.get('/api/admin/users/:userId/history', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getWorkerLifecycleHistory);
 app.post('/api/admin/users/:userId/status', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.setStatus);
-app.put('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.updateUserPermissions);
-app.delete('/api/admin/users/:userId', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.deleteUser);
-app.get('/api/admin/users/:userId/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
-app.get('/api/admin/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
-app.get('/api/admin/accounts-graph', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAccountsGraph);
 app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -468,9 +412,6 @@ app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, 
 app.get('/api/profile', authModule.authMiddleware, profileModule.getProfile);
 app.post('/api/profile', authModule.authMiddleware, profileModule.updateProfile);
 app.post('/api/profile/disconnect-google', authModule.authMiddleware, profileModule.disconnectGoogle);
-app.post('/api/profile/deletion-request', authModule.authMiddleware, profileModule.requestAccountDeletion);
-app.post('/api/profile/cancel-deletion-request', authModule.authMiddleware, profileModule.cancelAccountDeletion);
-app.get('/api/profile/export', authModule.authMiddleware, profileModule.exportData);
 
 // Desktop State Routes
 app.get('/api/desktop/state', authModule.authMiddleware, (req, res) => {
@@ -543,18 +484,10 @@ for (const route of routes) {
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else if (route.path === '/api/logs') {
-    // Allow unauthenticated POST to /api/logs/app and /api/logs/batch so clients can report errors before login / offline flush;
-    // protect all other inspection and management routes with auth middleware.
+    // Allow unauthenticated POST to /api/logs/app so clients can report errors before login;
+    // protect other inspection routes with auth middleware.
     app.use(route.path, (req, res, next) => {
-      if (req.method === 'POST' && (req.path === '/app' || req.path === '/batch')) return next();
-      authModule.authMiddleware(req, res, next);
-    }, route.router);
-  } else if (route.path === '/api/wallpapers') {
-    // Allow unauthenticated access to wallpapers, marketplace, custom uploads, delete, and share toggle
-    app.use(route.path, (req, res, next) => {
-      if (req.method === 'GET' || req.method === 'DELETE' || req.method === 'PATCH' || req.path === '/marketplace/install' || req.path === '/upload' || req.path.endsWith('/share')) {
-        return next();
-      }
+      if (req.method === 'POST' && req.path === '/app') return next();
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else {
@@ -567,124 +500,40 @@ console.log(`✓ All ${routes.length} API routes mounted and secured\n`);
 app.use((err, req, res, next) => {
   if (err.status === 413) {
     console.warn('[Server] PayloadTooLarge:', err.message);
-    return res.status(413).json({ error: 'Payload too large. Maximum JSON size is 25MB.' });
+    return sendError(res, 'PAYLOAD_TOO_LARGE', 'Payload too large. Maximum JSON size is 25MB.', null, 413, { requestId: req.requestId });
   }
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     console.warn('[Server] Malformed JSON:', err.message);
-    return res.status(400).json({ error: 'Invalid JSON in request body' });
+    return sendError(res, 'INVALID_JSON', 'Invalid JSON in request body', null, 400, { requestId: req.requestId });
   }
   console.error('[Server] Unhandled error:', err.message);
-
-  // Automatically log backend 500 error to app_logs for unified visibility
-  try {
-    const logsModule = require('../core/logs');
-    if (logsModule && logsModule.handlers) {
-      logsModule.handlers.insertLog({
-        level: 'ERROR',
-        platform: 'backend',
-        message: `HTTP ${err.status || 500} ${req.method} ${req.originalUrl || req.url}: ${err.message}`,
-        stack: err.stack,
-        metadata: {
-          url: req.originalUrl || req.url,
-          method: req.method,
-          ip: req.ip || req.headers['x-forwarded-for'] || null,
-          userAgent: req.headers['user-agent'] || null
-        }
-      });
-    }
-  } catch (_e) {}
-
-  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+  return sendError(res, 'INTERNAL_SERVER_ERROR', err.message || 'Internal Server Error', null, err.status || 500, { requestId: req.requestId });
 });
 
-// API Health check endpoint (Deep verification of DB, Storage & Node Runtime)
+// API Health check endpoint
 app.get('/api/health', (req, res) => {
-  const startTime = Date.now();
-  const checks = {
-    database: { status: 'unknown' },
-    storage: { status: 'unknown' },
-    memory: { status: 'unknown' }
-  };
-  let isDegraded = false;
-
-  // 1. Live SQLite Database Query Probe
-  try {
-    const db = DatabaseManager.getInstance ? DatabaseManager.getInstance() : globalDb;
-    if (db) {
-      const dbStart = Date.now();
-      const row = db.prepare('SELECT 1 as alive').get();
-      const dbLatencyMs = Date.now() - dbStart;
-      if (row && row.alive === 1) {
-        checks.database = { status: 'healthy', latencyMs: dbLatencyMs };
-      } else {
-        checks.database = { status: 'unhealthy', error: 'Unexpected query result' };
-        isDegraded = true;
-      }
-    } else {
-      checks.database = { status: 'unhealthy', error: 'Database instance not found' };
-      isDegraded = true;
-    }
-  } catch (dbErr) {
-    checks.database = { status: 'unhealthy', error: dbErr.message };
-    isDegraded = true;
-  }
-
-  // 2. Storage writeability check (verify database & uploads directory access)
-  try {
-    const dbDir = path.resolve(__dirname, '../../database');
-    if (fs.existsSync(dbDir)) {
-      fs.accessSync(dbDir, fs.constants.R_OK | fs.constants.W_OK);
-      checks.storage = { status: 'healthy', path: 'database' };
-    } else {
-      checks.storage = { status: 'healthy', note: 'database dir not local, db connection active' };
-    }
-  } catch (fsErr) {
-    checks.storage = { status: 'degraded', error: fsErr.message };
-  }
-
-  // 3. Process & Memory Metrics
-  const memUsage = process.memoryUsage();
-  const heapUsedMb = Math.round((memUsage.heapUsed / 1024 / 1024) * 10) / 10;
-  const rssMb = Math.round((memUsage.rss / 1024 / 1024) * 10) / 10;
-  checks.memory = {
-    status: heapUsedMb > 450 ? 'warning' : 'healthy',
-    heapUsedMb,
-    rssMb
-  };
-
-  const responsePayload = {
-    status: isDegraded ? 'degraded' : 'healthy',
-    statusCode: isDegraded ? 503 : 200,
-    slot: process.env.DOCKER_SLOT || 'standalone',
-    uptimeSeconds: Math.floor(process.uptime()),
+  res.json({
+    status: 'healthy',
     timestamp: new Date().toISOString(),
-    durationMs: Date.now() - startTime,
-    checks,
+    uptime: process.uptime(),
     apis: {
       billing: 'running',
-      preferences: 'running',
+      preferences: 'running (part of billing)',
       products: 'running',
       contacts: 'running',
       notes: 'running',
       calendar: 'running',
       analytics: 'running',
       settings: 'running',
-      payments: 'running',
-      orders: 'running',
-      variants: 'running',
-      batches: 'running',
-      creditnotes: 'running',
-      suggestions: 'running',
-      ai: 'running'
+      payments: 'running (consolidated)',
+      orders: 'running (consolidated)',
+      variants: 'running (consolidated)',
+      batches: 'running (consolidated)',
+      creditnotes: 'running (consolidated)',
+      suggestions: 'running (consolidated)',
+      ai: 'running (Gemini)'
     }
-  };
-
-  res.status(isDegraded ? 503 : 200).json(responsePayload);
-});
-
-// Direct alias for synthetic monitoring probes (/healthz)
-app.get('/healthz', (req, res) => {
-  res.status(200).json({ status: 'healthy', uptimeSeconds: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
+  });
 });
 
 // API System Info endpoint - Get actual hardware model
@@ -782,82 +631,24 @@ app.get('/api/debug/notes', (req, res) => {
   }
 });
 
-// ─── SPA & Static HTML Fallback ───
-app.get('*', (req, res, next) => {
-  // Never serve HTML for missing API endpoints
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-
-  // Never serve HTML for missing asset extensions (prevents MIME type errors)
-  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|eot)$/i)) {
-    return res.status(404).send('Asset Not Found');
-  }
-
-  // Public product / batch catalog fallback
-  if (req.path.startsWith('/public/product/') || req.path.startsWith('/public/batch/')) {
-    const distPub = path.join(__dirname, '../../dist/public-product.html');
-    if (fs.existsSync(distPub)) return res.sendFile(distPub);
-    const srcPub = path.join(__dirname, '../../frontend/public-product.html');
-    if (fs.existsSync(srcPub)) return res.sendFile(srcPub);
-  }
-
-  // Customer ledger fallback
-  if (req.path.startsWith('/customer-ledger')) {
-    const distLedger = path.join(__dirname, '../../dist/customer-ledger.html');
-    if (fs.existsSync(distLedger)) return res.sendFile(distLedger);
-    const srcLedger = path.join(__dirname, '../../frontend/customer-ledger.html');
-    if (fs.existsSync(srcLedger)) return res.sendFile(srcLedger);
-  }
-
-  // Home fallback (/home or /home.html)
-  if (req.path === '/home' || req.path === '/home.html') {
-    const distHome = path.join(__dirname, '../../dist/home.html');
-    if (fs.existsSync(distHome)) return res.sendFile(distHome);
-    const srcHome = path.join(__dirname, '../../frontend/home.html');
-    if (fs.existsSync(srcHome)) return res.sendFile(srcHome);
-  }
-
-  // Default SPA index.html
-  const distIndex = path.join(__dirname, '../../dist/index.html');
-  if (fs.existsSync(distIndex)) {
-    return res.sendFile(distIndex);
-  }
-  const srcIndex = path.join(__dirname, '../../frontend/index.html');
-  if (fs.existsSync(srcIndex)) {
-    return res.sendFile(srcIndex);
-  }
-
-  next();
-});
-
 // Start server
-const BASE_PORT = Number(process.env.PORT) || 3001;
-const ALT_PORT = process.env.ALT_PORT ? Number(process.env.ALT_PORT) : null;
-const HOST = process.env.HOST || '0.0.0.0';
+const BASE_PORT = Number(process.env.PORT) || 3002;
+const HOST = process.env.HOST || '0.0.0.0'; // Default to IPv4 for Ubuntu; bind to all interfaces
 
 function startServer(port, attemptsLeft = 20) {
   const server = app.listen(port, HOST, () => {
     console.log('═══════════════════════════════════════════════════════════');
-    console.log(`✨ Unified MacOS Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
-    console.log(`📁 Static files: dist/ and frontend/`);
+    console.log(`✨ Backend MacOS API Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
+    console.log('───────────────────────────────────────────────────────────');
+    console.log(`Local: http://localhost:${port}`);
+    console.log(`LAN:   http://127.0.0.1:${port}`);
+    if (process.env.PUBLIC_HOST) {
+      console.log(`Public: http://${process.env.PUBLIC_HOST}:${port}`);
+    }
+    console.log('───────────────────────────────────────────────────────────');
     console.log(`📚 API Documentation: http://localhost:${port}/api`);
     console.log(`💚 Health Check:      http://localhost:${port}/api/health`);
     console.log('═══════════════════════════════════════════════════════════\n');
-
-    // Dual-port listener for zero-downtime transition if ALT_PORT is configured
-    if (ALT_PORT && ALT_PORT !== port) {
-      try {
-        const altServer = app.listen(ALT_PORT, HOST, () => {
-          console.log(`🌐 Also listening on secondary port ${ALT_PORT} for zero-downtime compatibility.`);
-        });
-        altServer.on('error', (e) => {
-          console.warn(`[Server] Secondary port ${ALT_PORT} notice: ${e.message}. Primary on ${port} is active.`);
-        });
-      } catch (e) {
-        console.warn(`[Server] Could not bind secondary port ${ALT_PORT}: ${e.message}`);
-      }
-    }
   });
 
   server.on('error', (err) => {

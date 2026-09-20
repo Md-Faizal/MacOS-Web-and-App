@@ -1,4 +1,6 @@
 const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../../backend/shared/api/product-list-contract');
+const productListDepartment = require('../../../../backend/departments/product-list/service');
 
 function naturalSortBatches(batches) {
   if (!Array.isArray(batches)) return [];
@@ -68,7 +70,6 @@ module.exports = function(db) {
           `);
           const variants = variantsStmt.all(product.id);
 
-          // Get all batches for this product (for easy product-level access)
           const allBatchesStmt = db.prepare(`
             SELECT b.id, b.variant_id, b.batch_no, b.mrp, b.mfg_date, b.exp_date,
               (
@@ -109,7 +110,6 @@ module.exports = function(db) {
             return { ...variant, batches };
           });
 
-          // Add flattened first variant/batch data for easy access
           let pack = null, batch_no = null, mrp = null;
           if (enrichedVariants.length > 0) {
             const firstVariant = enrichedVariants[0];
@@ -125,10 +125,11 @@ module.exports = function(db) {
           return { ...product, variants: enrichedVariants, batches: allBatches, pack, batch_no, mrp };
         });
 
-        res.json(enrichedProducts);
+        const response = productListDepartment.getProducts(enrichedProducts, { requestId: req.requestId });
+        return res.json(response);
       } catch (error) {
         console.error('Error in getProducts:', error.message);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 
@@ -505,10 +506,11 @@ module.exports = function(db) {
 
         const stmt = db.prepare('SELECT id, name, english_meaning, created_at FROM categories ORDER BY id ASC');
         const categories = stmt.all();
-        res.json(categories);
+        const response = productListDepartment.getProductCategories(categories, { requestId: req.requestId });
+        return res.json(response);
       } catch (error) {
         console.error('Error getting categories:', error.message);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 

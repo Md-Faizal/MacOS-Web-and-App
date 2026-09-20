@@ -1,3 +1,6 @@
+const { buildDashboardSummaryResponse, buildExecutiveKpiResponse } = require('../../../../backend/shared/api/analytics-contract');
+const analyticsDepartment = require('../../../../backend/departments/analytics/service');
+
 module.exports = function(db) {
   function getContactScopeFilter(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
@@ -34,31 +37,14 @@ module.exports = function(db) {
 
     getDashboardSummary: (req, res) => {
       try {
-        const calculator = require('../../../../backend/core/billing/calculator');
-        const metrics = calculator.calculateDashboardMetrics(db, req.user, { preset: 'all' });
-        const km = metrics.keyMetrics;
-        const sm = metrics.salesMetrics;
-        const om = metrics.orderMetrics;
-
-        res.json({
-          totalRevenue: km.totalBilled,
-          totalOrders: om ? (om.totalOrders || km.totalBillsCount) : km.totalBillsCount,
-          averageOrderValue: sm.averageBill,
-          totalCustomers: km.activeCustomersCount,
-          netProfit: Number((km.totalBilled * 0.25).toFixed(2)),
-          growthRate: sm.monthly.percentageChange,
-          // Backward compatibility aliases for web desktop apps
-          dashboard: {
-            revenue: km.totalBilled,
-            orders: om ? (om.totalOrders || km.totalBillsCount) : km.totalBillsCount,
-            receivables: km.amountDue
-          },
-          sales: metrics.topProducts,
-          products: metrics.topProducts
+        const response = analyticsDepartment.getDashboardSummary(db, req.user, {
+          preset: 'all',
+          requestId: req.requestId
         });
+        return res.json(response);
       } catch (error) {
         console.error('Error in getDashboardSummary:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 
@@ -278,100 +264,14 @@ module.exports = function(db) {
 
     getExecutiveKPI: (req, res) => {
       try {
-        const { startDate, endDate } = req.query;
-        const scope = getContactScopeFilter(req, 'c');
-        let dateWhereClause = '';
-        const params = [];
-
-        if (startDate && endDate) {
-          dateWhereClause = 'AND i.created_at BETWEEN ? AND ?';
-          params.push(startDate, endDate);
-        }
-
-        // Billed total
-        const billedStmt = db.prepare(`
-          SELECT 
-            COALESCE(SUM(i.grand_total), 0) as total_billed,
-            COUNT(i.id) as total_invoices,
-            COALESCE(SUM(i.total_gst), 0) as total_gst,
-            COALESCE(SUM(i.total_discount), 0) as total_discount
-          FROM invoices i
-          JOIN contacts c ON i.customer_id = c.id
-          WHERE ${scope} ${dateWhereClause}
-        `);
-        const billedData = billedStmt.get(...params);
-
-        // Payments collected
-        let payDateClause = '';
-        const payParams = [];
-        if (startDate && endDate) {
-          payDateClause = 'AND p.payment_date BETWEEN ? AND ?';
-          payParams.push(startDate, endDate);
-        }
-
-        const payStmt = db.prepare(`
-          SELECT 
-            COALESCE(SUM(CASE WHEN p.type = 'PAYMENT' THEN p.amount ELSE 0 END), 0) as total_collected,
-            COALESCE(SUM(CASE WHEN p.type = 'CREDIT_NOTE' THEN p.credit_amount ELSE 0 END), 0) as total_credit_notes,
-            COUNT(p.id) as total_transactions
-          FROM payments p
-          JOIN contacts c ON p.customer_id = c.id
-          WHERE ${scope} ${payDateClause}
-        `);
-        const payData = payStmt.get(...payParams);
-
-        // Ledger current due total across valid customers including opening balances
-        const dueStmt = db.prepare(`
-          SELECT 
-            COALESCE(SUM(
-              COALESCE(c.opening_balance, 0) +
-              COALESCE((SELECT SUM(grand_total) FROM invoices WHERE customer_id = c.id), 0) -
-              COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id = c.id AND type = 'PAYMENT'), 0) -
-              COALESCE((SELECT SUM(credit_amount) FROM payments WHERE customer_id = c.id AND type = 'CREDIT_NOTE'), 0)
-            ), 0) as total_receivables
-          FROM contacts c
-          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
-        `);
-        const dueData = dueStmt.get();
-
-        // Customer count
-        const custStmt = db.prepare(`
-          SELECT COUNT(c.id) as total_customers 
-          FROM contacts c
-          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
-        `);
-        const custData = custStmt.get();
-
-        const openingStmt = db.prepare(`
-          SELECT COALESCE(SUM(opening_balance), 0) as total_opening
-          FROM contacts c
-          WHERE (c.type IS NULL OR LOWER(c.type) = 'customer') AND ${scope}
-        `);
-        const totalOpening = dateWhereClause ? 0 : Number(openingStmt.get().total_opening || 0);
-        const totalBilled = Number((billedData.total_billed + totalOpening).toFixed(2));
-        const totalCollected = payData.total_collected;
-        const collectionRate = totalBilled > 0 ? ((totalCollected / totalBilled) * 100).toFixed(1) : 0;
-
-        res.json({
-          total_billed: totalBilled,
-          total_invoiced_only: billedData.total_billed,
-          total_opening_balance: totalOpening,
-          total_collected: totalCollected,
-          total_credit_notes: payData.total_credit_notes,
-          total_receivables: dueData.total_receivables,
-          total_invoices: billedData.total_invoices,
-          total_gst: billedData.total_gst,
-          total_discount: billedData.total_discount,
-          total_customers: custData.total_customers,
-          collection_rate_percent: Number(collectionRate),
-          // Fallback aliases for legacy views
-          revenue: totalBilled,
-          ordersCount: billedData.total_invoices,
-          activeCustomers: custData.total_customers,
-          receivables: dueData.total_receivables
+        const response = analyticsDepartment.getExecutiveKpi(db, req.user, {
+          startDate: req.query.startDate || req.query.start_date || null,
+          endDate: req.query.endDate || req.query.end_date || null,
+          requestId: req.requestId
         });
+        return res.json(response);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
       }
     },
 

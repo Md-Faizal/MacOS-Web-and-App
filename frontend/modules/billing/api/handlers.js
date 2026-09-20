@@ -1,5 +1,6 @@
 const BillCalculator = require('../../../shared/bill-calculator');
 const calculator = require('../../../../backend/core/billing/calculator');
+const billingDepartment = require('../../../../backend/departments/billing/service');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -281,6 +282,7 @@ function getAnnualSerialNumber(db, invoiceId) {
 }
 
 const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
+const { buildDashboardMetricsResponse, buildCustomerStatementResponse } = require('../../../../backend/shared/api/billing-contract');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);
@@ -1295,14 +1297,19 @@ module.exports = function(db) {
     getDashboardMetrics: (req, res) => {
       try {
         const { preset, start_date, end_date, customer_id } = req.query;
-        const calculator = require('../../../../backend/core/billing/calculator');
-        const metrics = calculator.calculateDashboardMetrics(db, req.user, {
+        const response = billingDepartment.getDashboardMetrics(db, req.user, {
           preset: preset || 'all',
           startDate: start_date,
           endDate: end_date,
-          customerId: customer_id
+          customerId: customer_id,
+          requestId: req.requestId
         });
-        res.json(metrics);
+
+        if (req.headers['x-client-platform'] === 'android') {
+          return res.json(response);
+        }
+
+        res.json(response);
       } catch (error) {
         console.error('Error calculating dashboard metrics:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -1428,16 +1435,18 @@ module.exports = function(db) {
     getPublicLedger: (req, res) => {
       try {
         const { customerId } = req.params;
-        const calculator = require('../../../../backend/core/billing/calculator');
-        const statement = calculator.calculateCustomerStatement(db, customerId);
+        const response = billingDepartment.getCustomerStatement(db, customerId, req.user, {
+          requestId: req.requestId
+        });
 
-        if (!statement.success) {
-          return res.status(404).json({ error: statement.error || 'Customer not found' });
+        if (!response.success) {
+          return res.status(response.error?.status || 404).json(response.error || { error: 'Customer not found' });
         }
 
-        res.json({
+        return res.json({
           success: true,
-          data: statement
+          data: response.data?.raw || response.data,
+          meta: response.meta
         });
       } catch (error) {
         console.error('Error getting public ledger:', error);
@@ -1453,13 +1462,11 @@ module.exports = function(db) {
         const statement = calculator.calculateCustomerStatement(db, customerId, req.user);
 
         if (!statement.success) {
-          return res.status(statement.error === 'Customer not found' ? 404 : 403).json(statement);
+          return res.status(statement.error === 'Customer not found' ? 404 : 403).json(buildCustomerStatementResponse(statement, req.requestId));
         }
 
-        res.json({
-          success: true,
-          data: statement
-        });
+        const response = buildCustomerStatementResponse(statement, req.requestId);
+        return res.json(response);
       } catch (error) {
         console.error('Error getting customer statement:', error);
         res.status(500).json({ success: false, error: error.message });
