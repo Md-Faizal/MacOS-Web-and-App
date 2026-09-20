@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const STORAGE_ROOT = path.join(__dirname, '../../../storage/wallpapers');
+const STORAGE_ROOT = path.join(__dirname, '../../../../storage/wallpapers');
 const BUILTIN_DIR = path.join(STORAGE_ROOT, 'builtin');
 const MARKETPLACE_DIR = path.join(STORAGE_ROOT, 'marketplace');
 const CUSTOM_DIR = path.join(STORAGE_ROOT, 'custom');

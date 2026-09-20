@@ -8,7 +8,7 @@ const marketplaceCatalog = require('./marketplace-catalog');
 const router = express.Router();
 
 // Configure multer for custom wallpaper uploads (temp storage before processing)
-const uploadDir = path.join(__dirname, '../../../storage/temp_uploads');
+const uploadDir = path.join(__dirname, '../../../../storage/temp_uploads');
 let activeUploadDir = uploadDir;
 try {
   if (!fs.existsSync(uploadDir)) {

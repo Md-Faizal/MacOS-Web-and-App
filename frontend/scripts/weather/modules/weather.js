@@ -273,7 +273,7 @@ class WeatherDisplay {
       this.element.classList.add(bgClass);
     };
 
-    img.src = '/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg';
+    img.src = '/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg';
   }
 
   destroy() {

@@ -31,13 +31,13 @@
   "categories": ["productivity"],
   "screenshots": [
     {
-      "src": "/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg",
+      "src": "/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg",
       "sizes": "540x720",
       "type": "image/jpeg",
       "form_factor": "narrow"
     },
     {
-      "src": "/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg",
+      "src": "/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg",
       "sizes": "1280x720",
       "type": "image/jpeg",
       "form_factor": "wide"

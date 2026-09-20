@@ -461,6 +461,17 @@ for (const route of routes) {
       if (req.method === 'POST' && req.path === '/app') return next();
       authModule.authMiddleware(req, res, next);
     }, route.router);
+  } else if (route.path === '/api/wallpapers') {
+    // Wallpaper catalog is used on the lockscreen / guest views before auth is established.
+    // Keep reads public, but require auth for write operations and management actions.
+    app.use(route.path, (req, res, next) => {
+      const publicRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ||
+        req.path === '/health' ||
+        req.path === '/marketplace';
+
+      if (publicRead) return next();
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
   } else {
     app.use(route.path, authModule.authMiddleware, route.router);
   }

@@ -130,9 +130,9 @@ export class WallpaperComponent {
       this.currentWallpaper = window.wallpaperEngine.getSelected();
     }
 
-    // Default to Golden Gate or first installed if nothing saved
+    // Default to Tahoe Beach 2 or first installed if nothing saved
     if (!this.currentWallpaper && this.installedWallpapers.length) {
-      this.currentWallpaper = this.installedWallpapers.find(w => w.id === 'golden-gate') || this.installedWallpapers[0];
+      this.currentWallpaper = this.installedWallpapers.find(w => w.id === 'tahoe-beach-2') || this.installedWallpapers[0];
     }
 
     this._updateHeroBox();

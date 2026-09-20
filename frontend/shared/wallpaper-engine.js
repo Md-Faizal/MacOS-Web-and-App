@@ -17,15 +17,15 @@ class WallpaperEngine {
     this.CACHE_NAME = 'macos-wallpaper-cache-v1';
 
     this.DEFAULT_WP = {
-      id: 'golden-gate',
-      name: 'Golden Gate',
+      id: 'tahoe-beach-2',
+      name: 'Tahoe Beach 2',
       type: 'static',
-      lightName: 'Golden Gate Sunset',
-      darkName: 'Golden Gate Night',
-      hasDarkVariant: true,
-      path: '/storage/wallpapers/builtin/golden-gate/light.jpg',
-      variantPath: '/storage/wallpapers/builtin/golden-gate/dark.jpg',
-      thumbnail: '/storage/wallpapers/builtin/golden-gate/thumbnail.webp'
+      lightName: 'Tahoe Beach 2 Day',
+      darkName: 'Tahoe Beach 2 Night',
+      hasDarkVariant: false,
+      path: '/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg',
+      variantPath: null,
+      thumbnail: '/storage/wallpapers/builtin/tahoe-beach-2/thumbnail.webp'
     };
 
     this.channel = new BroadcastChannel(this.CHANNEL_NAME);
@@ -59,7 +59,7 @@ class WallpaperEngine {
     this._ensureDOMStructure();
 
     const saved = this.getSelected();
-    const wpToApply = saved || this.DEFAULT_WP;
+    const wpToApply = saved && saved.id !== 'golden-gate' ? saved : this.DEFAULT_WP;
     
     // Retrieve the user's selected variant, defaulting to 'auto'
     const savedVariant = localStorage.getItem('macos_wallpaper_variant') || 'auto';
@@ -89,9 +89,9 @@ class WallpaperEngine {
       const parsed = JSON.parse(saved);
       // Migrate any legacy /assets/Wallpaper paths on read
       if (parsed.path && parsed.path.includes('/assets/Wallpaper/Static/tahoe-beach/')) {
-        parsed.path = '/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.light.jpg';
-        parsed.variantPath = '/storage/wallpapers/builtin/tahoe-beach/tahoe-beach.dark.jpg';
-        parsed.thumbnail = '/storage/wallpapers/builtin/tahoe-beach/thumbnail.webp';
+        parsed.path = '/storage/wallpapers/builtin/tahoe-beach-2/tahoe-beach-2.light.jpg';
+        parsed.variantPath = null;
+        parsed.thumbnail = '/storage/wallpapers/builtin/tahoe-beach-2/thumbnail.webp';
       }
       return parsed;
     } catch {
@@ -276,7 +276,7 @@ class WallpaperEngine {
 
     // Migrate old legacy /assets/Wallpaper paths
     if (clean.includes('/assets/Wallpaper/Static/tahoe-beach/')) {
-      clean = clean.replace('/assets/Wallpaper/Static/tahoe-beach/', '/storage/wallpapers/builtin/tahoe-beach/');
+      clean = clean.replace('/assets/Wallpaper/Static/tahoe-beach/', '/storage/wallpapers/builtin/tahoe-beach-2/');
     }
 
     return clean;
