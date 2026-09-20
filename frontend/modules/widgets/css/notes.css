@@ -7,6 +7,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mac-w-notes.expanded {
+  min-height: 240px;
 }
 
 .mac-w-notes-container {
@@ -35,6 +40,22 @@
   cursor: text;
   flex: 1;
   min-width: 50px;
+}
+
+.mac-w-widget-resize-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: rgba(93, 64, 55, 0.8);
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .mac-w-notes-title:hover {

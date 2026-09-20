@@ -4,6 +4,11 @@
   padding: 0 !important;
   background: var(--mac-w-glass-bg) !important;
   overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mac-w-reminders.expanded {
+  min-height: 240px;
 }
 
 .mac-w-reminders-header {
@@ -19,10 +24,32 @@
   font-size: 14px;
 }
 
+.mac-w-reminders-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .mac-w-reminders-count {
   color: var(--mac-w-text-secondary);
   font-size: 12px;
   font-weight: 600;
+}
+
+.mac-w-widget-resize-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--mac-w-text-primary);
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .mac-w-reminders-list {

@@ -5,6 +5,7 @@ export function createRemindersWidget(id) {
   
   const storageKey = `mac-widget-reminders-${id}`;
   let reminders = JSON.parse(localStorage.getItem(storageKey)) || [];
+  let isExpanded = localStorage.getItem(`mac-reminders-expanded-${id}`) === 'true';
 
   const fetchReminders = async () => {
     try {
@@ -12,7 +13,6 @@ export function createRemindersWidget(id) {
       const data = await response.json();
       if (data.success && Array.isArray(data.reminders)) {
         reminders = data.reminders;
-        // Also update local cache
         localStorage.setItem(storageKey, JSON.stringify(reminders));
         render();
       }
@@ -22,10 +22,14 @@ export function createRemindersWidget(id) {
   };
 
   const render = () => {
+    container.classList.toggle('expanded', isExpanded);
     container.innerHTML = `
       <div class="mac-w-reminders-header">
         <span class="mac-w-reminders-title">Reminders</span>
-        <span class="mac-w-reminders-count">${reminders.filter(r => !r.completed).length}</span>
+        <div class="mac-w-reminders-header-actions">
+          <span class="mac-w-reminders-count">${reminders.filter(r => !r.completed).length}</span>
+          <button class="mac-w-widget-resize-btn" type="button" title="${isExpanded ? 'Collapse reminders' : 'Expand reminders'}">${isExpanded ? '⤡' : '⤢'}</button>
+        </div>
       </div>
       <div class="mac-w-reminders-list">
         ${reminders.map(r => `
@@ -42,11 +46,8 @@ export function createRemindersWidget(id) {
       </div>
     `;
 
-    // Listeners
     container.querySelectorAll('.mac-w-reminder-item').forEach(item => {
       const rid = item.dataset.id;
-      
-      // Toggle completion
       item.onclick = (e) => {
         if (e.target.classList.contains('mac-w-reminder-delete')) return;
         const reminder = reminders.find(r => r.id.toString() === rid.toString());
@@ -56,7 +57,6 @@ export function createRemindersWidget(id) {
         }
       };
 
-      // Delete item
       const delBtn = item.querySelector('.mac-w-reminder-delete');
       delBtn.onclick = (e) => {
         e.stopPropagation();
@@ -67,6 +67,7 @@ export function createRemindersWidget(id) {
 
     const input = container.querySelector('.mac-w-reminders-input');
     const addBtn = container.querySelector('.mac-w-reminders-add-btn');
+    const resizeBtn = container.querySelector('.mac-w-widget-resize-btn');
 
     const addReminder = () => {
       const text = input.value.trim();
@@ -78,18 +79,44 @@ export function createRemindersWidget(id) {
 
     input.onkeypress = (e) => { if (e.key === 'Enter') addReminder(); };
     addBtn.onclick = addReminder;
+    resizeBtn.onclick = (e) => {
+      e.stopPropagation();
+      const shortcutEl = container.closest('.desktop-shortcut');
+      if (!shortcutEl || !window.desktopManager) {
+        isExpanded = !isExpanded;
+        localStorage.setItem(`mac-reminders-expanded-${id}`, String(isExpanded));
+        render();
+        return;
+      }
 
-    // Stop drag propagation
+      const appId = shortcutEl.id.replace('shortcut-', '');
+      const nextExpanded = !isExpanded;
+      const newSpanX = nextExpanded ? 3 : 2;
+      const newSpanY = 2;
+
+      if (nextExpanded && !window.desktopManager.canResizeShortcut(appId, newSpanX, newSpanY)) {
+        container.style.transform = 'translate(-2px, 0)';
+        setTimeout(() => container.style.transform = 'translate(2px, 0)', 50);
+        setTimeout(() => container.style.transform = 'translate(-2px, 0)', 100);
+        setTimeout(() => container.style.transform = '', 150);
+        return;
+      }
+
+      if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
+        isExpanded = nextExpanded;
+        localStorage.setItem(`mac-reminders-expanded-${id}`, String(isExpanded));
+        render();
+      }
+    };
+
     input.onmousedown = (e) => e.stopPropagation();
     input.onkeydown = (e) => e.stopPropagation();
   };
 
   const saveAndRender = async () => {
-    // Save to local cache immediately for snappy UI
     localStorage.setItem(storageKey, JSON.stringify(reminders));
     render();
 
-    // Sync to server
     try {
       await fetch(`/api/reminders/${id}`, {
         method: 'POST',
@@ -101,7 +128,6 @@ export function createRemindersWidget(id) {
     }
   };
 
-  // Initial load
   render();
   fetchReminders();
   
