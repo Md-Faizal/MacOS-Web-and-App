@@ -1,5 +1,5 @@
-const { buildDashboardSummaryResponse, buildExecutiveKpiResponse } = require('../../../../backend/shared/api/analytics-contract');
-const analyticsDepartment = require('../../../../backend/departments/analytics/service');
+const { buildDashboardSummaryResponse, buildExecutiveKpiResponse } = require('../../../shared/api/analytics-contract');
+const analyticsDepartment = require('../service');
 
 module.exports = function(db) {
   function getContactScopeFilter(req, tableAlias = 'c') {

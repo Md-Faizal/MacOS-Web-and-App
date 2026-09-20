@@ -11,8 +11,8 @@ if (!fs.existsSync(dbPath)) {
 }
 const db = new Database(dbPath);
 
-const { generateDatabaseContext, getEntityDirectory } = require('../core/ai/db-context');
-const aiHandlers = require('../core/ai/handlers')(db);
+const { generateDatabaseContext, getEntityDirectory } = require('../departments/ai/engine/db-context');
+const aiHandlers = require('../departments/ai/engine/handlers')(db);
 
 const ownerReq = { user: { id: 'admin_test', userId: 'admin_test', role: 'owner' }, query: {}, body: {}, params: {}, headers: {} };
 const workerReq = { user: { id: 'worker_test_fuzzy', userId: 'worker_test_fuzzy', role: 'worker' }, query: {}, body: {}, params: {}, headers: {} };

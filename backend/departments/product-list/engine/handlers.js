@@ -1,6 +1,6 @@
-const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
-const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../../backend/shared/api/product-list-contract');
-const productListDepartment = require('../../../../backend/departments/product-list/service');
+const createActivityLogger = require('../../../core/audit/activity-logger');
+const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../shared/api/product-list-contract');
+const productListDepartment = require('../service');
 
 function naturalSortBatches(batches) {
   if (!Array.isArray(batches)) return [];
@@ -874,10 +874,10 @@ module.exports = function(db) {
       try {
         let generatePDFFromHTML;
         try {
-          generatePDFFromHTML = require('../../../../backend/core/products/pdf-generator').generatePDFFromHTML;
+          generatePDFFromHTML = require('../../../core/products/pdf-generator').generatePDFFromHTML;
         } catch (e1) {
           try {
-            generatePDFFromHTML = require('../../../backend/core/products/pdf-generator').generatePDFFromHTML;
+            generatePDFFromHTML = require('../../../core/products/pdf-generator').generatePDFFromHTML;
           } catch (e2) {
             const path = require('path');
             generatePDFFromHTML = require(path.join(process.cwd(), 'backend/core/products/pdf-generator')).generatePDFFromHTML;

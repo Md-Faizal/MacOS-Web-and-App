@@ -47,7 +47,7 @@ console.log('✓ getCustomerOutstanding (Customer 5):', outstandingResult);
 
 // 2. ANALYTICS APP
 console.log('\n--- 2. ANALYTICS APP ---');
-const analyticsHandlers = require('../../frontend/modules/analytics/api/handlers')(db);
+const analyticsHandlers = require('../departments/analytics/engine/handlers')(db);
 
 let execKPI = null;
 analyticsHandlers.getExecutiveKPI({ user: adminUser, query: {} }, {
@@ -82,7 +82,7 @@ console.log('Parity Check: Billing totalBilled == Analytics total_billed ?',
 
 // 3. CONTACTS APP
 console.log('\n--- 3. CONTACTS APP ---');
-const contactsHandlers = require('../../frontend/modules/contacts/api/handlers')(db);
+const contactsHandlers = require('../departments/contacts/engine/handlers')(db);
 let contactsList = null;
 contactsHandlers.getContacts({ user: adminUser, query: { limit: 5 } }, {
   json: (data) => { contactsList = data; },
@@ -102,7 +102,7 @@ if (Array.isArray(contactsList) && contactsList.length > 0) {
 
 // 4. PRODUCT LIST APP
 console.log('\n--- 4. PRODUCT LIST APP ---');
-const productsHandlers = require('../../frontend/modules/product-list/api/handlers')(db);
+const productsHandlers = require('../departments/product-list/engine/handlers')(db);
 let productsList = null;
 productsHandlers.getProducts({ user: adminUser, query: { limit: 5 } }, {
   json: (data) => { productsList = data; },

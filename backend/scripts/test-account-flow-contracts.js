@@ -7,22 +7,25 @@ const path = require('path');
 const DatabaseManager = require('../core/db/database-manager');
 
 const root = path.resolve(__dirname, '../..');
-const authSource = fs.readFileSync(path.join(root, 'backend/core/auth/auth.js'), 'utf8');
+const authSource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/auth.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'backend/main/macos-api-server.js'), 'utf8');
 const profileSource = fs.readFileSync(path.join(root, 'frontend/modules/settings/js/Profile.js'), 'utf8');
-const oauthSource = fs.readFileSync(path.join(root, 'backend/core/auth/oauth.js'), 'utf8');
-const workerGoogleSource = fs.readFileSync(path.join(root, 'backend/core/auth/worker-google-auth.js'), 'utf8');
-const profileAuthSource = fs.readFileSync(path.join(root, 'backend/core/auth/profile.js'), 'utf8');
-const identitySource = fs.readFileSync(path.join(root, 'backend/core/auth/identity-service.js'), 'utf8');
+const oauthSource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/oauth.js'), 'utf8');
+const workerGoogleSource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/worker-google-auth.js'), 'utf8');
+const profileAuthSource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/profile.js'), 'utf8');
+const identitySource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/identity-service.js'), 'utf8');
 const serverSecuritySource = fs.readFileSync(path.join(root, 'backend/main/macos-api-server.js'), 'utf8');
 const csrfClientSource = fs.readFileSync(path.join(root, 'frontend/scripts/shared/csrf.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'frontend/index.html'), 'utf8');
 const homeSource = fs.readFileSync(path.join(root, 'frontend/home.html'), 'utf8');
-const providerReadme = fs.readFileSync(path.join(root, 'backend/core/auth/providers/README.md'), 'utf8');
-const providerRegistrySource = fs.readFileSync(path.join(root, 'backend/core/auth/providers/provider-registry.js'), 'utf8');
+const providerReadme = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/providers/README.md'), 'utf8');
+const providerRegistrySource = fs.readFileSync(path.join(root, 'backend/departments/auth/engine/providers/provider-registry.js'), 'utf8');
+const authDepartmentIndex = path.join(root, 'backend/departments/auth/index.js');
+const adminDepartmentIndex = path.join(root, 'backend/departments/admin/index.js');
+const departmentRegistrySource = fs.readFileSync(path.join(root, 'backend/departments/index.js'), 'utf8');
 const db = DatabaseManager.initialize();
-const sessionService = require('../core/auth/session-service')(db);
-const auditService = require('../core/auth/audit-service')(db);
+const sessionService = require('../departments/auth/engine/session-service')(db);
+const auditService = require('../departments/auth/engine/audit-service')(db);
 
 function assert(condition, message) {
   if (!condition) throw new Error(`FAIL: ${message}`);
@@ -45,7 +48,7 @@ assert(workerGoogleSource.includes('identityService.resolveProviderIdentity'), '
 assert(identitySource.includes('providerUserId') && identitySource.includes('assertCanLink'), 'Identity service keys providers by stable subject and enforces ownership');
 assert(serverSource.includes("app.post('/api/auth/mobile/refresh'"), 'mobile refresh route is registered');
 assert(serverSource.includes("app.post('/api/auth/mobile/logout'"), 'mobile logout route is registered');
-assert(fs.readFileSync(path.join(root, 'backend/core/auth/mobile-session-service.js'), 'utf8').includes('refresh_reuse'), 'mobile refresh-token reuse revokes the token family');
+assert(fs.readFileSync(path.join(root, 'backend/departments/auth/engine/mobile-session-service.js'), 'utf8').includes('refresh_reuse'), 'mobile refresh-token reuse revokes the token family');
 assert(profileAuthSource.includes('req.body.google_id') === false, 'Profile updates cannot write Google identity fields from the browser');
 
 const sessionOwner = db.prepare("SELECT id FROM users WHERE role = 'owner' ORDER BY created_at ASC LIMIT 1").get();
@@ -87,6 +90,11 @@ assert(serverSecuritySource.includes('Strict-Transport-Security') && serverSecur
 assert(serverSecuritySource.includes('GOOGLE_CLIENT_ID') && serverSecuritySource.includes('GOOGLE_CLIENT_SECRET') && serverSecuritySource.includes('GOOGLE_ANDROID_CLIENT_ID'), 'production startup requires web and Android Google OAuth credentials');
 assert(providerReadme.includes('providerUserId') && providerReadme.includes('Apple'), 'future providers have a normalized adapter contract');
 assert(providerRegistrySource.includes('normalizeIdentity') && providerRegistrySource.includes('register'), 'provider registry normalizes and registers adapters');
+assert(fs.existsSync(authDepartmentIndex), 'auth department module exists');
+assert(fs.existsSync(adminDepartmentIndex), 'admin department module exists');
+assert(departmentRegistrySource.includes("'auth'") && departmentRegistrySource.includes("'admin'"), 'department registry owns auth and admin domains');
+assert(serverSource.includes("require('../departments')") && serverSource.includes('departments.auth.create'), 'server uses department auth module');
+assert(serverSource.includes("require('../departments')") && serverSource.includes('departments.admin.create'), 'server uses department admin module');
 const conflictColumns = db.prepare('PRAGMA table_info(auth_identity_conflicts)').all().map(column => column.name);
 assert(conflictColumns.includes('identity_key') && conflictColumns.includes('status') && conflictColumns.includes('resolved_at'), 'legacy identity conflicts have a reviewable quarantine table');
 

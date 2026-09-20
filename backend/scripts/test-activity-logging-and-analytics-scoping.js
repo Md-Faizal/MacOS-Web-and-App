@@ -11,12 +11,12 @@ if (!fs.existsSync(dbPath)) {
 }
 const db = new Database(dbPath);
 
-const contactsHandlers = require('../../frontend/modules/contacts/api/handlers')(db);
-const billingHandlers = require('../../frontend/modules/billing/api/handlers')(db);
+const contactsHandlers = require('../departments/contacts/engine/handlers')(db);
+const billingHandlers = require('../departments/billing/engine/handlers')(db);
 const paymentsHandlers = require('../core/invoices/payments')(db);
 const ordersHandlers = require('../core/orders/handlers')(db);
-const productHandlers = require('../../frontend/modules/product-list/api/handlers')(db);
-const analyticsHandlers = require('../../frontend/modules/analytics/api/handlers')(db);
+const productHandlers = require('../departments/product-list/engine/handlers')(db);
+const analyticsHandlers = require('../departments/analytics/engine/handlers')(db);
 
 const ownerReq = { user: { id: 'admin_test', userId: 'admin_test', role: 'owner' }, query: {}, body: {}, params: {}, headers: {} };
 const workerReq = { user: { id: 'worker_audit_1', userId: 'worker_audit_1', role: 'worker' }, query: {}, body: {}, params: {}, headers: {} };

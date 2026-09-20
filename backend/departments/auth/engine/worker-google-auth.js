@@ -226,7 +226,7 @@ module.exports = function(db, permissionsHelper) {
           } else {
             // 3. New Worker Registration (First time login)
             const newUserId = crypto.randomUUID();
-            const inviteCode = crypto.randomBytes(16).toString('base64url');
+            const inviteCode = String(crypto.randomInt(10000, 100000));
             const inviteQr = await generateQrDataUrl(inviteCode);
 
             db.prepare(`

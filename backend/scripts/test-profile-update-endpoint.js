@@ -11,7 +11,7 @@ if (!fs.existsSync(dbPath)) {
 }
 const db = new Database(dbPath);
 
-const profileModule = require('../core/auth/profile')(db);
+const profileModule = require('../departments/auth/engine/profile')(db);
 
 function mockRes() {
   const res = {

@@ -92,7 +92,7 @@ if (customer) {
 
 // Test 3: Create bill with server calculation
 console.log('\n--- Test 3: Create Bill with Authoritative Server Calculation ---');
-const createHandlers = require('../../frontend/modules/billing/api/handlers');
+const createHandlers = require('../departments/billing/engine/handlers');
 const handlers = createHandlers(db);
 
 const mockReq = {

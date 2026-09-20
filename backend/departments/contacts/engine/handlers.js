@@ -1,6 +1,6 @@
-const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
-const { buildContactsListResponse } = require('../../../../backend/shared/api/contacts-contract');
-const contactsDepartment = require('../../../../backend/departments/contacts/service');
+const createActivityLogger = require('../../../core/audit/activity-logger');
+const { buildContactsListResponse } = require('../../../shared/api/contacts-contract');
+const contactsDepartment = require('../service');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);

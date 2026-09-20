@@ -54,6 +54,19 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Calendar Events: User calendar entries
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  date TEXT NOT NULL,
+  time TEXT,
+  duration TEXT,
+  description TEXT,
+  category TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Note Images: Individual images for notes to support staggered loading
 CREATE TABLE IF NOT EXISTS note_images (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

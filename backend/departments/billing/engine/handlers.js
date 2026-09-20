@@ -1,6 +1,6 @@
-const BillCalculator = require('../../../shared/bill-calculator');
-const calculator = require('../../../../backend/core/billing/calculator');
-const billingDepartment = require('../../../../backend/departments/billing/service');
+const BillCalculator = require('../../../../frontend/shared/bill-calculator');
+const calculator = require('../../../core/billing/calculator');
+const billingDepartment = require('../service');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -281,8 +281,8 @@ function getAnnualSerialNumber(db, invoiceId) {
   }
 }
 
-const createActivityLogger = require('../../../../backend/core/audit/activity-logger');
-const { buildDashboardMetricsResponse, buildCustomerStatementResponse } = require('../../../../backend/shared/api/billing-contract');
+const createActivityLogger = require('../../../core/audit/activity-logger');
+const { buildDashboardMetricsResponse, buildCustomerStatementResponse } = require('../../../shared/api/billing-contract');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);
@@ -1458,7 +1458,7 @@ module.exports = function(db) {
     getCustomerStatement: (req, res) => {
       try {
         const customerId = req.params.id || req.params.customerId;
-        const calculator = require('../../../../backend/core/billing/calculator');
+        const calculator = require('../../../core/billing/calculator');
         const statement = calculator.calculateCustomerStatement(db, customerId, req.user);
 
         if (!statement.success) {

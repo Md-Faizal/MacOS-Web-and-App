@@ -4,9 +4,9 @@ const Database = require('better-sqlite3');
 const dbPath = path.join(__dirname, '../../database/MacOS.db');
 const db = new Database(dbPath);
 const billingCalculator = require('../core/billing/calculator');
-const analyticsHandlers = require('../../frontend/modules/analytics/api/handlers')(db);
-const contactsHandlers = require('../../frontend/modules/contacts/api/handlers')(db);
-const productsHandlers = require('../../frontend/modules/product-list/api/handlers')(db);
+const analyticsHandlers = require('../departments/analytics/engine/handlers')(db);
+const contactsHandlers = require('../departments/contacts/engine/handlers')(db);
+const productsHandlers = require('../departments/product-list/engine/handlers')(db);
 
 const adminUser = { id: 1, role: 'owner' };
 const checks = [];
@@ -51,22 +51,28 @@ function capture(fn, req) {
   });
 
   const contactsList = await capture(contactsHandlers.getContacts, { user: adminUser, query: { limit: 5 } });
+  const contactsPayload = Array.isArray(contactsList.payload)
+    ? contactsList.payload
+    : (contactsList.payload?.items || contactsList.payload?.data?.items || contactsList.payload?.data);
   checks.push({
     name: 'contacts_list',
-    ok: Array.isArray(contactsList.payload),
+    ok: Array.isArray(contactsPayload),
     details: {
       statusCode: contactsList.code,
-      count: Array.isArray(contactsList.payload) ? contactsList.payload.length : 0
+      count: Array.isArray(contactsPayload) ? contactsPayload.length : 0
     }
   });
 
   const productsList = await capture(productsHandlers.getProducts, { user: adminUser, query: { limit: 5 } });
+  const productsPayload = Array.isArray(productsList.payload)
+    ? productsList.payload
+    : (productsList.payload?.items || productsList.payload?.data?.items || productsList.payload?.data);
   checks.push({
     name: 'products_list',
-    ok: Array.isArray(productsList.payload),
+    ok: Array.isArray(productsPayload),
     details: {
       statusCode: productsList.code,
-      count: Array.isArray(productsList.payload) ? productsList.payload.length : 0
+      count: Array.isArray(productsPayload) ? productsPayload.length : 0
     }
   });
 

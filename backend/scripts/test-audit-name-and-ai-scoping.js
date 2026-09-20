@@ -11,11 +11,11 @@ if (!fs.existsSync(dbPath)) {
 }
 const db = new Database(dbPath);
 
-const adminAuth = require('../core/auth/admin')(db);
-const aiHandlers = require('../core/ai/handlers')(db);
-const { generateDatabaseContext } = require('../core/ai/db-context');
-const contactsHandlers = require('../../frontend/modules/contacts/api/handlers')(db);
-const billingHandlers = require('../../frontend/modules/billing/api/handlers')(db);
+const adminAuth = require('../departments/auth/engine/admin')(db);
+const aiHandlers = require('../departments/ai/engine/handlers')(db);
+const { generateDatabaseContext } = require('../departments/ai/engine/db-context');
+const contactsHandlers = require('../departments/contacts/engine/handlers')(db);
+const billingHandlers = require('../departments/billing/engine/handlers')(db);
 
 const ownerReq = { user: { id: 'admin_test', userId: 'admin_test', role: 'owner' }, query: {}, body: {}, params: {}, headers: {} };
 const workerReq = { user: { id: 'worker_audit_1', userId: 'worker_audit_1', role: 'worker' }, query: {}, body: {}, params: {}, headers: {} };

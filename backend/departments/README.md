@@ -16,6 +16,21 @@ Each department owns:
 - analytics
 - product-list
 - contacts
+- auth
+- admin
+- settings
+- desktop
+- notes
+- calendar
+- logs
+- ai
+- suggestions
+- wallpaper-content
+- cloud-storage
+
+Security domains use a factory-backed adapter during migration. The adapter owns construction and metadata while the existing auth engines remain responsible for behavior, preserving route and database compatibility.
+
+Router-backed departments expose an explicit native service contract with owned routers, initialization, and domain services. Each implementation is replaced only after route and behavior parity coverage passes.
 
 ## Rules
 

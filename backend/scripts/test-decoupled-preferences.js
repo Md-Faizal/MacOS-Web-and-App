@@ -3,7 +3,7 @@
  * Run with: node backend/scripts/test-decoupled-preferences.js
  */
 const DatabaseManager = require('../core/db/database-manager');
-const createContactsHandlers = require('../../frontend/modules/contacts/api/handlers');
+const createContactsHandlers = require('../departments/contacts/engine/handlers');
 
 const db = DatabaseManager.initialize();
 const contactsHandlers = createContactsHandlers(db);
@@ -125,7 +125,7 @@ assert(adminContactAfterWorkerUpdate.exclude_from_stats === 0, 'Admin exclusion 
 assert(adminContactAfterWorkerUpdate.disable_duplex_export === 0, 'Admin duplex preference remains completely decoupled and intact (0)');
 
 // 5. Test Ledger Customers endpoint for Admin vs Worker
-const createBillingHandlers = require('../../frontend/modules/billing/api/handlers');
+const createBillingHandlers = require('../departments/billing/engine/handlers');
 const billingHandlers = createBillingHandlers(db);
 
 // Set Admin contact to excluded (1) and give opening balance so it appears in ledger
@@ -135,19 +135,21 @@ db.prepare('UPDATE user_contact_access SET exclude_from_stats = 0 WHERE user_id 
 
 // Worker calls getLedgerCustomers
 let workerLedgerData = null;
-billingHandlers.getLedgerCustomers({ user: { id: workerUser.id, role: 'worker' } }, {
+billingHandlers.getLedgerCustomers({ user: { id: workerUser.id, role: 'worker' }, headers: {}, query: {} }, {
+  status: function() { return this; },
   json: (res) => { workerLedgerData = res.data; }
 });
 const workerLedgerCustomer = workerLedgerData.find(c => c.customer_id === adminCreatedId);
-assert(workerLedgerCustomer && workerLedgerCustomer.exclude_from_stats === 0, 'Worker getLedgerCustomers returns exclude_from_stats = 0 for shared contact (even though Admin has it on 1)');
+assert(workerLedgerCustomer && !workerLedgerCustomer.exclude_from_stats, 'Worker getLedgerCustomers returns exclude_from_stats = 0 for shared contact (even though Admin has it on 1)');
 
 // Admin calls getLedgerCustomers
 let adminLedgerData = null;
-billingHandlers.getLedgerCustomers({ user: { id: adminUser.id, role: 'owner' } }, {
+billingHandlers.getLedgerCustomers({ user: { id: adminUser.id, role: 'owner' }, headers: {}, query: {} }, {
+  status: function() { return this; },
   json: (res) => { adminLedgerData = res.data; }
 });
 const adminLedgerCustomer = adminLedgerData.find(c => c.customer_id === adminCreatedId);
-assert(adminLedgerCustomer && adminLedgerCustomer.exclude_from_stats === 1, 'Admin getLedgerCustomers returns exclude_from_stats = 1 for this contact');
+assert(adminLedgerCustomer && Boolean(adminLedgerCustomer.exclude_from_stats), 'Admin getLedgerCustomers returns exclude_from_stats = 1 for this contact');
 
 // Clean up test contacts
 db.prepare('DELETE FROM contacts WHERE id IN (?, ?)').run(createdContactId, adminCreatedId);

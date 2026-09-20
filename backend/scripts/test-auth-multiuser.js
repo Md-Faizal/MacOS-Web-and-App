@@ -15,9 +15,9 @@
 
 const DatabaseManager = require('../core/db/database-manager');
 const db = DatabaseManager.initialize();
-const permissionsHelper = require('../core/auth/permissions')(db);
-const auth = require('../core/auth/auth')(db);
-const workerAuth = require('../core/auth/worker-google-auth')(db, permissionsHelper);
+const permissionsHelper = require('../departments/auth/engine/permissions')(db);
+const auth = require('../departments/auth/engine/auth')(db);
+const workerAuth = require('../departments/auth/engine/worker-google-auth')(db, permissionsHelper);
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'macos_super_secret_session_key_123';

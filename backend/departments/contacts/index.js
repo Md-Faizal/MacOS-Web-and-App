@@ -1,5 +1,8 @@
+const express = require('express');
 const contract = require('../../shared/api/contacts-contract');
 const service = require('./service');
+const createHandlers = require('./engine/handlers');
+const createRoutes = require('./engine/routes');
 
 module.exports = {
   name: 'contacts',
@@ -12,10 +15,20 @@ module.exports = {
     kind: 'master-data',
     source: 'frontend/modules/contacts/api/handlers.js'
   },
-  adapterPaths: [
-    '../../frontend/modules/contacts/api/handlers.js',
-    '../../frontend/modules/contacts/api/routes.js'
-  ],
+  adapterPaths: [],
+  create(db) {
+    if (!db) throw new TypeError('Contacts department requires a database');
+    const router = express.Router();
+    const domainService = createHandlers(db);
+    return {
+      name: 'contacts',
+      compatibilityEngine: false,
+      router,
+      service: domainService,
+      initializeDatabase() { createRoutes(router, domainService); },
+      getDatabase() { return db; }
+    };
+  },
   ownedResponsibilities: [
     'contacts',
     'contact-access',

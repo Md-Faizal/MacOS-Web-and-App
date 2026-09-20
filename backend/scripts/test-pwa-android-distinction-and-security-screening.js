@@ -11,9 +11,9 @@ console.log('🧪 Testing PWA vs Native Android Distinction & Security Screening
 const dbPath = path.join(__dirname, '../../database/MacOS.db');
 const db = new Database(dbPath);
 
-const authModule = require('../core/auth/auth')(db);
+const authModule = require('../departments/auth/engine/auth')(db);
 const activityLogger = require('../core/audit/activity-logger')(db);
-const adminModule = require('../core/auth/admin')(db);
+const adminModule = require('../departments/auth/engine/admin')(db);
 
 function mockRes() {
   const res = {

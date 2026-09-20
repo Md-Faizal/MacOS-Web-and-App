@@ -45,36 +45,49 @@ try {
   process.exit(1);
 }
 
+const departments = require('../departments');
+
 // Import module APIs (co-located with frontend code)
-const { router: billingRouter, initializeDatabase: initBilling } = require('../../frontend/modules/billing/api');
-const { router: productsRouter, initializeDatabase: initProducts } = require('../../frontend/modules/product-list/api');
-const { router: contactsRouter, initializeDatabase: initContacts } = require('../../frontend/modules/contacts/api');
-const { router: notesRouter, initializeDatabase: initNotes } = require('../../frontend/modules/notes/api');
-const { router: calendarRouter, initializeDatabase: initCalendar } = require('../../frontend/modules/calendar/api');
-const { router: analyticsRouter, initializeDatabase: initAnalytics } = require('../../frontend/modules/analytics/api');
-const { router: settingsRouter, initializeDatabase: initSettings } = require('../../frontend/modules/settings/api');
-const { router: cloudRouter, initializeDatabase: initCloud } = require('../../frontend/modules/cloud/api');
+const billingApi = departments.billing.create(globalDb);
+const { router: billingRouter, initializeDatabase: initBilling } = billingApi;
+const productsApi = departments.productList.create(globalDb);
+const { router: productsRouter, initializeDatabase: initProducts } = productsApi;
+const contactsApi = departments.contacts.create(globalDb);
+const analyticsApi = departments.analytics.create(globalDb);
+const { router: contactsRouter, initializeDatabase: initContacts } = contactsApi;
+const { router: analyticsRouter, initializeDatabase: initAnalytics } = analyticsApi;
+const notesApi = departments.notes.create(globalDb);
+const calendarApi = departments.calendar.create(globalDb);
+const settingsApi = departments.settings.create(globalDb);
+const cloudApi = departments.cloudStorage.create(globalDb);
+const { router: notesRouter, initializeDatabase: initNotes } = notesApi;
+const { router: calendarRouter, initializeDatabase: initCalendar } = calendarApi;
+const { router: settingsRouter, initializeDatabase: initSettings } = settingsApi;
+const { router: cloudRouter, initializeDatabase: initCloud } = cloudApi;
 const androidUpdateRouter = require('../core/android-updates');
 
 // Import core/orphaned modules (not tied to specific modules)
-const { router: suggestionsRouter, initializeDatabase: initSuggestions } = require('../core/suggestions');
-const { router: aiRouter, initializeDatabase: initAI } = require('../core/ai');
-const { router: logsRouter, initializeDatabase: initLogs } = require('../core/logs');
+const suggestionsApi = departments.suggestions.create(globalDb);
+const aiApi = departments.ai.create(globalDb);
+const logsApi = departments.logs.create(globalDb);
+const { router: suggestionsRouter, initializeDatabase: initSuggestions } = suggestionsApi;
+const { router: aiRouter, initializeDatabase: initAI } = aiApi;
+const { router: logsRouter, initializeDatabase: initLogs } = logsApi;
 const qrRouter = require('../core/qr-routing')(globalDb);
 
 // Auth Module
-const authModule = require('../core/auth/auth')(globalDb);
-const profileModule = require('../core/auth/profile')(globalDb);
-const oauthModule = require('../core/auth/oauth')(globalDb);
-const permissionsHelper = require('../core/auth/permissions')(globalDb);
-const workerGoogleAuth = require('../core/auth/worker-google-auth')(globalDb, permissionsHelper);
-const adminAuth = require('../core/auth/admin')(globalDb);
-const createAuditService = require('../core/auth/audit-service');
+const authDepartment = departments.auth.create(globalDb);
+const authModule = authDepartment.auth;
+const profileModule = authDepartment.profile;
+const oauthModule = authDepartment.oauth;
+const permissionsHelper = authDepartment.permissions;
+const workerGoogleAuth = authDepartment.workerGoogle;
+const adminAuth = departments.admin.create(globalDb);
 
 const app = express();
 const { attachResponseHelpers, sendSuccess, sendError } = require('../shared/api/response');
 const { toLegacyShape } = require('../shared/api/compat');
-const auditService = createAuditService(globalDb);
+const auditService = authDepartment.audit;
 try {
   auditService.purgeExpired();
 } catch (error) {
@@ -111,18 +124,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Import wallpaper router (moved to src/api/core/wallpaper)
-let wallpaperRouter;
-try {
-  wallpaperRouter = require('../core/wallpaper');
-} catch (err) {
-  console.error('[Wallpaper] Could not load API extensions:', err.message);
-  // Provide fallback to prevent crash
-  wallpaperRouter = require('express').Router();
-  wallpaperRouter.get('/', (req, res) => {
-    res.status(500).json({ error: 'Wallpaper API not loaded', details: err.message });
-  });
-}
+const wallpaperRouter = departments.wallpaperContent.create().router;
 
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '1mb', extended: true }));
@@ -326,10 +328,8 @@ for (const module of modules) {
 
 console.log(`✓ All modules initialized (${initializedModules.length}/15)\n`);
 
-const clockRouter = require('../core/widgets/clock')(globalDb, authModule.authMiddleware);
-const weatherSettingsRouter = require('../core/widgets/weather-settings')(globalDb, authModule.authMiddleware);
-const quickNotesRouter = require('../core/widgets/quick-notes')(globalDb, authModule.authMiddleware);
-const remindersRouter = require('../core/widgets/reminders')(globalDb, authModule.authMiddleware);
+const desktopDepartment = departments.desktop.create(globalDb, authModule.authMiddleware);
+const { router: desktopRouter, clockRouter, weatherRouter: weatherSettingsRouter, quickNotesRouter, remindersRouter } = desktopDepartment;
 
 // Mount API Routes
 const routes = [
@@ -340,6 +340,7 @@ const routes = [
   { path: '/api/calendar', router: calendarRouter },
   { path: '/api/analytics', router: analyticsRouter },
   { path: '/api/settings', router: settingsRouter },
+  { path: '/api/desktop', router: desktopRouter },
   // Products, payments, orders, variants, batches, creditnotes, invoices
   // are now exposed under /api/products and /api/billing/* via the module routers
   { path: '/api/suggestions', router: suggestionsRouter },
@@ -416,40 +417,6 @@ app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, 
 app.get('/api/profile', authModule.authMiddleware, profileModule.getProfile);
 app.post('/api/profile', authModule.authMiddleware, profileModule.updateProfile);
 app.post('/api/profile/disconnect-google', authModule.authMiddleware, profileModule.disconnectGoogle);
-
-// Desktop State Routes
-app.get('/api/desktop/state', authModule.authMiddleware, (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const row = globalDb.prepare('SELECT state FROM desktop_state WHERE user_id = ?').get(userId);
-    res.json({ success: true, state: row ? JSON.parse(row.state) : null });
-  } catch (err) {
-    console.error('Get desktop state error:', err);
-    res.status(500).json({ error: 'Failed to retrieve desktop state' });
-  }
-});
-
-app.post('/api/desktop/state', authModule.authMiddleware, (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { state } = req.body;
-    if (!state) return res.status(400).json({ error: 'State is required' });
-    
-    const fullStateStr = JSON.stringify(req.body);
-    const existing = globalDb.prepare('SELECT user_id FROM desktop_state WHERE user_id = ?').get(userId);
-    
-    if (existing) {
-      globalDb.prepare('UPDATE desktop_state SET state = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(fullStateStr, userId);
-    } else {
-      globalDb.prepare('INSERT INTO desktop_state (user_id, state) VALUES (?, ?)').run(userId, fullStateStr);
-    }
-    
-    res.json({ success: true, message: 'Desktop state saved successfully' });
-  } catch (err) {
-    console.error('Save desktop state error:', err);
-    res.status(500).json({ error: 'Failed to save desktop state' });
-  }
-});
 
 // Google OAuth Routes
 app.get('/api/auth/google', authModule.authMiddleware, oauthModule.getAuthUrl);

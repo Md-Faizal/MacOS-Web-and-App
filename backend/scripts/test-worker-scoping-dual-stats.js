@@ -11,13 +11,13 @@ if (!fs.existsSync(dbPath)) {
 }
 const db = new Database(dbPath);
 
-const contactsHandlers = require('../../frontend/modules/contacts/api/handlers')(db);
-const billingHandlers = require('../../frontend/modules/billing/api/handlers')(db);
-const analyticsHandlers = require('../../frontend/modules/analytics/api/handlers')(db);
+const contactsHandlers = require('../departments/contacts/engine/handlers')(db);
+const billingHandlers = require('../departments/billing/engine/handlers')(db);
+const analyticsHandlers = require('../departments/analytics/engine/handlers')(db);
 
-const ownerReq = { user: { id: 'admin_auth', userId: 'admin_auth', role: 'owner' }, query: {}, body: {}, params: {} };
-const worker1Req = { user: { id: 'test_worker_1', userId: 'test_worker_1', role: 'worker' }, query: {}, body: {}, params: {} };
-const worker2Req = { user: { id: 'test_worker_2', userId: 'test_worker_2', role: 'worker' }, query: {}, body: {}, params: {} };
+const ownerReq = { user: { id: 'admin_auth', userId: 'admin_auth', role: 'owner' }, query: {}, body: {}, params: {}, headers: {} };
+const worker1Req = { user: { id: 'test_worker_1', userId: 'test_worker_1', role: 'worker' }, query: {}, body: {}, params: {}, headers: {} };
+const worker2Req = { user: { id: 'test_worker_2', userId: 'test_worker_2', role: 'worker' }, query: {}, body: {}, params: {}, headers: {} };
 
 function mockRes() {
   const res = {
@@ -27,6 +27,10 @@ function mockRes() {
     json(payload) { this.data = payload; return this; }
   };
   return res;
+}
+
+function responseItems(response) {
+  return response?.items || response?.data?.items || response?.data || response || [];
 }
 
 async function runTests() {
@@ -43,10 +47,8 @@ async function runTests() {
   // Clean up and insert test users
   db.prepare("DELETE FROM contacts WHERE name LIKE 'TEST_SCOPE_%'").run();
   db.prepare("DELETE FROM user_contact_access WHERE user_id IN ('test_worker_1', 'test_worker_2')").run();
-  db.prepare("DELETE FROM users WHERE id IN ('test_worker_1', 'test_worker_2')").run();
-
   db.prepare(`
-    INSERT INTO users (id, username, email, role, status)
+    INSERT OR IGNORE INTO users (id, username, email, role, status)
     VALUES 
       ('test_worker_1', 'test_worker_1', 'w1@test.com', 'worker', 'active'),
       ('test_worker_2', 'test_worker_2', 'w2@test.com', 'worker', 'active')
@@ -85,7 +87,7 @@ async function runTests() {
   // Worker 2 should see Worker 1's contact (all workers see worker contacts), but NOT Owner's private contact
   const resWorker2List1 = mockRes();
   contactsHandlers.getContacts(worker2Req, resWorker2List1);
-  const worker2ContactsBeforeShare = resWorker2List1.data.map(c => c.id);
+  const worker2ContactsBeforeShare = responseItems(resWorker2List1.data).map(c => c.id);
   assert.ok(worker2ContactsBeforeShare.includes(worker1ContactId), 'Worker 2 should see Worker 1 contact');
   assert.ok(!worker2ContactsBeforeShare.includes(ownerContactId), 'Worker 2 should NOT see unshared Owner contact');
   console.log('✅ Worker 2 sees all worker-created contacts and does not see unshared owner contact');
@@ -95,7 +97,7 @@ async function runTests() {
 
   const resWorker2List2 = mockRes();
   contactsHandlers.getContacts(worker2Req, resWorker2List2);
-  const worker2ContactsAfterShare = resWorker2List2.data.map(c => c.id);
+  const worker2ContactsAfterShare = responseItems(resWorker2List2.data).map(c => c.id);
   assert.ok(worker2ContactsAfterShare.includes(ownerContactId), 'Worker 2 should now see shared Owner contact');
   assert.ok(worker2ContactsAfterShare.includes(worker1ContactId), 'Worker 2 should still see Worker 1 contact');
   console.log('✅ Worker 2 sees newly shared Owner contact');
@@ -103,7 +105,7 @@ async function runTests() {
   // 5. Worker 2 Ledger Customers & Balance
   const resWorker2Ledger = mockRes();
   billingHandlers.getLedgerCustomers(worker2Req, resWorker2Ledger);
-  const ledgerCustomerIds = resWorker2Ledger.data.data.map(c => c.customer_id);
+  const ledgerCustomerIds = responseItems(resWorker2Ledger.data).map(c => c.customer_id);
   assert.ok(ledgerCustomerIds.includes(ownerContactId), 'Worker 2 ledger includes shared owner contact');
   assert.ok(ledgerCustomerIds.includes(worker1ContactId), 'Worker 2 ledger includes worker contact');
   console.log('✅ Worker 2 ledger includes all accessible contacts without exclusion');
@@ -120,8 +122,6 @@ async function runTests() {
   // Clean up test data
   db.prepare("DELETE FROM contacts WHERE name LIKE 'TEST_SCOPE_%'").run();
   db.prepare("DELETE FROM user_contact_access WHERE user_id IN ('test_worker_1', 'test_worker_2')").run();
-  db.prepare("DELETE FROM users WHERE id IN ('test_worker_1', 'test_worker_2')").run();
-
   console.log('\n🎉 ALL DUAL SCOPING & WORKER ACCESS TESTS PASSED PERFECTLY!\n');
 }
 

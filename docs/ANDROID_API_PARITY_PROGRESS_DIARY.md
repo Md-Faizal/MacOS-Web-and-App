@@ -76,6 +76,71 @@ When attempting to build the native Android client using the exact same APIs:
 
 ## 5. Chronological Engineering Progress Diary
 
+### Entry 000 — 2026-09-20: Auth and Admin Department Boundary
+* **Objective**: Begin the security-first backend department migration without changing route behavior or database contracts.
+* **Implemented**:
+  - Added registry-owned `auth` and `admin` department modules under `backend/departments/`.
+  - Added factory-backed adapters that preserve the existing authentication, session, identity, worker lifecycle, and permission engines.
+  - Updated `backend/main/macos-api-server.js` to construct auth and admin through the department registry.
+  - Restored the five-digit numeric worker approval invite-code contract.
+  - Extended account-flow contract checks to verify department ownership and live server integration.
+* **Validation**: `node backend/scripts/test-account-flow-contracts.js` passed, including session revocation, WebAuthn persistence, CSRF, OAuth identity, and auth/admin department checks.
+* **Compatibility**: No database migration or public route change was required; legacy handlers remain the behavior implementation behind the new department boundary.
+
+### Entry 000.1 — 2026-09-20: Remaining API Department Boundaries
+* **Objective**: Complete the backend route ownership pass without changing existing endpoint behavior or database schemas.
+* **Implemented**:
+  - Registered settings, desktop, notes, calendar, logs, AI, suggestions, wallpaper-content, and cloud-storage departments.
+  - Routed existing frontend/core API adapters through the department registry.
+  - Extracted `/api/desktop/state` into the desktop department while retaining its request and response contract.
+  - Kept public cloud-share exceptions, unauthenticated log ingestion, and existing global API protection behavior unchanged.
+  - Added `test:departments` to enforce registry ownership and prevent the desktop state handler from returning to the central server.
+* **Validation**:
+  - `node backend/scripts/test-account-flow-contracts.js` passed.
+  - `npm run test:departments` passed.
+  - `node tools/verify-docker.js 3310` passed 16/16 checks against a freshly booted backend.
+  - All migrated files passed Node syntax validation.
+* **Next boundary**: Replace remaining legacy adapters with department-local contracts and services incrementally, starting with settings/desktop and notes, while retaining compatibility until route-level parity tests cover each surface.
+
+### Entry 000.2 — 2026-09-20: Enforced Department Service Boundary
+* **Objective**: Ensure the central server no longer owns or directly imports the migrated legacy routers.
+* **Implemented**:
+  - Added a shared compatibility-engine service contract with explicit router ownership and database initialization.
+  - Updated settings, notes, calendar, logs, AI, suggestions, wallpaper-content, and cloud-storage departments to expose that contract.
+  - Added regression guards preventing direct legacy imports from returning to `macos-api-server.js`.
+* **Validation**: Runtime route verification remained 16/16, department contract checks passed, and the server booted with all 17 route groups mounted.
+* **Boundary status**: The server-side legacy ownership has been fully replaced. The underlying engines remain intentionally isolated compatibility implementations; deleting them outright would be a separate code rewrite and would not be safe without equivalent route and domain behavior tests.
+
+### Entry 000.3 — 2026-09-20: Calendar Native Cutover
+* **Objective**: Complete the first domain-level legacy removal behind a verified parity contract.
+* **Implemented**:
+  - Rebuilt calendar service and routes under `backend/departments/calendar`.
+  - Preserved existing calendar response shapes, route order, CRUD SQL behavior, and error responses.
+  - Registered `calendar_events` in the master database schema; the old module had not registered this table and startup synchronization removed it.
+  - Deleted the unused frontend calendar API entrypoint, handlers, and routes.
+  - Added `test:calendar` covering create, read, update, date range, delete, and missing-record behavior.
+* **Validation**: Calendar CRUD passed after fresh database initialization; department registry checks confirm the legacy files are absent; server syntax remains clean.
+
+### Entry 000.4 — 2026-09-20: Notes Native Cutover
+* **Objective**: Remove the legacy notes API implementation after covering its higher-risk synchronization and image behavior.
+* **Implemented**:
+  - Moved notes handlers and route definitions into `backend/departments/notes/native`.
+  - Rebuilt the department initializer with native health/debug routes and service ownership.
+  - Deleted the old frontend notes API entrypoint.
+  - Added `test:notes` covering CRUD, ETags/optimistic locking, image upload, image metadata, deletion, and missing-record behavior.
+* **Validation**: Native notes contract passed against SQLite; syntax and department ownership checks passed.
+
+### Entry 000.5 — 2026-09-20: Operational and Business API Native Cutover
+* **Objective**: Remove frontend/core API entrypoints from the central backend and make department engines the implementation owners.
+* **Implemented**:
+  - Relocated settings, cloud-storage, wallpaper-content, logs, suggestions, AI, auth/admin, analytics, contacts, product-list, and billing API implementations into department-owned engine folders.
+  - Preserved supporting billing subroutes for orders, payments, variants, batches, credit notes, and invoices.
+  - Updated regression scripts and internal imports to the new canonical department paths.
+  - Added direct-import guards preventing the central server from reaching deleted legacy API locations.
+* **Validation**: Auth, multi-user RBAC, profile, worker purge, AI scoping, billing processing, native calendar/notes contracts, department ownership, syntax checks, and repeated 16/16 runtime verification all pass.
+* **Remaining internal engines**: Core billing subservices and shared calculation libraries remain supporting implementation modules under the billing domain; they are no longer legacy API entrypoints or central-server-owned routes.
+* **Test-fixture note**: `test-worker-scoping-dual-stats.js` still cannot start because its cleanup attempts to mutate immutable `activity_log` rows (`SQLITE_CONSTRAINT_TRIGGER`); this is a fixture-maintenance issue before the test body executes, not a native department regression.
+
 ### Entry 001 — 2026-09-19: Initial System Audit & Diagnosis
 * **Author**: Engineering Pair (User & AI Assistant)
 * **Objective**: Understand why replicating the macOS website in Android is causing major problems and determine if the API is industry-standard.

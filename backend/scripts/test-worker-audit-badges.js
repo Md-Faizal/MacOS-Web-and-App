@@ -3,13 +3,13 @@
  */
 
 const DatabaseManager = require('../core/db/database-manager');
-const createContactsHandlers = require('../../frontend/modules/contacts/api/handlers');
-const createProductsHandlers = require('../../frontend/modules/product-list/api/handlers');
+const createContactsHandlers = require('../departments/contacts/engine/handlers');
+const createProductsHandlers = require('../departments/product-list/engine/handlers');
 const createOrdersHandlers = require('../core/orders/handlers');
 const createInvoicesHandlers = require('../core/invoices/handlers');
 const createPaymentsHandlers = require('../core/invoices/payments');
-const createSettingsHandlers = require('../../frontend/modules/settings/api/handlers');
-const createBillingHandlers = require('../../frontend/modules/billing/api/handlers');
+const createSettingsHandlers = require('../departments/settings/engine/handlers');
+const createBillingHandlers = require('../departments/billing/engine/handlers');
 
 const db = DatabaseManager.initialize();
 const contactsApi = createContactsHandlers(db);
@@ -19,6 +19,10 @@ const invoicesApi = createInvoicesHandlers(db);
 const paymentsApi = createPaymentsHandlers(db);
 const settingsApi = createSettingsHandlers(db);
 const billingApi = createBillingHandlers(db);
+
+function responseItems(payload) {
+  return payload?.items || payload?.data?.items || payload?.data || payload || [];
+}
 
 function createMockReqRes(user = { id: 'admin_auth', role: 'admin', username: 'admin' }, body = {}, params = {}, query = {}) {
   let resData = null;
@@ -101,7 +105,7 @@ async function runTests() {
     const { req: cReq, res: cRes } = createMockReqRes({ id: 'admin_auth', role: 'admin' }, {}, {}, { search: 'Worker Test Customer' });
     contactsApi.getContacts(cReq, cRes);
     const contactData = cRes._getData();
-    const contact = (contactData.data || contactData).find(c => c.id === contactId);
+    const contact = responseItems(contactData).find(c => c.id === contactId);
     assert(contact && contact.created_by_role === 'worker', 'Contact returns created_by_role === "worker"');
     assert(contact && contact.created_by_name === workerName, 'Contact returns created_by_name');
 
@@ -115,7 +119,7 @@ async function runTests() {
 
     const { req: cReq2, res: cRes2 } = createMockReqRes({ id: 'admin_auth', role: 'admin' }, {}, {}, { search: 'Worker Test Customer Edited' });
     contactsApi.getContacts(cReq2, cRes2);
-    const updatedContact = (cRes2._getData().data || cRes2._getData()).find(c => c.id === contactId);
+    const updatedContact = responseItems(cRes2._getData()).find(c => c.id === contactId);
     assert(updatedContact && updatedContact.last_edited_by_role === 'worker', 'Contact returns last_edited_by_role === "worker" after edit');
   } catch (err) {
     console.error('Contacts audit test error:', err);
@@ -146,7 +150,7 @@ async function runTests() {
 
     const { req: pGetReq, res: pGetRes } = createMockReqRes({ id: 'admin_auth', role: 'admin' });
     productsApi.getProducts(pGetReq, pGetRes);
-    const allProducts = pGetRes._getData();
+    const allProducts = responseItems(pGetRes._getData());
     const prod = allProducts.find(p => p.id === createdProduct.id);
     assert(prod && prod.created_by_role === 'worker', 'Product returns created_by_role === "worker"');
     assert(prod && prod.created_by_name === workerName, 'Product returns created_by_name');
