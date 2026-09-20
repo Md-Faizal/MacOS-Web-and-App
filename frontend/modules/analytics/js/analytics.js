@@ -174,26 +174,40 @@ class AnalyticsApp extends AppWindow {
     document.getElementById('analyticsPrintBtn')?.addEventListener('click', () => window.print());
   }
 
+  normalizeContactsList(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.data?.items)) return payload.data.items;
+    if (Array.isArray(payload?.data)) return payload.data;
+    return [];
+  }
+
   async refreshCustomerList() {
     try {
       const resp = await fetch('/api/contacts');
-      const data = await resp.json();
-      this.customers = data.filter(c => c.type === 'Customer');
+      const payload = await resp.json();
+      const list = this.normalizeContactsList(payload);
+      this.customers = list.filter(c => !c.type || c.type === 'Customer' || c.type === 'customer');
       this.renderCustomerList(this.customers);
     } catch (err) {
       console.error('Failed to load customers:', err);
+      if (this.sidebarList) {
+        this.sidebarList.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; font-size:12px;">Unable to load customers</div>';
+      }
     }
   }
 
   renderCustomerList(customers) {
     if (!this.sidebarList) return;
-    
-    if (customers.length === 0) {
+
+    const list = Array.isArray(customers) ? customers : [];
+
+    if (list.length === 0) {
       this.sidebarList.innerHTML = '<div style="padding:20px; text-align:center; opacity:0.5; font-size:12px;">No customers found</div>';
       return;
     }
 
-    this.sidebarList.innerHTML = customers.map(c => `
+    this.sidebarList.innerHTML = list.map(c => `
       <button class="analytics-sidebar-item" data-id="${c.id}">
         <span class="customer-item-name">${c.name}</span>
         <span class="customer-item-sales">ID: ${c.id} • ${c.active || 'INACTIVE'}</span>
