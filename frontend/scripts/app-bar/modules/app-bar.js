@@ -131,7 +131,18 @@ function initializeDock() {
     const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role');
     if (role === 'worker') {
       const storedAllowed = sessionStorage.getItem('macos_allowed_apps');
-      allowedAppsList = window.currentUserPermissions?.allowedApps || (storedAllowed ? JSON.parse(storedAllowed) : ['billing', 'products', 'contacts', 'analytics']);
+      let parsed = null;
+      try {
+        parsed = storedAllowed ? JSON.parse(storedAllowed) : null;
+      } catch (_) {}
+
+      if (Array.isArray(window.currentUserPermissions?.allowedApps) && window.currentUserPermissions.allowedApps.length > 0) {
+        allowedAppsList = window.currentUserPermissions.allowedApps;
+      } else if (Array.isArray(parsed) && parsed.length > 0) {
+        allowedAppsList = parsed;
+      } else {
+        allowedAppsList = ['billing', 'products', 'contacts', 'analytics'];
+      }
     }
   } catch (e) {
     console.warn('Error reading worker permissions in dock:', e);
@@ -146,8 +157,9 @@ function initializeDock() {
     initializeDesktop();
   }
 
-  const STORAGE_KEY = 'appBarOrder';
-  const RECENT_APP_KEY = 'recentAppUsed';
+  const currentUserId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || (sessionStorage.getItem('macos_user_role') === 'worker' ? 'worker' : 'owner');
+  const STORAGE_KEY = `appBarOrder_${currentUserId}`;
+  const RECENT_APP_KEY = `recentAppUsed_${currentUserId}`;
 
   // Swipe detection variables
   let touchStartX = 0;
@@ -185,17 +197,22 @@ function initializeDock() {
   let dockRafId = null;
 
   // Check if magnification is enabled (default: true)
+  function getScopedStorageKey(baseKey) {
+    const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+    const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+    return `${baseKey}__user_${safeUserId}`;
+  }
+
   function isMagnificationEnabled() {
     // Touch screens don't have true hover states — avoid wave distortion during taps/swipes
     if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
       return false;
     }
     try {
-      const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
-      // Default to true if never set
-      return saved['dock-magnification'] !== false;
+      const saved = JSON.parse(localStorage.getItem(getScopedStorageKey('settingsAppData')) || '{}');
+      return saved['dock-magnification'] === true;
     } catch (e) {
-      return true;
+      return false;
     }
   }
 
@@ -431,7 +448,7 @@ function initializeDock() {
 
   function isAutoHideEnabled() {
     try {
-      const saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+      const saved = JSON.parse(localStorage.getItem(getScopedStorageKey('settingsAppData')) || '{}');
       return saved['dock-auto-hide'] === true;
     } catch (e) { return false; }
   }
@@ -784,7 +801,7 @@ function initializeDock() {
   // 2. Sync logic: Ensure all current apps (except settings) are reflected in appOrder
   const validAppIds = new Set(availableApps.filter(a => a.id !== 'settings').map(a => a.id));
   
-  if (!appOrder || !Array.isArray(appOrder)) {
+  if (!appOrder || !Array.isArray(appOrder) || appOrder.length === 0) {
     // Initial order: All available apps (except settings)
     appOrder = availableApps.filter(a => a.id !== 'settings').map(a => a.id);
   } else {
@@ -796,6 +813,10 @@ function initializeDock() {
       if (!appOrder.includes(appId)) {
         appOrder.push(appId);
       }
+    }
+
+    if (appOrder.length === 0) {
+      appOrder = availableApps.filter(a => a.id !== 'settings').map(a => a.id);
     }
   }
   

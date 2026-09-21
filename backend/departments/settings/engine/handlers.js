@@ -20,26 +20,36 @@ module.exports = function(db) {
   const BackupManager = getBackupManagerClass();
   // Simple ID generator
   const generateId = () => `check_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  const resolveUserDeviceId = (req) => {
+    const userId = req?.user?.userId || req?.user?.id || null;
+    const providedDeviceId = req?.user?.deviceId || null;
+
+    if (providedDeviceId && userId) {
+      const ownedDevice = db.prepare('SELECT id FROM user_devices WHERE id = ? AND user_id = ?').get(providedDeviceId, userId);
+      if (ownedDevice) return ownedDevice.id;
+      console.warn(`[Settings] Device ${providedDeviceId} is not owned by user ${userId}; rejecting stale device binding.`);
+    }
+
+    if (userId) {
+      const currentUserDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND is_current = 1 ORDER BY last_seen DESC, last_login DESC LIMIT 1').get(userId);
+      if (currentUserDevice) return currentUserDevice.id;
+
+      const latestUserDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(userId);
+      if (latestUserDevice) return latestUserDevice.id;
+    }
+
+    return null;
+  };
   
   return {
     getSettings: (req, res) => {
       try {
-        let deviceId = req.user?.deviceId;
-        
-        if (!deviceId) {
-          console.log('[Settings] Device ID missing from token, attempting fallback to is_current device...');
-          const currentDevice = db.prepare('SELECT id FROM user_devices WHERE is_current = 1').get();
-          deviceId = currentDevice?.id;
-        }
-
-        if (!deviceId && req.user?.userId) {
-          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
-          deviceId = userDevice?.id;
-        }
+        const deviceId = resolveUserDeviceId(req);
 
         if (!deviceId) {
-          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
-          deviceId = anyDevice ? anyDevice.id : 1;
+          console.warn('[Settings] No valid device binding for this user; refusing cross-user settings access.');
+          return res.status(401).json({ error: 'No valid device binding for this user.' });
         }
 
         console.log(`[Settings] Fetching settings for device: ${deviceId}`);
@@ -51,7 +61,7 @@ module.exports = function(db) {
           console.log(`[Settings] No settings found for device ${deviceId}, creating defaults...`);
           const insertStmt = db.prepare(`
             INSERT INTO Settings (device_id, appearance, accent_color, highlight_color, icon_style, liquid_glass, sidebar_icon_size, tint_wallpaper, dock_magnification, dock_auto_hide)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
           `);
           insertStmt.run(deviceId, 'auto', 'blue', 'blue', 'default', 'clear', 'medium', 1);
           settings = db.prepare('SELECT * FROM Settings WHERE device_id = ?').get(deviceId);
@@ -67,7 +77,7 @@ module.exports = function(db) {
           'sidebar-size': settings.sidebar_icon_size,
           'tint-wallpaper': !!settings.tint_wallpaper,
           showWorkerBadges: settings.show_worker_badges !== undefined && settings.show_worker_badges !== null ? Boolean(settings.show_worker_badges) : true,
-          'dock-magnification': settings.dock_magnification !== undefined && settings.dock_magnification !== null ? Boolean(settings.dock_magnification) : true,
+          'dock-magnification': settings.dock_magnification !== undefined && settings.dock_magnification !== null ? Boolean(settings.dock_magnification) : false,
           'dock-auto-hide': settings.dock_auto_hide !== undefined && settings.dock_auto_hide !== null ? Boolean(settings.dock_auto_hide) : false,
           'appBarOrder': settings.dock_apps_order ? (() => { try { return JSON.parse(settings.dock_apps_order); } catch (e) { return null; } })() : null
         };
@@ -81,21 +91,11 @@ module.exports = function(db) {
     saveSetting: (req, res) => {
       try {
         const { setting_key, setting_value } = req.body;
-        let deviceId = req.user?.deviceId;
-        if (!deviceId) {
-          console.log('[Settings] Device ID missing from token during single save, attempting fallback...');
-          const currentDevice = db.prepare('SELECT id FROM user_devices WHERE is_current = 1').get();
-          deviceId = currentDevice?.id;
-        }
-
-        if (!deviceId && req.user?.userId) {
-          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
-          deviceId = userDevice?.id;
-        }
+        const deviceId = resolveUserDeviceId(req);
 
         if (!deviceId) {
-          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
-          deviceId = anyDevice ? anyDevice.id : 1;
+          console.warn('[Settings] Refusing to save setting without a valid user-scoped device binding.');
+          return res.status(401).json({ error: 'No valid device binding for this user.' });
         }
 
         console.log(`[Settings] Saving single setting: ${setting_key} = ${setting_value} for device: ${deviceId}`);
@@ -154,21 +154,11 @@ module.exports = function(db) {
     bulkUpdateSettings: (req, res) => {
       try {
         const settings = req.body;
-        let deviceId = req.user?.deviceId;
-        if (!deviceId) {
-          console.log('[Settings] Device ID missing from token during bulk update, attempting fallback...');
-          const currentDevice = db.prepare('SELECT id FROM user_devices WHERE is_current = 1').get();
-          deviceId = currentDevice?.id;
-        }
-
-        if (!deviceId && req.user?.userId) {
-          const userDevice = db.prepare('SELECT id FROM user_devices WHERE user_id = ? ORDER BY is_current DESC, last_login DESC LIMIT 1').get(req.user.userId);
-          deviceId = userDevice?.id;
-        }
+        const deviceId = resolveUserDeviceId(req);
 
         if (!deviceId) {
-          const anyDevice = db.prepare('SELECT id FROM user_devices ORDER BY is_current DESC, last_login DESC LIMIT 1').get();
-          deviceId = anyDevice ? anyDevice.id : 1;
+          console.warn('[Settings] Refusing to bulk-update settings without a valid user-scoped device binding.');
+          return res.status(401).json({ error: 'No valid device binding for this user.' });
         }
 
         const keyMap = {

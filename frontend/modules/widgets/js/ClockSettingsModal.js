@@ -1,17 +1,23 @@
 /**
  * ClockSettingsModal - Modal for configuring system-wide clock settings
  */
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export class ClockSettingsModal {
   constructor(options = {}) {
     this.onSave = options.onSave || (() => {});
     this.onClose = options.onClose || (() => {});
-    this.settings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || {
+    this.settings = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings'))) || {
       mode: 'auto',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       cityName: 'Local Time',
       manualOffset: 0
     };
-    this.worldClocks = JSON.parse(localStorage.getItem('mac-world-clocks')) || [
+    this.worldClocks = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks'))) || [
       { id: 'cupertino', name: 'Cupertino', timezone: 'America/Los_Angeles' },
       { id: 'london', name: 'London', timezone: 'Europe/London' },
       { id: 'tokyo', name: 'Tokyo', timezone: 'Asia/Tokyo' }
@@ -47,10 +53,10 @@ export class ClockSettingsModal {
     } catch (err) {
       console.warn('Failed to fetch clock settings from server, using defaults/local:', err);
       // Fallback to local storage if API fails (for offline support)
-      const localSettings = JSON.parse(localStorage.getItem('mac-system-time-settings'));
+      const localSettings = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings')));
       if (localSettings) this.settings = localSettings;
       
-      const localWorldClocks = JSON.parse(localStorage.getItem('mac-world-clocks'));
+      const localWorldClocks = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks')));
       if (localWorldClocks) this.worldClocks = localWorldClocks;
     }
   }
@@ -466,8 +472,8 @@ export class ClockSettingsModal {
         if (!response.ok) throw new Error('Failed to save settings to server');
 
         // Success - update local as well for immediate feedback and fallbacks
-        localStorage.setItem('mac-system-time-settings', JSON.stringify(this.settings));
-        localStorage.setItem('mac-world-clocks', JSON.stringify(this.worldClocks));
+        localStorage.setItem(getScopedStorageKey('mac-system-time-settings'), JSON.stringify(this.settings));
+        localStorage.setItem(getScopedStorageKey('mac-world-clocks'), JSON.stringify(this.worldClocks));
         
         window.dispatchEvent(new CustomEvent('mac-time-sync', { detail: this.settings }));
         window.dispatchEvent(new CustomEvent('mac-world-clock-sync'));

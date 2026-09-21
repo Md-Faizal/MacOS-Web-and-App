@@ -341,8 +341,8 @@ module.exports = function(db) {
         VALUES (?, 'web', 'admin', 'update_permissions', 'user', ?, ?)
       `).run(req.user.userId, user.id, JSON.stringify({ contactCount: contactIds.length }));
       
-      // Bump token version to force worker to re-authenticate and fetch new permissions
-      db.prepare('UPDATE users SET token_version = token_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+      // Touch updated_at timestamp without invalidating worker session
+      db.prepare('UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
     })();
 
     res.json({ success: true, message: 'Permissions updated successfully' });

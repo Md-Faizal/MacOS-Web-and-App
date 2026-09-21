@@ -19,6 +19,12 @@
   <script>
     // Global Theme & Appearance Bootstrapper
     (function() {
+      const getScopedStorageKey = (baseKey) => {
+        const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+        const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+        return `${baseKey}__user_${safeUserId}`;
+      };
+
       const applyResolvedTheme = (rawTheme) => {
         let resolved = rawTheme;
         if (rawTheme === 'auto') {
@@ -29,11 +35,11 @@
         if (document.body) document.body.setAttribute('data-theme', resolved);
       };
 
-      const cachedTheme = localStorage.getItem('macos_theme') || 'auto';
+      const cachedTheme = localStorage.getItem(getScopedStorageKey('macos_theme')) || 'auto';
       applyResolvedTheme(cachedTheme);
 
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        const current = localStorage.getItem('macos_theme') || 'auto';
+        const current = localStorage.getItem(getScopedStorageKey('macos_theme')) || 'auto';
         if (current === 'auto') applyResolvedTheme('auto');
       });
 
@@ -46,15 +52,15 @@
       // Sync with server DB settings
       fetch('/api/settings').then(r => r.json()).then(data => {
         if (data && data.theme) {
-          localStorage.setItem('macos_theme', data.theme);
+          localStorage.setItem(getScopedStorageKey('macos_theme'), data.theme);
           applyResolvedTheme(data.theme);
         }
         if (data) {
-          const current = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+          const current = JSON.parse(localStorage.getItem(getScopedStorageKey('settingsAppData')) || '{}');
           const updated = { ...current };
           if (data['dock-magnification'] !== undefined) updated['dock-magnification'] = data['dock-magnification'];
           if (data['dock-auto-hide'] !== undefined) updated['dock-auto-hide'] = data['dock-auto-hide'];
-          localStorage.setItem('settingsAppData', JSON.stringify(updated));
+          localStorage.setItem(getScopedStorageKey('settingsAppData'), JSON.stringify(updated));
 
           if (data.appBarOrder && Array.isArray(data.appBarOrder)) {
             localStorage.setItem('appBarOrder', JSON.stringify(data.appBarOrder));
@@ -147,7 +153,14 @@
         window.currentUserPermissions = verifyData.permissions;
         sessionStorage.setItem('macos_session_active', 'true');
         sessionStorage.setItem('macos_user_role', verifyData.user?.role || 'owner');
-        sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions?.allowedApps || []));
+        if (verifyData.user?.id) {
+          sessionStorage.setItem('macos_user_id', verifyData.user.id);
+        }
+        if (Array.isArray(verifyData.permissions?.allowedApps) && verifyData.permissions.allowedApps.length > 0) {
+          sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions.allowedApps));
+        } else if (verifyData.user?.role === 'worker') {
+          sessionStorage.setItem('macos_allowed_apps', JSON.stringify(['billing', 'products', 'contacts', 'analytics']));
+        }
         window.dispatchEvent(new CustomEvent('macos-auth-verified', { detail: verifyData }));
         if (typeof window.initializeDock === 'function') {
           window.initializeDock();
@@ -182,6 +195,18 @@
                 sessionStorage.removeItem('macos_session_active');
                 alert('Your session has ended or was terminated from another device.');
                 window.location.replace('index.html');
+                return;
+              }
+              if (data.permissions) {
+                const prevApps = sessionStorage.getItem('macos_allowed_apps');
+                const newApps = JSON.stringify(data.permissions.allowedApps || []);
+                window.currentUserPermissions = data.permissions;
+                if (Array.isArray(data.permissions.allowedApps) && data.permissions.allowedApps.length > 0 && prevApps !== newApps) {
+                  sessionStorage.setItem('macos_allowed_apps', newApps);
+                  if (typeof window.initializeDock === 'function') {
+                    window.initializeDock();
+                  }
+                }
               }
             }
           } catch (e) {

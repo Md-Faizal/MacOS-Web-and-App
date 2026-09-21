@@ -2,6 +2,12 @@
 // STANDARDIZED WEATHER COMPONENT SCRIPT
 // ======================================== 
 
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 class WeatherDisplay {
   constructor(elementId, options = {}) {
     this.element = document.getElementById(elementId);
@@ -22,13 +28,14 @@ class WeatherDisplay {
 
   getLocationCache() {
     try {
-      const cached = localStorage.getItem('weatherLocationCache');
+      const cacheKey = getScopedStorageKey('weatherLocationCache');
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const data = JSON.parse(cached);
         if (data.expiration > Date.now()) {
           return data;
         } else {
-          localStorage.removeItem('weatherLocationCache');
+          localStorage.removeItem(cacheKey);
         }
       }
     } catch (error) {
@@ -44,7 +51,7 @@ class WeatherDisplay {
         lon: lon,
         expiration: Date.now() + this.options.cacheExpiration
       };
-      localStorage.setItem('weatherLocationCache', JSON.stringify(cacheData));
+      localStorage.setItem(getScopedStorageKey('weatherLocationCache'), JSON.stringify(cacheData));
     } catch (error) {
       console.log('Cache write error:', error);
     }
@@ -52,13 +59,14 @@ class WeatherDisplay {
 
   getWeatherCache() {
     try {
-      const cached = localStorage.getItem('weatherDataCache');
+      const cacheKey = getScopedStorageKey('weatherDataCache');
+      const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const data = JSON.parse(cached);
         if (data.expiration > Date.now()) {
           return data;
         } else {
-          localStorage.removeItem('weatherDataCache');
+          localStorage.removeItem(cacheKey);
         }
       }
     } catch (error) {
@@ -74,7 +82,7 @@ class WeatherDisplay {
         temp: temp,
         expiration: Date.now() + this.options.cacheExpiration
       };
-      localStorage.setItem('weatherDataCache', JSON.stringify(cacheData));
+      localStorage.setItem(getScopedStorageKey('weatherDataCache'), JSON.stringify(cacheData));
     } catch (error) {
       console.log('Cache write error:', error);
     }
@@ -141,10 +149,10 @@ class WeatherDisplay {
   }
 
   fetchWeatherByLocation() {
-    // Priority 1: Widget localStorage (Shared persistence)
-    const widgetLat = localStorage.getItem('weather-lat');
-    const widgetLon = localStorage.getItem('weather-lon');
-    const widgetUnit = localStorage.getItem('weather-unit');
+    // Priority 1: Widget localStorage (scoped per active user)
+    const widgetLat = localStorage.getItem(getScopedStorageKey('weather-lat'));
+    const widgetLon = localStorage.getItem(getScopedStorageKey('weather-lon'));
+    const widgetUnit = localStorage.getItem(getScopedStorageKey('weather-unit'));
 
     if (widgetLat && widgetLon) {
       if (widgetUnit) this.options.useMetricUnits = (widgetUnit === 'C');

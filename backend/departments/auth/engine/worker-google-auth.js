@@ -138,6 +138,48 @@ module.exports = function(db, permissionsHelper) {
         let targetUser = null;
         const identityResolution = identityService.resolveProviderIdentity('google', googleUser.sub, googleUser.email);
         const googleIdentity = identityResolution.canonical;
+
+        const handleDeletedWorkerReapplication = async (workerUser) => {
+          const inviteCode = crypto.randomInt(10000, 100000).toString();
+          const inviteQr = await generateQrDataUrl(inviteCode);
+          
+          db.prepare(`
+            UPDATE users SET 
+              google_id = ?,
+              google_email = ?,
+              google_name = ?,
+              google_picture = ?,
+              full_name = COALESCE(full_name, ?),
+              status = 'pending',
+              invite_code = ?,
+              invite_qr_base64 = ?,
+              deleted_at = NULL,
+              deleted_by = NULL,
+              deletion_reason = NULL,
+              deletion_requested_at = NULL,
+              is_verified = 1,
+              token_version = token_version + 1,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, googleUser.name, inviteCode, inviteQr, workerUser.id);
+
+          db.prepare("DELETE FROM user_identities WHERE user_id = ?").run(workerUser.id);
+          db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), workerUser.id, googleUser.sub, googleUser.email);
+
+          // Add re-join record in worker_lifecycle_history
+          try {
+            const historyId = crypto.randomUUID();
+            db.prepare(`
+              INSERT INTO worker_lifecycle_history (id, user_id, email, full_name, role, status, joined_at, deletion_reason)
+              VALUES (?, ?, ?, ?, 'worker', 'pending', CURRENT_TIMESTAMP, 'Re-applied with Google after account deletion')
+            `).run(historyId, workerUser.id, googleUser.email, googleUser.name || workerUser.full_name || workerUser.username);
+          } catch (_) {}
+
+          const refreshed = db.prepare("SELECT * FROM users WHERE id = ?").get(workerUser.id);
+          refreshed._isNewWorker = true;
+          refreshed._inviteCode = inviteCode;
+          return refreshed;
+        };
         
         if (googleIdentity) {
           // Returning user via Google
@@ -150,6 +192,9 @@ module.exports = function(db, permissionsHelper) {
             });
           }
           db.prepare("UPDATE user_identities SET provider_email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(googleUser.email, googleIdentity.id);
+          if (targetUser.role === 'worker' && targetUser.status === 'deleted') {
+            targetUser = await handleDeletedWorkerReapplication(targetUser);
+          }
         } else {
           // Google identity not found. Resolve all canonical and legacy matches centrally.
           if (identityResolution.userIds.length > 1) {
@@ -189,12 +234,101 @@ module.exports = function(db, permissionsHelper) {
                 UPDATE users SET google_id = ?, google_email = ?, google_name = ?, google_picture = ?
                 WHERE id = ?
               `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+            } else if (targetUser.role === 'worker' && targetUser.status === 'deleted') {
+              // -------------------------------------------------------------
+              // DELETED WORKER RE-APPLICATION VIA GOOGLE
+              // -------------------------------------------------------------
+              targetUser = await handleDeletedWorkerReapplication(targetUser);
+            } else if (targetUser.role === 'worker' && targetUser.status === 'pending') {
+              // Worker is currently pending approval; update Google link if needed
+              db.prepare(`
+                UPDATE users SET
+                  google_id = COALESCE(google_id, ?),
+                  google_email = COALESCE(google_email, ?),
+                  google_name = COALESCE(google_name, ?),
+                  google_picture = COALESCE(google_picture, ?),
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+              `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+              db.prepare("INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+              targetUser._inviteCode = targetUser.invite_code;
             } else if (targetUser.role === 'worker' && !existingGoogleLink) {
-              return res.status(409).json({
-                error: 'WorkerGoogleIdentityConflict',
-                message: 'This email belongs to an existing worker, but the Google identity is different. The owner must review the account link.',
-                requiresOwnerAction: true
-              });
+              // Active worker attempting to link Google
+              const localIdentity = db.prepare("SELECT * FROM user_identities WHERE user_id = ? AND provider = 'local'").get(targetUser.id);
+              const hasPassword = Boolean(targetUser.password_hash || localIdentity?.password_hash);
+              
+              if (hasPassword) {
+                if (linkPassword) {
+                  const passHash = targetUser.password_hash || localIdentity.password_hash;
+                  const isMatch = bcrypt.compareSync(linkPassword, passHash);
+                  if (!isMatch) {
+                    return res.status(401).json({ error: 'Incorrect password for linking.' });
+                  }
+                  // Password verified! Link Google identity
+                  db.prepare(`
+                    UPDATE users SET 
+                      google_id = ?,
+                      google_email = ?,
+                      google_name = COALESCE(?, google_name),
+                      google_picture = COALESCE(?, google_picture),
+                      is_verified = 1,
+                      updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                  `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+                  try {
+                    db.prepare(`
+                      UPDATE user_profile SET
+                        google_id = ?,
+                        google_email = ?,
+                        google_name = COALESCE(?, google_name),
+                        google_picture = COALESCE(?, google_picture),
+                        updated_at = CURRENT_TIMESTAMP
+                      WHERE id = ?
+                    `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+                  } catch (_) {}
+                  db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+                  targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(targetUser.id);
+                } else {
+                  return res.status(409).json({
+                    error: 'AccountConflict',
+                    message: 'An active account with this email already exists. Enter your password to link your Google login.',
+                    requiresLinking: true,
+                    email: googleUser.email
+                  });
+                }
+              } else if (!targetUser.google_id) {
+                // Worker has no local password and no Google ID linked yet (e.g. created by owner/admin by email)
+                db.prepare(`
+                  UPDATE users SET 
+                    google_id = ?,
+                    google_email = ?,
+                    google_name = COALESCE(?, google_name),
+                    google_picture = COALESCE(?, google_picture),
+                    is_verified = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ?
+                `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+                try {
+                  db.prepare(`
+                    UPDATE user_profile SET
+                      google_id = ?,
+                      google_email = ?,
+                      google_name = COALESCE(?, google_name),
+                      google_picture = COALESCE(?, google_picture),
+                      updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                  `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+                } catch (_) {}
+                db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+                targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(targetUser.id);
+              } else {
+                // Different Google ID already attached to this worker account
+                return res.status(409).json({
+                  error: 'WorkerGoogleIdentityConflict',
+                  message: 'This email belongs to an existing worker, but the Google identity is different. The owner must review the account link.',
+                  requiresOwnerAction: true
+                });
+              }
             } else if (targetUser.role === 'worker' && existingGoogleLink) {
               db.prepare("INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
             } else if (targetUser.is_verified) {
@@ -248,6 +382,9 @@ module.exports = function(db, permissionsHelper) {
         }
 
         // At this point, targetUser is resolved and securely authenticated/linked.
+        if (targetUser && targetUser.role === 'worker' && targetUser.status === 'deleted') {
+          targetUser = await handleDeletedWorkerReapplication(targetUser);
+        }
         
         // If Worker is Pending Approval: return invite code & status (do not issue auth_token yet)
         if (targetUser.role === 'worker' && targetUser.status === 'pending') {

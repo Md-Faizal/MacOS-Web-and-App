@@ -6,6 +6,12 @@ import { CELESTIAL_STAGES, getCelestialState, lerpColor } from './celestial-util
  * ClockWidget - Functional analog and digital clock with global sync.
  * Supports expanding to show "World Clock" view with local and global panels.
  */
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export function createClockWidget() {
   const container = document.createElement('div');
   container.className = 'mac-widget-glass mac-w-clock';
@@ -13,14 +19,14 @@ export function createClockWidget() {
   
   // State
   let state = {
-    isExpanded: localStorage.getItem('mac-clock-expanded') === 'true',
+    isExpanded: localStorage.getItem(getScopedStorageKey('mac-clock-expanded')) === 'true',
     // Default world clocks if none exist
-    worldClocks: JSON.parse(localStorage.getItem('mac-world-clocks')) || [
+    worldClocks: JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks'))) || [
       { id: 'cupertino', name: 'Cupertino', timezone: 'America/Los_Angeles' },
       { id: 'london', name: 'London', timezone: 'Europe/London' },
       { id: 'tokyo', name: 'Tokyo', timezone: 'Asia/Tokyo' }
     ],
-    timeSettings: JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' }
+    timeSettings: JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' }
   };
 
   // Async fetch from server
@@ -37,8 +43,8 @@ export function createClockWidget() {
           manualOffset: data.manualOffset || 0
         };
         // Update local storage for next fast-boot
-        localStorage.setItem('mac-world-clocks', JSON.stringify(state.worldClocks));
-        localStorage.setItem('mac-system-time-settings', JSON.stringify(state.timeSettings));
+        localStorage.setItem(getScopedStorageKey('mac-world-clocks'), JSON.stringify(state.worldClocks));
+        localStorage.setItem(getScopedStorageKey('mac-system-time-settings'), JSON.stringify(state.timeSettings));
         
         // Re-render only if needed (expanded vs non-expanded might change)
         updateWidget();
@@ -265,7 +271,7 @@ export function createClockWidget() {
           if (window.desktopManager.canResizeShortcut(appId, newSpanX, newSpanY)) {
             if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
               state.isExpanded = true;
-              localStorage.setItem('mac-clock-expanded', 'true');
+              localStorage.setItem(getScopedStorageKey('mac-clock-expanded'), 'true');
               updateWidget();
             }
           } else {
@@ -275,7 +281,7 @@ export function createClockWidget() {
         } else {
           if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
             state.isExpanded = false;
-            localStorage.setItem('mac-clock-expanded', 'false');
+            localStorage.setItem(getScopedStorageKey('mac-clock-expanded'), 'false');
             updateWidget();
           }
         }
@@ -287,7 +293,7 @@ export function createClockWidget() {
       new ClockSettingsModal({
         onSave: (settings) => {
           state.timeSettings = settings;
-          state.worldClocks = JSON.parse(localStorage.getItem('mac-world-clocks')) || state.worldClocks;
+          state.worldClocks = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks'))) || state.worldClocks;
           updateWidget();
           tick();
         }
@@ -423,7 +429,7 @@ export function createClockWidget() {
 
 
     // Weather Effects Integration
-    const weatherData = JSON.parse(localStorage.getItem('weatherDataCache')) || {};
+    const weatherData = JSON.parse(localStorage.getItem(getScopedStorageKey('weatherDataCache'))) || {};
     const weatherIcon = weatherData.icon || '☀️';
     
     // Reset weather effects
@@ -495,14 +501,14 @@ export function createClockWidget() {
 
   window.addEventListener('mac-time-sync', (e) => {
     state.timeSettings = e.detail;
-    state.worldClocks = JSON.parse(localStorage.getItem('mac-world-clocks')) || state.worldClocks;
+    state.worldClocks = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks'))) || state.worldClocks;
     updateWidget();
     tick();
   });
   
   // Also listen for world clock specific changes
   window.addEventListener('mac-world-clock-sync', () => {
-    state.worldClocks = JSON.parse(localStorage.getItem('mac-world-clocks')) || [];
+    state.worldClocks = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-world-clocks'))) || [];
     updateWidget();
   });
 
@@ -517,7 +523,7 @@ export function createClockWidget() {
       const shouldBeExpanded = entry.contentRect.width > 250;
       if (shouldBeExpanded !== state.isExpanded) {
         state.isExpanded = shouldBeExpanded;
-        localStorage.setItem('mac-clock-expanded', shouldBeExpanded ? 'true' : 'false');
+        localStorage.setItem(getScopedStorageKey('mac-clock-expanded'), shouldBeExpanded ? 'true' : 'false');
         updateWidget();
       }
     }

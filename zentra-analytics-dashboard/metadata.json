@@ -1,0 +1,6 @@
+{
+  "name": "Zentra Analytics Dashboard",
+  "description": "Pixel-perfect, high-fidelity responsive recreation of the Zentra Analytics Overview dashboard with custom stepped funnel visualizations, interactive AI exploration panel, striped progress metrics, retention staircase, distribution dot charts, and procedural editorial insight artwork.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

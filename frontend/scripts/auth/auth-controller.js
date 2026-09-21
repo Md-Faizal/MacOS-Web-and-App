@@ -7,6 +7,12 @@ import { DialogManager } from './dialog-manager.js';
 import { LockscreenDragController } from './lockscreen-drag.js';
 import { profileManager } from './profiles.js';
 
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export class AuthController {
   constructor() {
     this.profileManager = profileManager;
@@ -71,13 +77,15 @@ export class AuthController {
     this.touchIdAutoSubmitTimer = null;
     this.answerAutoSubmitTimer = null;
 
-    this.homeTimeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+    this.homeTimeSettings = JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' };
   }
 
   initDialogManager() {
     this.dialogManager = new DialogManager({
       onPreAuthClose: () => {
         this.resetLoginForm();
+        this.syncProfile();
+        this.updateLoginHint();
         document.body.setAttribute('data-unlock-state', 'locked');
         if (this.dragController) this.dragController.resetDragVisuals();
 
@@ -447,12 +455,32 @@ export class AuthController {
       this.passwordInput.value = '';
     }
     if (this.switchUserRow) {
-      this.switchUserRow.style.display = 'none';
+      const hasSavedUsers = this.profileManager.getUsers().length > 0;
+      this.switchUserRow.style.display = hasSavedUsers ? 'flex' : 'none';
     }
     this.dialogManager.openModal(this.loginModal, this.loginIdentifierInput);
     setTimeout(() => {
       try { this.loginIdentifierInput?.focus(); } catch (e) {}
     }, 150);
+  }
+
+  handleSwitchUser() {
+    const users = this.profileManager.getUsers();
+    const isGenericLogin = this.loginIdentifierField && this.loginIdentifierField.style.display !== 'none';
+
+    if (isGenericLogin) {
+      // If currently on generic login and remembered user(s) exist, switch back to active user
+      const activeUser = this.profileManager.getActiveUser() || (users.length > 0 ? users[0] : null);
+      if (activeUser) {
+        this.openLoginModal(activeUser);
+      }
+    } else if (users.length > 1) {
+      // If multiple users exist, return to lockscreen user selection
+      this.dialogManager.closeModal(this.loginModal);
+    } else {
+      // If single user, switch to generic username/password login
+      this.openGenericLoginModal();
+    }
   }
 
   promptRemoveAccount(user) {
@@ -516,6 +544,11 @@ export class AuthController {
     if (rcPass) rcPass.value = '';
     const sAns = document.getElementById('securityAnswerInput');
     if (sAns) sAns.value = '';
+
+    if (this.switchUserRow) {
+      const hasSavedUsers = this.profileManager.getUsers().length > 0;
+      this.switchUserRow.style.display = hasSavedUsers ? 'flex' : 'none';
+    }
 
     if (this.rememberAccountStep) this.rememberAccountStep.style.display = 'block';
     if (this.rememberAccountWarningStep) this.rememberAccountWarningStep.style.display = 'none';
@@ -592,6 +625,11 @@ export class AuthController {
 
   async finishAuthenticatedLogin(data, identifier) {
     sessionStorage.setItem('macos_session_active', 'true');
+    if (data.role) sessionStorage.setItem('macos_user_role', data.role);
+    if (data.user?.id) sessionStorage.setItem('macos_user_id', data.user.id);
+    if (Array.isArray(data.permissions?.allowedApps) && data.permissions.allowedApps.length > 0) {
+      sessionStorage.setItem('macos_allowed_apps', JSON.stringify(data.permissions.allowedApps));
+    }
     const profile = await this.loadAuthenticatedProfile();
 
     if (
@@ -1568,7 +1606,7 @@ export class AuthController {
     // Switch User Handler
     this.switchUserBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.openGenericLoginModal();
+      this.handleSwitchUser();
     });
 
     // Remove Account Confirmation Modal Listeners

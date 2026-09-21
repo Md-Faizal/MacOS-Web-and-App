@@ -3,6 +3,14 @@ name: 🚀 1-Click Deploy to Ubuntu
 on:
   workflow_dispatch:
     inputs:
+      target_site:
+        description: 'Deployment target'
+        required: true
+        type: choice
+        options:
+          - 'macos'
+          - 'erp'
+        default: 'macos'
       bump_version:
         description: 'Auto-bump version before deploy?'
         required: true
@@ -41,9 +49,24 @@ jobs:
           cache: 'npm'
 
       - name: 📦 Install & Build Client
+        env:
+          TARGET_SITE: ${{ github.event.inputs.target_site || 'macos' }}
+          APP_URL: ${{ github.event.inputs.target_site == 'erp' && 'https://erp.faizal.uk' || 'https://mac.faizal.uk' }}
+          VITE_API_BASE_URL: ${{ github.event.inputs.target_site == 'erp' && 'https://erp.faizal.uk' || 'https://mac.faizal.uk' }}
         run: |
           npm ci
           npm run build
+          if [ "$TARGET_SITE" = "erp" ]; then
+            echo "VITE_API_BASE_URL=https://erp.faizal.uk" > zentra-analytics-dashboard/.env.production
+            echo "APP_URL=https://erp.faizal.uk" >> zentra-analytics-dashboard/.env.production
+            npm --prefix zentra-analytics-dashboard ci
+            npm --prefix zentra-analytics-dashboard run build
+          else
+            echo "VITE_API_BASE_URL=https://mac.faizal.uk" > zentra-analytics-dashboard/.env.production
+            echo "APP_URL=https://mac.faizal.uk" >> zentra-analytics-dashboard/.env.production
+            npm --prefix zentra-analytics-dashboard ci
+            npm --prefix zentra-analytics-dashboard run build
+          fi
 
       - name: 🔍 Syntax Validation
         run: |
@@ -77,9 +100,24 @@ jobs:
           cache: 'npm'
 
       - name: 📦 Install & Build Frontend
+        env:
+          TARGET_SITE: ${{ github.event.inputs.target_site || 'macos' }}
+          APP_URL: ${{ github.event.inputs.target_site == 'erp' && 'https://erp.faizal.uk' || 'https://mac.faizal.uk' }}
+          VITE_API_BASE_URL: ${{ github.event.inputs.target_site == 'erp' && 'https://erp.faizal.uk' || 'https://mac.faizal.uk' }}
         run: |
           npm ci
           npm run build
+          if [ "$TARGET_SITE" = "erp" ]; then
+            echo "VITE_API_BASE_URL=https://erp.faizal.uk" > zentra-analytics-dashboard/.env.production
+            echo "APP_URL=https://erp.faizal.uk" >> zentra-analytics-dashboard/.env.production
+            npm --prefix zentra-analytics-dashboard ci
+            npm --prefix zentra-analytics-dashboard run build
+          else
+            echo "VITE_API_BASE_URL=https://mac.faizal.uk" > zentra-analytics-dashboard/.env.production
+            echo "APP_URL=https://mac.faizal.uk" >> zentra-analytics-dashboard/.env.production
+            npm --prefix zentra-analytics-dashboard ci
+            npm --prefix zentra-analytics-dashboard run build
+          fi
           node --check backend/main/macos-api-server.js
           node --check server-prod.js
 
@@ -114,6 +152,7 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
           SKIP_NPM: ${{ github.event.inputs.skip_npm_install }}
+          TARGET_SITE: ${{ github.event.inputs.target_site || 'macos' }}
         run: |
           # 1. Setup SSH
           mkdir -p ~/.ssh
@@ -149,7 +188,8 @@ jobs:
 
           echo "======================================================"
           echo "🚀 1-Click Deployment Triggered"
-          echo "Target: $SSH_USER@$SSH_HOST:$TARGET_DIR"
+          echo "Target Site: $TARGET_SITE"
+          echo "Deploy Host: $SSH_USER@$SSH_HOST:$TARGET_DIR"
           echo "Timestamp: $TIMESTAMP"
           echo "======================================================"
 

@@ -4,7 +4,13 @@ import { WidgetFactory } from '../../../modules/widgets/js/widget-factory.js';
 export class DesktopManager {
   constructor() {
     this.shortcuts = [];
-    this.STORAGE_KEY = 'desktopShortcuts';
+    this.getCurrentUserId = () => {
+      const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+      return String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+    };
+    this.getScopedStorageKey = (baseKey) => `${baseKey}__user_${this.getCurrentUserId()}`;
+    this.STORAGE_KEY = this.getScopedStorageKey('desktopShortcuts');
+    this.GRID_STORAGE_KEY = this.getScopedStorageKey('desktop_show_grid');
     this.desktopArea = null;
     this.dropIndicator = null;
     
@@ -57,6 +63,12 @@ export class DesktopManager {
     await this.loadShortcuts();
     this.setupDropZone();
 
+    window.addEventListener('macos-profile-updated', () => {
+      this.STORAGE_KEY = this.getScopedStorageKey('desktopShortcuts');
+      this.GRID_STORAGE_KEY = this.getScopedStorageKey('desktop_show_grid');
+      this.loadShortcuts();
+    });
+
     // Listen for resize to re-center the grid
     window.addEventListener('resize', () => {
       this.repositionAllShortcuts();
@@ -81,7 +93,7 @@ export class DesktopManager {
     }, true); // capture phase to ensure this runs before other handlers
 
     // Honoring user preference for grid visibility (default OFF)
-    const showGridPref = localStorage.getItem('desktop_show_grid') === 'true';
+    const showGridPref = localStorage.getItem(this.getScopedStorageKey('desktop_show_grid')) === 'true';
     if (showGridPref) {
       this.toggleGrid(true);
     }
@@ -1137,6 +1149,7 @@ export class DesktopManager {
   }
 
   async saveShortcuts() {
+    this.STORAGE_KEY = this.getScopedStorageKey('desktopShortcuts');
     // Save to localStorage immediately for fast local persistence
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.shortcuts));
     
@@ -1233,7 +1246,8 @@ export class DesktopManager {
     }
 
     // Persist preference
-    localStorage.setItem('desktop_show_grid', isVisible);
+    this.GRID_STORAGE_KEY = this.getScopedStorageKey('desktop_show_grid');
+    localStorage.setItem(this.GRID_STORAGE_KEY, isVisible ? 'true' : 'false');
   }
 
   /**

@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS Settings (
   sidebar_icon_size TEXT DEFAULT 'medium',
   tint_wallpaper INTEGER DEFAULT 1,
   show_worker_badges INTEGER DEFAULT 1,
-  dock_magnification INTEGER DEFAULT 1,
+  dock_magnification INTEGER DEFAULT 0,
   dock_auto_hide INTEGER DEFAULT 0,
   dock_apps_order TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

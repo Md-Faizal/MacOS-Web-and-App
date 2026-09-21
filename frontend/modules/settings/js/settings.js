@@ -28,6 +28,12 @@ export class SettingsApp extends AppWindow {
     
     super(config);
 
+    this.getScopedStorageKey = (baseKey) => {
+      const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+      const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+      return `${baseKey}__user_${safeUserId}`;
+    };
+
     this.currentSection = 'appearance';
     
     // Sidebar-based Navigation Order
@@ -95,8 +101,8 @@ export class SettingsApp extends AppWindow {
       this.userRole = (response.ok && data.user?.role) ? data.user.role : 'owner';
       
       if (this.userRole === 'worker') {
-        // Workers only see Profile, Wallpapers, Android App
-        const allowedSections = ['profile', 'wallpaper', 'android-update'];
+        // Workers can access their profile, desktop/dock settings, wallpapers, and Android app
+        const allowedSections = ['profile', 'dock', 'wallpaper', 'android-update'];
         this.sectionsOrder = allowedSections;
         
         // Hide non-permitted sidebar items
@@ -1777,9 +1783,9 @@ export class SettingsApp extends AppWindow {
   getDefaultSettings() {
     let saved = {};
     try {
-      saved = JSON.parse(localStorage.getItem('settingsAppData') || '{}');
+      saved = JSON.parse(localStorage.getItem(this.getScopedStorageKey('settingsAppData')) || '{}');
     } catch (e) {}
-    const cachedTheme = localStorage.getItem('macos_theme');
+    const cachedTheme = localStorage.getItem(this.getScopedStorageKey('macos_theme'));
     return {
       theme: cachedTheme || saved.theme || 'auto',
       accentColor: saved.accentColor || 'blue',
@@ -1788,7 +1794,7 @@ export class SettingsApp extends AppWindow {
       liquidGlass: saved.liquidGlass || 'clear',
       'sidebar-size': saved['sidebar-size'] || 'medium',
       'tint-wallpaper': saved['tint-wallpaper'] !== undefined ? saved['tint-wallpaper'] : true,
-      'dock-magnification': saved['dock-magnification'] !== undefined ? saved['dock-magnification'] : true,
+      'dock-magnification': saved['dock-magnification'] !== undefined ? saved['dock-magnification'] : false,
       'dock-auto-hide': saved['dock-auto-hide'] !== undefined ? saved['dock-auto-hide'] : false
     };
   }
@@ -1799,9 +1805,9 @@ export class SettingsApp extends AppWindow {
       if (res.ok) {
         const data = await res.json();
         this.settings = { ...this.settings, ...data };
-        localStorage.setItem('settingsAppData', JSON.stringify(this.settings));
+        localStorage.setItem(this.getScopedStorageKey('settingsAppData'), JSON.stringify(this.settings));
         if (this.settings.theme) {
-          localStorage.setItem('macos_theme', this.settings.theme);
+          localStorage.setItem(this.getScopedStorageKey('macos_theme'), this.settings.theme);
         }
         if (data.appBarOrder && Array.isArray(data.appBarOrder)) {
           localStorage.setItem('appBarOrder', JSON.stringify(data.appBarOrder));
@@ -1829,7 +1835,7 @@ export class SettingsApp extends AppWindow {
   }
 
   applyTheme() {
-    let rawTheme = this.settings.theme || localStorage.getItem('macos_theme') || 'auto';
+    let rawTheme = this.settings.theme || localStorage.getItem(this.getScopedStorageKey('macos_theme')) || 'auto';
     let resolvedTheme = rawTheme;
     
     if (this.userRole === 'worker') {
@@ -1855,7 +1861,7 @@ export class SettingsApp extends AppWindow {
     document.body.setAttribute('data-theme', resolvedTheme);
 
     // Save active theme identifier
-    localStorage.setItem('macos_theme', rawTheme);
+    localStorage.setItem(this.getScopedStorageKey('macos_theme'), rawTheme);
 
     // Only dispatch global event if the theme actually changed
     if (themeChanged) {
@@ -1869,7 +1875,7 @@ export class SettingsApp extends AppWindow {
     if (this._themeListener) return;
     
     this._themeListener = (e) => {
-      if (this.settings.theme === 'auto' || localStorage.getItem('macos_theme') === 'auto') {
+      if (this.settings.theme === 'auto' || localStorage.getItem(this.getScopedStorageKey('macos_theme')) === 'auto') {
         this.applyTheme();
       }
     };
@@ -1880,9 +1886,9 @@ export class SettingsApp extends AppWindow {
   async saveSettings() {
     try {
       // Save locally as fallback/immediate feedback
-      localStorage.setItem('settingsAppData', JSON.stringify(this.settings));
+      localStorage.setItem(this.getScopedStorageKey('settingsAppData'), JSON.stringify(this.settings));
       if (this.settings.theme) {
-        localStorage.setItem('macos_theme', this.settings.theme);
+        localStorage.setItem(this.getScopedStorageKey('macos_theme'), this.settings.theme);
       }
       
       // Update theme immediately across document
@@ -1978,7 +1984,7 @@ export class SettingsApp extends AppWindow {
       }
 
       // Save to localStorage
-      localStorage.setItem('selectedWallpaper', JSON.stringify({
+      localStorage.setItem(this.getScopedStorageKey('selectedWallpaper'), JSON.stringify({
         path: imagePath,
         variant: variant,
         timestamp: new Date().toISOString()

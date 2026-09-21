@@ -4,6 +4,12 @@ import { getCelestialState, lerpColor } from './celestial-utils.js';
  * ClockBigViewModal - A full-screen detailed view of a specific world clock.
  * Features a large analog clock, celestial animations, and location details.
  */
+const getScopedStorageKey = (baseKey) => {
+    const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+    const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+    return `${baseKey}__user_${safeUserId}`;
+};
+
 export class ClockBigViewModal {
     constructor(options) {
         this.isLocal = options.isLocal || false;
@@ -12,7 +18,7 @@ export class ClockBigViewModal {
         this.onClose = options.onClose || (() => {});
         this.overlay = null;
         this.interval = null;
-        this.settings = this.isLocal ? (JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' }) : null;
+        this.settings = this.isLocal ? (JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' }) : null;
         
         this.createModal();
     }
@@ -235,7 +241,7 @@ export class ClockBigViewModal {
 
 
         // Weather Effects
-        const weatherData = JSON.parse(localStorage.getItem('weatherDataCache')) || {};
+        const weatherData = JSON.parse(localStorage.getItem(this.getScopedStorageKey('weatherDataCache'))) || {};
         const weatherIcon = weatherData.icon || '☀️';
         
         if (haze) haze.style.opacity = (weatherIcon.includes('☁️') || weatherIcon.includes('🌫️')) ? 0.5 : 0;

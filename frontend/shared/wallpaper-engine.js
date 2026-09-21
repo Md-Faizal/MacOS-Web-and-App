@@ -11,8 +11,9 @@
 
 class WallpaperEngine {
   constructor() {
-    this.STORAGE_KEY = 'selectedWallpaper';
-    this.PREFS_KEY = 'wallpaperPreferences';
+    this.userId = this._getCurrentUserId();
+    this.STORAGE_KEY = this._getScopedStorageKey('selectedWallpaper');
+    this.PREFS_KEY = this._getScopedStorageKey('wallpaperPreferences');
     this.CHANNEL_NAME = 'wallpaper-engine-sync';
     this.CACHE_NAME = 'macos-wallpaper-cache-v1';
 
@@ -40,6 +41,15 @@ class WallpaperEngine {
     this._setupThemeListener();
   }
 
+  _getCurrentUserId() {
+    const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+    return String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  }
+
+  _getScopedStorageKey(baseKey) {
+    return `${baseKey}__user_${this._getCurrentUserId()}`;
+  }
+
   /**
    * Initializes the engine and boots wallpaper
    */
@@ -62,7 +72,7 @@ class WallpaperEngine {
     const wpToApply = saved && saved.id !== 'golden-gate' ? saved : this.DEFAULT_WP;
     
     // Retrieve the user's selected variant, defaulting to 'auto'
-    const savedVariant = localStorage.getItem('macos_wallpaper_variant') || 'auto';
+    const savedVariant = localStorage.getItem(this._getScopedStorageKey('macos_wallpaper_variant')) || 'auto';
     
     await this.applyWallpaper(wpToApply, { immediate: true, skipSync: true, variant: savedVariant });
     this.initialized = true;
@@ -75,6 +85,8 @@ class WallpaperEngine {
   async setWallpaper(wallpaper, options = {}) {
     if (!wallpaper) return;
     this.currentWallpaper = wallpaper;
+    this.STORAGE_KEY = this._getScopedStorageKey('selectedWallpaper');
+    this.PREFS_KEY = this._getScopedStorageKey('wallpaperPreferences');
     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(wallpaper));
     await this.applyWallpaper(wallpaper, options);
   }

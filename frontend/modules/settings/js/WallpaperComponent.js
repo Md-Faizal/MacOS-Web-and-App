@@ -28,7 +28,12 @@ export class WallpaperComponent {
     this.installedWallpapers = [];
     this.marketplaceWallpapers = [];
     this.currentWallpaper = null;
-    this.currentVariant = localStorage.getItem('macos_wallpaper_variant') || 'auto';
+    this.getScopedStorageKey = (baseKey) => {
+      const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+      const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+      return `${baseKey}__user_${safeUserId}`;
+    };
+    this.currentVariant = localStorage.getItem(this.getScopedStorageKey('macos_wallpaper_variant')) || 'auto';
     this.isDropdownOpen = false;
     this.expandedSections = new Set();
     this.installingIds = new Set();
@@ -410,7 +415,7 @@ export class WallpaperComponent {
         const variant = item.dataset.variant;
         if (variant) {
           this.currentVariant = variant;
-          localStorage.setItem('macos_wallpaper_variant', variant);
+          localStorage.setItem(this.getScopedStorageKey('macos_wallpaper_variant'), variant);
           this.isDropdownOpen = false;
           menuEl.classList.add('hidden');
 

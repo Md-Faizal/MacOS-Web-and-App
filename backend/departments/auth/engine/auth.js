@@ -1007,7 +1007,18 @@ module.exports = function(db, permissionsHelper = null) {
      * Verify the current token
      */
     verify: (req, res) => {
-      res.json({ success: true, authenticated: true, user: req.user });
+      const targetUserId = req.user.userId || req.user.id;
+      const user = getUserById(targetUserId);
+      const role = user?.role || req.user.role || 'owner';
+      const permissions = permissionsHelper
+        ? permissionsHelper.getUserPermissionsSnapshot(targetUserId, role)
+        : null;
+      res.json({
+        success: true,
+        authenticated: true,
+        user: user ? publicUser(user, req.user.deviceId) : req.user,
+        permissions
+      });
     },
 
     refreshMobileSession: (req, res) => {

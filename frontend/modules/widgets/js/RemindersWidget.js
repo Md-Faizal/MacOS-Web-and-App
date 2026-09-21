@@ -1,11 +1,17 @@
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export function createRemindersWidget(id) {
   const container = document.createElement('div');
   container.className = 'mac-widget-glass mac-w-reminders';
   container.style.height = '100%';
   
-  const storageKey = `mac-widget-reminders-${id}`;
+  const storageKey = getScopedStorageKey(`mac-widget-reminders-${id}`);
   let reminders = JSON.parse(localStorage.getItem(storageKey)) || [];
-  let isExpanded = localStorage.getItem(`mac-reminders-expanded-${id}`) === 'true';
+  let isExpanded = localStorage.getItem(getScopedStorageKey(`mac-reminders-expanded-${id}`)) === 'true';
 
   const fetchReminders = async () => {
     try {
@@ -84,7 +90,7 @@ export function createRemindersWidget(id) {
       const shortcutEl = container.closest('.desktop-shortcut');
       if (!shortcutEl || !window.desktopManager) {
         isExpanded = !isExpanded;
-        localStorage.setItem(`mac-reminders-expanded-${id}`, String(isExpanded));
+        localStorage.setItem(getScopedStorageKey(`mac-reminders-expanded-${id}`), String(isExpanded));
         render();
         return;
       }
@@ -104,7 +110,7 @@ export function createRemindersWidget(id) {
 
       if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
         isExpanded = nextExpanded;
-        localStorage.setItem(`mac-reminders-expanded-${id}`, String(isExpanded));
+        localStorage.setItem(getScopedStorageKey(`mac-reminders-expanded-${id}`), String(isExpanded));
         render();
       }
     };

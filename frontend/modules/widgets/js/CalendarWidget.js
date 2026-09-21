@@ -1,12 +1,18 @@
 /**
  * CalendarWidget - Month-accurate grid view.
  */
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export function createCalendarWidget() {
   const container = document.createElement('div');
   container.className = 'mac-widget-glass mac-w-calendar';
   container.style.height = 'auto';
   
-  let timeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+  let timeSettings = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' };
 
   const getSystemDate = () => {
     let now = new Date();

@@ -219,39 +219,85 @@ const corsOrigins = (process.env.CORS_ORIGINS || '')
 
 const defaultDevOrigins = new Set([
   'http://localhost:5173',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+  'http://localhost:3002',
+  'http://127.0.0.1:3002',
+  'http://localhost:3003',
+  'http://127.0.0.1:3003',
+  'http://localhost:3004',
+  'http://127.0.0.1:3004',
+  'http://localhost:3005',
+  'http://127.0.0.1:3005',
+  'http://localhost:3006',
+  'http://127.0.0.1:3006',
+  'http://localhost:3007',
+  'http://127.0.0.1:3007',
+  'http://localhost:3008',
+  'http://127.0.0.1:3008',
+  'http://localhost:3009',
+  'http://127.0.0.1:3009',
+  'http://localhost:3010',
+  'http://127.0.0.1:3010'
 ]);
 
 const defaultProductionOrigins = new Set([
   'https://mac.faizal.uk',
-  'http://mac.faizal.uk'
+  'http://mac.faizal.uk',
+  'https://erp.faizal.uk',
+  'http://erp.faizal.uk'
 ]);
 
+function normalizeOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return null;
+  try {
+    const parsed = new URL(origin);
+    const protocol = parsed.protocol.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase();
+    const port = parsed.port ? `:${parsed.port}` : '';
+    return `${protocol}//${hostname}${port}`;
+  } catch {
+    return null;
+  }
+}
+
 function isOriginAllowed(origin) {
-  if (!origin) return true; // same-origin / curl / server-to-server
-  if (corsOrigins.length > 0) return corsOrigins.includes(origin);
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) return true; // same-origin / curl / server-to-server
+  if (corsOrigins.length > 0) return corsOrigins.includes(normalizedOrigin);
   // In dev, Vite may pick the next available port (5174+). Allow localhost/127.0.0.1 on any port.
-  if (isDev && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return true;
-  if (isDev) return defaultDevOrigins.has(origin);
-  return defaultProductionOrigins.has(origin);
+  if (isDev && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(normalizedOrigin)) return true;
+  if (isDev) return defaultDevOrigins.has(normalizedOrigin);
+  return defaultProductionOrigins.has(normalizedOrigin);
 }
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (isOriginAllowed(origin)) {
-    if (origin) res.header('Access-Control-Allow-Origin', origin);
+  const normalizedOrigin = normalizeOrigin(origin);
+  const isAllowed = normalizedOrigin ? isOriginAllowed(normalizedOrigin) : true;
+
+  if (isAllowed && normalizedOrigin) {
+    res.header('Access-Control-Allow-Origin', normalizedOrigin);
+    res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Vary', 'Origin');
   }
 
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
-  res.header('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-Requested-With, X-Client-Platform, X-App-Type');
+  res.header('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges, Content-Type, X-Request-ID');
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
   res.header('Access-Control-Max-Age', '86400');
 
+  if (req.method === 'OPTIONS') {
+    if (normalizedOrigin && !isAllowed) {
+      return res.status(403).json({ error: 'Request origin is not allowed' });
+    }
+    return res.sendStatus(204);
+  }
 
-
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
@@ -390,7 +436,18 @@ app.get('/api/admin/users', authModule.authMiddleware, adminAuth.ownerOnly, admi
 app.get('/api/admin/notifications', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getNotifications);
 app.get('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getPermissions);
 app.post('/api/admin/users/:userId/approve', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveUser);
+app.post('/api/admin/users/:userId/approve-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveDeletion);
+app.post('/api/admin/users/:userId/deletion/approve', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.approveDeletion);
+app.post('/api/admin/users/:userId/reject-deletion', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.rejectDeletion);
+app.post('/api/admin/users/:userId/deletion/reject', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.rejectDeletion);
+app.get('/api/admin/users/:userId/history', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getWorkerLifecycleHistory);
+app.get('/api/admin/worker-lifecycle', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getWorkerLifecycleHistory);
 app.post('/api/admin/users/:userId/status', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.setStatus);
+app.put('/api/admin/users/:userId/permissions', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.updateUserPermissions);
+app.delete('/api/admin/users/:userId', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.deleteUser);
+app.get('/api/admin/users/:userId/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
+app.get('/api/admin/audit', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAuditLogs);
+app.get('/api/admin/accounts-graph', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.getAccountsGraph);
 app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

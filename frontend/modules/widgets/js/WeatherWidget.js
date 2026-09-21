@@ -2,6 +2,12 @@ import { WeatherLocationModal } from './WeatherLocationModal.js';
 import { WeatherBigViewModal } from './WeatherBigViewModal.js';
 import { getWeatherConditionText, getWeatherIconByCode, getAqiInfo } from './weather-utils.js';
 
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 /**
  * WeatherWidget - Real-time animated weather card.
  */
@@ -12,11 +18,11 @@ export function createWeatherWidget() {
   
   // State
   let state = {
-    city: localStorage.getItem('weather-city') || 'London',
-    lat: localStorage.getItem('weather-lat') || 51.5074,
-    lon: localStorage.getItem('weather-lon') || -0.1278,
-    unit: localStorage.getItem('weather-unit') || 'C',
-    isExpanded: localStorage.getItem('weather-expanded') === 'true',
+    city: localStorage.getItem(getScopedStorageKey('weather-city')) || 'London',
+    lat: localStorage.getItem(getScopedStorageKey('weather-lat')) || 51.5074,
+    lon: localStorage.getItem(getScopedStorageKey('weather-lon')) || -0.1278,
+    unit: localStorage.getItem(getScopedStorageKey('weather-unit')) || 'C',
+    isExpanded: localStorage.getItem(getScopedStorageKey('weather-expanded')) === 'true',
     data: null
   };
 
@@ -40,11 +46,11 @@ export function createWeatherWidget() {
         state.isExpanded = !!data.isExpanded;
         
         // Sync back to local for faster next boot
-        localStorage.setItem('weather-city', state.city);
-        localStorage.setItem('weather-lat', state.lat);
-        localStorage.setItem('weather-lon', state.lon);
-        localStorage.setItem('weather-unit', state.unit);
-        localStorage.setItem('weather-expanded', state.isExpanded);
+        localStorage.setItem(getScopedStorageKey('weather-city'), state.city);
+        localStorage.setItem(getScopedStorageKey('weather-lat'), state.lat);
+        localStorage.setItem(getScopedStorageKey('weather-lon'), state.lon);
+        localStorage.setItem(getScopedStorageKey('weather-unit'), state.unit);
+        localStorage.setItem(getScopedStorageKey('weather-expanded'), state.isExpanded);
 
         updateWidget();
         fetchWeather();
@@ -74,9 +80,9 @@ export function createWeatherWidget() {
           state.lat = latitude;
           state.lon = longitude;
           
-          localStorage.setItem('weather-city', state.city);
-          localStorage.setItem('weather-lat', state.lat);
-          localStorage.setItem('weather-lon', state.lon);
+          localStorage.setItem(getScopedStorageKey('weather-city'), state.city);
+          localStorage.setItem(getScopedStorageKey('weather-lat'), state.lat);
+          localStorage.setItem(getScopedStorageKey('weather-lon'), state.lon);
           
           saveServerSettings();
           updateWidget();
@@ -184,9 +190,9 @@ export function createWeatherWidget() {
           state.city = loc.name;
           state.lat = loc.lat;
           state.lon = loc.lon;
-          localStorage.setItem('weather-city', state.city);
-          localStorage.setItem('weather-lat', state.lat);
-          localStorage.setItem('weather-lon', state.lon);
+          localStorage.setItem(getScopedStorageKey('weather-city'), state.city);
+          localStorage.setItem(getScopedStorageKey('weather-lat'), state.lat);
+          localStorage.setItem(getScopedStorageKey('weather-lon'), state.lon);
           saveServerSettings();
           fetchWeather();
         }
@@ -196,7 +202,7 @@ export function createWeatherWidget() {
     content.querySelector('.mac-w-weather-temp').onclick = (e) => {
       e.stopPropagation();
       state.unit = state.unit === 'C' ? 'F' : 'C';
-      localStorage.setItem('weather-unit', state.unit);
+      localStorage.setItem(getScopedStorageKey('weather-unit'), state.unit);
       saveServerSettings();
       fetchWeather();
     };
@@ -221,7 +227,7 @@ export function createWeatherWidget() {
           if (window.desktopManager.canResizeShortcut(appId, newSpanX, newSpanY)) {
             if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
               state.isExpanded = true;
-              localStorage.setItem('weather-expanded', 'true');
+              localStorage.setItem(getScopedStorageKey('weather-expanded'), 'true');
               updateWidget();
             }
           } else {
@@ -235,7 +241,7 @@ export function createWeatherWidget() {
           // Shrinking is always allowed
           if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
             state.isExpanded = false;
-            localStorage.setItem('weather-expanded', 'false');
+            localStorage.setItem(getScopedStorageKey('weather-expanded'), 'false');
             saveServerSettings();
             updateWidget();
           }
@@ -471,7 +477,7 @@ export function createWeatherWidget() {
       
       if (shouldBeExpanded !== state.isExpanded) {
         state.isExpanded = shouldBeExpanded;
-        localStorage.setItem('weather-expanded', shouldBeExpanded ? 'true' : 'false');
+        localStorage.setItem(getScopedStorageKey('weather-expanded'), shouldBeExpanded ? 'true' : 'false');
         saveServerSettings();
         
         // Re-render to show/hide forecast based on true size

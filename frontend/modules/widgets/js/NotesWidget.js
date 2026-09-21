@@ -1,16 +1,22 @@
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export function createNotesWidget(instanceId) {
   const container = document.createElement('div');
   container.className = 'mac-widget-glass mac-w-notes';
   container.style.height = '100%';
   
   // Storage keys for local fallback
-  const contentKey = `mac-widget-note-content-${instanceId}`;
-  const titleKey = `mac-widget-note-title-${instanceId}`;
+  const contentKey = getScopedStorageKey(`mac-widget-note-content-${instanceId}`);
+  const titleKey = getScopedStorageKey(`mac-widget-note-title-${instanceId}`);
 
   const state = {
     title: localStorage.getItem(titleKey) || '',
     content: localStorage.getItem(contentKey) || '',
-    isExpanded: localStorage.getItem('mac-note-expanded') === 'true'
+    isExpanded: localStorage.getItem(getScopedStorageKey('mac-note-expanded')) === 'true'
   };
 
   const updateWidget = () => {
@@ -99,7 +105,7 @@ export function createNotesWidget(instanceId) {
       const shortcutEl = container.closest('.desktop-shortcut');
       if (!shortcutEl || !window.desktopManager) {
         state.isExpanded = !state.isExpanded;
-        localStorage.setItem('mac-note-expanded', String(state.isExpanded));
+        localStorage.setItem(getScopedStorageKey('mac-note-expanded'), String(state.isExpanded));
         updateWidget();
         return;
       }
@@ -119,7 +125,7 @@ export function createNotesWidget(instanceId) {
 
       if (window.desktopManager.resizeShortcut(appId, newSpanX, newSpanY)) {
         state.isExpanded = nextExpanded;
-        localStorage.setItem('mac-note-expanded', String(state.isExpanded));
+        localStorage.setItem(getScopedStorageKey('mac-note-expanded'), String(state.isExpanded));
         updateWidget();
       }
     });

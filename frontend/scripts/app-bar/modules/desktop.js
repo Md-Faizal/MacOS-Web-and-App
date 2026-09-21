@@ -1,8 +1,16 @@
 ﻿// Desktop Shortcuts Management
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 class DesktopManager {
   constructor() {
     this.shortcuts = [];
-    this.STORAGE_KEY = 'desktopShortcuts';
+    this.getScopedStorageKey = getScopedStorageKey;
+    this.STORAGE_KEY = this.getScopedStorageKey('desktopShortcuts');
+    this.GRID_STORAGE_KEY = this.getScopedStorageKey('desktop_show_grid');
     this.desktopArea = null;
     
     // Grid settings for desktop icon alignment (smaller grid = more capacity)

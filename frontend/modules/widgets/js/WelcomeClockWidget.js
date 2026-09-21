@@ -1,6 +1,12 @@
 /**
  * WelcomeClockWidget - Ported from index.html liquid glass clock.
  */
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 export function createWelcomeClockWidget() {
   const container = document.createElement('div');
   container.className = 'mac-w-welcome-clock-standalone';
@@ -15,7 +21,7 @@ export function createWelcomeClockWidget() {
   container.appendChild(dateLabel);
   container.appendChild(timeLabel);
 
-  let timeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+  let timeSettings = JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' };
 
   const updateClock = () => {
     let now = new Date();

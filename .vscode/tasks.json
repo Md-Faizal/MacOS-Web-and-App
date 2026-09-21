@@ -51,6 +51,14 @@
 				"clear": false
 			},
 			"detail": "Pushes local commits on main branch to GitHub"
+		},
+		{
+			"label": "▶ Start Zentra Dev",
+			"type": "shell",
+			"command": "npm run dev:zentra",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
 		}
 	]
 }

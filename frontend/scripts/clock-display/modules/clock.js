@@ -2,6 +2,12 @@
 // STANDARDIZED CLOCK COMPONENT SCRIPT
 // ======================================== 
 
+const getScopedStorageKey = (baseKey) => {
+  const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+  const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+  return `${baseKey}__user_${safeUserId}`;
+};
+
 class ClockDisplay {
   constructor(elementId, options = {}) {
     this.element = document.getElementById(elementId);
@@ -19,7 +25,7 @@ class ClockDisplay {
 
   init() {
     // Load global settings
-    this.timeSettings = JSON.parse(localStorage.getItem('mac-system-time-settings')) || { mode: 'auto' };
+    this.timeSettings = JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' };
 
     // Update clock immediately
     this.updateClock();
@@ -36,8 +42,9 @@ class ClockDisplay {
 
     // Also listen for storage changes (across tabs)
     this.storageHandler = (e) => {
-      if (e.key === 'mac-system-time-settings') {
-        this.timeSettings = JSON.parse(e.newValue);
+      const scopedKey = this.getScopedStorageKey('mac-system-time-settings');
+      if (e.key === scopedKey) {
+        this.timeSettings = JSON.parse(e.newValue || '{}');
         this.updateClock();
       }
     };

@@ -17,7 +17,7 @@ module.exports = {
     };
 
     if (!hasColumn(db, 'Settings', 'dock_magnification')) {
-      db.exec('ALTER TABLE Settings ADD COLUMN dock_magnification INTEGER DEFAULT 1');
+      db.exec('ALTER TABLE Settings ADD COLUMN dock_magnification INTEGER DEFAULT 0');
     }
 
     if (!hasColumn(db, 'Settings', 'dock_auto_hide')) {
