@@ -16,7 +16,7 @@
   flex-direction: column;
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  z-index: 10000;
+  z-index: 2147483647;
   animation: slideDown 0.3s ease-out;
   margin: 0;
   padding: 0;
@@ -50,7 +50,7 @@
   max-width: 800px !important;
   max-height: 600px !important;
   transform: translate(-50%, -50%);
-  z-index: 10001 !important;
+  z-index: 2147483647 !important;
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 

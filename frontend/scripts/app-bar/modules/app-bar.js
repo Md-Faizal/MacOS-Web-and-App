@@ -1045,6 +1045,12 @@ function initializeDock() {
     if (settingsAppObj) {
       const settingsApp = document.createElement('a');
       settingsApp.className = 'dock-item';
+      if (openApps.has('settings')) {
+        settingsApp.classList.add('active');
+        if (minimizedApps.has('settings')) {
+          settingsApp.classList.add('minimized');
+        }
+      }
       settingsApp.setAttribute('data-app-name', settingsAppObj.name);
       settingsApp.href = '#';
       settingsApp.draggable = false; // Settings icon is non-draggable
@@ -1052,6 +1058,7 @@ function initializeDock() {
         <div class="dock-icon">
           <img src="${settingsAppObj.icon}" alt="${settingsAppObj.alt}" style="width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)); pointer-events: none;">
         </div>
+        <div class="dock-indicator"></div>
         <div class="dock-label">${settingsAppObj.name}</div>
       `;
       settingsApp.addEventListener('click', (e) => {

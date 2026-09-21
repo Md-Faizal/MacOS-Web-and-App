@@ -359,7 +359,7 @@
   box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   position: absolute;
-  bottom: 2px;
+  bottom: -4px;
   left: 50%;
   transform: translateX(-50%);
   opacity: 0;

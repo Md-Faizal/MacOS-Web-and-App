@@ -41,6 +41,7 @@ body.screensaver-active #contactsAppContainer,
 body.screensaver-active #launchpadAppContainer,
 body.screensaver-active #productAppContainer,
 body.screensaver-active #aiVisionAppContainer,
+body.screensaver-active #aiChatWidget,
 body.screensaver-active #wpModalPortal,
 body.screensaver-active .search-panel,
 body.screensaver-active .quick-settings-menu,
@@ -48,8 +49,9 @@ body.screensaver-active .system-indicator,
 body.screensaver-active .worker-audit-overlay,
 body.screensaver-active .status-indicator {
   opacity: 0 !important;
+  visibility: hidden !important;
   pointer-events: none !important;
-  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 /* Smooth transition for normal state when waking up */
