@@ -453,9 +453,17 @@ function initializeDock() {
     } catch (e) { return false; }
   }
 
+  let dockRevealAnimationTimer = null;
+
   function revealDock() {
     if (!dockWrapper) return;
     dockWrapper.classList.remove('dock-hidden');
+    dockWrapper.classList.remove('dock-hiding');
+    dockWrapper.classList.add('dock-revealing');
+    clearTimeout(dockRevealAnimationTimer);
+    dockRevealAnimationTimer = setTimeout(() => {
+      dockWrapper.classList.remove('dock-revealing');
+    }, 420);
     if (edgeRevealTimer) {
       clearTimeout(edgeRevealTimer);
       edgeRevealTimer = null;
@@ -470,6 +478,8 @@ function initializeDock() {
     if (isMouseInDockZone) return;
     if (dockContainer.querySelector('.dragging') || isMouseDown) return;
 
+    dockWrapper.classList.remove('dock-revealing');
+    dockWrapper.classList.add('dock-hiding');
     dockWrapper.classList.add('dock-hidden');
     hideDockTooltip();
     resetDockMagnification();
