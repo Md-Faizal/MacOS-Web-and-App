@@ -463,6 +463,7 @@ function initializeDock() {
     clearTimeout(dockRevealAnimationTimer);
     dockRevealAnimationTimer = setTimeout(() => {
       dockWrapper.classList.remove('dock-revealing');
+      dockWrapper.style.transform = '';
     }, 420);
     if (edgeRevealTimer) {
       clearTimeout(edgeRevealTimer);
@@ -479,8 +480,13 @@ function initializeDock() {
     if (dockContainer.querySelector('.dragging') || isMouseDown) return;
 
     dockWrapper.classList.remove('dock-revealing');
+    dockWrapper.classList.remove('dock-hiding');
     dockWrapper.classList.add('dock-hiding');
     dockWrapper.classList.add('dock-hidden');
+    dockWrapper.style.transform = 'translate3d(-50%, 0, 0)';
+    requestAnimationFrame(() => {
+      dockWrapper.style.transform = 'translate3d(-50%, calc(100% + 120px), 0)';
+    });
     hideDockTooltip();
     resetDockMagnification();
     if (dockHideTimer) {

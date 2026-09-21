@@ -57,36 +57,19 @@
 
 /* Auto-hide: slide the whole container smoothly off the bottom of the screen (flying down to disappear, flying up to appear) */
 .dock-container.dock-hidden {
-  transform: translate3d(-50%, calc(100% + 120px), 0);
+  transform: translate3d(-50%, calc(100% + 120px), 0) !important;
   pointer-events: none !important;
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .dock-container.dock-revealing {
-  animation: dockRevealUp 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform: translate3d(-50%, 0, 0) !important;
+  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .dock-container.dock-hiding {
-  transform: translate3d(-50%, calc(100% + 120px), 0);
-  animation: dockHideDown 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-@keyframes dockRevealUp {
-  0% {
-    transform: translate3d(-50%, calc(100% + 120px), 0);
-  }
-  100% {
-    transform: translate3d(-50%, 0, 0);
-  }
-}
-
-@keyframes dockHideDown {
-  0% {
-    transform: translate3d(-50%, 0, 0);
-  }
-  100% {
-    transform: translate3d(-50%, calc(100% + 120px), 0);
-  }
+  transform: translate3d(-50%, calc(100% + 120px), 0) !important;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .dock-container.dock-hidden * {
