@@ -23,9 +23,19 @@ class ClockDisplay {
     this.init();
   }
 
+  getScopedStorageKey(baseKey) {
+    const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
+    const safeUserId = String(userId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+    return `${baseKey}__user_${safeUserId}`;
+  }
+
   init() {
     // Load global settings
-    this.timeSettings = JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' };
+    try {
+      this.timeSettings = JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings')) || '{}') || { mode: 'auto' };
+    } catch (e) {
+      this.timeSettings = { mode: 'auto' };
+    }
 
     // Update clock immediately
     this.updateClock();
