@@ -65,7 +65,26 @@ fi
 echo "📍 Current Active Slot: $CURRENT_ACTIVE"
 echo "🎯 Deploying to Slot:   $TARGET_SLOT (Port: $TARGET_PORT)"
 
-# 2.5 Ensure all required host directories exist with open permissions before container mount
+# 2.5 Ensure target port is free before spin-up, otherwise an old stale container or orphaned process can block deploys
+PORT_BOUND=false
+if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${TARGET_PORT}$|\[::\]:${TARGET_PORT}$"; then
+    PORT_BOUND=true
+fi
+
+if [ "$PORT_BOUND" = true ]; then
+    echo "⚠️ Port 127.0.0.1:$TARGET_PORT is already bound. Clearing stale Docker slot state and checking whether it is a dead container..."
+    docker compose -f "$COMPOSE_FILE" stop "macos-server-$TARGET_SLOT" 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
+    docker rm -f "macos-server-$TARGET_SLOT" 2>/dev/null || true
+    sleep 2
+    if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${TARGET_PORT}$|\[::\]:${TARGET_PORT}$"; then
+        echo "❌ ERROR: port 127.0.0.1:$TARGET_PORT is still occupied by a live process. Aborting deployment to avoid overwriting an active service."
+        ss -lntp | grep -E ":${TARGET_PORT} " || true
+        exit 1
+    fi
+fi
+
+# 2.6 Ensure all required host directories exist with open permissions before container mount
 echo "📁 Ensuring host data and storage directories exist..."
 mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
     storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive

@@ -225,22 +225,38 @@ jobs:
             ./ production:"$TARGET_DIR/"
 
           # 5. Remote preflight: clear stale blue/green port locks before Docker starts
-          echo "🩹 Step 2.5: Clearing stale Docker port bindings before blue/green deployment..."
+          echo "🩹 Step 2.5: Checking for stale binds before blue/green deployment..."
           ssh production bash -s << 'REMOTE_PREFLIGHT'
           set -e
+
+          check_port_health() {
+            local port="$1"
+            curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1
+          }
+
           for port in 3001 3004; do
-            if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:${port}$|\\[::\\]:${port}$"; then
-              echo "Port ${port} is still bound. Removing stale Docker slot containers to avoid the GitHub Action bind failure."
+            if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:${port}$|\\[::\\]:${port}$|0\\.0\\.0\\.0:${port}$"; then
+              echo "Port ${port} is currently occupied. Checking whether it is a healthy live app before doing any cleanup..."
+              if check_port_health "$port"; then
+                echo "Port ${port} is already serving a healthy app; leaving it alone to avoid unnecessary downtime."
+                continue
+              fi
+
+              echo "Port ${port} is occupied but unhealthy. Cleaning stale Docker slot containers to avoid the GitHub Action bind failure."
               docker rm -f macos-server-blue macos-server-green 2>/dev/null || true
               sleep 2
               break
             fi
           done
 
-          if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:3004$|\\[::\\]:3004$"; then
-            echo "ERROR: port 3004 is still occupied after cleanup. Another live process is holding the green slot."
-            ss -lntp | grep ':3004 ' || true
-            exit 1
+          if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:3004$|\\[::\\]:3004$|0\\.0\\.0\\.0:3004$"; then
+            if check_port_health 3004; then
+              echo "INFO: port 3004 is healthy and still active. Deployment will continue without removing the live slot."
+            else
+              echo "ERROR: port 3004 is still occupied after cleanup and is not healthy. Another live process is holding the green slot."
+              ss -lntp | grep ':3004 ' || true
+              exit 1
+            fi
           fi
           REMOTE_PREFLIGHT
 
