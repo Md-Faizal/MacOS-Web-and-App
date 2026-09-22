@@ -1,0 +1,159 @@
+name: 🎯 Deploy — Zentra Dashboard
+
+# ──────────────────────────────────────────────────────────────
+# Triggers:
+#   • Auto: push to main touching zentra-analytics-dashboard/**
+#   • Manual: workflow_dispatch with dry-run option
+#   • Called: workflow_call from deploy-all.yml
+#
+# ✅ No Docker restart needed — Zentra dist is volume-mounted
+#    into the existing backend containers. Rsync the new dist
+#    and nginx serves it immediately (same pattern as MacOS frontend).
+# ──────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'zentra-analytics-dashboard/**'
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry Run (build + verify without deploying)'
+        required: true
+        type: boolean
+        default: false
+
+  workflow_call:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+    secrets:
+      SSH_HOST: { required: true }
+      SSH_USER: { required: true }
+      SSH_KEY:  { required: true }
+
+jobs:
+  build-and-deploy:
+    name: 🎯 Build & Deploy Zentra
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: zentra-analytics-dashboard/package-lock.json
+
+      - name: 📦 Install Zentra Dependencies
+        run: npm ci --prefix zentra-analytics-dashboard
+
+      - name: 🔍 TypeScript Check
+        run: npm run lint --prefix zentra-analytics-dashboard
+
+      - name: 🏗️ Build Zentra Dashboard
+        env:
+          VITE_API_BASE_URL: https://erp.faizal.uk
+          APP_URL: https://erp.faizal.uk
+        run: |
+          echo "VITE_API_BASE_URL=https://erp.faizal.uk" > zentra-analytics-dashboard/.env.production
+          echo "APP_URL=https://erp.faizal.uk" >> zentra-analytics-dashboard/.env.production
+          npm run build --prefix zentra-analytics-dashboard
+          echo "✅ Zentra built — $(du -sh zentra-analytics-dashboard/dist | cut -f1) dist"
+
+      - name: 🔍 Check Secrets Configuration
+        if: ${{ !inputs.dry_run }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+        run: |
+          ERRORS=0
+          [ -z "$SSH_HOST" ] && echo "❌ SSH_HOST is missing!" && ERRORS=$((ERRORS+1))
+          [ -z "$SSH_USER" ] && echo "❌ SSH_USER is missing!" && ERRORS=$((ERRORS+1))
+          [ -z "$SSH_KEY"  ] && echo "❌ SSH_KEY is missing!"  && ERRORS=$((ERRORS+1))
+          [ $ERRORS -gt 0 ] && exit 1
+          echo "✅ All deployment secrets present."
+
+      - name: 🔍 Dry Run — Build verified, deploy skipped
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "🔍 DRY RUN: Zentra build passed. No files deployed."
+          ls -lh zentra-analytics-dashboard/dist/
+          exit 0
+
+      - name: 🔌 Setup SSH
+        if: ${{ !inputs.dry_run }}
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+          if echo "$SSH_KEY" | grep -q "^LS0t"; then
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+          elif echo "$SSH_KEY" | grep -q "BEGIN"; then
+            echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          else
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key 2>/dev/null || echo "$SSH_KEY" > ~/.ssh/deploy_key
+          fi
+          chmod 600 ~/.ssh/deploy_key
+
+          cat <<'SSHEOF' > ~/.ssh/config
+          Host production
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          SSHEOF
+          chmod 600 ~/.ssh/config
+
+      - name: 📦 Rsync Zentra dist to VM
+        if: ${{ !inputs.dry_run }}
+        run: |
+          TARGET_DIR="/home/ubuntu/MacOS-Production"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+          echo "======================================================"
+          echo "🎯 Zentra Dashboard Deployment"
+          echo "   Host : ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+          echo "   Path : $TARGET_DIR/zentra-analytics-dashboard/dist/"
+          echo "   Time : $TIMESTAMP"
+          echo "======================================================"
+
+          # Ensure target directory exists on VM
+          ssh production "mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist"
+
+          # Rsync ONLY the built dist — no Docker restart needed.
+          # The backend containers volume-mount this path directly.
+          echo "📤 Syncing zentra-analytics-dashboard/dist/ to VM..."
+          rsync -avz --delete \
+            zentra-analytics-dashboard/dist/ \
+            production:"$TARGET_DIR/zentra-analytics-dashboard/dist/"
+
+          echo "✅ Zentra dist deployed — no container restart required."
+          echo "   Backend picks up new files immediately via volume mount."
+
+      - name: ✅ Smoke Test — erp.faizal.uk
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo "⏳ Waiting 5s for files to settle..."
+          sleep 5
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://erp.faizal.uk/" || echo "000")
+          echo "erp.faizal.uk/ → HTTP $HTTP"
+          if [ "$HTTP" != "200" ]; then
+            echo "❌ Smoke test FAILED (expected 200, got $HTTP)"
+            echo "Check: is the erp.faizal.uk nginx vhost active on the VM?"
+            echo "Run on VM: sudo ln -s /etc/nginx/sites-available/erp.faizal.uk /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+            exit 1
+          fi
+          echo "✅ erp.faizal.uk is live and serving Zentra!"

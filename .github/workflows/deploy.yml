@@ -1,10 +1,20 @@
-name: 🚀 1-Click Deploy to Ubuntu
+# ⚠️  DEPRECATED — Use the new split workflows instead:
+#
+#   deploy-backend.yml → Backend + MacOS Frontend (auto-triggers on push)
+#   deploy-zentra.yml  → Zentra Dashboard only   (auto-triggers on push)
+#   deploy-all.yml     → Full-stack manual deploy (all components at once)
+#   android-deploy.yml → Android APK release      (unchanged)
+#
+# This file is kept only for historical reference and will be removed
+# in a future cleanup. Do not trigger it manually.
+
+name: ⚠️ [DEPRECATED] 1-Click Deploy (use deploy-backend / deploy-zentra / deploy-all)
 
 on:
   workflow_dispatch:
     inputs:
       target_site:
-        description: 'Deployment target'
+        description: '[DEPRECATED] Use deploy-backend.yml or deploy-all.yml instead'
         required: true
         type: choice
         options:

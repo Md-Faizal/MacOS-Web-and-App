@@ -1,0 +1,61 @@
+name: 🌐 Deploy — Full Stack
+
+# ──────────────────────────────────────────────────────────────
+# Manual full-stack deploy button.
+# Use this for major releases that touch both the backend
+# and Zentra dashboard at once.
+#
+# For day-to-day work, let path-based auto-triggers handle it:
+#   backend/** changes → deploy-backend.yml fires automatically
+#   zentra/**  changes → deploy-zentra.yml fires automatically
+# ──────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+    inputs:
+      components:
+        description: 'Which components to deploy'
+        required: true
+        type: choice
+        options:
+          - 'all'
+          - 'backend-only'
+          - 'zentra-only'
+        default: 'all'
+      bump_version:
+        description: 'Auto-bump backend version? (ignored for zentra-only)'
+        required: true
+        type: choice
+        options: ['none', 'patch', 'minor']
+        default: 'none'
+      dry_run:
+        description: 'Dry Run (verify builds without deploying anything)'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Backend + MacOS Frontend ──────────────────────────────────
+  deploy-backend:
+    name: 🚀 Backend & MacOS Frontend
+    if: ${{ github.event.inputs.components != 'zentra-only' }}
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      bump_version: ${{ github.event.inputs.bump_version }}
+      dry_run:      ${{ github.event.inputs.dry_run == 'true' }}
+      skip_npm_install: false
+    secrets: inherit
+
+  # ── Zentra Dashboard ──────────────────────────────────────────
+  # Runs independently (no 'needs: deploy-backend') so both can
+  # deploy in parallel — they use separate resources (backend
+  # touches Docker, Zentra only rsyncs a static dist folder).
+  deploy-zentra:
+    name: 🎯 Zentra Dashboard
+    if: ${{ github.event.inputs.components != 'backend-only' }}
+    uses: ./.github/workflows/deploy-zentra.yml
+    with:
+      dry_run: ${{ github.event.inputs.dry_run == 'true' }}
+    secrets: inherit

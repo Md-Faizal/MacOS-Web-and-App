@@ -1,0 +1,266 @@
+name: 🚀 Deploy — Backend & MacOS Frontend
+
+# ──────────────────────────────────────────────────────────────
+# Triggers:
+#   • Auto: push to main touching backend, frontend, or Docker files
+#   • Manual: workflow_dispatch with optional version bump + dry-run
+#   • Called: workflow_call from deploy-all.yml
+# ──────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'shared/**'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'server-prod.js'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+
+  workflow_dispatch:
+    inputs:
+      bump_version:
+        description: 'Auto-bump version before deploy?'
+        required: true
+        type: choice
+        options: ['none', 'patch', 'minor']
+        default: 'none'
+      dry_run:
+        description: 'Dry Run (backup + verify without deploying)'
+        required: true
+        type: boolean
+        default: false
+      skip_npm_install:
+        description: 'Skip npm install (faster if packages unchanged)'
+        required: true
+        type: boolean
+        default: false
+
+  workflow_call:
+    inputs:
+      bump_version:
+        type: string
+        default: 'none'
+      dry_run:
+        type: boolean
+        default: false
+      skip_npm_install:
+        type: boolean
+        default: false
+    secrets:
+      SSH_HOST: { required: true }
+      SSH_USER: { required: true }
+      SSH_KEY:  { required: true }
+
+permissions:
+  contents: write
+
+jobs:
+  pre-flight:
+    name: 🛡️ Pre-Flight Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install & Build MacOS Frontend
+        if: ${{ !inputs.skip_npm_install }}
+        env:
+          VITE_API_BASE_URL: https://mac.faizal.uk
+          APP_URL: https://mac.faizal.uk
+        run: |
+          npm ci
+          npm run build
+
+      - name: 🔍 Syntax Validation
+        run: |
+          node --check backend/main/macos-api-server.js
+          node --check server-prod.js
+          node --check tools/healthcheck.mjs
+
+  deploy:
+    name: 🚀 Deploy to Production VM
+    needs: pre-flight
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Auto-Bump Version & Git Tag
+        if: ${{ inputs.bump_version != 'none' && !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
+          npm version ${{ inputs.bump_version }} --force -m "chore(release): %s"
+          git push origin main --follow-tags
+          echo "✅ Version bumped to $(node -p "require('./package.json').version") and tag pushed!"
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install & Build MacOS Frontend
+        if: ${{ !inputs.skip_npm_install }}
+        env:
+          VITE_API_BASE_URL: https://mac.faizal.uk
+          APP_URL: https://mac.faizal.uk
+        run: |
+          npm ci
+          npm run build
+
+      - name: 🔍 Check Secrets Configuration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+        run: |
+          ERRORS=0
+          [ -z "$SSH_HOST" ] && echo "❌ SSH_HOST is missing!" && ERRORS=$((ERRORS+1))
+          [ -z "$SSH_USER" ] && echo "❌ SSH_USER is missing!" && ERRORS=$((ERRORS+1))
+          [ -z "$SSH_KEY"  ] && echo "❌ SSH_KEY is missing!"  && ERRORS=$((ERRORS+1))
+          [ $ERRORS -gt 0 ] && exit 1
+          echo "✅ All deployment secrets present."
+
+      - name: 🔌 Setup SSH & Deploy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+          DRY_RUN:  ${{ inputs.dry_run }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+          if echo "$SSH_KEY" | grep -q "^LS0t"; then
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+          elif echo "$SSH_KEY" | grep -q "BEGIN"; then
+            echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          else
+            echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key 2>/dev/null || echo "$SSH_KEY" > ~/.ssh/deploy_key
+          fi
+          chmod 600 ~/.ssh/deploy_key
+
+          cat <<'SSHEOF' > ~/.ssh/config
+          Host production
+            HostName ${{ secrets.SSH_HOST }}
+            User ${{ secrets.SSH_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+          SSHEOF
+          chmod 600 ~/.ssh/config
+
+          TARGET_DIR="/home/ubuntu/MacOS-Production"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+          echo "======================================================"
+          echo "🚀 Backend + MacOS Frontend Deployment"
+          echo "   Host : $SSH_USER@$SSH_HOST"
+          echo "   Path : $TARGET_DIR"
+          echo "   Time : $TIMESTAMP"
+          echo "======================================================"
+
+          echo "🛡️ Step 1: Remote SQLite snapshot & directory permissions..."
+          ssh production "
+            mkdir -p $TARGET_DIR/database/backups \
+                     $TARGET_DIR/storage/wallpapers/builtin \
+                     $TARGET_DIR/storage/wallpapers/marketplace \
+                     $TARGET_DIR/storage/wallpapers/custom \
+                     $TARGET_DIR/storage/temp_uploads \
+                     $TARGET_DIR/storage/android-updates/archive
+            chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true
+            if [ -f $TARGET_DIR/database/MacOS.db ]; then
+              cp $TARGET_DIR/database/MacOS.db \
+                 $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db
+              echo '✅ Database backed up'
+            else
+              echo '⚠️  No database file found to backup.'
+            fi
+          "
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔍 DRY RUN complete — no production files modified."
+            exit 0
+          fi
+
+          echo "📦 Step 2: Syncing files to VM..."
+          rsync -avz --delete \
+            --exclude='/database/*.db*' \
+            --exclude='/database/backups' \
+            --exclude='/backups' \
+            --exclude='/backend/uploads' \
+            --exclude='/CloudStorage' \
+            --exclude='/Wallpapers' \
+            --exclude='/storage/wallpapers/custom' \
+            --exclude='/storage/temp_uploads' \
+            --exclude='/storage/android-updates' \
+            --exclude='/logs' \
+            --exclude='/tmp' \
+            --exclude='/.env*' \
+            --exclude='/.git' \
+            --exclude='/android' \
+            --exclude='/node_modules' \
+            --exclude='/zentra-analytics-dashboard/node_modules' \
+            --exclude='/zentra-analytics-dashboard/dist' \
+            ./ production:"$TARGET_DIR/"
+
+          echo "🩹 Step 2.5: Checking for stale port binds..."
+          ssh production bash -s <<'PREFLIGHT'
+          set -e
+          check_port_health() {
+            curl -fsS "http://127.0.0.1:${1}/api/health" >/dev/null 2>&1
+          }
+          for port in 3001 3004; do
+            if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${port}$|\[::\]:${port}$|0\.0\.0\.0:${port}$"; then
+              if check_port_health "$port"; then
+                echo "Port ${port}: healthy, leaving alone."
+                continue
+              fi
+              echo "Port ${port}: unhealthy — clearing stale containers..."
+              docker rm -f macos-server-blue macos-server-green 2>/dev/null || true
+              sleep 2
+              break
+            fi
+          done
+          PREFLIGHT
+
+          echo "🔄 Step 3: Blue-Green Docker deployment..."
+          ssh production bash -s <<'REMOTE'
+          set -e
+          cd /home/ubuntu/MacOS-Production
+          chmod +x deploy/ubuntu/deploy-docker.sh
+          ./deploy/ubuntu/deploy-docker.sh
+          echo "======================================================"
+          echo "🎉 Backend + MacOS Frontend — Deployment Complete!"
+          echo "======================================================"
+          REMOTE
+
+      - name: ✅ Smoke Test — mac.faizal.uk
+        run: |
+          echo "⏳ Waiting 20s for nginx to settle..."
+          sleep 20
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://mac.faizal.uk/api/health" || echo "000")
+          echo "mac.faizal.uk/api/health → HTTP $HTTP"
+          if [ "$HTTP" != "200" ]; then
+            echo "❌ Smoke test FAILED (expected 200, got $HTTP)"
+            exit 1
+          fi
+          echo "✅ mac.faizal.uk is live and healthy!"

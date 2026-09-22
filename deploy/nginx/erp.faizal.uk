@@ -1,0 +1,76 @@
+# erp.faizal.uk — Zentra Analytics Dashboard
+#
+# Architecture:
+#   ALL requests (static + API) proxy to the same macos_backend upstream
+#   (the existing blue/green Docker backend that serves mac.faizal.uk too).
+#
+#   The backend uses req.hostname to differentiate:
+#     erp.faizal.uk  → serves zentra-analytics-dashboard/dist/ (React SPA)
+#     mac.faizal.uk  → serves dist/ + frontend/ (MacOS OS-based app)
+#
+# upstream macos_backend is defined in /etc/nginx/conf.d/upstream_macos.conf
+# and managed atomically by deploy/ubuntu/deploy-docker.sh on each deployment.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name erp.faizal.uk;
+
+    # -------------------------------------------------------
+    # 1. Health probe — hits backend /api/health directly
+    # -------------------------------------------------------
+    location = /healthz {
+        access_log off;
+        proxy_pass http://macos_backend/api/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 5s;
+        proxy_next_upstream error timeout http_502 http_503;
+    }
+
+    # -------------------------------------------------------
+    # 2. API routes → shared MacOS backend (blue/green)
+    #    Same upstream as mac.faizal.uk — one backend, two frontends
+    # -------------------------------------------------------
+    location /api {
+        proxy_pass http://macos_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 3s;
+        proxy_send_timeout 15s;
+        proxy_read_timeout 60s;
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+    }
+
+    # -------------------------------------------------------
+    # 3. Everything else → backend serves Zentra SPA
+    #    Backend detects Host: erp.faizal.uk and serves
+    #    zentra-analytics-dashboard/dist/index.html (React SPA fallback)
+    # -------------------------------------------------------
+    location / {
+        proxy_pass http://macos_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 30s;
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+    }
+
+    client_max_body_size 50M;
+}

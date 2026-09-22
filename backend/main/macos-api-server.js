@@ -194,6 +194,13 @@ const zentraDistPath = path.join(__dirname, '../../zentra-analytics-dashboard/di
 const zentraSourcePath = path.join(__dirname, '../../zentra-analytics-dashboard');
 const zentraIndexPath = path.join(zentraDistPath, 'index.html');
 
+// Hostname that identifies Zentra Analytics Dashboard (non-OS frontend).
+// Configurable via ZENTRA_HOSTNAME env var for staging/custom domains.
+// mac.faizal.uk → MacOS OS-based frontend
+// erp.faizal.uk → Zentra React SPA
+const ZENTRA_HOSTNAME = (process.env.ZENTRA_HOSTNAME || 'erp.faizal.uk').toLowerCase();
+const isZentraHost = (req) => (req.hostname || '').toLowerCase() === ZENTRA_HOSTNAME;
+
 app.get(['/zentra', '/zentra/', '/zentra/index.html'], (req, res) => {
   if (isDev || process.env.ZENTRA_DEV_PROXY === 'true') {
     return zentraDevProxy.web(req, res, { target: zentraDevTarget });
@@ -251,6 +258,32 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Hostname-Based Frontend Dispatcher ─────────────────────────────────────
+// erp.faizal.uk → Zentra Analytics Dashboard (non-OS React SPA)
+// mac.faizal.uk → MacOS Frontend (OS-based Vanilla JS app)
+//
+// Both share the same backend and all /api/* routes.
+// Pattern mirrors MacOS: dist built on CI, rsync'd to VM, volume-mounted
+// into Docker — frontend updates go live without a container restart.
+app.use((req, res, next) => {
+  if (!isZentraHost(req)) return next();
+  if (req.path.startsWith('/api/')) return next(); // always let API routes through
+
+  const fs = require('fs');
+  // Serve Zentra's built static assets; on miss, SPA-fallback to index.html
+  express.static(zentraDistPath, staticOptions)(req, res, () => {
+    if (fs.existsSync(zentraIndexPath)) {
+      return res.sendFile(zentraIndexPath);
+    }
+    // Zentra dist not deployed yet
+    res.status(503).send(
+      'Zentra dashboard not built. Trigger the <strong>deploy-zentra</strong> GitHub Action.'
+    );
+  });
+});
+
+// ─── MacOS Frontend Static Serving ───────────────────────────────────────────
+// Only reached for non-Zentra hosts (mac.faizal.uk, localhost, etc.)
 app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend/public'), staticOptions));
