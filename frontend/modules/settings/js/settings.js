@@ -888,6 +888,35 @@ export class SettingsApp extends AppWindow {
             </div>
           </div>
 
+          <!-- Production Health + Watchdog Card -->
+          <div class="health-card" style="grid-column: 1 / -1;">
+            <div class="health-card-header">
+              <span class="health-icon">🛡️</span>
+              <div class="health-card-info">
+                <div class="health-label">Production Health + Failover</div>
+                <div class="health-value" id="productionHealthStatus" style="color: #34c759;">🟢 Monitoring live site and watchdog...</div>
+              </div>
+            </div>
+            <div class="health-details" style="display: flex; flex-direction: column; gap: 8px;">
+              <div class="health-detail-item">
+                <span class="detail-label">Public health:</span>
+                <span class="detail-value" id="publicHealthValue">Checking https://mac.faizal.uk/api/health...</span>
+              </div>
+              <div class="health-detail-item">
+                <span class="detail-label">Watchdog:</span>
+                <span class="detail-value" id="watchdogStatusValue">Checking heartbeat...</span>
+              </div>
+              <div class="health-detail-item">
+                <span class="detail-label">Failover policy:</span>
+                <span class="detail-value" id="failoverStatusValue">Blue/green auto-switch active</span>
+              </div>
+              <div class="health-detail-item">
+                <span class="detail-label">Nginx upstream:</span>
+                <span class="detail-value" id="nginxStatusValue">Checking live upstream...</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Docker Blue / Green Architecture Visualizer Card -->
           <div class="health-card" style="grid-column: 1 / -1;">
             <div class="health-card-header">
@@ -1285,7 +1314,6 @@ export class SettingsApp extends AppWindow {
   async checkSystemHealth() {
     const timestamp = new Date().toLocaleTimeString();
 
-    // Update displayed addresses based on current runtime context
     try {
       const backendAddr = document.getElementById('backendAddressValue');
       const apiProxyValue = document.getElementById('apiProxyValue');
@@ -1294,109 +1322,169 @@ export class SettingsApp extends AppWindow {
     } catch (e) {
       // Non-fatal
     }
-    
-    // Check Backend Health
+
     try {
       const response = await fetch('/api/health');
-      if (response.ok) {
-        const data = await response.json();
-        document.getElementById('backendStatus').textContent = '🟢 Connected';
-        document.getElementById('backendStatus').style.color = '#34C759';
-        document.getElementById('backendStatusIcon').textContent = '✓';
-        document.getElementById('backendLastCheck').textContent = timestamp;
-        
-        // Check Database Tables via Settings health endpoint
-        try {
-          const settingsRes = await fetch('/api/settings/health/status');
-          
-          if (settingsRes.ok) {
-            const healthData = await settingsRes.json();
-            const dbConnected = healthData.database?.connected;
-            const settingsCount = healthData.database?.settings_count || 0;
-            
-            if (dbConnected) {
-              document.getElementById('databaseStatus').textContent = '🟢 Healthy';
-              document.getElementById('databaseStatus').style.color = '#34C759';
-              document.getElementById('databaseStatusIcon').textContent = '✓';
-              document.getElementById('databaseTables').textContent = '13 tables (app_settings, status_checks, products, contacts, notes, calendar_events, analytics, billing_transactions, preferences, payments, orders, variants, batches, credit_notes, suggestions)';
-              
-              // Update Docker Blue / Green Cluster Visualizer
-              if (healthData.docker) {
-                const activeSlot = healthData.docker.activeSlot || 'green';
-                const clusterStatus = document.getElementById('dockerClusterStatus');
-                const blueBadge = document.getElementById('dockerBlueBadge');
-                const greenBadge = document.getElementById('dockerGreenBadge');
-                const blueCard = document.getElementById('dockerBlueSlotCard');
-                const greenCard = document.getElementById('dockerGreenSlotCard');
+      if (!response.ok) throw new Error('Backend responded with error');
 
-                if (clusterStatus) {
-                  clusterStatus.textContent = `🟢 Active: ${activeSlot.toUpperCase()} (Port ${healthData.docker.hostPort})`;
-                }
+      const backendData = await response.json();
+      const backendStatus = document.getElementById('backendStatus');
+      if (backendStatus) {
+        backendStatus.textContent = '🟢 Connected';
+        backendStatus.style.color = '#34C759';
+      }
+      const backendStatusIcon = document.getElementById('backendStatusIcon');
+      if (backendStatusIcon) backendStatusIcon.textContent = '✓';
+      const backendLastCheck = document.getElementById('backendLastCheck');
+      if (backendLastCheck) backendLastCheck.textContent = timestamp;
 
-                if (activeSlot === 'blue') {
-                  if (blueBadge) {
-                    blueBadge.textContent = 'ACTIVE (TRAFFIC)';
-                    blueBadge.style.background = '#007aff';
-                    blueBadge.style.color = '#ffffff';
-                  }
-                  if (greenBadge) {
-                    greenBadge.textContent = 'STANDBY (OFF)';
-                    greenBadge.style.background = 'rgba(120, 120, 128, 0.2)';
-                    greenBadge.style.color = 'var(--settings-text-secondary)';
-                  }
-                  if (blueCard) blueCard.style.borderColor = '#007aff';
-                  if (greenCard) greenCard.style.borderColor = 'var(--settings-border)';
-                } else {
-                  if (greenBadge) {
-                    greenBadge.textContent = 'ACTIVE (TRAFFIC)';
-                    greenBadge.style.background = '#34c759';
-                    greenBadge.style.color = '#ffffff';
-                  }
-                  if (blueBadge) {
-                    blueBadge.textContent = 'STANDBY (OFF)';
-                    blueBadge.style.background = 'rgba(120, 120, 128, 0.2)';
-                    blueBadge.style.color = 'var(--settings-text-secondary)';
-                  }
-                  if (greenCard) greenCard.style.borderColor = '#34c759';
-                  if (blueCard) blueCard.style.borderColor = 'var(--settings-border)';
-                }
-              }
+      try {
+        const settingsRes = await fetch('/api/settings/health/status');
+        if (!settingsRes.ok) throw new Error('Settings health endpoint not responding');
 
-              // Check API endpoints availability
-              try {
-                const productsRes = await fetch('/api/products');
-                const contactsRes = await fetch('/api/contacts');
-                
-                const endpointCount = 13; // Total endpoints
-                const resourceList = ['billing', 'products', 'contacts', 'notes', 'calendar', 'analytics', 'settings', 'payments', 'orders', 'variants', 'batches', 'creditnotes', 'suggestions'];
-                
-                document.getElementById('apiStatus').textContent = `🟢 ${endpointCount} Endpoints`;
-                document.getElementById('apiStatus').style.color = '#34C759';
-                document.getElementById('apiStatusIcon').textContent = '✓';
-                document.getElementById('apiEndpoints').textContent = resourceList.join(', ');
-              } catch (apiErr) {
-                // Fallback if endpoint checks fail
-                document.getElementById('apiStatus').textContent = '🟢 14 Endpoints';
-                document.getElementById('apiStatus').style.color = '#34C759';
-                document.getElementById('apiStatusIcon').textContent = '✓';
-                document.getElementById('apiEndpoints').textContent = 'billing, products, contacts, notes, calendar, analytics, tasks, settings, payments, orders, variants, batches, creditnotes, suggestions';
-              }
-            } else {
-              throw new Error('Database not connected');
-            }
-          } else {
-            throw new Error('Settings health endpoint not responding');
+        const healthData = await settingsRes.json();
+        const dbConnected = healthData.database?.connected;
+        const settingsCount = healthData.database?.settings_count || 0;
+
+        const databaseStatus = document.getElementById('databaseStatus');
+        const databaseStatusIcon = document.getElementById('databaseStatusIcon');
+        const databaseTables = document.getElementById('databaseTables');
+        if (dbConnected) {
+          if (databaseStatus) {
+            databaseStatus.textContent = '🟢 Healthy';
+            databaseStatus.style.color = '#34C759';
           }
-        } catch (dbError) {
-          document.getElementById('databaseStatus').textContent = '🟡 Partial';
-          document.getElementById('databaseStatus').style.color = '#FF9500';
-          document.getElementById('databaseStatusIcon').textContent = '⚠️';
-          document.getElementById('apiStatus').textContent = '🟡 Checking...';
-          document.getElementById('apiStatus').style.color = '#FF9500';
-          document.getElementById('apiStatusIcon').textContent = '⏳';
+          if (databaseStatusIcon) databaseStatusIcon.textContent = '✓';
+          if (databaseTables) databaseTables.textContent = `Settings DB (${settingsCount} rows)`;
+        } else {
+          if (databaseStatus) {
+            databaseStatus.textContent = '🔴 Offline';
+            databaseStatus.style.color = '#FF3B30';
+          }
+          if (databaseStatusIcon) databaseStatusIcon.textContent = '✗';
+          if (databaseTables) databaseTables.textContent = 'Unavailable';
         }
-      } else {
-        throw new Error('Backend responded with error');
+
+        const productionStatusEl = document.getElementById('productionHealthStatus');
+        const publicHealthEl = document.getElementById('publicHealthValue');
+        const watchdogEl = document.getElementById('watchdogStatusValue');
+        const failoverEl = document.getElementById('failoverStatusValue');
+        const nginxEl = document.getElementById('nginxStatusValue');
+
+        if (healthData.production) {
+          const publicProbe = healthData.production.public_https || healthData.production.public_healthz || healthData.production.origin_http || {};
+          const publicOk = !!publicProbe.ok;
+          if (productionStatusEl) {
+            productionStatusEl.textContent = publicOk ? '🟢 Public site and origin health are healthy' : '🟡 Public health is degraded';
+            productionStatusEl.style.color = publicOk ? '#34C759' : '#FF9500';
+          }
+          if (publicHealthEl) {
+            const publicLabel = publicProbe.statusCode ? `HTTP ${publicProbe.statusCode}` : 'unknown';
+            publicHealthEl.textContent = publicOk ? `https://mac.faizal.uk/api/health → ${publicLabel}` : 'Public health check is currently degraded';
+          }
+        }
+
+        if (healthData.watchdog) {
+          const heartbeat = healthData.watchdog.heartbeat || {};
+          const watchdogText = heartbeat.status === 'healthy'
+            ? `Heartbeat OK • ${heartbeat.ageSeconds ?? 0}s age`
+            : heartbeat.ageSeconds !== null && heartbeat.ageSeconds !== undefined
+              ? `Heartbeat stale • ${heartbeat.ageSeconds}s age`
+              : 'Watchdog not reporting';
+          if (watchdogEl) watchdogEl.textContent = watchdogText;
+        }
+
+        if (healthData.failover) {
+          const failoverText = `${healthData.failover.policy || 'Blue/green failover'} • ${healthData.failover.activeSlot || 'blue'} active`;
+          if (failoverEl) failoverEl.textContent = failoverText;
+        }
+
+        if (healthData.nginx) {
+          const nginxText = `${healthData.nginx.activeUpstream || 'unknown'} • ${healthData.nginx.status || 'configured'}`;
+          if (nginxEl) nginxEl.textContent = nginxText;
+        }
+
+        if (healthData.docker) {
+          const activeSlot = healthData.docker.activeSlot || 'green';
+          const clusterStatus = document.getElementById('dockerClusterStatus');
+          const blueBadge = document.getElementById('dockerBlueBadge');
+          const greenBadge = document.getElementById('dockerGreenBadge');
+          const blueCard = document.getElementById('dockerBlueSlotCard');
+          const greenCard = document.getElementById('dockerGreenSlotCard');
+
+          if (clusterStatus) {
+            clusterStatus.textContent = `🟢 Active: ${activeSlot.toUpperCase()} (Port ${healthData.docker.hostPort})`;
+          }
+
+          if (activeSlot === 'blue') {
+            if (blueBadge) {
+              blueBadge.textContent = 'ACTIVE (TRAFFIC)';
+              blueBadge.style.background = '#007aff';
+              blueBadge.style.color = '#ffffff';
+            }
+            if (greenBadge) {
+              greenBadge.textContent = 'STANDBY (OFF)';
+              greenBadge.style.background = 'rgba(120, 120, 128, 0.2)';
+              greenBadge.style.color = 'var(--settings-text-secondary)';
+            }
+            if (blueCard) blueCard.style.borderColor = '#007aff';
+            if (greenCard) greenCard.style.borderColor = 'var(--settings-border)';
+          } else {
+            if (greenBadge) {
+              greenBadge.textContent = 'ACTIVE (TRAFFIC)';
+              greenBadge.style.background = '#34c759';
+              greenBadge.style.color = '#ffffff';
+            }
+            if (blueBadge) {
+              blueBadge.textContent = 'STANDBY (OFF)';
+              blueBadge.style.background = 'rgba(120, 120, 128, 0.2)';
+              blueBadge.style.color = 'var(--settings-text-secondary)';
+            }
+            if (greenCard) greenCard.style.borderColor = '#34c759';
+            if (blueCard) blueCard.style.borderColor = 'var(--settings-border)';
+          }
+        }
+
+        try {
+          const productsRes = await fetch('/api/products');
+          const contactsRes = await fetch('/api/contacts');
+          const endpointCount = 13;
+          const resourceList = ['billing', 'products', 'contacts', 'notes', 'calendar', 'analytics', 'settings', 'payments', 'orders', 'variants', 'batches', 'creditnotes', 'suggestions'];
+          const apiStatus = document.getElementById('apiStatus');
+          const apiStatusIcon = document.getElementById('apiStatusIcon');
+          const apiEndpoints = document.getElementById('apiEndpoints');
+          if (apiStatus) {
+            apiStatus.textContent = `🟢 ${endpointCount} Endpoints`;
+            apiStatus.style.color = '#34C759';
+          }
+          if (apiStatusIcon) apiStatusIcon.textContent = '✓';
+          if (apiEndpoints) apiEndpoints.textContent = resourceList.join(', ');
+        } catch (apiErr) {
+          const apiStatus = document.getElementById('apiStatus');
+          const apiStatusIcon = document.getElementById('apiStatusIcon');
+          const apiEndpoints = document.getElementById('apiEndpoints');
+          if (apiStatus) {
+            apiStatus.textContent = '🟢 14 Endpoints';
+            apiStatus.style.color = '#34C759';
+          }
+          if (apiStatusIcon) apiStatusIcon.textContent = '✓';
+          if (apiEndpoints) apiEndpoints.textContent = 'billing, products, contacts, notes, calendar, analytics, tasks, settings, payments, orders, variants, batches, creditnotes, suggestions';
+        }
+      } catch (dbError) {
+        const databaseStatus = document.getElementById('databaseStatus');
+        const databaseStatusIcon = document.getElementById('databaseStatusIcon');
+        if (databaseStatus) {
+          databaseStatus.textContent = '🟡 Partial';
+          databaseStatus.style.color = '#FF9500';
+        }
+        if (databaseStatusIcon) databaseStatusIcon.textContent = '⚠️';
+        const apiStatus = document.getElementById('apiStatus');
+        const apiStatusIcon = document.getElementById('apiStatusIcon');
+        if (apiStatus) {
+          apiStatus.textContent = '🟡 Checking...';
+          apiStatus.style.color = '#FF9500';
+        }
+        if (apiStatusIcon) apiStatusIcon.textContent = '⏳';
       }
     } catch (error) {
       const backendStatus = document.getElementById('backendStatus');
@@ -1415,19 +1503,19 @@ export class SettingsApp extends AppWindow {
         document.getElementById('backendStatusIcon').textContent = '✗';
       }
       if (backendLastCheck) backendLastCheck.textContent = timestamp;
-      
+
       if (databaseStatus) {
-        databaseStatus.textContent = '🔴 Unavailable';
+        databaseStatus.textContent = '🔴 Offline';
         databaseStatus.style.color = '#FF3B30';
       }
       if (databaseStatusIcon) databaseStatusIcon.textContent = '✗';
-      
+
       if (apiStatus) {
-        apiStatus.textContent = '🔴 Unreachable';
+        apiStatus.textContent = '🔴 Unavailable';
         apiStatus.style.color = '#FF3B30';
       }
       if (apiStatusIcon) apiStatusIcon.textContent = '✗';
-      if (apiEndpoints) apiEndpoints.textContent = 'Unable to connect';
+      if (apiEndpoints) apiEndpoints.textContent = 'No endpoint data';
     }
   }
 

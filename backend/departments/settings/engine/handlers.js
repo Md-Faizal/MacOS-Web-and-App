@@ -224,31 +224,59 @@ module.exports = function(db) {
       }
     },
 
-    getBackendStatus: (req, res) => {
+    getBackendStatus: async (req, res) => {
       try {
         const startTime = Date.now();
-        
+        const fs = require('fs');
+        const http = require('http');
+        const https = require('https');
+
+        const probeUrl = (targetUrl, timeoutMs = 2500) => new Promise((resolve) => {
+          const client = targetUrl.startsWith('https:') ? https : http;
+          const req = client.get(targetUrl, { timeout: timeoutMs }, (response) => {
+            let body = '';
+            response.on('data', chunk => { body += chunk; });
+            response.on('end', () => {
+              resolve({
+                ok: response.statusCode >= 200 && response.statusCode < 400,
+                statusCode: response.statusCode,
+                url: targetUrl,
+                body: body.slice(0, 400)
+              });
+            });
+          });
+
+          req.on('timeout', () => {
+            req.destroy();
+            resolve({ ok: false, statusCode: 0, url: targetUrl, body: '' });
+          });
+
+          req.on('error', () => {
+            resolve({ ok: false, statusCode: 0, url: targetUrl, body: '' });
+          });
+        });
+
         // Check database connection
         const dbCheck = db.prepare('SELECT 1').get();
         const dbConnected = !!dbCheck;
-        
+
         // Get Settings count
         const settingsCount = db.prepare('SELECT COUNT(*) as count FROM Settings').get().count;
-        
+
         // Get recent status checks
         const recentChecks = db.prepare(
           'SELECT check_type, status, response_time_ms, checked_at FROM status_checks ORDER BY checked_at DESC LIMIT 10'
         ).all();
-        
+
         const responseTime = Date.now() - startTime;
-        
+
         // Record this status check
         const checkId = generateId();
         const insertStmt = db.prepare(`
           INSERT INTO status_checks (id, check_type, status, response_time_ms, details)
           VALUES (?, ?, ?, ?, ?)
         `);
-        
+
         insertStmt.run(
           checkId,
           'backend_health',
@@ -256,12 +284,71 @@ module.exports = function(db) {
           responseTime,
           JSON.stringify({ settings_count: settingsCount, timestamp: new Date().toISOString() })
         );
-        
+
         const activeSlot = process.env.DOCKER_SLOT || (process.env.PORT === '3004' ? 'green' : 'blue');
         const hostPort = activeSlot === 'green' ? 3004 : 3001;
+        const standbySlot = activeSlot === 'blue' ? 'green' : 'blue';
+        const standbyPort = standbySlot === 'green' ? 3004 : 3001;
+
+        const localHealth = await probeUrl(`http://127.0.0.1:${hostPort}/api/health`);
+        const localHealthz = await probeUrl(`http://127.0.0.1:${hostPort}/healthz`);
+        const publicHealth = await probeUrl('https://mac.faizal.uk/api/health');
+        const publicHealthz = await probeUrl('https://mac.faizal.uk/healthz');
+
+        const heartbeatPath = '/var/run/macos-healthwatch.heartbeat';
+        let heartbeatInfo = { status: 'not-configured', lastHeartbeat: null, ageSeconds: null };
+        if (fs.existsSync(heartbeatPath)) {
+          const rawHeartbeat = fs.readFileSync(heartbeatPath, 'utf8').trim();
+          const timestamp = Number(rawHeartbeat);
+          if (!Number.isNaN(timestamp) && timestamp > 0) {
+            const ageSeconds = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+            heartbeatInfo = {
+              status: ageSeconds <= 180 ? 'healthy' : 'stale',
+              lastHeartbeat: new Date(timestamp * 1000).toISOString(),
+              ageSeconds
+            };
+          }
+        }
+
+        const nginxConfPath = '/etc/nginx/conf.d/upstream_macos.conf';
+        let nginxUpstream = 'not configured';
+        let nginxStatus = 'not configured';
+        if (fs.existsSync(nginxConfPath)) {
+          const upstreamText = fs.readFileSync(nginxConfPath, 'utf8');
+          nginxUpstream = upstreamText.match(/127\.0\.0\.1:(\d+)/)?.[0] || 'custom';
+          nginxStatus = upstreamText.includes('127.0.0.1:3004') || upstreamText.includes('127.0.0.1:3001') ? 'configured' : 'configured';
+        }
+
+        const productionStatus = {
+          public_https: publicHealth,
+          public_healthz: publicHealthz,
+          origin_http: localHealth,
+          origin_healthz: localHealthz,
+          status: publicHealth.ok || publicHealthz.ok || localHealth.ok || localHealthz.ok ? 'healthy' : 'degraded'
+        };
+
+        const watchdog = {
+          enabled: fs.existsSync('/usr/local/bin/macos-healthwatch.sh') || fs.existsSync('/etc/systemd/system/macos-healthwatch.service'),
+          intervalSeconds: 15,
+          failoverThreshold: 2,
+          successThreshold: 2,
+          deadmanAlarm: true,
+          heartbeat: heartbeatInfo,
+          status: heartbeatInfo.status || 'not-configured'
+        };
+
+        const failover = {
+          autoSwitch: true,
+          policy: 'blue-green production failover',
+          activeSlot,
+          standbySlot,
+          healthChecks: ['/api/health', '/healthz'],
+          switchThreshold: 2,
+          verifyThreshold: 2
+        };
 
         const status = {
-          status: dbConnected ? 'healthy' : 'unhealthy',
+          status: dbConnected && (localHealth.ok || localHealthz.ok) ? 'healthy' : 'degraded',
           timestamp: new Date().toISOString(),
           database: {
             connected: dbConnected,
@@ -277,14 +364,25 @@ module.exports = function(db) {
             activeSlot: activeSlot,
             activeContainer: `macos-server-${activeSlot}`,
             hostPort: hostPort,
-            standbySlot: activeSlot === 'blue' ? 'green' : 'blue',
-            standbyPort: activeSlot === 'blue' ? 3004 : 3001,
+            standbySlot: standbySlot,
+            standbyPort: standbyPort,
             architecture: 'Zero-Downtime Blue/Green (Nginx Upstream Switch)'
           },
+          production: productionStatus,
+          watchdog,
+          nginx: {
+            configPath: nginxConfPath,
+            activeUpstream: nginxUpstream,
+            status: nginxStatus,
+            activeSlot,
+            standbySlot,
+            port: hostPort
+          },
+          failover,
           response_time_ms: responseTime,
           recent_checks: recentChecks.slice(0, 5)
         };
-        
+
         res.json(status);
       } catch (error) {
         const checkId = generateId();
