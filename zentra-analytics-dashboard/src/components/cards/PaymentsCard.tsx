@@ -9,7 +9,7 @@ export const PaymentsCard: React.FC = () => {
 
   return (
     <div
-      className="w-full h-full bg-white rounded-[24px] border border-black/[0.04] p-5 sm:p-6 flex flex-col justify-between gap-3 relative shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+      className="soft-card relative flex h-full min-h-[300px] w-full flex-col justify-between gap-3 overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(252,252,250,0.94))] p-4 shadow-[0_22px_48px_-30px_rgba(17,17,17,0.22)] sm:min-h-[500px] sm:p-6"
       id="card-payments"
     >
       {/* Card Header */}
@@ -21,17 +21,15 @@ export const PaymentsCard: React.FC = () => {
       </div>
 
       {/* Main Funnel Visualization */}
-      <div className="w-full">
+      <div className="w-full min-h-[180px] flex-1 sm:min-h-0">
         <PaymentsFunnelChart
           onSelectStage={(stage) => setSelectedStage(stage)}
-          selectedStageId={selectedStage?.id || 'successful'}
+          selectedStageId={selectedStage?.id}
         />
       </div>
 
-      {/* AI Exploration Panel at bottom */}
-      <div className="w-full mt-auto">
-        <ExplorePanel />
-      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-28 bg-gradient-to-t from-white via-white/80 to-transparent" aria-hidden="true" />
+      <ExplorePanel />
     </div>
   );
 };

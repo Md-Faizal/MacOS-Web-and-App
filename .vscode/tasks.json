@@ -2,11 +2,11 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "▶ Start Local Dev (Frontend & Backend)",
+			"label": "▶ Start MacOS Frontend + Backend",
 			"type": "npm",
 			"script": "dev:local",
 			"problemMatcher": [],
-			"detail": "concurrently \"npm run backend\" \"npm run dev\""
+			"detail": "Runs the main MacOS web frontend and the shared backend together"
 		},
 		{
 			"label": "🏷️ Bump Version (Patch) & Push Tags",
@@ -53,12 +53,22 @@
 			"detail": "Pushes local commits on main branch to GitHub"
 		},
 		{
-			"label": "▶ Start Zentra Dev",
+			"label": "▶ Start Zentra Frontend + Backend",
 			"type": "shell",
 			"command": "npm run dev:zentra",
 			"isBackground": true,
 			"problemMatcher": [],
-			"group": "build"
+			"group": "build",
+			"detail": "Runs the Zentra dashboard plus the shared MacOS backend"
+		},
+		{
+			"label": "▶ Start All 3: MacOS + Zentra + Backend",
+			"type": "shell",
+			"command": "concurrently \"npm run backend\" \"npm run dev -- --host 0.0.0.0 --port 5173\" \"npm --prefix zentra-analytics-dashboard run dev -- --host 0.0.0.0 --port 3000\"",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build",
+			"detail": "Starts the shared backend, the main MacOS interface, and the Zentra alternative frontend together"
 		}
 	]
 }

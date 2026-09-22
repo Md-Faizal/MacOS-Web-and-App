@@ -42,9 +42,9 @@ export const OverflowMenu: React.FC<OverflowMenuProps> = ({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         aria-label={`Options for ${cardTitle}`}
-        className="w-8 h-8 rounded-full bg-white hover:bg-black/[0.02] border border-black/[0.08] flex items-center justify-center text-[#555555] hover:text-[#111111] transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] active:scale-95 cursor-pointer"
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.08] bg-white/85 text-[#555555] shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all hover:bg-white hover:text-[#111111] active:scale-95 cursor-pointer sm:h-9 sm:w-9"
       >
-        <MoreHorizontal className="w-4 h-4 text-[#555555]" />
+        <MoreHorizontal className="h-4 w-4 text-[#555555]" />
       </button>
 
       {isOpen && (

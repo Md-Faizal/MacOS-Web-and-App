@@ -107,13 +107,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
 
   return (
     <div className="min-h-screen w-full bg-[#ecece9] text-[#111111] flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-[1280px] grid overflow-hidden rounded-[32px] border border-black/10 bg-[#f5f4f1] shadow-[0_28px_80px_rgba(17,17,17,0.12)] lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="relative hidden overflow-hidden border-r border-black/10 bg-[radial-gradient(circle_at_top_left,_rgba(82,121,255,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(17,17,17,0.08),_transparent_30%),linear-gradient(135deg,#f3f4f1_0%,#e7ebea_100%)] p-10 lg:flex lg:flex-col lg:justify-between">
-          <div className="absolute inset-0 opacity-70" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.35), rgba(255,255,255,0.02))' }} />
+      <div className="w-full max-w-[1280px] grid overflow-hidden rounded-[32px] border border-black/10 bg-[#f5f4f1] shadow-[0_28px_80px_rgba(17,17,17,0.12)] lg:grid-cols-[1.18fr_0.82fr]">
+        <div className="relative hidden overflow-hidden border-r border-black/10 bg-[radial-gradient(circle_at_top_left,_rgba(255,128,0,0.12),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(32,97,255,0.12),_transparent_28%),linear-gradient(135deg,#f3f3f0_0%,#e7efe9_40%,#edf1f4_100%)] p-10 lg:flex lg:flex-col lg:justify-between">
+          <div className="absolute inset-0 opacity-70" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.28), rgba(255,255,255,0.02))' }} />
           <div className="relative z-10">
             <div className="mb-8 flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-black/10 bg-white shadow-[0_10px_22px_rgba(17,17,17,0.08)]">
-                <Sparkles className="h-5 w-5 text-[#1d5cff]" />
+                <Sparkles className="h-5 w-5 text-[#ff8000]" />
               </div>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#686868]">Industrial platform</div>
@@ -122,7 +122,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
             </div>
 
             <div className="space-y-5 pt-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-[#4d4d4d] shadow-[0_8px_18px_rgba(0,0,0,0.04)]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#d9e4dd] bg-white/80 px-3 py-1.5 text-[11px] font-medium text-[#4d4d4d] shadow-[0_8px_18px_rgba(0,0,0,0.04)]">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
                 Secure business operations
               </div>
@@ -151,7 +151,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => 
           </div>
         </div>
 
-        <div className="flex items-center justify-center p-6 sm:p-8 lg:p-10">
+        <div className="flex items-center justify-center p-6 sm:p-8 lg:p-9">
           <div className="w-full max-w-[460px]">
             <div className="mb-5 flex items-center justify-between">
               <div>

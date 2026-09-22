@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const httpProxy = require('http-proxy');
 
 // Load environment variables from common dotenv convention:
 // - .env
@@ -126,30 +127,6 @@ app.use((req, res, next) => {
 
 const wallpaperRouter = departments.wallpaperContent.create().router;
 
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '1mb', extended: true }));
-app.use(cookieParser());
-
-app.use((req, res, next) => {
-  const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
-  if (!req.cookies?.csrf_token) {
-    res.cookie('csrf_token', csrfToken, {
-      httpOnly: false,
-      secure: isProd || isVM || req.protocol === 'https',
-      sameSite: 'Strict',
-      maxAge: 12 * 60 * 60 * 1000,
-      path: '/'
-    });
-  }
-
-  const hasBrowserSession = !!req.cookies?.auth_session;
-  const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
-    return res.status(403).json({ error: 'CSRF validation failed' });
-  }
-  next();
-});
-
 // MIME type map for common file types
 const mimeTypes = {
   '.png': 'image/png',
@@ -190,6 +167,89 @@ const staticOptions = {
     }
   }
 };
+
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
+app.use(cookieParser());
+
+const zentraDevTarget = process.env.ZENTRA_DEV_TARGET || 'http://127.0.0.1:3000';
+const zentraDevProxy = httpProxy.createProxyServer({
+  target: zentraDevTarget,
+  changeOrigin: true,
+  ws: true,
+  xfwd: true,
+});
+
+zentraDevProxy.on('error', (err, req, res) => {
+  console.warn('[Zentra Proxy] failed to reach dev server:', err && err.message ? err.message : err);
+  if (res && !res.headersSent) {
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+  }
+  if (res) {
+    res.end(JSON.stringify({ error: 'Zentra dev server unavailable' }));
+  }
+});
+
+const zentraDistPath = path.join(__dirname, '../../zentra-analytics-dashboard/dist');
+const zentraSourcePath = path.join(__dirname, '../../zentra-analytics-dashboard');
+const zentraIndexPath = path.join(zentraDistPath, 'index.html');
+
+app.get(['/zentra', '/zentra/', '/zentra/index.html'], (req, res) => {
+  if (isDev || process.env.ZENTRA_DEV_PROXY === 'true') {
+    return zentraDevProxy.web(req, res, { target: zentraDevTarget });
+  }
+
+  if (require('fs').existsSync(zentraIndexPath)) {
+    return res.sendFile(zentraIndexPath);
+  }
+
+  const fallbackPath = path.join(zentraSourcePath, 'index.html');
+  if (require('fs').existsSync(fallbackPath)) {
+    return res.sendFile(fallbackPath);
+  }
+
+  return res.status(404).send('Zentra dashboard not built yet. Run npm run build:zentra or start the Zentra dev server.');
+});
+
+app.use('/zentra', (req, res, next) => {
+  if (isDev || process.env.ZENTRA_DEV_PROXY === 'true') {
+    return zentraDevProxy.web(req, res, { target: zentraDevTarget });
+  }
+  next();
+});
+
+app.use('/zentra', express.static(zentraDistPath, staticOptions));
+app.use('/zentra', express.static(zentraSourcePath, staticOptions));
+app.get('/zentra/*', (req, res) => {
+  if (require('fs').existsSync(zentraIndexPath)) {
+    return res.sendFile(zentraIndexPath);
+  }
+  const fallbackPath = path.join(zentraSourcePath, 'index.html');
+  if (require('fs').existsSync(fallbackPath)) {
+    return res.sendFile(fallbackPath);
+  }
+  return res.status(404).send('Zentra dashboard not built yet. Run npm run build:zentra or start the Zentra dev server.');
+});
+
+app.use((req, res, next) => {
+  const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
+  if (!req.cookies?.csrf_token) {
+    res.cookie('csrf_token', csrfToken, {
+      httpOnly: false,
+      secure: isProd || isVM || req.protocol === 'https',
+      sameSite: 'Strict',
+      maxAge: 12 * 60 * 60 * 1000,
+      path: '/'
+    });
+  }
+
+  const hasBrowserSession = !!req.cookies?.auth_session;
+  const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
+    return res.status(403).json({ error: 'CSRF validation failed' });
+  }
+  next();
+});
 
 app.use(express.static(path.join(__dirname, '../..'), staticOptions));
 app.use(express.static(path.join(__dirname, '../../frontend'), staticOptions));

@@ -14,8 +14,8 @@ export const PaymentsFunnelChart: React.FC<PaymentsFunnelChartProps> = ({
   const [hoveredStageId, setHoveredStageId] = useState<string | null>(null);
 
   const stages = PAYMENT_STAGES;
-  const activeId = hoveredStageId || selectedStageId;
-  const activeStage = stages.find((s) => s.id === activeId) || stages[2]; // Default to successful (3rd stage)
+  const activeId = hoveredStageId || selectedStageId || null;
+  const activeStage = activeId ? stages.find((s) => s.id === activeId) || null : null;
 
   // Chart coordinates
   const width = 880;
@@ -49,10 +49,9 @@ export const PaymentsFunnelChart: React.FC<PaymentsFunnelChartProps> = ({
   return (
     <div className="w-full relative select-none" id="payments-funnel-container">
       {/* Top stage metrics row (5 columns) */}
-      <div className="grid grid-cols-5 gap-2 pl-11 pr-3 pt-0.5 pb-2 relative z-10">
+      <div className="relative z-10 grid grid-cols-5 gap-1.5 pb-2 pl-8 pr-2 pt-0.5 sm:gap-2 sm:pl-10 sm:pr-3">
         {stages.map((stage) => {
           const isSelected = stage.id === activeId;
-          const isDefaultSolid = stage.id === 'successful';
 
           return (
             <div
@@ -60,25 +59,24 @@ export const PaymentsFunnelChart: React.FC<PaymentsFunnelChartProps> = ({
               onClick={() => onSelectStage && onSelectStage(stage)}
               onMouseEnter={() => setHoveredStageId(stage.id)}
               onMouseLeave={() => setHoveredStageId(null)}
-              className="cursor-pointer transition-all duration-150 group text-left relative"
+              className="group relative cursor-pointer text-left transition-all duration-150"
             >
-              <div className={`text-[12.5px] font-normal leading-tight truncate ${
-                isDefaultSolid ? 'text-[#111111] font-medium' : 'text-[#737373]'
+              <div className={`truncate text-[10px] font-normal leading-tight sm:text-[12.5px] ${
+                isSelected ? 'font-medium text-[#111111]' : 'text-[#737373]'
               }`}>
                 {stage.label}
               </div>
-              <div className={`text-[23px] sm:text-[25px] tracking-[-0.035em] leading-tight mt-0.5 ${
-                isDefaultSolid ? 'font-[600] text-[#111111]' : 'font-[500] text-[#222222]'
+              <div className={`mt-0.5 text-[16px] leading-tight tracking-[-0.035em] sm:text-[23px] ${
+                isSelected ? 'font-[600] text-[#111111]' : 'font-[500] text-[#222222]'
               }`}>
                 {stage.displayValue}
               </div>
 
-              {/* 3D Capsule Step Pill Cap underneath metric */}
               <div className="mt-1.5 flex items-center">
-                {isDefaultSolid ? (
-                  <div className="w-8 h-[5px] rounded-full bg-[#2563EB] shadow-[0_0_8px_rgba(37,99,235,0.6)]" />
+                {isSelected ? (
+                  <div className="h-[5px] w-8 rounded-full bg-[#2563EB] shadow-[0_0_8px_rgba(37,99,235,0.6)]" />
                 ) : (
-                  <div className="w-8 h-[5px] rounded-full bg-white border border-[#2563EB]/40 shadow-2xs group-hover:border-[#2563EB]/80 transition-colors" />
+                  <div className="h-[5px] w-8 rounded-full border border-[#2563EB]/30 bg-white transition-colors group-hover:border-[#2563EB]/80" />
                 )}
               </div>
             </div>
@@ -87,11 +85,11 @@ export const PaymentsFunnelChart: React.FC<PaymentsFunnelChartProps> = ({
       </div>
 
       {/* SVG 3D Stepped Funnel Visualization */}
-      <div className="w-full overflow-hidden relative mt-1">
+      <div className="relative mt-1 w-full overflow-hidden">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-auto overflow-visible block"
-          preserveAspectRatio="none"
+          className="block h-auto w-full overflow-visible"
+          preserveAspectRatio="xMidYMid meet"
         >
           <defs>
             {/* Diagonal striped SVG pattern for 3D front faces */}
@@ -363,7 +361,7 @@ export const PaymentsFunnelChart: React.FC<PaymentsFunnelChartProps> = ({
           <div
             className="absolute z-30 pointer-events-none transition-all duration-150 ease-out"
             style={{
-              left: `${((paddingLeft + (stages.findIndex((s) => s.id === activeStage.id) + 0.8) * colWidth) / width) * 100}%`,
+              left: `${Math.min(94, Math.max(8, ((paddingLeft + (stages.findIndex((s) => s.id === activeStage.id) + 0.8) * colWidth) / width) * 100))}%`,
               top: '46%',
               transform: 'translate(-50%, -100%)',
             }}

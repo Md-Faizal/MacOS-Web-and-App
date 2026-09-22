@@ -85,7 +85,7 @@ export const RetentionCard: React.FC = () => {
 
   return (
     <div
-      className="w-full h-full bg-white rounded-[24px] border border-black/[0.04] p-6 sm:p-7 flex flex-col justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)] min-h-[380px]"
+      className="soft-card w-full h-full rounded-[28px] p-6 sm:p-7 flex flex-col justify-between min-h-[380px]"
       id="card-retention"
     >
       {/* Header */}

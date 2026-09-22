@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Calendar, ChevronDown, Plus, Link2, Check } from 'lucide-react';
 
 interface PageHeadingProps {
@@ -17,6 +17,7 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
   const [showDropdown2, setShowDropdown2] = useState(false);
   const [showGranularityDropdown, setShowGranularityDropdown] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const dragState = useRef<{ startX: number; startScrollLeft: number } | null>(null);
 
   const handleCopyLink = () => {
     navigator.clipboard?.writeText?.(window.location.href);
@@ -35,11 +36,40 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
 
   const granularityOptions = ['Hourly', 'Daily', 'Weekly', 'Monthly'];
 
+  const handleToolbarPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+
+    const target = event.target as HTMLElement | null;
+    if (target && target.closest('button')) return;
+
+    const container = event.currentTarget;
+    dragState.current = {
+      startX: event.clientX,
+      startScrollLeft: container.scrollLeft,
+    };
+    container.setPointerCapture(event.pointerId);
+    container.style.cursor = 'grabbing';
+    container.style.userSelect = 'none';
+  };
+
+  const handleToolbarPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current || event.pointerType !== 'mouse') return;
+    const container = event.currentTarget;
+    const delta = event.clientX - dragState.current.startX;
+    container.scrollLeft = dragState.current.startScrollLeft - delta;
+  };
+
+  const handleToolbarPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current || event.pointerType !== 'mouse') return;
+    dragState.current = null;
+    event.currentTarget.style.cursor = 'grab';
+    event.currentTarget.style.userSelect = '';
+  };
+
   return (
-    <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2 pb-1 px-1 select-none" id="page-heading-section">
-      {/* Left side: Overview Heading + floating link icon */}
-      <div className="flex items-center gap-2.5">
-        <h1 className="text-[38px] sm:text-[44px] font-[550] tracking-[-0.035em] text-[#111111] leading-none">
+    <div className="relative z-40 flex w-full select-none flex-col gap-3 overflow-visible pb-5 pt-3 sm:gap-4 sm:pb-6 md:flex-row md:items-end md:justify-between" id="page-heading-section">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <h1 className="text-[2.2rem] font-[700] leading-[0.9] tracking-[-0.07em] text-[#111111] sm:text-[2.6rem] md:text-[3rem] lg:text-[3.4rem]">
           {title}
         </h1>
         <button
@@ -48,19 +78,25 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
           title={copiedLink ? 'Link Copied!' : 'Copy Overview View Link'}
           aria-label="Copy Overview Link"
           id="overview-link-btn"
-          className="w-7 h-7 rounded-full bg-white/90 hover:bg-white border border-black/[0.08] flex items-center justify-center text-[#555555] hover:text-[#111111] transition-all shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer active:scale-95 shrink-0"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-black/[0.08] bg-white/90 text-[#555555] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition hover:bg-white hover:text-[#111111]"
         >
           {copiedLink ? (
-            <Check className="w-3.5 h-3.5 text-emerald-600" />
+            <Check className="h-3.5 w-3.5 text-emerald-600" />
           ) : (
-            <Link2 className="w-3.5 h-3.5 text-[#555555]" />
+            <Link2 className="h-3.5 w-3.5 text-[#555555]" />
           )}
         </button>
       </div>
 
-      {/* Right side: Date Filter Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        {/* Date Range 1 */}
+      <div
+        className="flex w-full max-w-full cursor-grab touch-pan-y items-center gap-2.5 overflow-x-auto overflow-y-visible pb-1 active:cursor-grabbing md:w-auto md:justify-end [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        onPointerDown={handleToolbarPointerDown}
+        onPointerMove={handleToolbarPointerMove}
+        onPointerUp={handleToolbarPointerUp}
+        onPointerLeave={handleToolbarPointerUp}
+        onPointerCancel={handleToolbarPointerUp}
+      >
+        <div className="relative z-50 flex min-w-max items-center gap-2.5 text-[12px] md:text-[13px]">
         <div className="relative">
           <button
             type="button"
@@ -70,15 +106,15 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
               setShowGranularityDropdown(false);
             }}
             id="toolbar-date-range-1"
-            className="h-[36px] px-3 rounded-[10px] bg-white hover:bg-black/[0.02] border border-black/[0.08] flex items-center gap-1.5 font-normal text-[#222222] transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer active:scale-[0.99]"
+            className="flex h-[42px] items-center gap-2.5 whitespace-nowrap rounded-[14px] border border-black/[0.08] bg-white/90 px-3.5 text-[13px] font-medium text-[#222222] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition hover:bg-white active:scale-[0.99] sm:h-[46px] sm:px-4"
           >
-            <Calendar className="w-3.5 h-3.5 text-[#666666]" />
+            <Calendar className="h-4 w-4 text-[#666666] sm:h-[18px] sm:w-[18px]" />
             <span>{dateRange1}</span>
-            <ChevronDown className="w-3 h-3 text-[#777777] ml-0.5" />
+            <ChevronDown className="ml-0.5 h-3.5 w-3.5 text-[#777777]" />
           </button>
 
           {showDropdown1 && (
-            <div className="absolute left-0 sm:right-0 sm:left-auto top-10 w-52 bg-white rounded-xl shadow-lg border border-black/[0.08] p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 top-11 z-[120] w-52 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-lg">
               {datePresets.map((preset) => (
                 <button
                   key={preset}
@@ -86,22 +122,20 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
                     setDateRange1(preset);
                     setShowDropdown1(false);
                   }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
                     dateRange1 === preset ? 'bg-black/[0.05] font-semibold text-[#111111]' : 'text-[#444444] hover:bg-black/[0.03]'
                   }`}
                 >
                   <span>{preset}</span>
-                  {dateRange1 === preset && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                  {dateRange1 === preset && <Check className="h-3.5 w-3.5 text-blue-600" />}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* "compared to" separator label */}
-        <span className="text-[#737373] text-[13px] px-0.5">compared to</span>
+        <span className="whitespace-nowrap px-0.5 text-[13px] font-medium text-[#737373]">compared to</span>
 
-        {/* Date Range 2 */}
         <div className="relative">
           <button
             type="button"
@@ -111,15 +145,15 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
               setShowGranularityDropdown(false);
             }}
             id="toolbar-date-range-2"
-            className="h-[36px] px-3 rounded-[10px] bg-white hover:bg-black/[0.02] border border-black/[0.08] flex items-center gap-1.5 font-normal text-[#222222] transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer active:scale-[0.99]"
+            className="flex h-[42px] items-center gap-2.5 whitespace-nowrap rounded-[14px] border border-black/[0.08] bg-white/90 px-3.5 text-[13px] font-medium text-[#222222] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition hover:bg-white active:scale-[0.99] sm:h-[46px] sm:px-4"
           >
-            <Calendar className="w-3.5 h-3.5 text-[#666666]" />
+            <Calendar className="h-4 w-4 text-[#666666] sm:h-[18px] sm:w-[18px]" />
             <span>{dateRange2}</span>
-            <ChevronDown className="w-3 h-3 text-[#777777] ml-0.5" />
+            <ChevronDown className="ml-0.5 h-3.5 w-3.5 text-[#777777]" />
           </button>
 
           {showDropdown2 && (
-            <div className="absolute left-0 sm:right-0 sm:left-auto top-10 w-52 bg-white rounded-xl shadow-lg border border-black/[0.08] p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 top-11 z-[120] w-52 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-lg">
               {datePresets.map((preset) => (
                 <button
                   key={preset}
@@ -127,19 +161,18 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
                     setDateRange2(preset);
                     setShowDropdown2(false);
                   }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
                     dateRange2 === preset ? 'bg-black/[0.05] font-semibold text-[#111111]' : 'text-[#444444] hover:bg-black/[0.03]'
                   }`}
                 >
                   <span>{preset}</span>
-                  {dateRange2 === preset && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                  {dateRange2 === preset && <Check className="h-3.5 w-3.5 text-blue-600" />}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Granularity Dropdown (Daily) */}
         <div className="relative">
           <button
             type="button"
@@ -149,14 +182,14 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
               setShowDropdown2(false);
             }}
             id="toolbar-granularity"
-            className="h-[36px] px-3 rounded-[10px] bg-white hover:bg-black/[0.02] border border-black/[0.08] flex items-center gap-1 text-[#222222] transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer active:scale-[0.99]"
+            className="flex h-[42px] items-center gap-2.5 whitespace-nowrap rounded-[14px] border border-black/[0.08] bg-white/90 px-3.5 text-[13px] font-medium text-[#222222] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition hover:bg-white active:scale-[0.99] sm:h-[46px] sm:px-4"
           >
             <span>{granularity}</span>
-            <ChevronDown className="w-3 h-3 text-[#777777] ml-0.5" />
+            <ChevronDown className="h-3.5 w-3.5 text-[#777777]" />
           </button>
 
           {showGranularityDropdown && (
-            <div className="absolute right-0 top-10 w-32 bg-white rounded-xl shadow-lg border border-black/[0.08] p-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute right-0 top-11 z-[120] w-32 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-lg">
               {granularityOptions.map((opt) => (
                 <button
                   key={opt}
@@ -164,28 +197,28 @@ export const PageHeading: React.FC<PageHeadingProps> = ({
                     setGranularity(opt);
                     setShowGranularityDropdown(false);
                   }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition ${
                     granularity === opt ? 'bg-black/[0.05] font-semibold text-[#111111]' : 'text-[#444444] hover:bg-black/[0.03]'
                   }`}
                 >
                   <span>{opt}</span>
-                  {granularity === opt && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                  {granularity === opt && <Check className="h-3.5 w-3.5 text-blue-600" />}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Add Widget Button */}
         <button
           type="button"
           onClick={onAddWidget}
           id="toolbar-add-widget-btn"
-          className="h-[36px] px-3.5 rounded-[10px] bg-white hover:bg-black/[0.02] border border-black/[0.08] flex items-center gap-1 text-[#222222] font-normal transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer active:scale-[0.99]"
+          className="hidden h-[42px] items-center gap-2.5 whitespace-nowrap rounded-[14px] border border-black/[0.08] bg-white/90 px-3.5 text-[13px] font-medium text-[#222222] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition hover:bg-white active:scale-[0.99] sm:flex sm:h-[46px] sm:px-4"
         >
           <span>Add widget</span>
-          <span className="text-[15px] font-light text-[#555] leading-none ml-0.5">+</span>
+          <span className="text-[15px] font-light leading-none text-[#555]">+</span>
         </button>
+        </div>
       </div>
     </div>
   );
