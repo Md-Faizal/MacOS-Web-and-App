@@ -224,7 +224,27 @@ jobs:
             --exclude='/node_modules' \
             ./ production:"$TARGET_DIR/"
 
-          # 5. Remote post-sync actions (Docker Blue-Green deployment with verification)
+          # 5. Remote preflight: clear stale blue/green port locks before Docker starts
+          echo "🩹 Step 2.5: Clearing stale Docker port bindings before blue/green deployment..."
+          ssh production bash -s << 'REMOTE_PREFLIGHT'
+          set -e
+          for port in 3001 3004; do
+            if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:${port}$|\\[::\\]:${port}$"; then
+              echo "Port ${port} is still bound. Removing stale Docker slot containers to avoid the GitHub Action bind failure."
+              docker rm -f macos-server-blue macos-server-green 2>/dev/null || true
+              sleep 2
+              break
+            fi
+          done
+
+          if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\\.0\\.0\\.1:3004$|\\[::\\]:3004$"; then
+            echo "ERROR: port 3004 is still occupied after cleanup. Another live process is holding the green slot."
+            ss -lntp | grep ':3004 ' || true
+            exit 1
+          fi
+          REMOTE_PREFLIGHT
+
+          # 6. Remote post-sync actions (Docker Blue-Green deployment with verification)
           echo "🔄 Step 3: Executing Blue-Green zero-downtime Docker deployment..."
           ssh production bash -s << 'REMOTESCRIPT'
           set -e
