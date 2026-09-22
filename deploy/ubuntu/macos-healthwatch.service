@@ -1,0 +1,17 @@
+[Unit]
+Description=MacOS production upstream health watchdog
+After=network-online.target nginx.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/MacOS-Production
+Environment=HEALTHWATCH_HEARTBEAT_FILE=/var/run/macos-healthwatch.heartbeat
+Environment=HEALTHWATCH_ALERT_URL=
+Environment=HEALTHWATCH_ALERT_COMMAND=
+ExecStart=/usr/local/bin/macos-healthwatch.sh
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
