@@ -71,9 +71,19 @@ export default function App() {
     };
   }, []);
 
-  const [dashPhase, setDashPhase] = useState<'entering' | 'exiting'>('entering');
+  const [dashPhase, setDashPhase] = useState<'entering' | 'idle' | 'exiting'>('entering');
   const [justLoggedOut, setJustLoggedOut] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0, opacity: 0 });
+
+  // Transition dashPhase to idle once the top-to-bottom login entrance finishes
+  useEffect(() => {
+    if (dashPhase === 'entering' && isAuthenticated) {
+      const timer = setTimeout(() => {
+        setDashPhase('idle');
+      }, 950);
+      return () => clearTimeout(timer);
+    }
+  }, [dashPhase, isAuthenticated]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -91,7 +101,7 @@ export default function App() {
   const handleSignOut = () => {
     setDashPhase('exiting');
     
-    // 3-section bottom-to-top disappear (exit animation 500ms + 200ms delay = 700ms) + smooth container contraction
+    // 3-layer bottom-to-top disappear (exit animation 500ms + 200ms delay = 700ms) + smooth container contraction
     setTimeout(() => {
       clearSession();
       setUser(null);
@@ -126,13 +136,25 @@ export default function App() {
     }, 260);
   };
 
-  // Compute animation classes for Layer 2 and Layer 3
+  // ─── ANIMATION CLASS COMPUTATION ───
+  // Layer 1 (Header): Animates on login/logout; stays fixed in place during tab changes
+  let headerClass = '';
+  if (dashPhase === 'exiting') {
+    headerClass = 'animate-logout-layer1';
+  } else if (dashPhase === 'entering') {
+    headerClass = 'animate-login-layer1';
+  }
+
+  // Layer 2 & 3: Animate top-to-bottom on login, bottom-to-top on logout, and during tab changes
   let layer2Class = '';
   let layer3Class = '';
 
   if (dashPhase === 'exiting') {
-    layer2Class = 'animate-dashboard-exit';
-    layer3Class = 'animate-dashboard-exit';
+    layer2Class = 'animate-logout-layer2';
+    layer3Class = 'animate-logout-layer3';
+  } else if (dashPhase === 'entering') {
+    layer2Class = 'animate-login-layer2';
+    layer3Class = 'animate-login-layer3';
   } else if (pagePhase === 'exiting') {
     layer2Class = 'animate-page-exit-layer2';
     layer3Class = 'animate-page-exit-layer3';
@@ -251,8 +273,7 @@ export default function App() {
             id="layer-app-header"
             data-layer="app-header"
             data-layer-order="1"
-            className={`relative z-50 ${dashPhase === 'exiting' ? 'animate-dashboard-exit' : 'animate-dashboard-enter'}`} 
-            style={{ animationDelay: dashPhase === 'exiting' ? '200ms' : '0ms' }}
+            className={`relative z-50 ${headerClass}`} 
           >
             <Header
               activeTab={activeTab}

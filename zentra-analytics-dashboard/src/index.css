@@ -332,5 +332,34 @@
   will-change: transform, opacity, filter;
 }
 
+/* ─── FULL DASHBOARD LOGIN / LOGOUT SEQUENCING ─── */
+/* Login: Top-to-Bottom enter (Layer 1 at 0ms, Layer 2 at 100ms, Layer 3 at 200ms) */
+.animate-login-layer1 {
+  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  will-change: transform, opacity;
+}
+.animate-login-layer2 {
+  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
+  will-change: transform, opacity;
+}
+.animate-login-layer3 {
+  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  will-change: transform, opacity;
+}
+
+/* Logout: Bottom-to-Top exit (Layer 3 at 0ms, Layer 2 at 100ms, Layer 1 at 200ms) */
+.animate-logout-layer1 {
+  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  will-change: transform, opacity;
+}
+.animate-logout-layer2 {
+  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
+  will-change: transform, opacity;
+}
+.animate-logout-layer3 {
+  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  will-change: transform, opacity;
+}
+
 
 

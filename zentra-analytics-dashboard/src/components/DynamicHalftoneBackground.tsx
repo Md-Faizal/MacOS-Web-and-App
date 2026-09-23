@@ -80,7 +80,7 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
       const node2X = width * (0.5 + 0.34 * Math.cos(elapsed * 0.65 + 1.8));
       const node2Y = height * (0.5 + 0.36 * Math.sin(elapsed * 0.5 + 2.4));
       const NODE_RADIUS = 280;
-      const MOUSE_RADIUS = 220;
+      const MOUSE_RADIUS = 250;
 
       for (let r = 0; r < rows; r++) {
         const y = r * SPACING;
@@ -138,16 +138,20 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
             }
           }
 
-          // ── Subtle Natural Dot Matrix Presence (No repulsive halo; shows actual dots in place) ──
+          // ── Dynamic Interactive Mouse Reaction (Moves the pattern & scales dots) ──
           const mdx = drawX - mouse.x;
           const mdy = drawY - mouse.y;
           const mDistSq = mdx * mdx + mdy * mdy;
-          if (mDistSq < 150 * 150) {
+          if (mDistSq < MOUSE_RADIUS * MOUSE_RADIUS) {
             const mDist = Math.sqrt(mDistSq);
-            const mFactor = Math.cos((mDist / 150) * (Math.PI / 2));
-            // Subtle natural matrix clarity without displacing dots into a ring
-            radius += mFactor * 0.9;
-            alpha += mFactor * 0.15;
+            const mFactor = Math.cos((mDist / MOUSE_RADIUS) * (Math.PI / 2));
+            radius += mFactor * 3.2;
+            alpha += mFactor * 0.28;
+            if (mDist > 0.5) {
+              const push = mFactor * 10.0;
+              drawX += (mdx / mDist) * push;
+              drawY += (mdy / mDist) * push;
+            }
           }
 
           if (radius <= 0.3) continue;
