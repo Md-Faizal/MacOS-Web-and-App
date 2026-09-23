@@ -24,6 +24,7 @@ export type RememberedAccount = {
   displayPicture: string | null;
   role: string;
   lastActive: number;
+  isTouchIdEnabled?: boolean;
 };
 
 const DEFAULT_PRODUCTION_HOSTS = [
@@ -121,7 +122,7 @@ export async function fetchWithFallback(endpoint: string, init?: RequestInit) {
       const response = await fetch(targetUrl, finalInit);
       const contentType = response.headers.get('content-type') || '';
 
-      if (response.ok || response.status === 401 || response.status === 403) {
+      if (response.ok || response.status === 401 || response.status === 403 || (response.status === 404 && contentType.includes('application/json'))) {
         if (response.status === 200 && contentType.includes('text/html')) {
           continue;
         }
@@ -205,7 +206,33 @@ export function getRememberedAccounts(): RememberedAccount[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
+
+    // Deduplicate and merge accounts by user ID or normalized displayName
+    const map = new Map<string, RememberedAccount>();
+    for (const item of parsed) {
+      if (!item) continue;
+      // Key primarily by display name or id so Google and local accounts of the same user merge
+      const key = String(item.displayName || item.id || item.identifier).trim().toLowerCase();
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, item);
+      } else {
+        map.set(key, {
+          ...existing,
+          ...item,
+          id: existing.id || item.id,
+          displayName: existing.displayName || item.displayName,
+          displayPicture: existing.displayPicture || item.displayPicture,
+          isTouchIdEnabled: existing.isTouchIdEnabled || item.isTouchIdEnabled,
+          lastActive: Math.max(existing.lastActive || 0, item.lastActive || 0),
+        });
+      }
+    }
+    const deduplicated = Array.from(map.values());
+    if (deduplicated.length !== parsed.length) {
+      localStorage.setItem(REMEMBERED_USERS_KEY, JSON.stringify(deduplicated));
+    }
+    return deduplicated.sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
   } catch {
     return [];
   }
@@ -216,27 +243,42 @@ export function setActiveRememberedAccount(accountId: string) {
   localStorage.setItem(ACTIVE_USER_KEY, accountId);
 }
 
-export function saveRememberedAccount(user: UserRecord | null, identifierOverride?: string) {
+export function saveRememberedAccount(user: UserRecord | null, identifierOverride?: string, isTouchIdEnabled?: boolean) {
   if (!user && !identifierOverride) return;
 
   const identifier = String(identifierOverride || user?.username || user?.email || 'user').trim();
   if (!identifier) return;
 
   const accounts = getRememberedAccounts();
-  const normalized = {
-    id: String(user?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
-    identifier,
-    displayName: user?.full_name || user?.display_name || user?.username || identifier.split('@')[0] || 'User',
-    displayPicture: user?.avatar || null,
-    role: user?.role || 'user',
+  const userId = user?.id ? String(user.id) : null;
+  const userDisplayName = user?.full_name || user?.display_name || user?.username;
+
+  // Match existing account by user ID, identifier, or display name
+  const existingIndex = accounts.findIndex((account) => {
+    if (userId && String(account.id) === userId) return true;
+    if (account.identifier.toLowerCase() === identifier.toLowerCase()) return true;
+    if (user?.email && account.identifier.toLowerCase() === user.email.toLowerCase()) return true;
+    if (user?.username && account.identifier.toLowerCase() === user.username.toLowerCase()) return true;
+    if (userDisplayName && account.displayName.toLowerCase() === userDisplayName.toLowerCase()) return true;
+    return false;
+  });
+
+  const existing = existingIndex >= 0 ? accounts[existingIndex] : null;
+  const effectiveTouchId = isTouchIdEnabled !== undefined ? isTouchIdEnabled : (existing?.isTouchIdEnabled || false);
+
+  const normalized: RememberedAccount = {
+    id: existing?.id || userId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    identifier: existing?.identifier || identifier,
+    displayName: userDisplayName || existing?.displayName || identifier.split('@')[0] || 'User',
+    displayPicture: user?.avatar || existing?.displayPicture || null,
+    role: user?.role || existing?.role || 'owner',
     lastActive: Date.now(),
+    isTouchIdEnabled: effectiveTouchId,
   };
 
-  const existingIndex = accounts.findIndex((account) => account.identifier.toLowerCase() === identifier.toLowerCase());
   const nextAccounts = [...accounts];
-
   if (existingIndex >= 0) {
-    nextAccounts[existingIndex] = { ...nextAccounts[existingIndex], ...normalized };
+    nextAccounts[existingIndex] = { ...existing, ...normalized };
   } else {
     nextAccounts.push(normalized);
   }
@@ -244,7 +286,7 @@ export function saveRememberedAccount(user: UserRecord | null, identifierOverrid
   localStorage.setItem(REMEMBERED_USERS_KEY, JSON.stringify(nextAccounts));
   localStorage.setItem(ACTIVE_USER_KEY, normalized.id);
   localStorage.setItem('macos_remember_account', 'true');
-  localStorage.setItem('macos_user_identifier', identifier);
+  localStorage.setItem('macos_user_identifier', normalized.identifier);
   localStorage.setItem('macos_user_display_name', normalized.displayName);
   if (normalized.displayPicture) {
     localStorage.setItem('macos_user_display_picture', normalized.displayPicture);
@@ -350,5 +392,262 @@ export async function verifySession(token?: string): Promise<{ valid: boolean; u
   } catch (error) {
     console.warn('[Zentra Auth] Session verification error:', error);
     return { valid: false, user: null };
+  }
+}
+
+export function removeRememberedAccount(id: string): RememberedAccount[] {
+  const accounts = getRememberedAccounts();
+  const next = accounts.filter(a => a.id !== id && a.identifier !== id);
+  localStorage.setItem(REMEMBERED_USERS_KEY, JSON.stringify(next));
+  const activeId = localStorage.getItem(ACTIVE_USER_KEY);
+  if (activeId === id) {
+    if (next.length > 0) {
+      localStorage.setItem(ACTIVE_USER_KEY, next[0].id);
+      localStorage.setItem('macos_user_identifier', next[0].identifier);
+      if (next[0].displayName) localStorage.setItem('macos_user_display_name', next[0].displayName);
+    } else {
+      localStorage.removeItem(ACTIVE_USER_KEY);
+      localStorage.removeItem('macos_remember_account');
+      localStorage.removeItem('macos_user_identifier');
+      localStorage.removeItem('macos_user_display_name');
+      localStorage.removeItem('macos_user_display_picture');
+    }
+  }
+  return next;
+}
+
+export async function fetchSecurityChallenge(identifier: string): Promise<{ question: string | null; isRecoveryKey: boolean; hasSecurityQuestion: boolean }> {
+  const res = await fetchWithFallback(`/api/auth/challenge?identifier=${encodeURIComponent(identifier.trim())}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Account not found with this username or email');
+  }
+  const data = await res.json();
+  return {
+    question: data.question || null,
+    isRecoveryKey: !data.question,
+    hasSecurityQuestion: Boolean(data.hasSecurityQuestion),
+  };
+}
+
+export async function verifySecurityAnswer(identifier: string, answer: string, isRecoveryKey = false): Promise<{ success: boolean; sessionId?: string }> {
+  const payload = isRecoveryKey
+    ? { identifier: identifier.trim(), recoveryKey: answer.trim() }
+    : { identifier: identifier.trim(), answer: answer.trim() };
+
+  const res = await fetchWithFallback('/api/auth/verify-answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Incorrect answer or recovery key');
+  }
+  return data;
+}
+
+export async function updatePasswordAfterRecovery(newPassword: string, identifier?: string): Promise<{ success: boolean }> {
+  const res = await fetchWithFallback('/api/auth/update-security', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword, identifier }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to update password');
+  }
+  return data;
+}
+
+export async function fetchGoogleConfig(): Promise<{ clientId: string } | null> {
+  try {
+    const res = await fetchWithFallback('/api/auth/google/config');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function loginWithGoogle(idToken: string, linkPassword?: string) {
+  const body: any = {
+    idToken,
+    deviceName: 'Zentra Web',
+    deviceType: 'Desktop',
+    clientType: 'web',
+  };
+  if (linkPassword) {
+    body.linkPassword = linkPassword;
+  }
+
+  const res = await fetchWithFallback('/api/auth/google/worker-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.requiresLinking) {
+    return { status: 409 as const, requiresLinking: true, email: data.email || '' };
+  }
+  if (data.status === 'pending') {
+    return { status: 'pending' as const, inviteCode: data.inviteCode, qrDataUrl: data.qrDataUrl, data };
+  }
+  if (!res.ok) {
+    throw new Error(data.error || 'Google login failed');
+  }
+  return { status: 200 as const, ...data };
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}
+
+function bytesToBase64Url(value: ArrayBuffer | Uint8Array): string {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function serializeCredential(credential: any): any {
+  const response = credential.response;
+  const result: any = {
+    id: credential.id,
+    rawId: bytesToBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
+    },
+  };
+
+  if (response.attestationObject) {
+    result.response.attestationObject = bytesToBase64Url(response.attestationObject);
+  }
+  if (response.authenticatorData) {
+    result.response.authenticatorData = bytesToBase64Url(response.authenticatorData);
+    result.response.signature = bytesToBase64Url(response.signature);
+    result.response.userHandle = response.userHandle ? bytesToBase64Url(response.userHandle) : null;
+  }
+  return result;
+}
+
+export function isPasskeySupported(): boolean {
+  return typeof window !== 'undefined' && Boolean(window.PublicKeyCredential);
+}
+
+export async function authenticateWithPasskey(identifier?: string): Promise<AuthSessionPayload> {
+  if (!isPasskeySupported()) {
+    throw new Error('Passkey / WebAuthn is not supported in this browser.');
+  }
+
+  const endpoint = `/api/auth/webauthn/authentication-options${identifier ? `?identifier=${encodeURIComponent(identifier)}` : ''}`;
+  const optionsRes = await fetchWithFallback(endpoint);
+  if (!optionsRes.ok) {
+    const err = await optionsRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Passkey is not set up on this account.');
+  }
+
+  const options = await optionsRes.json();
+  options.challenge = base64UrlToBytes(options.challenge);
+  (options.allowCredentials || []).forEach((c: any) => {
+    c.id = base64UrlToBytes(c.id);
+  });
+
+  const credential = await navigator.credentials.get({ publicKey: options });
+  if (!credential) {
+    throw new Error('Passkey authentication was cancelled.');
+  }
+
+  const verifyRes = await fetchWithFallback('/api/auth/webauthn/authentication-verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      identifier,
+      deviceName: 'Zentra Web',
+      deviceType: 'Web',
+      response: serializeCredential(credential),
+    }),
+  });
+
+  const data = await verifyRes.json().catch(() => ({}));
+  if (!verifyRes.ok) {
+    throw new Error(data.error || 'Passkey verification failed');
+  }
+
+  return data;
+}
+
+export async function registerPasskey(token?: string): Promise<{ success: boolean }> {
+  if (!isPasskeySupported()) {
+    throw new Error('Passkey / WebAuthn is not supported in this browser.');
+  }
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const optionsRes = await fetchWithFallback('/api/auth/webauthn/registration-options', {
+    headers,
+  });
+  if (!optionsRes.ok) {
+    const err = await optionsRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Unable to start passkey registration.');
+  }
+
+  const options = await optionsRes.json();
+  options.challenge = base64UrlToBytes(options.challenge);
+  options.user.id = base64UrlToBytes(options.user.id);
+  (options.excludeCredentials || []).forEach((c: any) => {
+    c.id = base64UrlToBytes(c.id);
+  });
+
+  const credential = await navigator.credentials.create({ publicKey: options });
+  if (!credential) {
+    throw new Error('Passkey creation was cancelled.');
+  }
+
+  const verifyRes = await fetchWithFallback('/api/auth/webauthn/registration-verify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify(serializeCredential(credential)),
+  });
+
+  const data = await verifyRes.json().catch(() => ({}));
+  if (!verifyRes.ok) {
+    throw new Error(data.error || 'Passkey enrollment verification failed');
+  }
+
+  localStorage.setItem('touchIdEnabled', 'true');
+  return { success: true };
+}
+
+export async function checkAccountHasPasskey(identifier: string): Promise<boolean> {
+  if (!identifier || !isPasskeySupported()) return false;
+  try {
+    const res = await fetchWithFallback(`/api/auth/webauthn/authentication-options?identifier=${encodeURIComponent(identifier)}`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchSecurityQuestions(): Promise<string[]> {
+  try {
+    const res = await fetchWithFallback('/api/auth/questions');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.questions) ? data.questions : [];
+  } catch {
+    return [];
   }
 }

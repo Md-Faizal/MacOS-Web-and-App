@@ -24,12 +24,13 @@ module.exports = function(db) {
       try {
         if (!db) throw new Error('Database connection lost');
 
-        const searchQuery = req.query.search;
+        const rawSearch = req.query.search;
+        const searchQuery = typeof rawSearch === 'string' ? rawSearch.trim() : null;
         let stmt;
         let products;
 
         if (searchQuery) {
-          // Search by product name (case-insensitive)
+          // Search by product name, odia name, or category name (case-insensitive)
           stmt = db.prepare(`
             SELECT p.*, c.name as category_name,
                    COALESCE(u_creator.role, 'owner') as created_by_role,
@@ -41,9 +42,12 @@ module.exports = function(db) {
             LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
             LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
             WHERE LOWER(p.name) LIKE LOWER(?)
+               OR LOWER(COALESCE(p.odia_name, '')) LIKE LOWER(?)
+               OR LOWER(COALESCE(c.name, '')) LIKE LOWER(?)
             ORDER BY p.created_at DESC
           `);
-          products = stmt.all(`%${searchQuery}%`);
+          const term = `%${searchQuery}%`;
+          products = stmt.all(term, term, term);
         } else {
           // Get all products
           stmt = db.prepare(`

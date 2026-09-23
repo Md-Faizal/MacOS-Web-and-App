@@ -379,17 +379,29 @@ class EditBillsPayments {
     return [];
   }
 
+  normalizeProducts(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload) return [];
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+    if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+    if (Array.isArray(payload.products)) return payload.products;
+    return [];
+  }
+
   /**
    * Fetch products list from API (same as new-bill.js)
    */
   async fetchProductsList(search = '') {
     try {
-      const apiUrl = `${this.getApiBaseUrl()}/api/products${search ? `?search=${encodeURIComponent(search)}` : ''}`;
+      const trimmed = (search || '').trim();
+      const apiUrl = `${this.getApiBaseUrl()}/api/products${trimmed ? `?search=${encodeURIComponent(trimmed)}` : ''}`;
       const response = await fetch(apiUrl);
       
       if (response.ok) {
         const result = await response.json();
-        const products = result.data || result;
+        const products = this.normalizeProducts(result);
         
         if (Array.isArray(products) && products.length > 0) {
           return products;
@@ -408,15 +420,16 @@ class EditBillsPayments {
     if (!productName) return null;
 
     try {
-      const apiUrl = `${this.getApiBaseUrl()}/api/products?search=${encodeURIComponent(productName)}`;
+      const trimmed = productName.trim();
+      const apiUrl = `${this.getApiBaseUrl()}/api/products?search=${encodeURIComponent(trimmed)}`;
       const response = await fetch(apiUrl);
       
       if (response.ok) {
         const result = await response.json();
-        const products = result.data || result;
+        const products = this.normalizeProducts(result);
         
         if (Array.isArray(products) && products.length > 0) {
-          const product = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
+          const product = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
           if (product) {
             console.log('✅ Auto-filled product details from API:', product);
             return product;
@@ -2143,13 +2156,14 @@ class EditBillsPayments {
       }
 
       // Otherwise, fetch product details from API to get variants
-      const response = await fetch(`/api/products?search=${encodeURIComponent(product.name || product.product_name)}`);
+      const pName = (product.name || product.product_name || '').trim();
+      const response = await fetch(`/api/products?search=${encodeURIComponent(pName)}`);
       if (response.ok) {
         const result = await response.json();
-        const products = result.data || result;
+        const products = this.normalizeProducts(result);
         
         if (Array.isArray(products) && products.length > 0) {
-          const fullProduct = products.find(p => p.name.toLowerCase() === (product.name || product.product_name).toLowerCase());
+          const fullProduct = products.find(p => p.name.toLowerCase() === pName.toLowerCase());
           if (fullProduct && fullProduct.variants && fullProduct.variants.length > 0) {
             this.showVariantSelectorForCardEdit(fullProduct.variants, fullProduct.name, productId);
             return;

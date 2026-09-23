@@ -677,7 +677,13 @@ class AIVisionApp extends AppWindow {
       const res = await fetch('/api/products?compact=true');
       const data = await res.json();
       if (data.success) {
-        this.products = data.data;
+        this.products = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.items)
+            ? data.items
+            : (Array.isArray(data?.data?.items)
+              ? data.data.items
+              : (Array.isArray(data?.data) ? data.data : [])));
         const datalist = document.getElementById('aiTeachProductsList');
         if (datalist) {
           datalist.innerHTML = this.products.map(p => `<option value="${p.name}"></option>`).join('');

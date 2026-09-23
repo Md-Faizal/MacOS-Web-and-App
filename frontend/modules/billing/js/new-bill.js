@@ -538,6 +538,17 @@ class BillEditor {
     }
   }
 
+  normalizeProducts(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload) return [];
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+    if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+    if (Array.isArray(payload.products)) return payload.products;
+    return [];
+  }
+
   async populateProductsList() {
     // Datalist is retired. Search is now real-time via custom dropdown.
   }
@@ -620,7 +631,9 @@ class BillEditor {
   handleProductSearchInput(query) {
     if (this.autoFillDebounceTimer) clearTimeout(this.autoFillDebounceTimer);
 
-    if (!query || query.trim().length < 1) {
+    const trimmedQuery = (query || '').trim();
+
+    if (!trimmedQuery || trimmedQuery.length < 1) {
       this.hideSearchDropdown();
       this.clearProductDetailsFields();
       return;
@@ -628,10 +641,10 @@ class BillEditor {
 
     this.autoFillDebounceTimer = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/products?search=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/products?search=${encodeURIComponent(trimmedQuery)}`);
         if (response.ok) {
           const result = await response.json();
-          const products = result.data || result;
+          const products = this.normalizeProducts(result);
           this.renderSearchDropdown(products);
         }
       } catch (error) {
@@ -735,9 +748,14 @@ class BillEditor {
       this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
       this.updateDropdownSelection(items);
     } else if (e.key === 'Enter') {
-      if (this.selectedIndex >= 0) {
+      if (this.selectedIndex >= 0 && this.dropdownProducts && this.dropdownProducts[this.selectedIndex]) {
         e.preventDefault();
         this.selectProductFromDropdown(this.dropdownProducts[this.selectedIndex]);
+      } else if (this.dropdownProducts && this.dropdownProducts.length > 0) {
+        e.preventDefault();
+        const inputVal = (document.getElementById('productName')?.value || '').trim().toLowerCase();
+        const exactMatch = this.dropdownProducts.find(p => (p.name || '').toLowerCase() === inputVal);
+        this.selectProductFromDropdown(exactMatch || this.dropdownProducts[0]);
       }
     } else if (e.key === 'Escape') {
       this.hideSearchDropdown();
@@ -877,6 +895,7 @@ class BillEditor {
       document.getElementById('productPack').value = product.pack_value;
       if (product.pack_type) {
         // Normalize and set the pack_type value
+        const packTypeNormalized = normalizePackType(product.pack_type);
         packUnitSelect.value = packTypeNormalized;
         
         // NEW: Also enrich currentProduct master info to avoid false positive change detection
@@ -919,6 +938,17 @@ class BillEditor {
     }
     if (product.mrp) {
       document.getElementById('productMRP').value = product.mrp;
+    }
+
+    // Set single variant / batch IDs on currentProduct if available
+    if (variantCount === 1 && product.variants && product.variants[0]) {
+      const v0 = product.variants[0];
+      if (this.currentProduct) {
+        this.currentProduct.variant_id = v0.id;
+        if (v0.batches && v0.batches.length === 1) {
+          this.currentProduct.batch_id = v0.batches[0].id;
+        }
+      }
     }
 
     // Load preferences for this customer + product
@@ -1072,6 +1102,7 @@ class BillEditor {
             // This ensures future comparisons and database updates use the correct baseline
             const selectedBatch = selectedVariant.batches && selectedVariant.batches[batchIdx] ? selectedVariant.batches[batchIdx] : null;
             if (selectedBatch) {
+              this.currentProduct.batch_id = selectedBatch.id || null;
               this.currentProduct.mrp = selectedBatch.mrp;
               this.currentProduct.batch_no = selectedBatch.batch_no || selectedBatch.batchNo;
             }
@@ -1794,7 +1825,7 @@ class BillEditor {
             const prodRes = await fetch(`/api/products?search=${encodeURIComponent(pName)}`);
             if (prodRes.ok) {
               const prodData = await prodRes.json();
-              const products = prodData.data || prodData;
+              const products = this.normalizeProducts(prodData);
               if (Array.isArray(products)) {
                 productInfo = products.find(p => p.name.toLowerCase() === pName.toLowerCase());
               }
@@ -2294,7 +2325,7 @@ class BillEditor {
       const response = await fetch(`/api/products?search=${encodeURIComponent(product.name || product.product_name)}`);
       if (response.ok) {
         const result = await response.json();
-        const products = result.data || result;
+        const products = this.normalizeProducts(result);
         
         if (Array.isArray(products) && products.length > 0) {
           const fullProduct = products.find(p => p.name.toLowerCase() === (product.name || product.product_name).toLowerCase());

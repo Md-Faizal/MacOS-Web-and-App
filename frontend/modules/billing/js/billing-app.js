@@ -707,7 +707,13 @@ export class BillingApp extends AppWindow {
         try {
           const prods = await this.api.getProducts();
           if (this.billingData) {
-            this.billingData.products = Array.isArray(prods) ? prods : (prods.data || []);
+            this.billingData.products = Array.isArray(prods)
+              ? prods
+              : (Array.isArray(prods?.items)
+                ? prods.items
+                : (Array.isArray(prods?.data?.items)
+                  ? prods.data.items
+                  : (Array.isArray(prods?.data) ? prods.data : [])));
           }
         } catch (e) {
           console.warn('Could not fetch products on demand for search:', e.message);
