@@ -8,11 +8,242 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      /* ─── CRITICAL ZERO-LATENCY PRE-LOADER (INSTANT FIRST PAINT) ─── */
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #edece8;
+      }
+      .zentra-preloader-root {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        background-color: #edece8;
+        transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s;
+        pointer-events: auto;
+      }
+      .zentra-preloader-root.preloader-hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .zentra-preloader-card {
+        width: 100%;
+        max-width: 560px;
+        min-height: 260px;
+        position: relative;
+        border-radius: 32px;
+        overflow: hidden;
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 24px 64px -16px rgba(17, 17, 17, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 2px 4px rgba(0, 0, 0, 0.02);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.38) 0%, rgba(244, 242, 238, 0.22) 50%, rgba(255, 255, 255, 0.42) 100%);
+      }
+      @media (min-width: 640px) {
+        .zentra-preloader-card {
+          max-width: 620px;
+          min-height: 300px;
+          border-radius: 36px;
+        }
+      }
+      .zentra-preloader-bevel {
+        pointer-events: none;
+        position: absolute;
+        inset: -1px;
+        border-radius: 33px;
+        overflow: hidden;
+        z-index: 30;
+      }
+      @media (min-width: 640px) {
+        .zentra-preloader-bevel {
+          border-radius: 37px;
+        }
+      }
+      .zentra-preloader-bevel-inner {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1.4px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.4) 25%, rgba(17,17,17,0.06) 50%, rgba(255,255,255,0.3) 75%, rgba(255,255,255,0.85) 100%);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+      }
+      .zentra-counter-container {
+        position: relative;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        letter-spacing: -0.05em;
+        transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-out;
+      }
+      .zentra-counter-container.counter-exit {
+        opacity: 0;
+        transform: translateY(-1rem) scale(0.95);
+        pointer-events: none;
+      }
+      .zentra-digit-column {
+        position: relative;
+        display: inline-flex;
+        height: 9rem;
+        width: 5rem;
+        overflow: hidden;
+        align-items: center;
+        justify-content: center;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-weight: 250;
+        font-size: 6rem;
+        line-height: 1;
+        color: #111111;
+        user-select: none;
+        letter-spacing: -0.05em;
+      }
+      @media (min-width: 640px) {
+        .zentra-digit-column {
+          height: 11rem;
+          width: 6.5rem;
+          font-size: 8rem;
+        }
+      }
+      @media (min-width: 768px) {
+        .zentra-digit-column {
+          height: 12rem;
+          width: 7.5rem;
+          font-size: 9.5rem;
+        }
+      }
+      .zentra-digit-curr,
+      .zentra-digit-prev {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        pointer-events: none;
+      }
+      @keyframes zentra-digit-exit-up {
+        0% { transform: translateY(0); opacity: 1; filter: blur(0px); }
+        100% { transform: translateY(-100%); opacity: 0; filter: blur(1.5px); }
+      }
+      @keyframes zentra-digit-enter-up {
+        0% { transform: translateY(100%); opacity: 0; filter: blur(1.5px); }
+        100% { transform: translateY(0); opacity: 1; filter: blur(0px); }
+      }
+      .animate-zentra-exit {
+        animation: zentra-digit-exit-up 0.09s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        will-change: transform, opacity, filter;
+      }
+      .animate-zentra-enter {
+        animation: zentra-digit-enter-up 0.09s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        will-change: transform, opacity, filter;
+      }
+    </style>
   </head>
   <body class="bg-[#ECECE9] text-[#111111] antialiased selection:bg-blue-500/20 selection:text-blue-900">
+    <!-- Zero-Latency Inlined Critical Preloader Shell: Paints at 0ms before any bundle loads -->
+    <div id="zentra-preloader" class="zentra-preloader-root">
+      <div id="zentra-preloader-card" class="zentra-preloader-card">
+        <div class="zentra-preloader-bevel" aria-hidden="true">
+          <div class="zentra-preloader-bevel-inner"></div>
+        </div>
+        <div id="zentra-counter-box" class="zentra-counter-container" aria-label="Loading Zentra">
+          <div id="zp-col-0" class="zentra-digit-column"><span id="zp-d0" class="zentra-digit-curr">0</span></div>
+          <div id="zp-col-1" class="zentra-digit-column"><span id="zp-d1" class="zentra-digit-curr">0</span></div>
+          <div id="zp-col-2" class="zentra-digit-column"><span id="zp-d2" class="zentra-digit-curr">0</span></div>
+        </div>
+      </div>
+    </div>
+
     <div id="root"></div>
+
+    <!-- Micro-Engine: Starts rolling counter on byte 1 of HTML parse -->
+    <script>
+      (function() {
+        var col0 = document.getElementById('zp-col-0');
+        var col1 = document.getElementById('zp-col-1');
+        var col2 = document.getElementById('zp-col-2');
+        var preloaderEl = document.getElementById('zentra-preloader');
+        var counterBox = document.getElementById('zentra-counter-box');
+
+        var currentProgress = 0;
+        var isBundleReady = false;
+        var isCompleted = false;
+        var hasSession = false;
+        try {
+          hasSession = !!localStorage.getItem('zentra-auth-session');
+        } catch (e) {}
+
+        var currentDigits = ['0', '0', '0'];
+
+        function setDigit(colEl, newDigit, oldDigit) {
+          if (!colEl || newDigit === oldDigit) return;
+          colEl.innerHTML = 
+            '<span class="zentra-digit-prev animate-zentra-exit">' + oldDigit + '</span>' +
+            '<span class="zentra-digit-curr animate-zentra-enter">' + newDigit + '</span>';
+        }
+
+        function renderNumber(num) {
+          var str = String(Math.min(100, Math.max(0, num))).padStart(3, '0');
+          var n0 = str[0], n1 = str[1], n2 = str[2];
+          if (n0 !== currentDigits[0]) { setDigit(col0, n0, currentDigits[0]); currentDigits[0] = n0; }
+          if (n1 !== currentDigits[1]) { setDigit(col1, n1, currentDigits[1]); currentDigits[1] = n1; }
+          if (n2 !== currentDigits[2]) { setDigit(col2, n2, currentDigits[2]); currentDigits[2] = n2; }
+        }
+
+        var timer = null;
+
+        function tick() {
+          currentProgress += 1;
+          renderNumber(currentProgress);
+
+          if (currentProgress < 100) {
+            var delay = 24;
+            if (currentProgress > 96) delay = isBundleReady ? 45 : 140;
+            else if (currentProgress > 90) delay = isBundleReady ? 38 : 85;
+            else if (currentProgress > 78) delay = isBundleReady ? 28 : 48;
+            else if (currentProgress > 55) delay = 30;
+
+            // Decelerate gracefully near 99 if bundle is still downloading over slow network
+            if (currentProgress >= 99 && !isBundleReady) {
+              return;
+            }
+
+            timer = setTimeout(tick, delay);
+          } else {
+            isCompleted = true;
+            if (window.__ZENTRA_LOADER__ && typeof window.__ZENTRA_LOADER__.on100 === 'function') {
+              window.__ZENTRA_LOADER__.on100();
+            }
+          }
+        }
+
+        // Start ticking immediately!
+        timer = setTimeout(tick, 30);
+
+        window.__ZENTRA_LOADER__ = {
+          getProgress: function() { return currentProgress; },
+          isCompleted: function() { return isCompleted; },
+          hasSession: hasSession,
+          stop: function() {
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          }
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
-

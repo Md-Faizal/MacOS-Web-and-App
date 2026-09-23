@@ -8,20 +8,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
-import { HomeView } from './views/HomeView';
-import { PaymentsView } from './views/PaymentsView';
-import { BalancesView } from './views/BalancesView';
-import { CustomersView } from './views/CustomersView';
-import { ProductsView } from './views/ProductsView';
-import { BillingView } from './views/BillingView';
-import { ReportsView } from './views/ReportsView';
-import { ConnectView } from './views/ConnectView';
-import { AddWidgetModal } from './components/modals/AddWidgetModal';
 import { LoginScreen } from './components/LoginScreen';
 import { DynamicHalftoneBackground } from './components/DynamicHalftoneBackground';
-import { readStoredSession, verifySession, clearSession } from './lib/auth';
+import { readStoredSession, clearSession } from './lib/auth';
+
+// ─── CODE SPLITTING: DYNAMIC LAZY LOADING OF DASHBOARD VIEWS & MODALS ───
+const HomeView = React.lazy(() => import('./views/HomeView').then(m => ({ default: m.HomeView })));
+const PaymentsView = React.lazy(() => import('./views/PaymentsView').then(m => ({ default: m.PaymentsView })));
+const BalancesView = React.lazy(() => import('./views/BalancesView').then(m => ({ default: m.BalancesView })));
+const CustomersView = React.lazy(() => import('./views/CustomersView').then(m => ({ default: m.CustomersView })));
+const ProductsView = React.lazy(() => import('./views/ProductsView').then(m => ({ default: m.ProductsView })));
+const BillingView = React.lazy(() => import('./views/BillingView').then(m => ({ default: m.BillingView })));
+const ReportsView = React.lazy(() => import('./views/ReportsView').then(m => ({ default: m.ReportsView })));
+const ConnectView = React.lazy(() => import('./views/ConnectView').then(m => ({ default: m.ConnectView })));
+const AddWidgetModal = React.lazy(() => import('./components/modals/AddWidgetModal').then(m => ({ default: m.AddWidgetModal })));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
@@ -31,34 +33,30 @@ export default function App() {
   const finishTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isAddWidgetOpen, setIsAddWidgetOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(readStoredSession().token);
+  });
+  const [user, setUser] = useState<any>(() => {
+    return readStoredSession().user;
+  });
+  const [matrixDrawn, setMatrixDrawn] = useState<boolean>(() => {
+    return Boolean(readStoredSession().token);
+  });
+
+  // When user is already authenticated on initial load, remove static preloader
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const loader = (window as any).__ZENTRA_LOADER__;
+    if (loader) {
+      if (typeof loader.stop === 'function') loader.stop();
+      delete (window as any).__ZENTRA_LOADER__;
+      const el = document.getElementById('zentra-preloader');
+      if (el) el.remove();
+    }
+    setMatrixDrawn(true);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    async function bootstrap() {
-      const session = readStoredSession();
-
-      if (!session.token) {
-        clearSession();
-        setUser(null);
-        setIsAuthenticated(false);
-        return;
-      }
-
-      const res = await verifySession(session.token);
-      if (!res.valid || !res.user) {
-        clearSession();
-        setUser(null);
-        setIsAuthenticated(false);
-        return;
-      }
-
-      setUser(res.user);
-      setIsAuthenticated(true);
-    }
-
-    bootstrap();
-
     const handleUnauthorized = () => {
       clearSession();
       setUser(null);
@@ -71,7 +69,7 @@ export default function App() {
     };
   }, []);
 
-  const [dashPhase, setDashPhase] = useState<'entering' | 'idle' | 'exiting'>('entering');
+  const [dashPhase, setDashPhase] = useState<'entering' | 'idle' | 'exiting'>('idle');
   const [justLoggedOut, setJustLoggedOut] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0, opacity: 0 });
 
@@ -107,7 +105,7 @@ export default function App() {
       setUser(null);
       setJustLoggedOut(true);
       setIsAuthenticated(false);
-      setDashPhase('entering');
+      setDashPhase('idle');
     }, 750);
   };
 
@@ -164,52 +162,50 @@ export default function App() {
   }
 
   const renderCurrentView = () => {
-    switch (currentView) {
-      case 'Payments':
-        return <PaymentsView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Balances':
-        return <BalancesView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Customers':
-        return <CustomersView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Products':
-        return <ProductsView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Billing':
-        return <BillingView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Reports':
-        return <ReportsView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Connect':
-        return <ConnectView layer2Class={layer2Class} layer3Class={layer3Class} />;
-      case 'Home':
-      default:
-        return (
-          <HomeView
-            layer2Class={layer2Class}
-            layer3Class={layer3Class}
-            onAddWidget={() => setIsAddWidgetOpen(true)}
-          />
-        );
-    }
-  };
-
-  if (isAuthenticated === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#ecece9] text-[#111111]">
-        <div className="rounded-full border border-black/10 bg-white px-4 py-2 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.06)]">
-          Initializing workspace…
-        </div>
-      </div>
+      <Suspense fallback={null}>
+        {(() => {
+          switch (currentView) {
+            case 'Payments':
+              return <PaymentsView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Balances':
+              return <BalancesView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Customers':
+              return <CustomersView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Products':
+              return <ProductsView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Billing':
+              return <BillingView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Reports':
+              return <ReportsView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Connect':
+              return <ConnectView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Home':
+            default:
+              return (
+                <HomeView
+                  layer2Class={layer2Class}
+                  layer3Class={layer3Class}
+                  onAddWidget={() => setIsAddWidgetOpen(true)}
+                />
+              );
+          }
+        })()}
+      </Suspense>
     );
-  }
+  };
 
   return (
     <>
-      <DynamicHalftoneBackground />
+      <DynamicHalftoneBackground drawFromBottom={matrixDrawn} />
       {!isAuthenticated ? (
         <LoginScreen 
           justLoggedOut={justLoggedOut}
+          onStartMatrixDraw={() => setMatrixDrawn(true)}
           onAuthenticated={(nextUser) => {
             setUser(nextUser);
             setJustLoggedOut(false);
+            setMatrixDrawn(true);
             setDashPhase('entering');
             setIsAuthenticated(true);
           }} 
@@ -294,13 +290,15 @@ export default function App() {
     </div>
   )}
 
-  <AddWidgetModal
-    isOpen={isAddWidgetOpen}
-    onClose={() => setIsAddWidgetOpen(false)}
-    onAdd={(widgetName) => {
-      console.log('Added widget:', widgetName);
-    }}
-  />
+  <Suspense fallback={null}>
+    <AddWidgetModal
+      isOpen={isAddWidgetOpen}
+      onClose={() => setIsAddWidgetOpen(false)}
+      onAdd={(widgetName) => {
+        console.log('Added widget:', widgetName);
+      }}
+    />
+  </Suspense>
 </>
 );
 }

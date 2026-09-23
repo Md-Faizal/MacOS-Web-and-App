@@ -2,10 +2,29 @@ import React, { useEffect, useRef } from 'react';
 
 interface DynamicHalftoneBackgroundProps {
   className?: string;
+  drawFromBottom?: boolean;
 }
 
-export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps> = ({ className = '' }) => {
+export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps> = ({ 
+  className = '',
+  drawFromBottom = true,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isRevealingRef = useRef<boolean>(false);
+  const revealProgressRef = useRef<number>(drawFromBottom ? 1 : 0);
+  const revealStartTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (drawFromBottom) {
+      if (revealProgressRef.current < 1 && !isRevealingRef.current) {
+        isRevealingRef.current = true;
+        revealStartTimeRef.current = performance.now();
+      }
+    } else {
+      isRevealingRef.current = false;
+      revealProgressRef.current = 0;
+    }
+  }, [drawFromBottom]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -17,14 +36,17 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
     let animationFrameId: number;
     let width = 0;
     let height = 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Track mouse with smooth interpolation
+    // Track mouse with smooth interpolation, momentum & debounced rest state
     const mouse = {
       x: -2000,
       y: -2000,
       targetX: -2000,
       targetY: -2000,
       active: false,
+      moving: false,
+      intensity: 0,
     };
 
     const handleResize = () => {
@@ -42,10 +64,18 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
       mouse.targetX = e.clientX;
       mouse.targetY = e.clientY;
       mouse.active = true;
+      mouse.moving = true;
+
+      // Debounce: detect when pointer movement settles into an idle state
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        mouse.moving = false;
+      }, 85);
     };
 
     const handleMouseLeave = () => {
       mouse.active = false;
+      mouse.moving = false;
     };
 
     window.addEventListener('resize', handleResize);
@@ -59,13 +89,39 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
     const startTime = performance.now();
 
     const render = (currentTime: number) => {
-      // Smooth mouse position lerping
+      // If waiting to draw from bottom and not yet started, keep canvas clear
+      if (!drawFromBottom && !isRevealingRef.current && revealProgressRef.current === 0) {
+        ctx.clearRect(0, 0, width, height);
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+
+      // Handle bottom-to-up drawing reveal progression
+      if (isRevealingRef.current) {
+        const revealElapsed = (currentTime - revealStartTimeRef.current) * 0.001;
+        const REVEAL_DURATION = 1.6; // 1.6s smooth liquid sweep
+        const rawProgress = Math.min(1, Math.max(0, revealElapsed / REVEAL_DURATION));
+        // Smooth cubic ease out
+        revealProgressRef.current = 1 - Math.pow(1 - rawProgress, 3);
+        if (rawProgress >= 1) {
+          isRevealingRef.current = false;
+          revealProgressRef.current = 1;
+        }
+      }
+
+      // Physics-based mouse smoothing with debounce relaxation
       if (mouse.active) {
-        mouse.x += (mouse.targetX - mouse.x) * 0.14;
-        mouse.y += (mouse.targetY - mouse.y) * 0.14;
+        const lerpFactor = mouse.moving ? 0.085 : 0.05;
+        mouse.x += (mouse.targetX - mouse.x) * lerpFactor;
+        mouse.y += (mouse.targetY - mouse.y) * lerpFactor;
+
+        // Smooth interaction intensity multiplier (cushioned relaxation when debounced/paused)
+        const targetIntensity = mouse.moving ? 1.0 : 0.65;
+        mouse.intensity += (targetIntensity - mouse.intensity) * 0.08;
       } else {
-        mouse.x += (-2000 - mouse.x) * 0.05;
-        mouse.y += (-2000 - mouse.y) * 0.05;
+        mouse.x += (-2000 - mouse.x) * 0.04;
+        mouse.y += (-2000 - mouse.y) * 0.04;
+        mouse.intensity += (0 - mouse.intensity) * 0.06;
       }
 
       ctx.clearRect(0, 0, width, height);
@@ -81,6 +137,9 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
       const node2Y = height * (0.5 + 0.36 * Math.sin(elapsed * 0.5 + 2.4));
       const NODE_RADIUS = 280;
       const MOUSE_RADIUS = 250;
+
+      // Re-engineered Organic Wavefront Reveal from Bottom to Top (1.5s fluid sweep)
+      const waveFrontY = height * (1.1 - revealProgressRef.current * 1.25);
 
       for (let r = 0; r < rows; r++) {
         const y = r * SPACING;
@@ -107,6 +166,26 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
           let drawY = y + ambientDriftY;
           let radius = baseRadius + ambientScale;
           let alpha = baseAlpha;
+
+          // ── Re-engineered Organic Wavefront Reveal (Bottom-to-Up with Luminous Crest) ──
+          if (revealProgressRef.current < 1) {
+            const waveY = waveFrontY + Math.sin(drawX * 0.007 + elapsed * 1.8) * 55 + Math.cos(drawX * 0.015) * 25;
+            const distBelow = drawY - waveY;
+
+            // Wave has not reached this dot yet
+            if (distBelow < -40) continue;
+
+            // Dot is in the crest / rising transition zone (smooth 240px transition)
+            if (distBelow < 200) {
+              const t = Math.min(1, Math.max(0, (distBelow + 40) / 240));
+              const ease = Math.sin(t * Math.PI * 0.5);
+              const crestBloom = Math.sin(t * Math.PI) * 1.5;
+
+              radius = (baseRadius + ambientScale) * ease + crestBloom * 2.4;
+              alpha = baseAlpha * ease + crestBloom * 0.38;
+              drawY += (1 - ease) * 26;
+            }
+          }
 
           // ── Reaction to Autonomous Wandering Node 1 ──
           const n1dx = drawX - node1X;
@@ -138,13 +217,13 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
             }
           }
 
-          // ── Dynamic Interactive Mouse Reaction (Moves the pattern & scales dots) ──
+          // ── Dynamic Interactive Mouse Reaction (Moves the pattern & scales dots with smoothed intensity) ──
           const mdx = drawX - mouse.x;
           const mdy = drawY - mouse.y;
           const mDistSq = mdx * mdx + mdy * mdy;
-          if (mDistSq < MOUSE_RADIUS * MOUSE_RADIUS) {
+          if (mDistSq < MOUSE_RADIUS * MOUSE_RADIUS && mouse.intensity > 0.01) {
             const mDist = Math.sqrt(mDistSq);
-            const mFactor = Math.cos((mDist / MOUSE_RADIUS) * (Math.PI / 2));
+            const mFactor = Math.cos((mDist / MOUSE_RADIUS) * (Math.PI / 2)) * mouse.intensity;
             radius += mFactor * 3.2;
             alpha += mFactor * 0.28;
             if (mDist > 0.5) {
@@ -170,6 +249,7 @@ export const DynamicHalftoneBackground: React.FC<DynamicHalftoneBackgroundProps>
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseleave', handleMouseLeave);

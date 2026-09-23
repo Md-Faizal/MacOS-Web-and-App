@@ -361,5 +361,73 @@
   will-change: transform, opacity;
 }
 
+/* ─── 3-DIGIT ROLLING COUNTER ANIMATIONS (Smooth, Slow & Elegant) ─── */
+/* Current digit exits upwards */
+@keyframes digit-exit-up {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+    filter: blur(0px);
+  }
+  100% {
+    transform: translateY(-100%);
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+}
+
+/* Next digit enters from below */
+@keyframes digit-enter-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+
+.animate-digit-exit-up {
+  animation: digit-exit-up 0.09s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+
+.animate-digit-enter-up {
+  animation: digit-enter-up 0.09s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+
+/* ─── LOGIN PAGE ELEMENTS: STAGGERED TOP-TO-BOTTOM DROP-IN ─── */
+@keyframes login-element-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px);
+    filter: blur(1.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
+
+.animate-login-drop-1 {
+  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-2 {
+  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-3 {
+  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 320ms both;
+  will-change: transform, opacity, filter;
+}
+
 
 

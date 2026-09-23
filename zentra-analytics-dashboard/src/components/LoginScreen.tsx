@@ -19,10 +19,12 @@ import {
   saveSession,
   setActiveRememberedAccount,
 } from '../lib/auth';
+import { RollingCounter } from './RollingCounter';
 
 interface LoginScreenProps {
   onAuthenticated: (user: any) => void;
   justLoggedOut?: boolean;
+  onStartMatrixDraw?: () => void;
 }
 
 interface AccountCard {
@@ -34,7 +36,17 @@ interface AccountCard {
   lastActive: number;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justLoggedOut = false }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ 
+  onAuthenticated, 
+  justLoggedOut = false,
+  onStartMatrixDraw,
+}) => {
+  // Inherit progress from static inline preloader if present
+  const initialProgress = typeof window !== 'undefined' && (window as any).__ZENTRA_LOADER__
+    ? (window as any).__ZENTRA_LOADER__.getProgress()
+    : 0;
+
+  const [loadingProgress, setLoadingProgress] = useState(initialProgress);
   const [accounts, setAccounts] = useState<AccountCard[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState('faizal');
@@ -44,11 +56,77 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showAccountPicker, setShowAccountPicker] = useState(false);
-  const [animPhase, setAnimPhase] = useState<'idle' | 'unlocking' | 'fading-out' | 'expanding' | 'locking'>(
-    justLoggedOut ? 'locking' : 'idle'
-  );
+  
+  // Website initial load starts in 'website-loading' (showing small frosted box with 3-digit rolling counter)
+  const [animPhase, setAnimPhase] = useState<
+    'website-loading' | 'counter-exit' | 'expanding-to-login' | 'idle' | 'unlocking' | 'fading-out' | 'expanding' | 'locking'
+  >(justLoggedOut ? 'locking' : 'website-loading');
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0, opacity: 0 });
+
+  // ─── INSTANT HANDOVER: REMOVE STATIC HTML PRELOADER ON REACT MOUNT ───
+  useEffect(() => {
+    const loader = (window as any).__ZENTRA_LOADER__;
+    if (loader) {
+      if (typeof loader.stop === 'function') loader.stop();
+      delete (window as any).__ZENTRA_LOADER__;
+      const el = document.getElementById('zentra-preloader');
+      if (el) el.remove();
+    }
+  }, []);
+
+  // ─── 3-DIGIT ROLLING COUNTER PROGRESSION (Every Single Number from initialProgress to 100) ───
+  useEffect(() => {
+    if (animPhase !== 'website-loading') return;
+
+    let current = loadingProgress;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = () => {
+      current += 1;
+      setLoadingProgress(current);
+
+      if (current < 100) {
+        // Natural pacing: smooth count that gracefully decelerates near 100 without skipping any number
+        let delay = 24;
+        if (current > 96) delay = 140;
+        else if (current > 90) delay = 85;
+        else if (current > 78) delay = 48;
+        else if (current > 55) delay = 32;
+
+        timer = setTimeout(tick, delay);
+      } else {
+        // Paused on 100 for 420ms so user can appreciate completion
+        timer = setTimeout(() => {
+          setAnimPhase('counter-exit');
+        }, 420);
+      }
+    };
+
+    timer = setTimeout(tick, current === 0 ? 80 : 20);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [animPhase]);
+
+  // ─── POST-LOADER TRANSITION: EXIT COUNTER -> EXPAND CARD & DRAW MATRIX -> IDLE ───
+  useEffect(() => {
+    if (animPhase === 'counter-exit') {
+      const timer = setTimeout(() => {
+        setAnimPhase('expanding-to-login');
+        onStartMatrixDraw?.();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+
+    if (animPhase === 'expanding-to-login') {
+      const timer = setTimeout(() => {
+        setAnimPhase('idle');
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, [animPhase, onStartMatrixDraw]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -153,9 +231,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
     setShowAccountPicker(false);
   }
 
+  const isWebsiteLoading = animPhase === 'website-loading' || animPhase === 'counter-exit';
+  const isExpandingToLogin = animPhase === 'expanding-to-login';
   const isUnlocked = animPhase === 'unlocking' || animPhase === 'fading-out' || animPhase === 'expanding' || animPhase === 'locking';
   const isFading = animPhase === 'fading-out' || animPhase === 'expanding';
   const isExpanding = animPhase === 'expanding';
+
+  const getDropClass = (tier: 1 | 2 | 3) => {
+    if (isFading) return 'animate-login-exit pointer-events-none';
+    if (isExpandingToLogin || (justLoggedOut && animPhase === 'locking')) {
+      return tier === 1 ? 'animate-login-drop-1' : tier === 2 ? 'animate-login-drop-2' : 'animate-login-drop-3';
+    }
+    return '';
+  };
 
   return (
     <div 
@@ -166,10 +254,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
       onMouseLeave={handleMouseLeave}
     >
       <div 
-        className={`w-full transition-all duration-[750ms] ease-[cubic-bezier(0.16,1,0.3,1)] relative rounded-[32px] overflow-hidden backdrop-blur-[24px] sm:backdrop-blur-[28px] backdrop-saturate-[180%] border border-white/80 ${
-          isExpanding 
-            ? 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]' 
-            : 'max-w-[1280px] min-h-[600px] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
+        className={`w-full transition-all duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)] relative rounded-[32px] sm:rounded-[36px] overflow-hidden backdrop-blur-[24px] sm:backdrop-blur-[28px] backdrop-saturate-[180%] border border-white/80 ${
+          isWebsiteLoading
+            ? 'max-w-[560px] sm:max-w-[620px] min-h-[260px] sm:min-h-[300px] shadow-[0_24px_64px_-16px_rgba(17,17,17,0.18),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
+            : isExpanding 
+              ? 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]' 
+              : 'max-w-[1280px] min-h-[600px] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
         }`}
       >
         {/* Background Layers with Smooth Crossfade */}
@@ -186,12 +276,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
 
         {/* ─── INTERACTIVE ANGULAR GLASS REFLECTION BORDER (STRICTLY TO THE EDGE) ─── */}
         <div 
-          className="pointer-events-none absolute -inset-[1px] rounded-[33px] z-30 overflow-hidden" 
+          className="pointer-events-none absolute -inset-[1px] rounded-[33px] sm:rounded-[37px] z-30 overflow-hidden" 
           aria-hidden="true"
         >
           {/* Base Chiseled Angular Glass Edge */}
           <div 
-            className="absolute inset-0 rounded-[33px]" 
+            className="absolute inset-0 rounded-[33px] sm:rounded-[37px]" 
             style={{
               padding: '1.4px',
               background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.4) 25%, rgba(17,17,17,0.06) 50%, rgba(255,255,255,0.3) 75%, rgba(255,255,255,0.85) 100%)',
@@ -202,9 +292,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
           />
         </div>
 
+        {/* ─── PURE MINIMALIST RECTANGLE LOADING BOX (Only the 3-Digit Rolling Progress, No text) ─── */}
+        {isWebsiteLoading && (
+          <div className={`relative z-20 flex items-center justify-center min-h-[260px] sm:min-h-[300px] transition-all duration-300 ease-out ${
+            animPhase === 'counter-exit' ? 'opacity-0 -translate-y-4 scale-95 pointer-events-none' : 'opacity-100 translate-y-0 scale-100'
+          }`}>
+            <RollingCounter value={loadingProgress} />
+          </div>
+        )}
+
         {/* Inner Content Grid */}
         <div className={`relative z-10 grid h-full lg:grid-cols-[1.18fr_0.82fr] transition-opacity duration-300 ${
-          isExpanding ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          isExpanding || isWebsiteLoading ? 'opacity-0 pointer-events-none hidden' : 'opacity-100'
         }`}>
           {/* Left Hero Section */}
           <div className="relative hidden overflow-hidden p-10 lg:flex lg:flex-col lg:justify-between border-r border-black/10 bg-[radial-gradient(circle_at_top_left,_rgba(255,128,0,0.12),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(32,97,255,0.12),_transparent_28%),linear-gradient(135deg,#f3f3f0_0%,#e7efe9_40%,#edf1f4_100%)]">
@@ -213,12 +312,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
             <div className="relative z-10">
               {/* Left Section 3 (Top): Logo & Title */}
               <div 
-                className={`mb-8 flex items-center gap-3 ${
-                  isFading 
-                    ? 'animate-login-exit pointer-events-none' 
-                    : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                }`}
-                style={{ animationDelay: isFading ? '200ms' : '0ms' }}
+                className={`mb-8 flex items-center gap-3 ${getDropClass(1)}`}
+                style={{ animationDelay: isFading ? '200ms' : undefined }}
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-black/10 bg-white shadow-[0_10px_22px_rgba(17,17,17,0.08)]">
                   <Sparkles className="h-5 w-5 text-[#ff8000]" />
@@ -231,12 +326,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
 
               {/* Left Section 2 (Middle): Hero Content */}
               <div 
-                className={`space-y-5 pt-8 ${
-                  isFading 
-                    ? 'animate-login-exit pointer-events-none' 
-                    : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                }`}
-                style={{ animationDelay: '100ms' }}
+                className={`space-y-5 pt-8 ${getDropClass(2)}`}
+                style={{ animationDelay: isFading ? '100ms' : undefined }}
               >
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#d9e4dd] bg-white/80 px-3 py-1.5 text-[11px] font-medium text-[#4d4d4d] shadow-[0_8px_18px_rgba(0,0,0,0.04)] cursor-default">
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
@@ -255,12 +346,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
 
             {/* Left Section 2 (Middle): Feature Cards */}
             <div 
-              className={`relative z-10 grid gap-3 lg:grid-cols-3 ${
-                isFading 
-                  ? 'animate-login-exit pointer-events-none' 
-                  : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-              }`}
-              style={{ animationDelay: '100ms' }}
+              className={`relative z-10 grid gap-3 lg:grid-cols-3 ${getDropClass(3)}`}
+              style={{ animationDelay: isFading ? '100ms' : undefined }}
             >
               {[
                 ['Billing', 'Live invoices & cashflow'],
@@ -280,12 +367,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
             <div className="w-full max-w-[460px]">
               {/* Right Section 3 (Top): Header & Lock Icon */}
               <div 
-                className={`mb-5 flex items-center justify-between ${
-                  isFading 
-                    ? 'animate-login-exit pointer-events-none' 
-                    : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                }`}
-                style={{ animationDelay: isFading ? '200ms' : '0ms' }}
+                className={`mb-5 flex items-center justify-between ${getDropClass(1)}`}
+                style={{ animationDelay: isFading ? '200ms' : undefined }}
               >
                 <div>
                   <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'}`}>
@@ -332,12 +415,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
               {/* Right Section 2 (Middle): Accounts Picker */}
               {accounts.length > 0 && (
                 <div 
-                  className={`mb-5 rounded-[24px] border border-black/10 bg-white/80 p-3 shadow-[0_12px_24px_rgba(0,0,0,0.05)] ${
-                    isFading 
-                      ? 'animate-login-exit pointer-events-none' 
-                      : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                  }`}
-                  style={{ animationDelay: '100ms' }}
+                  className={`mb-5 rounded-[24px] border border-black/10 bg-white/80 p-3 shadow-[0_12px_24px_rgba(0,0,0,0.05)] ${getDropClass(2)}`}
+                  style={{ animationDelay: isFading ? '100ms' : undefined }}
                 >
                   <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-[#6b6b6b]">
                     <span>Accounts</span>
@@ -382,12 +461,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
               {/* Right Section 2 (Middle): Form Container */}
               <form 
                 onSubmit={handleSubmit} 
-                className={`rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_18px_40px_rgba(0,0,0,0.05)] sm:p-7 ${
-                  isFading 
-                    ? 'animate-login-exit pointer-events-none' 
-                    : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                }`}
-                style={{ animationDelay: '100ms' }}
+                className={`rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_18px_40px_rgba(0,0,0,0.05)] sm:p-7 ${getDropClass(2)}`}
+                style={{ animationDelay: isFading ? '100ms' : undefined }}
               >
                 <div className="space-y-4">
                   <div className="relative group">
@@ -458,12 +533,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, justL
               
               {/* Right Section 1 (Bottom): Action Button & Footer */}
               <div 
-                className={`${
-                  isFading 
-                    ? 'animate-login-exit pointer-events-none' 
-                    : (justLoggedOut && animPhase === 'locking' ? 'animate-login-enter' : '')
-                }`}
-                style={{ animationDelay: isFading ? '0ms' : '200ms' }}
+                className={getDropClass(3)}
+                style={{ animationDelay: isFading ? '0ms' : undefined }}
               >
                 <button
                   type="submit"
