@@ -86,6 +86,30 @@ const workerGoogleAuth = authDepartment.workerGoogle;
 const adminAuth = departments.admin.create(globalDb);
 
 const app = express();
+const cors = require('cors');
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://erp.faizal.uk',
+  'https://mac.faizal.uk',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || isDev || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-request-id', 'Accept'],
+}));
+
 const { attachResponseHelpers, sendSuccess, sendError } = require('../shared/api/response');
 const { toLegacyShape } = require('../shared/api/compat');
 const auditService = authDepartment.audit;
@@ -239,21 +263,31 @@ app.get('/zentra/*', (req, res) => {
 });
 
 app.use((req, res, next) => {
-  const csrfToken = req.cookies?.csrf_token || crypto.randomBytes(32).toString('base64url');
-  if (!req.cookies?.csrf_token) {
+  const incomingCsrf = req.cookies?.csrf_token;
+  const csrfToken = incomingCsrf || crypto.randomBytes(32).toString('base64url');
+  if (!incomingCsrf) {
     res.cookie('csrf_token', csrfToken, {
       httpOnly: false,
       secure: isProd || isVM || req.protocol === 'https',
-      sameSite: 'Strict',
+      sameSite: isProd ? 'Strict' : 'Lax',
       maxAge: 12 * 60 * 60 * 1000,
       path: '/'
     });
   }
 
   const hasBrowserSession = !!req.cookies?.auth_session;
+  const isAuthEntry = req.path === '/api/auth/login' || 
+                      req.path === '/api/auth/register' || 
+                      req.path === '/api/auth/logout' || 
+                      req.path === '/api/auth/worker-google';
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (hasBrowserSession && mutatingApiRequest && req.get('x-csrf-token') !== csrfToken) {
-    return res.status(403).json({ error: 'CSRF validation failed' });
+  const hasBearerAuth = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ');
+
+  if (hasBrowserSession && mutatingApiRequest && !isAuthEntry && !hasBearerAuth) {
+    const clientHeaderCsrf = req.get('x-csrf-token');
+    if (incomingCsrf && clientHeaderCsrf !== incomingCsrf) {
+      return res.status(403).json({ error: 'CSRF validation failed' });
+    }
   }
   next();
 });

@@ -26,7 +26,6 @@ export type RememberedAccount = {
   lastActive: number;
 };
 
-const DEFAULT_API_PORTS = [3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010, 5173];
 const DEFAULT_PRODUCTION_HOSTS = [
   'https://erp.faizal.uk',
   'https://mac.faizal.uk',
@@ -38,58 +37,76 @@ const USER_KEY = 'zentra-auth-user';
 const REMEMBERED_USERS_KEY = 'macos_remembered_users';
 const ACTIVE_USER_KEY = 'macos_active_user_id';
 
-function getApiCandidates() {
-  const configured = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_TARGET || '').trim();
-  const candidates = new Set<string>();
+function getApiCandidates(): string[] {
+  const candidates: string[] = [];
 
+  // 1. Primary: Same origin (handled by Vite dev proxy to backend port 3002, or Nginx/production server)
   if (typeof window !== 'undefined' && window.location?.origin) {
-    candidates.add(window.location.origin.replace(/\/$/, ''));
+    candidates.push(window.location.origin.replace(/\/$/, ''));
   }
 
+  // 2. Configured custom target if provided
+  const configured = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_TARGET || '').trim();
   if (configured) {
-    candidates.add(configured.replace(/\/$/, ''));
+    const clean = configured.replace(/\/$/, '');
+    if (!candidates.includes(clean)) {
+      candidates.push(clean);
+    }
   }
 
+  // 3. Local direct backend port fallback (port 3002)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      for (const port of DEFAULT_API_PORTS) {
-        candidates.add(`http://localhost:${port}`);
-        candidates.add(`http://127.0.0.1:${port}`);
+      const port3002 = `http://${window.location.hostname}:3002`;
+      if (!candidates.includes(port3002)) {
+        candidates.push(port3002);
       }
     }
   }
 
+  // 4. Production remote fallbacks
   for (const host of DEFAULT_PRODUCTION_HOSTS) {
-    candidates.add(host);
+    if (!candidates.includes(host)) {
+      candidates.push(host);
+    }
   }
 
-  return Array.from(candidates);
+  return candidates;
 }
 
-export const API_BASE_URL = getApiCandidates()[0] || 'https://erp.faizal.uk';
+export const API_BASE_URL = getApiCandidates()[0] || '';
 
-function isAllowedCredentialedOrigin(origin: string) {
-  if (!origin) return true;
-  try {
-    const parsed = new URL(origin);
-    const normalized = `${parsed.protocol}//${parsed.host}`.toLowerCase();
-    return getApiCandidates().some((candidate) => candidate.toLowerCase() === normalized);
-  } catch {
-    return false;
-  }
+export function getCsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
-function buildFetchOptions(url: string, init?: RequestInit) {
+function buildFetchOptions(url: string, init?: RequestInit): RequestInit {
   const nextInit: RequestInit = { ...init };
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const targetOrigin = new URL(url, window.location.href || 'http://localhost').origin;
+  let isSameOrigin = false;
 
-  if (origin && targetOrigin !== origin) {
-    nextInit.credentials = isAllowedCredentialedOrigin(targetOrigin) ? 'include' : 'omit';
-  } else {
-    nextInit.credentials = 'same-origin';
+  try {
+    const targetOrigin = new URL(url, window.location.href || 'http://localhost').origin;
+    isSameOrigin = Boolean(origin && targetOrigin === origin);
+  } catch {
+    isSameOrigin = true;
   }
+
+  if (isSameOrigin) {
+    nextInit.credentials = 'same-origin';
+  } else {
+    nextInit.credentials = 'include';
+  }
+
+  const headers = new Headers(nextInit.headers || {});
+  const csrf = getCsrfToken();
+  if (csrf && !headers.has('X-CSRF-Token')) {
+    headers.set('X-CSRF-Token', csrf);
+  }
+  nextInit.headers = headers;
 
   return nextInit;
 }
@@ -124,8 +141,28 @@ export async function fetchWithFallback(endpoint: string, init?: RequestInit) {
 }
 
 export async function apiFetch<T = any>(endpoint: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithFallback(endpoint, init);
+  const session = readStoredSession();
+  const headers: Record<string, string> = {
+    ...((init?.headers as Record<string, string>) || {}),
+  };
+  
+  if (session.token && !headers['Authorization'] && !headers['authorization']) {
+    headers['Authorization'] = `Bearer ${session.token}`;
+  }
+
+  const response = await fetchWithFallback(endpoint, {
+    ...init,
+    headers,
+  });
   const contentType = response.headers.get('content-type') || '';
+
+  if (response.status === 401 || response.status === 403) {
+    clearSession();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('zentra:unauthorized'));
+    }
+    throw new Error('Unauthorized');
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -218,6 +255,9 @@ export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('zentra-auth-session');
+  if (typeof document !== 'undefined') {
+    document.cookie = 'auth_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+  }
 }
 
 export async function loginWithPassword(identifier: string, password: string) {
@@ -255,27 +295,34 @@ export async function loginWithPassword(identifier: string, password: string) {
       console.debug('[Zentra Auth] response', { baseUrl, status: response.status, ok: response.ok, data });
 
       if (!response.ok) {
-        throw new Error(data.error || 'Unable to log in');
+        throw new Error(data.error || 'Invalid username or password');
       }
 
       return data;
     } catch (error) {
+      // If the backend actually responded (e.g. 401 Invalid credentials, 403, 400),
+      // rethrow immediately so the UI displays the error without spamming other candidate URLs!
+      if (error instanceof Error && error.message !== 'Failed to fetch' && !error.message.includes('NetworkError') && !error.message.includes('Load failed')) {
+        throw error;
+      }
       lastError = error;
       console.warn('[Zentra Auth] failed on baseUrl', baseUrl, error);
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('Failed to fetch from the backend.');
+  throw lastError instanceof Error ? lastError : new Error('Unable to connect to authentication server.');
 }
 
-export async function verifySession(token?: string) {
+export async function verifySession(token?: string): Promise<{ valid: boolean; user: UserRecord | null; permissions?: any }> {
+  if (!token || typeof token !== 'string' || !token.trim()) {
+    return { valid: false, user: null };
+  }
+
+  const cleanToken = token.trim();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    Authorization: `Bearer ${cleanToken}`,
   };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
 
   try {
     const response = await fetchWithFallback('/api/auth/verify', {
@@ -285,17 +332,23 @@ export async function verifySession(token?: string) {
     });
 
     if (!response.ok) {
-      return false;
+      return { valid: false, user: null };
     }
 
     const data = await response.json().catch(() => ({}));
-    return Boolean(data?.valid || data?.success || data?.user || data?.status);
-  } catch (error) {
-    const isLocalDemo = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-    if (isLocalDemo) {
-      return true;
+    const isSuccess = Boolean(data?.authenticated === true || data?.success === true || data?.valid === true);
+    
+    if (isSuccess && data?.user) {
+      return {
+        valid: true,
+        user: data.user,
+        permissions: data.permissions || null,
+      };
     }
 
-    return false;
+    return { valid: false, user: null };
+  } catch (error) {
+    console.warn('[Zentra Auth] Session verification error:', error);
+    return { valid: false, user: null };
   }
 }

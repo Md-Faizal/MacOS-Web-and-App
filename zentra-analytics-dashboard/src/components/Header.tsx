@@ -14,6 +14,8 @@ interface HeaderProps {
   onSignOut?: () => void;
 }
 
+const NAV_ITEMS = ['Home', 'Payments', 'Balances', 'Customers', 'Products', 'Billing', 'Reports', 'Connect'] as const;
+
 export const Header: React.FC<HeaderProps> = ({
   activeTab = 'Home',
   onTabChange,
@@ -32,7 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
   const menuButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const dragStartX = useRef<number | null>(null);
 
-  const navItems = ['Home', 'Payments', 'Balances', 'Customers', 'Products', 'Billing', 'Reports', 'Connect'];
+  const navItems = NAV_ITEMS;
+
+  useEffect(() => {
+    setCurrentTab(activeTab);
+  }, [activeTab]);
 
   const closeAllHeaderPopups = () => {
     setShowSearch(false);
@@ -58,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const moveToTab = (direction: 'prev' | 'next') => {
-    const index = navItems.indexOf(currentTab);
+    const index = navItems.indexOf(currentTab as any);
     const nextIndex = direction === 'next'
       ? Math.min(index + 1, navItems.length - 1)
       : Math.max(index - 1, 0);
@@ -69,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   useEffect(() => {
-    const activeIndex = navItems.indexOf(currentTab);
+    const activeIndex = navItems.indexOf(currentTab as any);
     const activeButton = navButtonRefs.current[activeIndex];
 
     if (!activeButton) return;
@@ -80,19 +86,26 @@ export const Header: React.FC<HeaderProps> = ({
     const parentRect = parent.getBoundingClientRect();
     const buttonRect = activeButton.getBoundingClientRect();
     const newLeft = buttonRect.left - parentRect.left;
+    const newWidth = buttonRect.width;
+    const newHeight = parentRect.height;
 
-    setSelectorStyle({
-      left: newLeft,
-      width: buttonRect.width,
-      top: 0,
-      height: parentRect.height,
+    setSelectorStyle((prev) => {
+      if (prev.left === newLeft && prev.width === newWidth && prev.height === newHeight) {
+        return prev;
+      }
+      return {
+        left: newLeft,
+        width: newWidth,
+        top: 0,
+        height: newHeight,
+      };
     });
-  }, [currentTab, navItems]);
+  }, [currentTab]);
 
   useEffect(() => {
     if (!showNavMenu) return;
 
-    const activeIndex = navItems.indexOf(currentTab);
+    const activeIndex = navItems.indexOf(currentTab as any);
     const activeButton = menuButtonRefs.current[activeIndex];
 
     if (!activeButton) return;
@@ -104,21 +117,53 @@ export const Header: React.FC<HeaderProps> = ({
     const buttonRect = activeButton.getBoundingClientRect();
     const newLeft = buttonRect.left - parentRect.left;
     const newTop = buttonRect.top - parentRect.top;
+    const newWidth = buttonRect.width;
+    const newHeight = buttonRect.height;
 
-    setMenuSelectorStyle({
-      left: newLeft,
-      width: buttonRect.width,
-      top: newTop,
-      height: buttonRect.height,
+    setMenuSelectorStyle((prev) => {
+      if (
+        prev.left === newLeft &&
+        prev.top === newTop &&
+        prev.width === newWidth &&
+        prev.height === newHeight
+      ) {
+        return prev;
+      }
+      return {
+        left: newLeft,
+        width: newWidth,
+        top: newTop,
+        height: newHeight,
+      };
     });
-  }, [currentTab, navItems, showNavMenu]);
+  }, [currentTab, showNavMenu]);
 
   return (
-    <header className="relative z-[100] w-full select-none pb-3 pt-1.5 sm:pb-4 sm:pt-2" id="main-header">
-      <div className="flex w-full flex-wrap items-center gap-2 rounded-[26px] border border-[#111111]/10 bg-[#f6f5f2] px-2.5 py-2.5 shadow-[0_10px_30px_-24px_rgba(17,17,17,0.26)] backdrop-blur-sm sm:gap-3 sm:px-3 sm:py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="flex items-center gap-2.5 rounded-[16px] border border-[#111111]/8 bg-white/80 px-1.5 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:px-2 sm:py-1.5">
+    <header 
+      id="app-header" 
+      data-component="AppHeader"
+      data-section="global-header"
+      role="banner"
+      className="relative z-[100] w-full select-none pb-3 pt-1.5 sm:pb-4 sm:pt-2"
+    >
+      <div 
+        id="app-header-shell"
+        data-slot="shell-pill"
+        className="flex w-full flex-wrap items-center gap-2 rounded-[26px] border border-black/[0.09] bg-white px-2.5 py-2.5 shadow-[0_14px_36px_-12px_rgba(17,17,17,0.12),0_2px_6px_rgba(17,17,17,0.04)] sm:gap-3 sm:px-3 sm:py-3"
+      >
+        {/* ─── GROUP A: BRAND IDENTITY & PRIMARY NAVIGATION ─── */}
+        <div 
+          id="header-nav-group"
+          data-slot="brand-and-nav"
+          className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3"
+        >
+          {/* Sub-group 1: Brand Logo & Mobile Drawer Triggers */}
+          <div 
+            id="header-brand-group"
+            data-slot="brand-identity"
+            className="flex shrink-0 items-center gap-3"
+          >
+            <div className="flex items-center gap-2.5 rounded-[16px] border border-black/[0.08] bg-neutral-100/90 px-1.5 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:px-2 sm:py-1.5">
               <BrandLogo size={28} />
             </div>
 
@@ -148,7 +193,11 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
+          {/* Sub-group 2: Desktop Primary Route Tabs */}
           <nav
+            id="header-primary-nav"
+            data-slot="primary-nav"
+            aria-label="Main Navigation"
             className="relative hidden min-w-0 items-center gap-2 overflow-hidden xl:flex"
             onPointerDown={(event) => {
               dragStartX.current = event.clientX;
@@ -176,6 +225,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 key={item}
                 type="button"
+                data-tab-name={item.toLowerCase()}
                 ref={(element) => {
                   navButtonRefs.current[index] = element;
                 }}
@@ -192,8 +242,18 @@ export const Header: React.FC<HeaderProps> = ({
           </nav>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5 sm:gap-3">
-          <div className="relative flex shrink-0">
+        {/* ─── GROUP B: UTILITIES DOCK (Global Actions & User Session) ─── */}
+        <div 
+          id="header-utilities-dock"
+          data-slot="utilities-dock"
+          className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5 sm:gap-3"
+        >
+          {/* Sub-group 1: Global Search */}
+          <div 
+            id="header-search-control"
+            data-utility-slot="search"
+            className="relative flex shrink-0"
+          >
             <button
               type="button"
               onClick={() => {
@@ -240,7 +300,12 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          <div className="relative flex shrink-0">
+          {/* Sub-group 2: Notifications */}
+          <div 
+            id="header-notifications-control"
+            data-utility-slot="notifications"
+            className="relative flex shrink-0"
+          >
             <button
               type="button"
               onClick={() => {
@@ -283,7 +348,12 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          <div className="relative flex shrink-0">
+          {/* Sub-group 3: User Profile & Session Menu */}
+          <div 
+            id="header-user-profile-control"
+            data-utility-slot="user-profile"
+            className="relative flex shrink-0"
+          >
             <button
               type="button"
               onClick={() => {
@@ -341,7 +411,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       {showNavMenu && (
-        <div className="absolute left-0 top-[calc(100%+0.75rem)] z-[9999] w-64 rounded-[20px] border border-black/[0.08] bg-white/95 p-2.5 shadow-[0_20px_42px_-18px_rgba(0,0,0,0.28)] backdrop-blur-md md:block xl:hidden">
+        <div 
+          id="header-mobile-drawer"
+          data-slot="mobile-navigation-drawer"
+          className="absolute left-0 top-[calc(100%+0.75rem)] z-[9999] w-64 rounded-[20px] border border-black/[0.08] bg-white/95 p-2.5 shadow-[0_20px_42px_-18px_rgba(0,0,0,0.28)] backdrop-blur-md md:block xl:hidden"
+        >
           <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7A7A7A]">Navigation</div>
           <div className="relative space-y-1.5 px-1 py-0.5">
             <div

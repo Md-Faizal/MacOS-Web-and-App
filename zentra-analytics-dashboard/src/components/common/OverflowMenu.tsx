@@ -37,7 +37,7 @@ export const OverflowMenu: React.FC<OverflowMenuProps> = ({
   };
 
   return (
-    <div className={`relative ${className}`} ref={menuRef} id={`overflow-menu-${cardTitle.toLowerCase().replace(/\s+/g, '-')}`}>
+    <div className={`relative ${isOpen ? 'z-50' : 'z-20'} ${className}`} ref={menuRef} id={`overflow-menu-${cardTitle.toLowerCase().replace(/\s+/g, '-')}`}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -48,7 +48,7 @@ export const OverflowMenu: React.FC<OverflowMenuProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-10 w-48 bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.14),0_0_1px_1px_rgba(0,0,0,0.05)] border border-black/[0.06] py-1.5 z-40 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 top-10 w-48 bg-white/95 backdrop-blur-md rounded-2xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.14),0_0_1px_1px_rgba(0,0,0,0.05)] border border-black/[0.06] py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
           <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#888888] border-b border-black/[0.04]">
             {cardTitle}
           </div>

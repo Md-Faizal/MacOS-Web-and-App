@@ -9,11 +9,11 @@ export const PaymentsCard: React.FC = () => {
 
   return (
     <div
-      className="soft-card relative flex h-full min-h-[300px] w-full flex-col justify-between gap-3 overflow-hidden rounded-[28px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(252,252,250,0.94))] p-4 shadow-[0_22px_48px_-30px_rgba(17,17,17,0.22)] sm:min-h-[500px] sm:p-6"
+      className="soft-card relative flex h-full min-h-[300px] w-full flex-col justify-between gap-3 overflow-visible rounded-[28px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(252,252,250,0.94))] p-4 shadow-[0_22px_48px_-30px_rgba(17,17,17,0.22)] sm:min-h-[500px] sm:p-6"
       id="card-payments"
     >
       {/* Card Header */}
-      <div className="flex items-center justify-between">
+      <div className="relative z-30 flex items-center justify-between">
         <h2 className="text-[20px] sm:text-[22px] font-[550] tracking-[-0.03em] text-[#111111] leading-none">
           Payments
         </h2>

@@ -28,10 +28,7 @@
 
   body {
     font-family: 'Inter Variable', 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background:
-      radial-gradient(circle at top left, rgba(255, 128, 0, 0.08), transparent 18%),
-      radial-gradient(circle at bottom right, rgba(38, 119, 255, 0.08), transparent 22%),
-      var(--zentra-bg);
+    background-color: #edece8;
     color: var(--zentra-foreground);
     margin: 0;
     min-height: 100vh;
@@ -39,6 +36,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
 
   button,
   input {
@@ -96,9 +94,44 @@
   }
 
   .soft-card {
-    background: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.9) 100%);
-    border: 1px solid rgba(17,17,17,0.06);
-    box-shadow: 0 18px 42px -28px rgba(17,17,17,0.22), inset 0 1px 0 rgba(255,255,255,0.7);
+    position: relative;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 252, 250, 0.94) 100%);
+    border: 1px solid rgba(17, 17, 17, 0.09);
+    box-shadow: 
+      0 1px 2px rgba(17, 17, 17, 0.03),
+      0 12px 32px -16px rgba(17, 17, 17, 0.09),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  /* Crisp Specular Top Glass Bevel */
+  .soft-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.2px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.2) 30%, transparent 80%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    transition: opacity 0.25s ease, background 0.25s ease;
+  }
+
+  /* Pure Sophisticated Black/Shadow Elevation on Hover (No Blue) */
+  .soft-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(17, 17, 17, 0.16);
+    box-shadow: 
+      0 4px 12px rgba(17, 17, 17, 0.04),
+      0 20px 48px -12px rgba(17, 17, 17, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 1);
+  }
+
+  .soft-card:hover::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.35) 40%, transparent 85%);
   }
 
   .metric-pill {
@@ -113,6 +146,10 @@
     font-size: 12px;
     font-weight: 600;
     letter-spacing: -0.02em;
+  }
+
+  .zentra-modern-bg {
+    background: transparent;
   }
 }
 
@@ -180,3 +217,120 @@
 .glow-white {
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.9) inset;
 }
+@keyframes dashboard-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-dashboard-enter {
+  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes dashboard-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.99);
+  }
+}
+
+.animate-dashboard-exit {
+  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes login-section-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.99);
+  }
+}
+
+.animate-login-exit {
+  animation: login-section-exit 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes login-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-login-enter {
+  animation: login-enter 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* ─── PAGE TAB SWITCHING TRANSITIONS ─── */
+/* Layer 3 exits first (0ms), then Layer 2 exits (75ms) upwards (bottom-to-top disappear) */
+@keyframes page-layer-exit-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+    filter: blur(1.5px);
+  }
+}
+
+/* Layer 2 enters first (0ms), then Layer 3 enters (90ms) downwards (top-to-bottom appear) */
+@keyframes page-layer-enter-down {
+  0% {
+    opacity: 0;
+    transform: translateY(-22px);
+    filter: blur(1.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
+
+.animate-page-exit-layer3 {
+  animation: page-layer-exit-up 0.22s cubic-bezier(0.4, 0, 1, 1) 0ms both;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+.animate-page-exit-layer2 {
+  animation: page-layer-exit-up 0.22s cubic-bezier(0.4, 0, 1, 1) 75ms both;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+
+.animate-page-enter-layer2 {
+  animation: page-layer-enter-down 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-page-enter-layer3 {
+  animation: page-layer-enter-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
+  will-change: transform, opacity, filter;
+}
+
+
+

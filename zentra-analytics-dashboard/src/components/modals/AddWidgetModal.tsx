@@ -61,7 +61,7 @@ export const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-black/[0.08] max-w-lg w-full p-6 relative animate-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between pb-4 border-b border-black/[0.06]">
           <div>

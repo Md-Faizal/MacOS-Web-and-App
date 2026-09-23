@@ -29,7 +29,7 @@ export const InsightCard: React.FC = () => {
 
   return (
     <section
-      className="relative h-full min-h-[430px] overflow-hidden rounded-zcard border border-black/[0.06] bg-white/60 shadow-zcard [container-type:inline-size] area-insights"
+      className="soft-card relative h-full min-h-[430px] overflow-hidden rounded-[28px] border border-black/[0.09] bg-white [container-type:inline-size] area-insights"
       id="card-insights"
       aria-label="Insights"
       style={{ minHeight: '430px' }}
