@@ -34,6 +34,9 @@ logs
 
 # Temp & Docs
 docs
-tools/python
 scratch
 *.tmp
+__pycache__
+*.pyc
+*.pyo
+*.pyd
