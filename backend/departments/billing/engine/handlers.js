@@ -9,6 +9,8 @@ const os = require('os');
 // Detect whether this system uses 'python3' or 'python'
 // Ubuntu/Linux uses python3; Windows uses python
 function getPythonCmd() {
+  if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+  if (process.env.PYTHON_CMD) return process.env.PYTHON_CMD;
   try {
     execSync('python3 --version', { stdio: 'ignore' });
     return 'python3';
@@ -38,25 +40,38 @@ function getTempDir() {
 
 // Helper to get correct database path for dev and production
 function getDatabasePath() {
-  // Handle both dev and production paths:
-  // - Dev: src/modules/billing/api + ../../../../ = /database
-  // - Prod: dist/modules/billing/api needs to resolve to /database in prod root
-  const isProduction = process.env.NODE_ENV === 'production';
-  const baseDir = isProduction
-    ? path.join(__dirname, '../../../../database')  // Goes from dist/modules/billing/api up 4 levels to prod root
-    : path.join(__dirname, '../../../../database');     // Goes from src/modules/billing/api up 4 levels to dev root
-  
-  return path.join(baseDir, 'MacOS.db');
+  const candidates = [
+    process.env.DB_PATH,
+    path.join(__dirname, '../../../../database/MacOS.db'),
+    path.join(process.cwd(), 'database/MacOS.db'),
+    '/app/database/MacOS.db'
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.join(__dirname, '../../../../database/MacOS.db');
 }
 
 // Helper to get correct tools/python path for dev and production
 function getScriptsPath(scriptName) {
-  // Handle both dev and production paths:
-  // - Dev: frontend/modules/billing/api + ../../../../tools/python = /tools/python
-  // - Prod: dist/modules/billing/api needs to resolve to /tools/python in prod root
-  const baseDir = path.join(__dirname, '../../../../tools/python');
-  
-  return path.join(baseDir, scriptName);
+  const candidates = [
+    process.env.TOOLS_PYTHON_DIR ? path.join(process.env.TOOLS_PYTHON_DIR, scriptName) : null,
+    path.join(__dirname, '../../../../tools/python', scriptName),
+    path.join(process.cwd(), 'tools/python', scriptName),
+    path.join('/app/tools/python', scriptName)
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.join(__dirname, '../../../../tools/python', scriptName);
 }
 
 // Helper to call Python invoice generator

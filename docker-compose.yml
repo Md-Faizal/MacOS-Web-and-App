@@ -23,6 +23,7 @@ x-macos-base: &macos-base
     - ./backend:/app/backend
     - ./frontend:/app/frontend
     - ./dist:/app/dist
+    - ./tools:/app/tools
     # Zentra Analytics Dashboard built SPA (erp.faizal.uk)
     # Built on CI, rsync'd to VM — no Docker restart needed for Zentra frontend changes
     - ./zentra-analytics-dashboard/dist:/app/zentra-analytics-dashboard/dist

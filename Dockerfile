@@ -39,10 +39,13 @@ FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
-# Install dumb-init for proper PID 1 signal forwarding and zombie reaping
+# Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
+# curl for health checks, and python3 + pip for invoice/credit-note PDF generation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \
     curl \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
@@ -50,20 +53,26 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     NODE_OPTIONS="--max-old-space-size=512"
 
+# Install Python dependencies required for PDF generation (invoice, payment/credit notes, etc.)
+COPY tools/python/requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
+
 # Copy production node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built frontend assets from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy backend application source code and configurations
+# Copy backend application source code, tools, and configurations
 COPY package.json ./
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY tools/ ./tools/
 
 # Create required mount point directories with fallback files
 RUN mkdir -p database database/backups CloudStorage Wallpapers backend/uploads logs \
-    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive \
+    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive tools \
     && chown -R node:node /app \
     && chmod -R 777 /app/storage /app/logs /app/backend/uploads /app/CloudStorage /app/Wallpapers 2>/dev/null || true
 

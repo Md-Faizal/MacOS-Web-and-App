@@ -87,13 +87,14 @@ fi
 # 2.6 Ensure all required host directories exist with open permissions before container mount
 echo "📁 Ensuring host data and storage directories exist..."
 mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
-    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive
+    storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive tools
 chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
+chmod -R 755 tools 2>/dev/null || true
 
 # 3. Clean up any stopped/stale container for target slot and start fresh
 docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
 echo "📦 Starting container macos-server-$TARGET_SLOT..."
-docker compose -f "$COMPOSE_FILE" up -d --no-deps "macos-server-$TARGET_SLOT"
+docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
