@@ -358,6 +358,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     };
   }, [selectedAccountId, identifier, activeAccount, passkeyHardwareSupported]);
 
+  // Lock body scroll while lock screen is active — the card is
+  // fully contained in h-[100dvh] so there is nothing to scroll.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Also hide the webkit scrollbar just in case
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.id = 'zentra-lock-no-scrollbar';
+    style.textContent = 'body::-webkit-scrollbar{display:none!important}';
+    document.head.appendChild(style);
+    return () => { document.getElementById('zentra-lock-no-scrollbar')?.remove(); };
+  }, []);
+
   // ─── UNIFIED SUCCESSFUL LOGIN TRANSITION ───
   function animateAndAuthenticate(user: any) {
     setAnimPhase('unlocking');
@@ -597,8 +616,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <div 
       className={`min-h-[100dvh] w-full flex items-center justify-center transition-all duration-[750ms] ease-[cubic-bezier(0.16,1,0.3,1)] bg-transparent ${
-        isExpanding ? 'p-2 sm:p-3 lg:p-4' : 'p-4 sm:p-6 lg:p-8'
+        isExpanding ? 'p-2 sm:p-3 lg:p-4' : 'p-4 sm:p-5 lg:p-6'
       }`}
+      style={{ height: '100dvh', overflow: 'hidden' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -608,8 +628,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             ? 'max-w-[560px] sm:max-w-[620px] min-h-[260px] sm:min-h-[300px] shadow-[0_24px_64px_-16px_rgba(17,17,17,0.18),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
             : isExpanding 
               ? 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]' 
-              : 'max-w-[1280px] min-h-[600px] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
+              : 'max-w-[1280px] flex flex-col shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
         }`}
+        style={!isWebsiteLoading && !isExpanding ? { maxHeight: '100%' } : undefined}
       >
         {/* Background Layers with Smooth Crossfade */}
         <div 
@@ -650,7 +671,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         )}
 
         {/* Inner Content Grid */}
-        <div className={`relative z-10 grid h-full lg:grid-cols-[1.18fr_0.82fr] transition-opacity duration-300 ${
+        <div className={`relative z-10 grid flex-1 min-h-0 lg:grid-cols-[1.18fr_0.82fr] transition-opacity duration-300 ${
           isExpanding || isWebsiteLoading ? 'opacity-0 pointer-events-none hidden' : 'opacity-100'
         }`}>
           {/* Left Hero Section: Official Dashboard Brand & Business Summary */}
@@ -705,7 +726,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </div>
 
           {/* Right Interactive Form Section */}
-          <div className="flex items-center justify-center p-6 sm:p-8 lg:p-9 relative z-10">
+          <div
+            className="relative z-10 flex-1 min-h-0 overflow-y-auto"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+          >
+            <style>{`.zentra-form-panel::-webkit-scrollbar{display:none}`}</style>
+            <div className="zentra-form-panel flex min-h-full items-center justify-center p-6 sm:p-8 lg:p-9">
             <div className="w-full max-w-[460px]">
               
               {/* Header & Animated Lock Keyhole (Exact Git Dimensions) */}
@@ -1331,6 +1357,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </div>
               )}
 
+            </div>
             </div>
           </div>
         </div>

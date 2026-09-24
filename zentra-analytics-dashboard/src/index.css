@@ -24,6 +24,12 @@
 
   html {
     background: var(--zentra-bg);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  html::-webkit-scrollbar {
+    display: none;
   }
 
   body {
@@ -35,7 +41,14 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
+
+  body::-webkit-scrollbar {
+    display: none;
+  }
+
 
 
   button,

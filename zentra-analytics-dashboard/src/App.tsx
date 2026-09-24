@@ -12,6 +12,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { DynamicHalftoneBackground } from './components/DynamicHalftoneBackground';
+import { CustomScrollbarTrack } from './components/common/CustomScrollbar';
 import { readStoredSession, clearSession } from './lib/auth';
 
 // ─── CODE SPLITTING: DYNAMIC LAZY LOADING OF DASHBOARD VIEWS & MODALS ───
@@ -254,40 +255,39 @@ export default function App() {
               />
             </div>
 
-        <div 
-          id="dashboard-workspace" 
-          data-workspace="zentra-main"
-          className="mx-auto w-full max-w-[1760px] px-3.5 pb-6 pt-3 sm:px-6 sm:pt-5 lg:px-7"
-        >
-          {/* ═════════════════════════════════════════════════════════════════════════
-              LAYER 1: APPLICATION SHELL HEADER (Global Navigation & Utilities)
-              Industry Standard: Global App Header / Shell Nav
-              Role: Persistent navigation across all dashboard routes & user session dock
-              Behavior: Remains mounted & fixed in place when switching pages.
-             ═════════════════════════════════════════════════════════════════════════ */}
-          <section 
-            id="layer-app-header"
-            data-layer="app-header"
-            data-layer-order="1"
-            className={`relative z-50 ${headerClass}`} 
-          >
-            <Header
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-              user={user}
-              onSignOut={handleSignOut}
-            />
-          </section>
+            {/* ─── DASHBOARD WORKSPACE (EXPANDS TO BOTTOM OF PAGE, HEADER SCROLLS NATURALLY) ─── */}
+            <div 
+              id="dashboard-workspace" 
+              data-workspace="zentra-main"
+              className="mx-auto w-full max-w-[1760px] px-3.5 pb-6 pt-3 sm:px-6 sm:pt-5 lg:px-7"
+            >
+              {/* ═══════════════════════════════════════════════════════════════════
+                  LAYER 1: APPLICATION SHELL HEADER — scrolls WITH content
+                 ═══════════════════════════════════════════════════════════════════ */}
+              <section 
+                id="layer-app-header"
+                data-layer="app-header"
+                data-layer-order="1"
+                className={`relative z-50 ${headerClass}`} 
+              >
+                <Header
+                  activeTab={activeTab}
+                  onTabChange={handleTabChange}
+                  user={user}
+                  onSignOut={handleSignOut}
+                />
+              </section>
 
-          {/* ═════════════════════════════════════════════════════════════════════════
-              LAYER 2 & LAYER 3: DYNAMIC PAGE VIEW (Controlled Transitions)
-              Bottom-to-top disappear (Layer 3 then Layer 2)
-              Top-to-bottom appear (Layer 2 then Layer 3)
-             ═════════════════════════════════════════════════════════════════════════ */}
-          {renderCurrentView()}
+              {/* ═══════════════════════════════════════════════════════════════════
+                  LAYER 2 & LAYER 3: DYNAMIC PAGE VIEW
+                 ═══════════════════════════════════════════════════════════════════ */}
+              {renderCurrentView()}
+            </div>
+          </div>
+
+          {/* ─── CUSTOM SCROLLBAR TRACK: OUTSIDE THE MAIN GLASS BOX (SYNCED TO WINDOW) ─── */}
+          <CustomScrollbarTrack useWindow />
         </div>
-      </div>
-    </div>
   )}
 
   <Suspense fallback={null}>
