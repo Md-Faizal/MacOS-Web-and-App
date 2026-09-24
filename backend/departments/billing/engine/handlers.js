@@ -2412,6 +2412,7 @@ module.exports = function(db) {
           'bank_ifsc': 'HDFC0000236',
           'bank_branch': 'CUTTACK - ODISHA',
           'bank_mmid': '9240072',
+          'bank_show_mmid': 'true',
           'bank_account_type': 'Savings Account',
           'portal_base_url': 'https://mac.faizal.uk'
         };

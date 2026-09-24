@@ -412,6 +412,16 @@ CREATE TABLE IF NOT EXISTS Settings (
   UNIQUE(device_id)
 );
 
+-- App Settings: Global application configuration key-value storage
+CREATE TABLE IF NOT EXISTS app_settings (
+  id TEXT PRIMARY KEY,
+  setting_key TEXT NOT NULL UNIQUE,
+  setting_value TEXT NOT NULL,
+  setting_type TEXT DEFAULT 'string',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Status Checks: System health monitoring and check history
 CREATE TABLE IF NOT EXISTS status_checks (
   id TEXT PRIMARY KEY,

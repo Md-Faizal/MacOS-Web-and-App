@@ -987,10 +987,16 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         ("Account Holder", app_settings.get('bank_account_holder', 'MD FAIZAL')),
         ("Account Number", app_settings.get('bank_account_number', '50100673684509')),
         ("IFSC Code", app_settings.get('bank_ifsc', 'HDFC0000236')),
-        ("Branch", app_settings.get('bank_branch', 'CUTTACK - ODISHA')),
-        ("MMID", app_settings.get('bank_mmid', '9240072')),
-        ("Account Type", app_settings.get('bank_account_type', 'Savings Account'))
+        ("Branch", app_settings.get('bank_branch', 'CUTTACK - ODISHA'))
     ]
+    show_mmid = str(app_settings.get('bank_show_mmid', 'true')).strip().lower() in ('true', '1', 'yes')
+    mmid_val = str(app_settings.get('bank_mmid', '9240072')).strip()
+    if show_mmid and mmid_val:
+        bank_fields.append(("MMID", mmid_val))
+    
+    account_type = app_settings.get('bank_account_type', 'Savings Account')
+    if account_type:
+        bank_fields.append(("Account Type", str(account_type)))
     
     for i, (label, val) in enumerate(bank_fields):
         c.setFont("Helvetica", 10.5)
@@ -1178,6 +1184,7 @@ def fetch_invoice_data(db_path, invoice_no):
             'bank_ifsc': 'HDFC0000236',
             'bank_branch': 'CUTTACK - ODISHA',
             'bank_mmid': '9240072',
+            'bank_show_mmid': 'true',
             'bank_account_type': 'Savings Account',
             'portal_base_url': 'https://mac.faizal.uk'
         }

@@ -716,6 +716,8 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
     bank_account_number: '50100673684509',
     bank_ifsc: 'HDFC0000236',
     bank_branch: 'CUTTACK - ODISHA',
+    bank_mmid: '9240072',
+    bank_show_mmid: 'true',
     bank_account_type: 'Savings Account'
   };
 
@@ -725,6 +727,8 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
     account_number: app_settings.bank_account_number || bankDefaults.bank_account_number,
     ifsc: app_settings.bank_ifsc || bankDefaults.bank_ifsc,
     branch: app_settings.bank_branch || bankDefaults.bank_branch,
+    mmid: app_settings.bank_mmid || bankDefaults.bank_mmid,
+    show_mmid: app_settings.bank_show_mmid !== undefined ? String(app_settings.bank_show_mmid) : 'true',
     account_type: app_settings.bank_account_type || bankDefaults.bank_account_type
   };
 
@@ -928,7 +932,9 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
     statement_rows: statementRows,
     statementRows: statementRows,
     bills: enrichedBills,
-    payments: enrichedPayments
+    payments: enrichedPayments,
+    settlement_map: settlementMap,
+    payment_alloc_map: paymentAllocMap
   };
 }
 
