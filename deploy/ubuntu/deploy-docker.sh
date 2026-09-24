@@ -41,6 +41,14 @@ if [ -n "$BRIDGE_NET" ] && [ -n "$BRIDGE_ID" ]; then
     fi
 fi
 
+# Auto-heal: Ensure Docker daemon has DNS fallbacks to prevent container resolution issues
+if [ ! -f /etc/docker/daemon.json ] 2>/dev/null; then
+    echo "🔧 Setting reliable fallback DNS in /etc/docker/daemon.json..."
+    sudo mkdir -p /etc/docker
+    echo '{"dns": ["8.8.8.8", "1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null 2>&1 || true
+    sudo systemctl reload docker 2>/dev/null || true
+fi
+
 # 2. Determine target idle slot
 if [ "$1" = "--target" ] && [ -n "$2" ]; then
     TARGET_SLOT="$2"

@@ -41,11 +41,13 @@ WORKDIR /app
 
 # Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    dumb-init \
-    curl \
-    python3 \
-    python3-pip \
+RUN echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+       dumb-init \
+       curl \
+       python3 \
+       python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
