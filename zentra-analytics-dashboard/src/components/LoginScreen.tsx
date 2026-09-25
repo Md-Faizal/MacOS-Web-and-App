@@ -83,6 +83,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [panelMode, setPanelMode] = useState<
     'login' | 'forgot-password' | 'google-link' | 'worker-pending' | 'passkey-setup' | 'worker-credential-setup'
   >('login');
+  const [panelAnimState, setPanelAnimState] = useState<'idle' | 'exit' | 'enter'>('idle');
+  const [recoveryStepAnimState, setRecoveryStepAnimState] = useState<'idle' | 'exit' | 'enter'>('idle');
+
+  const switchPanelMode = (mode: typeof panelMode, onSwitched?: () => void) => {
+    if (panelMode === mode && panelAnimState === 'idle') return;
+    setPanelAnimState('exit');
+    setTimeout(() => {
+      setPanelMode(mode);
+      onSwitched?.();
+      setPanelAnimState('enter');
+      setTimeout(() => {
+        setPanelAnimState('idle');
+      }, 300);
+    }, 200);
+  };
+
+  const advanceRecoveryStep = (nextStep: 1 | 2 | 3) => {
+    setRecoveryStepAnimState('exit');
+    setTimeout(() => {
+      setRecoveryStep(nextStep);
+      setRecoveryStepAnimState('enter');
+      setTimeout(() => {
+        setRecoveryStepAnimState('idle');
+      }, 250);
+    }, 150);
+  };
 
   // Input refs for mouseless focus advancement
   const identifierRef = useRef<HTMLInputElement>(null);
@@ -670,11 +696,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       return;
     }
 
-    if (workerCredPassword.length < 6) {
-      setWorkerCredError('Password must be at least 6 characters.');
-      return;
-    }
-
     if (workerCredPassword !== workerCredConfirmPassword) {
       setWorkerCredError('Passwords do not match.');
       return;
@@ -810,7 +831,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setHasSecurityQuestion(questionExists);
       setRecoveryQuestion(challenge.question || null);
       setIsRecoveryKey(!questionExists);
-      setRecoveryStep(2);
+      advanceRecoveryStep(2);
     } catch (err: any) {
       setRecoveryError(err.message || 'Account not found with this username or email');
     } finally {
@@ -828,7 +849,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setRecoveryError('');
     try {
       await verifySecurityAnswer(recoveryIdentifier, recoveryAnswer, isRecoveryKey);
-      setRecoveryStep(3);
+      advanceRecoveryStep(3);
     } catch (err: any) {
       setRecoveryError(err.message || 'Incorrect credentials. Please try again.');
     } finally {
@@ -1020,72 +1041,110 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             className="relative z-10 flex-1 min-h-0 overflow-y-auto"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
           >
-            <style>{`.zentra-form-panel::-webkit-scrollbar{display:none}`}</style>
-            <div className="zentra-form-panel flex min-h-full items-center justify-center p-6 sm:p-8 lg:p-9">
-            <div className="w-full max-w-[460px]">
-              
-              {/* Header & Animated Lock Keyhole (Exact Git Dimensions) */}
-              <div 
-                className={`mb-5 flex items-center justify-between ${getDropClass(1)}`}
-                style={{ animationDelay: isFading ? '200ms' : undefined }}
-              >
-                <div>
-                  <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${
-                    isLocking ? 'text-red-500 font-semibold' : isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'
-                  }`}>
-                    {isLocking ? 'Session Secured' : isUnlocked ? 'Access Granted' : panelMode === 'worker-credential-setup' ? 'Account Setup' : 'Authentication'}
-                  </div>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] transition-colors duration-500 text-[#111111]">
-                    {isLocking ? 'Signed Out' : isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : panelMode === 'worker-credential-setup' ? 'Create Local Account' : 'Fast Biometric Access'}
-                  </h2>
-
-                </div>
-
-                {/* Animated Lock Badge: Red locking on logout, springs to emerald on login */}
+            <style>{`
+              .zentra-form-panel::-webkit-scrollbar{display:none}
+              @keyframes blurFadeIn {
+                0% { opacity: 0; filter: blur(8px); transform: scale(0.98) translateY(4px); }
+                100% { opacity: 1; filter: blur(0px); transform: scale(1) translateY(0); }
+              }
+              @keyframes panelBlurExit {
+                0% { opacity: 1; filter: blur(0px); transform: scale(1) translateY(0); }
+                100% { opacity: 0; filter: blur(8px); transform: scale(0.98) translateY(4px); }
+              }
+              @keyframes panelBlurEnter {
+                0% { opacity: 0; filter: blur(8px); transform: scale(0.98) translateY(-4px); }
+                100% { opacity: 1; filter: blur(0px); transform: scale(1) translateY(0); }
+              }
+              .animate-blur-fade-in {
+                animation: blurFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              }
+              .animate-panel-exit {
+                animation: panelBlurExit 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                pointer-events: none;
+              }
+              .animate-panel-enter {
+                animation: panelBlurEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              }
+            `}</style>
+            <div className={`zentra-form-panel flex min-h-full p-6 sm:p-8 ${
+              panelMode === 'login'
+                ? 'items-center justify-center lg:p-9'
+                : 'flex-col justify-between lg:p-10'
+            }`}>
+              <div className={`w-full max-w-[460px] ${panelMode !== 'login' ? 'mx-auto flex-1 flex flex-col justify-between' : ''}`}>
+                
+                {/* Header & Animated Lock Keyhole (Exact Git Dimensions) */}
                 <div 
-                  className={`relative flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                    isLocking
-                      ? 'bg-red-600 text-white ring-2 ring-red-500/60 shadow-[0_0_28px_rgba(220,38,38,0.6)] scale-110 zentra-lock-badge-pulse'
-                      : isUnlocked
-                        ? 'bg-[#111111] text-emerald-400 ring-2 ring-emerald-500/40 shadow-[0_0_32px_rgba(16,185,129,0.35)] scale-110'
-                        : 'bg-[#111111] text-white shadow-[0_12px_24px_rgba(17,17,17,0.18)]'
-                  }`}
-                  aria-label={isLocking ? 'Session Locked' : isUnlocked ? 'Unlocked' : 'Locked'}
+                  className={`w-full ${panelMode === 'login' ? 'mb-5' : 'mb-3'} flex items-center justify-between flex-shrink-0 ${getDropClass(1)}`}
+                  style={{ animationDelay: isFading ? '200ms' : undefined }}
                 >
-                  {/* Locking state: red pulsing lock that snaps shut */}
-                  <div 
-                    className={`absolute inset-0 flex items-center justify-center ${
-                      isLocking ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                    }`}
-                  >
-                    <LockKeyhole className="h-5 w-5 text-white zentra-locking-snap" />
+                  <div>
+                    <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${
+                      isLocking ? 'text-red-500 font-semibold' : isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'
+                    }`}>
+                      {isLocking ? 'Session Secured' : isUnlocked ? 'Access Granted' : panelMode === 'worker-credential-setup' ? 'Account Setup' : panelMode === 'passkey-setup' ? 'Device Security' : 'Authentication'}
+                    </div>
+                    <h2 className={`${panelMode === 'login' ? 'mt-2 text-3xl' : 'mt-1.5 text-2xl sm:text-3xl'} font-semibold tracking-[-0.05em] transition-colors duration-500 text-[#111111]`}>
+                      {isLocking ? 'Signed Out' : isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : panelMode === 'worker-credential-setup' ? (workerCredStep === 2 ? 'Security Question' : workerCredStep === 'dismiss' ? 'Skip Setup?' : 'Create Local Account') : panelMode === 'passkey-setup' ? 'Enable Passkey Access' : 'Fast Biometric Access'}
+                    </h2>
                   </div>
 
-                  {/* Idle / normal locked state */}
+                  {/* Animated Lock Badge: Red locking on logout, springs to emerald on login */}
                   <div 
-                    className={`absolute inset-0 flex items-center justify-center transition-all duration-400 ease-in-out ${
-                      isUnlocked || isLocking ? 'opacity-0 scale-75 -rotate-12 pointer-events-none' : 'opacity-100 scale-100 rotate-0'
+                    className={`relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                      isLocking
+                        ? 'bg-red-600 text-white ring-2 ring-red-500/60 shadow-[0_0_28px_rgba(220,38,38,0.6)] scale-110 zentra-lock-badge-pulse'
+                        : isUnlocked
+                          ? 'bg-[#111111] text-emerald-400 ring-2 ring-emerald-500/40 shadow-[0_0_32px_rgba(16,185,129,0.35)] scale-110'
+                          : 'bg-[#111111] text-white shadow-[0_12px_24px_rgba(17,17,17,0.18)]'
                     }`}
+                    aria-label={isLocking ? 'Session Locked' : isUnlocked ? 'Unlocked' : 'Locked'}
                   >
-                    <LockKeyhole className="h-5 w-5" />
-                  </div>
+                    {/* Locking state: red pulsing lock that snaps shut */}
+                    <div 
+                      className={`absolute inset-0 flex items-center justify-center ${
+                        isLocking ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                      }`}
+                    >
+                      <LockKeyhole className="h-5 w-5 text-white zentra-locking-snap" />
+                    </div>
 
-                  {/* Unlocked (login success) state */}
-                  <div 
-                    className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                      isUnlocked && !isLocking ? 'opacity-100 scale-105 rotate-0 text-emerald-400' : 'opacity-0 scale-50 rotate-12 pointer-events-none'
-                    }`}
-                  >
-                    <UnlockKeyhole className="h-5 w-5" />
+                    {/* Idle / normal locked state */}
+                    <div 
+                      className={`absolute inset-0 flex items-center justify-center transition-all duration-400 ease-in-out ${
+                        isUnlocked || isLocking ? 'opacity-0 scale-75 -rotate-12 pointer-events-none' : 'opacity-100 scale-100 rotate-0'
+                      }`}
+                    >
+                      <LockKeyhole className="h-5 w-5" />
+                    </div>
+
+                    {/* Unlocked (login success) state */}
+                    <div 
+                      className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                        isUnlocked && !isLocking ? 'opacity-100 scale-105 rotate-0 text-emerald-400' : 'opacity-0 scale-50 rotate-12 pointer-events-none'
+                      }`}
+                    >
+                      <UnlockKeyhole className="h-5 w-5" />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* ═════════════════════════════════════════════════════════════
-                  MODE 1: MAIN LOGIN FORM
-                 ═════════════════════════════════════════════════════════════ */}
-              {panelMode === 'login' && (
-                <>
+                {/* Main Interactive Form Area */}
+                <div className={`transition-all duration-200 ${
+                  panelMode !== 'login' ? 'flex-1 flex flex-col justify-center items-center w-full py-2' : 'w-full'
+                } ${
+                  panelAnimState === 'exit'
+                    ? 'animate-panel-exit'
+                    : panelAnimState === 'enter'
+                      ? 'animate-panel-enter'
+                      : ''
+                }`}>
+
+                {/* ═════════════════════════════════════════════════════════════
+                    MODE 1: MAIN LOGIN FORM
+                   ═════════════════════════════════════════════════════════════ */}
+                {panelMode === 'login' && (
+                  <>
                   {/* Backdrop for click-outside dismissal on right-click bubble */}
                   {accountToDelete && (
                     <div 
@@ -1202,7 +1261,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                               passwordRef.current?.focus();
                             }
                           }}
-                          placeholder="faizal"
+                          placeholder="User ID or registered email ID"
                           className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-3 text-[15px] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20"
                         />
                       </div>
@@ -1262,11 +1321,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         type="button" 
                         onClick={() => {
                           setRecoveryIdentifier(selectedAccountId ? activeAccount?.identifier || identifier : identifier);
-                          setPanelMode('forgot-password');
-                          setRecoveryStep(1);
-                          setRecoveryError('');
+                          switchPanelMode('forgot-password', () => {
+                            setRecoveryStep(1);
+                            setRecoveryError('');
+                          });
                         }}
-                        className="font-medium text-[#1d5cff] hover:text-[#0f46c5] transition-colors active:scale-95"
+                        className="font-medium text-[#1d5cff] hover:text-[#0f46c5] transition-colors active:scale-95 cursor-pointer"
                       >
                         Need help?
                       </button>
@@ -1383,42 +1443,68 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   MODE 2: INLINE FORGOT PASSWORD RECOVERY (3 Steps In-Card)
                  ═════════════════════════════════════════════════════════════ */}
               {panelMode === 'forgot-password' && (
-                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[360px] flex flex-col justify-between animate-in fade-in">
-                  <div>
-                    <div className="mb-4 flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPanelMode('login');
-                          setRecoveryStep(1);
+                <div 
+                  className="w-full rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md flex flex-col transition-[height,max-height] duration-300 ease-out"
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (recoveryStep > 1) {
+                          advanceRecoveryStep((recoveryStep - 1) as 1 | 2);
                           setRecoveryError('');
-                        }}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                        Back to sign in
-                      </button>
+                        } else {
+                          switchPanelMode('login', () => {
+                            setRecoveryStep(1);
+                            setRecoveryError('');
+                          });
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors cursor-pointer select-none active:scale-95"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      {recoveryStep > 1 ? 'Previous step' : 'Back to sign in'}
+                    </button>
+                    <div className="flex items-center gap-3">
+                      {recoveryStep > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            switchPanelMode('login', () => {
+                              setRecoveryStep(1);
+                              setRecoveryError('');
+                            });
+                          }}
+                          className="text-xs text-[#888888] hover:text-[#111111] transition-colors cursor-pointer"
+                        >
+                          Sign in
+                        </button>
+                      )}
                       <span className="text-xs font-semibold text-[#1d5cff]">Step {recoveryStep} of 3</span>
                     </div>
+                  </div>
 
-                    <div className="mb-4">
-                      <h3 className="text-base font-semibold text-[#111111]">Account Recovery</h3>
-                      <p className="text-xs text-[#666666] mt-0.5">
-                        {recoveryStep === 1 && 'Enter your username or email to verify your identity'}
-                        {recoveryStep === 2 && (isRecoveryKey ? 'Enter your emergency recovery key' : 'Answer your security question')}
-                        {recoveryStep === 3 && 'Choose a new password for your account'}
-                      </p>
-                    </div>
-
+                  <div className={`flex-1 flex flex-col justify-center transition-all duration-200 ${
+                    recoveryStepAnimState === 'exit'
+                      ? 'animate-panel-exit'
+                      : recoveryStepAnimState === 'enter'
+                        ? 'animate-panel-enter'
+                        : ''
+                  }`}>
                     {recoveryStep === 1 && (
                       <form onSubmit={handleRecoveryIdentifierSubmit} className="space-y-4">
+                        <div className="mb-2">
+                          <p className="text-xs text-[#666666] leading-relaxed">
+                            Enter your username or email to verify your identity.
+                          </p>
+                        </div>
                         <div>
                           <label className="mb-2 block text-sm text-[#2f2f2f]">Username or email</label>
                           <input
                             type="text"
                             value={recoveryIdentifier}
                             onChange={(e) => setRecoveryIdentifier(e.target.value)}
-                            placeholder="faizal or you@company.com"
+                            placeholder="User ID or registered email ID"
                             autoFocus
                             className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-3 text-[15px] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20"
                           />
@@ -1433,7 +1519,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <button
                           type="submit"
                           disabled={recoveryLoading}
-                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50"
+                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50 cursor-pointer"
                         >
                           {recoveryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continue'}
                         </button>
@@ -1442,6 +1528,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                     {recoveryStep === 2 && (
                       <form onSubmit={handleRecoveryAnswerSubmit} className="space-y-4">
+                        <div className="mb-2">
+                          <p className="text-xs text-[#666666] leading-relaxed">
+                            {isRecoveryKey ? 'Enter your emergency recovery key.' : 'Answer your security question.'}
+                          </p>
+                        </div>
                         <div className="rounded-2xl border border-blue-100 bg-[#f0f5ff] p-3 text-sm text-[#1e40af] font-medium">
                           {isRecoveryKey ? 'Account requires emergency recovery key' : recoveryQuestion}
                         </div>
@@ -1470,7 +1561,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                                 setRecoveryAnswer('');
                                 setRecoveryError('');
                               }}
-                              className="text-xs text-[#1d5cff] hover:text-[#0f46c5] transition-colors"
+                              className="text-xs text-[#1d5cff] hover:text-[#0f46c5] transition-colors cursor-pointer"
                             >
                               {isRecoveryKey ? 'Use security question instead' : "Can't answer? Use emergency recovery key"}
                             </button>
@@ -1486,7 +1577,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <button
                           type="submit"
                           disabled={recoveryLoading}
-                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50"
+                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50 cursor-pointer"
                         >
                           {recoveryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (isRecoveryKey ? 'Verify Recovery Key' : 'Verify Answer')}
                         </button>
@@ -1495,6 +1586,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                     {recoveryStep === 3 && (
                       <form onSubmit={handlePasswordResetSubmit} className="space-y-4">
+                        <div className="mb-2">
+                          <p className="text-xs text-[#666666] leading-relaxed">
+                            Choose a new password for your account.
+                          </p>
+                        </div>
                         <div>
                           <label className="mb-2 block text-sm text-[#2f2f2f]">New Password</label>
                           <input
@@ -1527,7 +1623,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <button
                           type="submit"
                           disabled={recoveryLoading}
-                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50"
+                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50 cursor-pointer"
                         >
                           {recoveryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Set Password & Sign In'}
                         </button>
@@ -1541,12 +1637,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   MODE 3: INLINE POST-AUTH PASSKEY SETUP
                  ═════════════════════════════════════════════════════════════ */}
               {panelMode === 'passkey-setup' && (
-                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[360px] flex flex-col justify-between animate-in fade-in">
-                  <div className="text-center pt-2">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ff8000]/10 text-[#ff8000] shadow-[0_8px_20px_rgba(255,128,0,0.18)]">
-                      <Fingerprint className="h-7 w-7" />
-                    </div>
-                    <h3 className="mt-4 text-xl font-bold text-[#111111]">Enable Passkey Access</h3>
+                <div 
+                  className="w-full rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md flex flex-col justify-center transition-all duration-300 ease-out"
+                >
+                  <div className="text-center pt-2 animate-blur-fade-in">
                     <p className="mt-2 text-sm text-[#666666] leading-relaxed max-w-[340px] mx-auto">
                       Authenticate instantly on this device using Touch ID, Windows Hello, or device biometrics. No passwords required.
                     </p>
@@ -1563,7 +1657,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       type="button"
                       onClick={handleCreatePasskeyFromSetup}
                       disabled={setupPasskeyLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50 cursor-pointer"
                     >
                       {setupPasskeyLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1579,7 +1673,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       type="button"
                       onClick={handleSkipPasskeySetup}
                       disabled={setupPasskeyLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium text-[#666666] transition-all hover:bg-neutral-50 hover:text-[#111111] active:scale-[0.98]"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-[14px] font-medium text-[#666666] transition-all hover:bg-neutral-50 hover:text-[#111111] active:scale-[0.98] cursor-pointer"
                     >
                       Skip for now
                     </button>
@@ -1591,25 +1685,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   MODE 4: INLINE GOOGLE ACCOUNT LINKING
                  ═════════════════════════════════════════════════════════════ */}
               {panelMode === 'google-link' && (
-                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[360px] flex flex-col justify-between animate-in fade-in">
-                  <div>
-                    <div className="mb-4">
-                      <button
-                        type="button"
-                        onClick={() => setPanelMode('login')}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                        Back to sign in
-                      </button>
-                    </div>
-                    <div className="mb-4">
-                      <h3 className="text-base font-semibold text-[#111111]">Link Google to Account</h3>
-                      <p className="text-sm text-[#666666] mt-0.5">
-                        Confirm password for <strong className="text-neutral-900">{googleLinkingEmail}</strong> to connect Google.
-                      </p>
-                    </div>
-                    <form onSubmit={handleGoogleLinkSubmit} className="space-y-4">
+                <div 
+                  className="w-full rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md flex flex-col transition-all duration-300 ease-out"
+                >
+                  <div className="mb-4">
+                    <button
+                      type="button"
+                      onClick={() => switchPanelMode('login')}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors cursor-pointer select-none active:scale-95"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Back to sign in
+                    </button>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center">
+                    <form onSubmit={handleGoogleLinkSubmit} className="space-y-4 animate-blur-fade-in">
+                      <div className="mb-2">
+                        <p className="text-sm text-[#666666] leading-relaxed">
+                          Confirm password for <strong className="text-neutral-900">{googleLinkingEmail}</strong> to connect Google.
+                        </p>
+                      </div>
                       <div>
                         <label className="mb-2 block text-sm text-[#2f2f2f]">Account Password</label>
                         <input
@@ -1629,7 +1724,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       <button
                         type="submit"
                         disabled={loading}
-                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50"
+                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] shadow-sm disabled:opacity-50 cursor-pointer"
                       >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Link & Continue'}
                       </button>
@@ -1642,21 +1737,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   MODE 5: INLINE WORKER PENDING APPROVAL QR VIEW
                  ═════════════════════════════════════════════════════════════ */}
               {panelMode === 'worker-pending' && (
-                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[360px] flex flex-col justify-between text-center animate-in fade-in">
-                  <div>
-                    <div className="mb-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => setPanelMode('login')}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                        Back to sign in
-                      </button>
-                    </div>
+                <div 
+                  className="w-full rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md flex flex-col text-center transition-all duration-300 ease-out"
+                >
+                  <div className="mb-3 text-left">
+                    <button
+                      type="button"
+                      onClick={() => switchPanelMode('login')}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#666666] hover:text-[#111111] transition-colors cursor-pointer select-none active:scale-95"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Back to sign in
+                    </button>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center animate-blur-fade-in">
                     <div className="mb-2">
-                      <h3 className="text-base font-semibold text-[#111111]">Waiting for Approval</h3>
-                      <p className="text-xs text-[#666666] mt-0.5">Share this invite code or scan the QR code with the administrator.</p>
+                      <p className="text-xs text-[#666666] leading-relaxed">Share this invite code or scan the QR code with the administrator.</p>
                     </div>
                     <div className="my-3 font-mono text-xl font-bold tracking-[0.2em] text-[#111111] bg-[#f8f8f7] py-2 rounded-2xl border border-black/10">
                       {workerInviteCode}
@@ -1676,14 +1772,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   MODE 6: INLINE WORKER CREDENTIAL ONBOARDING PROMPT
                  ═════════════════════════════════════════════════════════════ */}
               {panelMode === 'worker-credential-setup' && (
-                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[380px] flex flex-col justify-between animate-in fade-in">
+                <div 
+                  className="w-full rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md flex flex-col justify-center transition-all duration-300 ease-out"
+                >
                   {workerCredStep === 1 && (
-                    <form onSubmit={handleWorkerCredStep1Submit} className="space-y-4">
+                    <form onSubmit={handleWorkerCredStep1Submit} className="space-y-4 animate-blur-fade-in">
                       <div className="text-center pt-1 mb-2">
-                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1d5cff]/10 text-[#1d5cff] shadow-[0_6px_16px_rgba(29,92,255,0.15)]">
-                          <KeyRound className="h-6 w-6" />
-                        </div>
-                        <h3 className="mt-3 text-lg font-bold text-[#111111]">Create a Local Account</h3>
                         <p className="mt-1 text-xs text-[#666666] leading-relaxed max-w-[340px] mx-auto">
                           Set up alternative login credentials linked with your Google account. Google remains your primary sign-in.
                         </p>
@@ -1855,12 +1949,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   )}
 
                   {workerCredStep === 2 && (
-                    <form onSubmit={handleWorkerCredStep2Submit} className="space-y-4">
+                    <form onSubmit={handleWorkerCredStep2Submit} className="space-y-4 animate-blur-fade-in">
                       <div className="text-center pt-1 mb-2">
-                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#ff8000]/10 text-[#ff8000] shadow-[0_6px_16px_rgba(255,128,0,0.15)]">
-                          <Shield className="h-6 w-6" />
-                        </div>
-                        <h3 className="mt-3 text-lg font-bold text-[#111111]">Security Question</h3>
                         <p className="mt-1 text-xs text-[#666666] leading-relaxed max-w-[340px] mx-auto">
                           Choose a security question to secure and recover your local account credentials.
                         </p>
@@ -1922,12 +2012,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   )}
 
                   {workerCredStep === 'dismiss' && (
-                    <div className="text-center py-2 flex flex-col justify-between h-full min-h-[300px]">
+                    <div className="text-center py-2 flex flex-col justify-between animate-blur-fade-in">
                       <div>
-                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 shadow-[0_6px_16px_rgba(245,158,11,0.15)] mb-3">
-                          <HelpCircle className="h-6 w-6" />
-                        </div>
-                        <h3 className="text-base font-bold text-[#111111]">Continue without local credentials?</h3>
                         <p className="mt-2 text-xs text-[#666666] leading-relaxed max-w-[320px] mx-auto">
                           You can continue signing in with Google and set up a local account anytime in Settings.
                         </p>
@@ -1962,6 +2048,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               )}
 
 
+            </div>
             </div>
             </div>
           </div>
