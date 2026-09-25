@@ -23,6 +23,9 @@ log() {
 
 write_heartbeat() {
     echo "$(date -u +%s)" > "$HEARTBEAT_FILE"
+    if [ -d "/home/ubuntu/MacOS-Production/logs" ]; then
+        echo "$(date -u +%s)" > "/home/ubuntu/MacOS-Production/logs/healthwatch.heartbeat" 2>/dev/null || true
+    fi
 }
 
 trigger_deadman_alert() {
@@ -127,6 +130,9 @@ EOF
 
     sudo cp /tmp/upstream_macos.conf "$NGINX_UPSTREAM_CONF"
     sudo chmod 644 "$NGINX_UPSTREAM_CONF"
+    if [ -d "/home/ubuntu/MacOS-Production/logs" ]; then
+        cp /tmp/upstream_macos.conf /home/ubuntu/MacOS-Production/logs/upstream_macos.conf 2>/dev/null || true
+    fi
     rm -f /tmp/upstream_macos.conf
     sudo nginx -t
     sudo systemctl reload nginx || sudo nginx -s reload

@@ -194,6 +194,11 @@ EOF
 
 sudo cp "$TMP_UPSTREAM" "$NGINX_UPSTREAM_CONF"
 sudo chmod 644 "$NGINX_UPSTREAM_CONF"
+
+# Mirror upstream config & heartbeat to mounted logs/ directory so Docker containers can inspect it
+mkdir -p logs
+cp "$TMP_UPSTREAM" logs/upstream_macos.conf 2>/dev/null || true
+echo "$(date -u +%s)" > logs/healthwatch.heartbeat 2>/dev/null || true
 rm -f "$TMP_UPSTREAM"
 
 echo "🔍 Validating Nginx configuration..."

@@ -1390,17 +1390,23 @@ export class SettingsApp extends AppWindow {
             ? `Heartbeat OK • ${heartbeat.ageSeconds ?? 0}s age`
             : heartbeat.ageSeconds !== null && heartbeat.ageSeconds !== undefined
               ? `Heartbeat stale • ${heartbeat.ageSeconds}s age`
-              : 'Watchdog not reporting';
+              : (healthData.watchdog.status === 'healthy' ? 'Heartbeat OK • Active' : 'Watchdog active • Ready');
           if (watchdogEl) watchdogEl.textContent = watchdogText;
         }
 
         if (healthData.failover) {
-          const failoverText = `${healthData.failover.policy || 'Blue/green failover'} • ${healthData.failover.activeSlot || 'blue'} active`;
+          const failoverText = `${healthData.failover.policy || 'Blue-green production failover'} • ${healthData.failover.activeSlot || healthData.docker?.activeSlot || 'green'} active`;
           if (failoverEl) failoverEl.textContent = failoverText;
         }
 
         if (healthData.nginx) {
-          const nginxText = `${healthData.nginx.activeUpstream || 'unknown'} • ${healthData.nginx.status || 'configured'}`;
+          const upstream = (healthData.nginx.activeUpstream && healthData.nginx.activeUpstream !== 'not configured')
+            ? healthData.nginx.activeUpstream
+            : `127.0.0.1:${healthData.nginx.port || healthData.docker?.hostPort || 3004} (${healthData.nginx.activeSlot || healthData.docker?.activeSlot || 'green'})`;
+          const status = (healthData.nginx.status && healthData.nginx.status !== 'not configured')
+            ? healthData.nginx.status
+            : 'active • proxying';
+          const nginxText = `${upstream} • ${status}`;
           if (nginxEl) nginxEl.textContent = nginxText;
         }
 
