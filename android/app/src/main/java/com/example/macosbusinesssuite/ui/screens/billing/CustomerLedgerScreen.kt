@@ -612,8 +612,7 @@ private fun getDaysAgoLabel(dateStr: String?): String {
 }
 
 private fun shareWhatsAppLedger(context: Context, customer: LedgerCustomer) {
-    val targetId = customer.customerId.ifBlank { customer.customerName }
-    val shareUrl = "https://mac.faizal.uk/customer-ledger.html?id=$targetId"
+    val shareUrl = customer.shareUrl ?: customer.ledgerToken?.let { "https://mac.faizal.uk/ledger/$it" } ?: "https://mac.faizal.uk/customer-ledger.html?id=${customer.customerId.ifBlank { customer.customerName }}"
     val balStr = if (customer.balance < 0) "Credit Balance: ₹${"%,.2f".format(abs(customer.balance))}" else "Amount Due: ₹${"%,.2f".format(customer.balance)}"
     val msg = "Hello ${customer.customerName}!\n\nHere is your financial ledger statement:\n• $balStr\n\nView details here:\n$shareUrl"
 
@@ -626,8 +625,7 @@ private fun shareWhatsAppLedger(context: Context, customer: LedgerCustomer) {
 }
 
 private fun shareLedgerLink(context: Context, customer: LedgerCustomer) {
-    val targetId = customer.customerId.ifBlank { customer.customerName }
-    val shareUrl = "https://mac.faizal.uk/customer-ledger.html?id=$targetId"
+    val shareUrl = customer.shareUrl ?: customer.ledgerToken?.let { "https://mac.faizal.uk/ledger/$it" } ?: "https://mac.faizal.uk/customer-ledger.html?id=${customer.customerId.ifBlank { customer.customerName }}"
     val sendIntent = Intent().apply {
         action = Intent.ACTION_SEND
         putExtra(Intent.EXTRA_TEXT, "Financial Ledger for ${customer.customerName}: $shareUrl")

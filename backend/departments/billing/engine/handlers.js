@@ -1,6 +1,7 @@
 const BillCalculator = require('../../../../frontend/shared/bill-calculator');
 const calculator = require('../../../core/billing/calculator');
 const billingDepartment = require('../service');
+const { getOrCreateCustomerLedgerToken, generateLedgerToken } = require('../../../core/billing/ledger-token');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -394,11 +395,12 @@ module.exports = function(db) {
               // Auto-create customer if doesn't exist
               const isWorker = req.user && req.user.role === 'worker';
               const creatorId = req.user ? (req.user.id || req.user.userId) : null;
+              const ledgerToken = generateLedgerToken();
               const createStmt = db.prepare(`
-                INSERT INTO contacts (name, type, active, exclude_from_stats, created_by_user_id, created_at, updated_at)
-                VALUES (?, 'customer', 'INACTIVE', ?, ?, datetime('now'), datetime('now'))
+                INSERT INTO contacts (name, type, active, exclude_from_stats, created_by_user_id, ledger_token, created_at, updated_at)
+                VALUES (?, 'customer', 'INACTIVE', ?, ?, ?, datetime('now'), datetime('now'))
               `);
-              const customerResult = createStmt.run(customer_name, isWorker ? 1 : 0, creatorId);
+              const customerResult = createStmt.run(customer_name, isWorker ? 1 : 0, creatorId, ledgerToken);
               finalCustomerId = customerResult.lastInsertRowid;
               if (isWorker && creatorId) {
                 try {
@@ -1354,6 +1356,7 @@ module.exports = function(db) {
             c.name,
             c.phone,
             c.opening_balance,
+            c.ledger_token,
             ${selectExclude},
             c.active,
             c.last_activity,
@@ -1397,6 +1400,7 @@ module.exports = function(db) {
           }
 
           const status = daysOverdue > 0 ? 'OVERDUE' : (amountDueWithOpening > 0 ? 'DUE' : (amountDueWithOpening < 0 ? 'CREDIT' : 'CLEAR'));
+          const token = c.ledger_token || getOrCreateCustomerLedgerToken(db, c.id);
 
           return {
             customerId: String(c.id),
@@ -1426,7 +1430,11 @@ module.exports = function(db) {
             created_by_role: c.created_by_role,
             created_by_name: c.created_by_name,
             last_edited_by_role: c.last_edited_by_role,
-            last_edited_by_name: c.last_edited_by_name
+            last_edited_by_name: c.last_edited_by_name,
+            ledger_token: token,
+            ledgerToken: token,
+            token: token,
+            share_url: `https://mac.faizal.uk/ledger/${token}`
           };
         });
 
@@ -1449,13 +1457,20 @@ module.exports = function(db) {
     // Get public ledger for a specific customer (backward-compatible with web customer-ledger.js)
     getPublicLedger: (req, res) => {
       try {
-        const { customerId } = req.params;
-        const response = billingDepartment.getCustomerStatement(db, customerId, req.user, {
-          requestId: req.requestId
+        const identifier = req.params.customerId || req.params.token || req.query.token || req.query.id;
+        if (!identifier) {
+          return res.status(400).json({ success: false, error: 'Customer identifier is required' });
+        }
+
+        // Require unguessable token for unauthenticated public requests to prevent IDOR enumeration
+        const isAuth = Boolean(req.user);
+        const response = billingDepartment.getCustomerStatement(db, identifier, req.user, {
+          requestId: req.requestId,
+          tokenOnly: !isAuth
         });
 
         if (!response.success) {
-          return res.status(response.error?.status || 404).json(response.error || { error: 'Customer not found' });
+          return res.status(response.error?.status || 404).json(response.error || { error: 'Ledger not found or invalid link' });
         }
 
         return res.json({

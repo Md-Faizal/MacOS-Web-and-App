@@ -5,14 +5,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
 
   const urlParams = new URLSearchParams(window.location.search);
-  const customerId = urlParams.get('id');
+  const pathMatch = window.location.pathname.match(/\/(?:ledger|l)\/([a-zA-Z0-9_-]+)/i);
+  const identifier = (pathMatch && pathMatch[1]) || urlParams.get('token') || urlParams.get('t') || urlParams.get('id');
 
-  if (!customerId) {
-    showError("INVALID LINK. MISSING CUSTOMER ID.");
+  if (!identifier) {
+    showError("INVALID LINK. MISSING CUSTOMER IDENTIFIER.");
     return;
   }
 
-  fetchLedgerData(customerId);
+  fetchLedgerData(identifier);
 
   // Tab switching
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -160,6 +161,15 @@ async function fetchLedgerData(customerId) {
     }
 
     rawData = result.data;
+    
+    // Polish URL in browser bar to clean unguessable short path
+    const ledgerToken = rawData.customer?.ledger_token || rawData.customer?.token;
+    if (ledgerToken && window.history && window.history.replaceState) {
+      const canonicalPath = `/ledger/${ledgerToken}`;
+      if (window.location.pathname !== canonicalPath && !window.location.pathname.endsWith('customer-ledger.html')) {
+        window.history.replaceState(null, '', canonicalPath);
+      }
+    }
     
     document.getElementById('customerName').textContent = rawData.customer.name;
     document.getElementById('printCustomerName').textContent = rawData.customer.name;
@@ -860,7 +870,8 @@ function initAdditionalHandlers() {
   if (shareBtn && !shareBtn.dataset.bound) {
     shareBtn.dataset.bound = "true";
     shareBtn.addEventListener('click', () => {
-      const url = window.location.href;
+      const token = rawData?.customer?.ledger_token || rawData?.customer?.token;
+      const url = token ? `${window.location.origin}/ledger/${token}` : window.location.href;
       navigator.clipboard.writeText(url).then(() => {
         const oldText = shareBtn.textContent;
         shareBtn.textContent = "✓ COPIED LINK!";

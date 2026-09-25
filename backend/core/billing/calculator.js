@@ -14,6 +14,7 @@
  */
 
 const SuiteCoreBridge = require('../../../frontend/shared/suite_core_bridge');
+const { getOrCreateCustomerLedgerToken } = require('./ledger-token');
 
 function parseDate(dateStr) {
   if (!dateStr) return null;
@@ -667,17 +668,39 @@ function calculateDashboardMetrics(db, user, options = {}) {
  * @param {Object} user Current authenticated user from req.user
  * @param {Object} options Options: { startDate, endDate }
  */
-function calculateCustomerStatement(db, customerId, user = null, options = {}) {
-  // 1. Fetch customer
-  const customer = db.prepare(`
-    SELECT id, name, phone, email, address, gstin, opening_balance, active, exclude_from_stats
-    FROM contacts
-    WHERE id = ? AND (type IS NULL OR LOWER(type) = 'customer')
-  `).get(customerId);
+function calculateCustomerStatement(db, customerIdOrToken, user = null, options = {}) {
+  const identifier = String(customerIdOrToken || '').trim();
+  if (!identifier) {
+    return { success: false, error: 'Customer identifier is required' };
+  }
+
+  // 1. Fetch customer by unguessable token or ID
+  let customer = null;
+  const isNumeric = /^\d+$/.test(identifier);
+
+  // If identifier is not purely numeric or options allow token, search by ledger_token first
+  if (!options.idOnly) {
+    customer = db.prepare(`
+      SELECT id, name, phone, email, address, gstin, opening_balance, active, exclude_from_stats, ledger_token
+      FROM contacts
+      WHERE ledger_token = ? AND (type IS NULL OR LOWER(type) = 'customer')
+    `).get(identifier);
+  }
+
+  // Fallback to numeric ID only if allowed (authenticated admin/worker contexts or explicit id allowed)
+  if (!customer && isNumeric && !options.tokenOnly) {
+    customer = db.prepare(`
+      SELECT id, name, phone, email, address, gstin, opening_balance, active, exclude_from_stats, ledger_token
+      FROM contacts
+      WHERE id = ? AND (type IS NULL OR LOWER(type) = 'customer')
+    `).get(Number(identifier));
+  }
 
   if (!customer) {
-    return { success: false, error: 'Customer not found' };
+    return { success: false, error: 'Customer ledger not found or invalid link' };
   }
+
+  const customerId = customer.id;
 
   // Worker check if applicable
   if (user && user.role === 'worker') {
@@ -887,6 +910,9 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
     };
   });
 
+  const ledgerToken = customer.ledger_token || getOrCreateCustomerLedgerToken(db, customer.id);
+  const portalBase = (app_settings.portal_base_url || 'https://mac.faizal.uk').replace(/\/+$/, '');
+
   return {
     success: true,
     customer: {
@@ -904,7 +930,11 @@ function calculateCustomerStatement(db, customerId, user = null, options = {}) {
       currentDue: currentDue,
       balance: currentDue,
       active: customer.active || 'ACTIVE',
-      status: currentDue > 0 ? 'PENDING' : 'SETTLED'
+      status: currentDue > 0 ? 'PENDING' : 'SETTLED',
+      ledger_token: ledgerToken,
+      ledgerToken: ledgerToken,
+      token: ledgerToken,
+      share_url: `${portalBase}/ledger/${ledgerToken}`
     },
     bank,
     summary: {

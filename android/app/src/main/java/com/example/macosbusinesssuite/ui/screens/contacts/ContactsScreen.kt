@@ -1097,17 +1097,19 @@ fun ContactDetailScreen(
                                 }
                                 // 4. View Ledger
                                 item {
+                                    val ledgerUrl = contact.shareUrl ?: contact.ledgerToken?.let { "https://mac.faizal.uk/ledger/$it" } ?: "https://mac.faizal.uk/customer-ledger.html?id=${contact.id}"
                                     ActionButton(icon = Icons.AutoMirrored.Filled.Notes, label = "View Ledger") {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://mac.faizal.uk/customer-ledger.html?id=${contact.id}"))
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(ledgerUrl))
                                         context.startActivity(intent)
                                     }
                                 }
                                 // 5. Share Ledger
                                 item {
+                                    val ledgerUrl = contact.shareUrl ?: contact.ledgerToken?.let { "https://mac.faizal.uk/ledger/$it" } ?: "https://mac.faizal.uk/customer-ledger.html?id=${contact.id}"
                                     ActionButton(icon = Icons.Default.Share, label = "Share Ledger") {
                                         val intent = Intent(Intent.ACTION_SEND).apply {
                                             type = "text/plain"
-                                            putExtra(Intent.EXTRA_TEXT, "Customer Ledger for ${contact.name}: https://mac.faizal.uk/customer-ledger.html?id=${contact.id}")
+                                            putExtra(Intent.EXTRA_TEXT, "Customer Ledger for ${contact.name}: $ledgerUrl")
                                         }
                                         context.startActivity(Intent.createChooser(intent, "Share Ledger"))
                                     }

@@ -8,8 +8,20 @@ export default defineConfig(({ mode }) => {
   return {
     root: 'frontend',
     base: '/',
-    publicDir: 'public',
-    plugins: [],
+    plugins: [
+      {
+        name: 'ledger-rewrite-middleware',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            const pathName = req.url.split('?')[0];
+            if (pathName === '/customer-ledger' || pathName === '/ledger' || pathName.startsWith('/ledger/') || pathName === '/l' || pathName.startsWith('/l/')) {
+              req.url = '/customer-ledger.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+            }
+            next();
+          });
+        }
+      }
+    ],
     server: {
       port: Number(env.VITE_PORT) || 5173,
       host: '0.0.0.0',

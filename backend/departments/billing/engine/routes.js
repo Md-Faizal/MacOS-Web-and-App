@@ -24,7 +24,9 @@ module.exports = function(router, handlers) {
   router.get('/print-opening-balance', handlers.printOpeningBalancePDF);  // GET /api/billing/print-opening-balance - Generate print PDF
   
   // ============= PUBLIC ENDPOINTS =============
-  router.get('/public/ledger/:customerId', handlers.getPublicLedger); // GET /api/billing/public/ledger/:customerId - Get public ledger data
+  router.get('/public/ledger/:customerId', handlers.getPublicLedger); // GET /api/billing/public/ledger/:customerId - Get public ledger data (token or ID)
+  router.get('/public/ledger/token/:token', handlers.getPublicLedger);
+  router.get('/public/ledger/t/:token', handlers.getPublicLedger);
   router.post('/public/export-invoice-pdf', handlers.exportInvoicePDF); // POST /api/billing/public/export-invoice-pdf - Public export PDF
 
   // ============= BILLS/INVOICES =============

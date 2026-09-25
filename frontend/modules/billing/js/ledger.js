@@ -962,8 +962,9 @@ class LedgerView {
           shareBtn.style.cssText = 'font-size: 10px; padding: 4px 8px; background: #ffffff; color: #000000; border: 1px solid #000000; border-radius: 2px; cursor: pointer; margin-left: 12px; font-weight: 700; font-family: "Courier New", monospace; vertical-align: middle;';
           shareBtn.onclick = () => {
              const customerObj = ledgerData.find(c => c.customerName === selectedCustomer);
-             if (customerObj && customerObj.customer_id) {
-               const url = window.location.origin + '/customer-ledger.html?id=' + customerObj.customer_id;
+             if (customerObj && (customerObj.customer_id || customerObj.customerId)) {
+               const token = customerObj.ledger_token || customerObj.ledgerToken || customerObj.token;
+               const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${customerObj.customer_id || customerObj.customerId}`;
                
                const shareOptions = document.createElement('div');
                shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 2147483647 !important; font-family: "Courier New", monospace;';

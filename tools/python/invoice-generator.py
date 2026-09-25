@@ -789,8 +789,12 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     qr2_y = qr2_box_y + 8
     
     portal_base = app_settings.get('portal_base_url', 'https://mac.faizal.uk').rstrip('/')
-    customer_id = invoice_data.get('customer_id') or invoice_data.get('i_customer_id') or 3
-    portal_url = f"{portal_base}/customer-ledger.html?id={customer_id}"
+    customer_token = invoice_data.get('customer_ledger_token')
+    if customer_token:
+        portal_url = f"{portal_base}/ledger/{customer_token}"
+    else:
+        customer_id = invoice_data.get('customer_id') or invoice_data.get('i_customer_id') or 3
+        portal_url = f"{portal_base}/customer-ledger.html?id={customer_id}"
     
     try:
         w_p = qr.QrCodeWidget(portal_url, barFillColor=colors.HexColor('#0b1c17'), barStrokeColor=colors.HexColor('#0b1c17'))
@@ -1106,6 +1110,7 @@ def fetch_invoice_data(db_path, invoice_no):
                     c.pan, 
                     c.gstin,
                     c.id as customer_id,
+                    c.ledger_token as customer_ledger_token,
                     i.customer_id as i_customer_id,
                     i.total_amount, 
                     i.total_discount, 

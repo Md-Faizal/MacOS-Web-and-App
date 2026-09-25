@@ -1340,7 +1340,7 @@ const renderApiDocumentationHtml = (doc) => `<!doctype html>
 </body>
 </html>`;
 
-app.get(['/customer-ledger', '/customer-ledger.html'], (req, res) => {
+app.get(['/customer-ledger', '/customer-ledger.html', '/ledger/:token', '/ledger', '/l/:token', '/l'], (req, res) => {
   const htmlPath = path.join(__dirname, '../../dist/customer-ledger.html');
   if (require('fs').existsSync(htmlPath)) {
     return res.sendFile(htmlPath);

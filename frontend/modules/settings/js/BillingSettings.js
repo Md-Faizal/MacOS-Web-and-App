@@ -454,7 +454,18 @@ export class BillingSettingsComponent {
         // 6. Test Customer Ledger Link
         const testLedgerBtn = this.container.querySelector('#testLedgerLinkBtn');
         if (testLedgerBtn) {
-            testLedgerBtn.addEventListener('click', () => {
+            testLedgerBtn.addEventListener('click', async () => {
+                try {
+                    const res = await fetch('/api/billing/ledger/customers');
+                    const json = await res.json();
+                    const customers = Array.isArray(json) ? json : (json.data || []);
+                    const testCust = customers[0];
+                    const token = testCust && (testCust.ledger_token || testCust.ledgerToken || testCust.token);
+                    if (token) {
+                        window.open(`/ledger/${token}`, '_blank');
+                        return;
+                    }
+                } catch (_) {}
                 window.open('/customer-ledger.html?id=2', '_blank');
             });
         }

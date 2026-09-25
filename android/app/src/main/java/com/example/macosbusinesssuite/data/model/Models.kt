@@ -339,7 +339,9 @@ data class Contact(
     @SerializedName("last_activity") val lastActivity: String? = null,
     @SerializedName("disable_duplex_export") val disableDuplexExport: Int = 0,
     @SerializedName("created_at") val createdAt: String? = null,
-    @SerializedName("updated_at") val updatedAt: String? = null
+    @SerializedName("updated_at") val updatedAt: String? = null,
+    @SerializedName("ledger_token", alternate = ["ledgerToken", "token"]) val ledgerToken: String? = null,
+    @SerializedName("share_url", alternate = ["shareUrl"]) val shareUrl: String? = null
 )
 
 data class ActivityStatus(
@@ -587,7 +589,9 @@ data class LedgerCustomer(
     @SerializedName("total_credit", alternate = ["totalCredit", "total_payments_amount"]) val totalCredit: Double = 0.0,
     @SerializedName("total_bills", alternate = ["totalBills", "bills_count"]) val totalBills: Int = 0,
     @SerializedName("total_payments", alternate = ["totalPayments", "payments_count"]) val totalPayments: Int = 0,
-    @SerializedName("current_due", alternate = ["currentDue"]) val currentDue: Double = 0.0
+    @SerializedName("current_due", alternate = ["currentDue"]) val currentDue: Double = 0.0,
+    @SerializedName("ledger_token", alternate = ["ledgerToken", "token"]) val ledgerToken: String? = null,
+    @SerializedName("share_url", alternate = ["shareUrl"]) val shareUrl: String? = null
 )
 
 data class PaymentRecord(

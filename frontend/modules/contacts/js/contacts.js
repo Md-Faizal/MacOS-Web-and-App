@@ -478,7 +478,8 @@ class ContactsApp extends AppWindow {
         
         switch(action) {
           case 'share-ledger':
-               const url = window.location.origin + '/customer-ledger.html?id=' + contact.id;
+               const token = contact.ledger_token || contact.ledgerToken || contact.token;
+               const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
                
                const shareOptions = document.createElement('div');
                shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 2147483647 !important; font-family: "Courier New", monospace;';

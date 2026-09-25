@@ -574,7 +574,8 @@ fun DetailedLedgerScreenContent(
     }
 
     if (showShareMenu) {
-        ShareLedgerDialog(customerName, customerId, filteredBills, filteredPayments, openingBalance) { showShareMenu = false }
+        val targetContact = contacts.find { it.id == customerId || it.name.equals(customerName, ignoreCase = true) }
+        ShareLedgerDialog(customerName, customerId, filteredBills, filteredPayments, openingBalance, ledgerToken = targetContact?.ledgerToken) { showShareMenu = false }
     }
 
     if (showEditDateDialog && editDateTargetItem != null) {
@@ -1201,6 +1202,7 @@ fun ShareLedgerDialog(
     bills: List<Bill>,
     payments: List<PaymentRecord>,
     opening: Double,
+    ledgerToken: String? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1209,7 +1211,7 @@ fun ShareLedgerDialog(
     val totalCredits = payments.filter { it.type.uppercase() == "CREDIT_NOTE" }.sumOf { it.creditAmount }
     val amountDue = totalBilled + opening - (totalPaid + totalCredits)
     val targetId = id.ifBlank { name }
-    val shareUrl = "https://mac.faizal.uk/customer-ledger.html?id=$targetId"
+    val shareUrl = ledgerToken?.let { "https://mac.faizal.uk/ledger/$it" } ?: "https://mac.faizal.uk/customer-ledger.html?id=$targetId"
     val balStr = if (amountDue < 0) "Credit Balance: ₹${"%,.2f".format(abs(amountDue))}" else "Amount Due: ₹${"%,.2f".format(amountDue)}"
 
     AlertDialog(

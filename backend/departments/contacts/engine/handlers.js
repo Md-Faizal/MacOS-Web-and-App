@@ -1,5 +1,6 @@
 const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildContactsListResponse } = require('../../../shared/api/contacts-contract');
+const { generateLedgerToken } = require('../../../core/billing/ledger-token');
 const contactsDepartment = require('../service');
 
 module.exports = function(db) {
@@ -101,17 +102,18 @@ module.exports = function(db) {
         const workerExclude = exclude_from_stats !== undefined ? Number(exclude_from_stats) : 0;
         const workerDuplex = disable_duplex_export !== undefined ? Number(disable_duplex_export) : 0;
 
+        const ledgerToken = generateLedgerToken();
         const stmt = db.prepare(`
           INSERT INTO contacts (
             name, email, phone, address, gstin, licence_no, pan,
-            total_sales, avg_sales, favorite_product_id, opening_balance, exclude_from_stats, notes, transport_preference, disable_duplex_export, created_by_user_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_sales, avg_sales, favorite_product_id, opening_balance, exclude_from_stats, notes, transport_preference, disable_duplex_export, created_by_user_id, ledger_token
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const info = stmt.run(
           name, email || null, phone || null, address || null,
           gstin || null, licence_no || null, pan || null,
           total_sales || 0, avg_sales || 0, favorite_product_id || null,
-          opening_balance || 0, adminExclude, notes || null, transport_preference || null, adminDuplex, creatorId
+          opening_balance || 0, adminExclude, notes || null, transport_preference || null, adminDuplex, creatorId, ledgerToken
         );
 
         const newContactId = info.lastInsertRowid;

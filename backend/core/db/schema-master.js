@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   active TEXT DEFAULT 'INACTIVE',
   last_activity DATETIME,
   disable_duplex_export INTEGER DEFAULT 0,
+  ledger_token TEXT UNIQUE,
   created_by_user_id TEXT,
   last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
