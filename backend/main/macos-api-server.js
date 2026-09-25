@@ -285,7 +285,7 @@ app.use((req, res, next) => {
 
   if (hasBrowserSession && mutatingApiRequest && !isAuthEntry && !hasBearerAuth) {
     const clientHeaderCsrf = req.get('x-csrf-token');
-    if (incomingCsrf && clientHeaderCsrf !== incomingCsrf) {
+    if (req.get('x-csrf-token') !== csrfToken) {
       return res.status(403).json({ error: 'CSRF validation failed' });
     }
   }

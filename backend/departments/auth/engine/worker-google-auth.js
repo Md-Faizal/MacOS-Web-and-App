@@ -32,11 +32,12 @@ module.exports = function(db, permissionsHelper) {
   const auditService = createAuditService(db);
   const identityService = createIdentityService(db);
 
-  const issueWebSession = (req, res, userId, deviceId, provider = 'google') => {
+  const issueWebSession = (req, res, userId, deviceId, provider = 'google', appName = 'macos') => {
     const session = sessionService.create({
       userId,
       deviceId,
       platform: 'web',
+      appName,
       provider,
       req
     });
@@ -439,18 +440,21 @@ module.exports = function(db, permissionsHelper) {
           WHERE id = ?
         `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
 
+        const detectedAppName = ((req.headers?.['x-client-app'] || req.body?.clientApp || '').toString().trim().toLowerCase() || 'macos');
         let deviceId = null;
         if (deviceName) {
           db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(targetUser.id);
           db.prepare(`
-            INSERT INTO user_devices (user_id, device_name, device_type, is_current, last_login, last_seen)
-            VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            INSERT INTO user_devices (user_id, device_name, device_type, client_type, app_name, is_current, last_login, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT(user_id, device_name) DO UPDATE SET
               last_login = excluded.last_login,
               last_seen = excluded.last_seen,
               is_current = 1,
-              device_type = excluded.device_type
-          `).run(targetUser.id, deviceName, deviceType || 'Web', 1);
+              device_type = excluded.device_type,
+              client_type = excluded.client_type,
+              app_name = excluded.app_name
+          `).run(targetUser.id, deviceName, deviceType || 'Web', 'web', detectedAppName === 'zentra' ? 'zentra' : 'macos', 1);
 
           const dev = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
             .get(targetUser.id, deviceName);
@@ -461,7 +465,7 @@ module.exports = function(db, permissionsHelper) {
         }
 
         if (isWebLogin) {
-          const session = issueWebSession(req, res, targetUser.id, deviceId);
+          const session = issueWebSession(req, res, targetUser.id, deviceId, 'google', detectedAppName === 'zentra' ? 'zentra' : 'macos');
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: targetUser.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: 'google' });
           const permissions = permissionsHelper && targetUser.role === 'worker' ? permissionsHelper.getUserPermissionsSnapshot(targetUser.id, 'worker') : null;
           return res.json({

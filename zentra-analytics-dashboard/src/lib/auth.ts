@@ -341,6 +341,7 @@ export async function loginWithPassword(identifier: string, password: string) {
     deviceName: 'Zentra Web',
     deviceType: 'Desktop',
     clientType: 'web',
+    clientApp: 'zentra',
   };
 
   const candidates = getApiCandidates();
@@ -355,6 +356,8 @@ export async function loginWithPassword(identifier: string, password: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Client-App': 'zentra',
+          'X-Client-Platform': 'web',
         },
         body: JSON.stringify(payload),
       });
@@ -535,6 +538,7 @@ export async function loginWithGoogle(idToken: string, linkPassword?: string) {
     deviceName: 'Zentra Web',
     deviceType: 'Desktop',
     clientType: 'web',
+    clientApp: 'zentra',
   };
   if (linkPassword) {
     body.linkPassword = linkPassword;
@@ -542,7 +546,11 @@ export async function loginWithGoogle(idToken: string, linkPassword?: string) {
 
   const res = await fetchWithFallback('/api/auth/google/worker-login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Client-App': 'zentra',
+      'X-Client-Platform': 'web',
+    },
     body: JSON.stringify(body),
   });
 

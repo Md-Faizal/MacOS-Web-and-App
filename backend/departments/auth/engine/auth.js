@@ -123,11 +123,24 @@ module.exports = function(db, permissionsHelper = null) {
     };
   };
 
-  const issueWebSession = (req, res, user, deviceId, provider = 'local', elevated = false, platform = 'web') => {
+  const getClientApp = (req, deviceType, clientType) => {
+    const appHeader = (req?.headers?.['x-client-app'] || '').toString().trim().toLowerCase();
+    const clientApp = (clientType || req?.body?.clientApp || appHeader || '').toString().trim().toLowerCase();
+    const normalized = clientApp === 'zentra' ? 'zentra' :
+      clientApp === 'android' ? 'android' :
+      clientApp === 'macos' ? 'macos' :
+      (deviceType || '').toString().toLowerCase().includes('android') ? 'android' :
+      'macos';
+
+    return normalized;
+  };
+
+  const issueWebSession = (req, res, user, deviceId, provider = 'local', elevated = false, platform = 'web', appName = 'macos') => {
     const session = sessionService.create({
       userId: user.id,
       deviceId,
       platform,
+      appName,
       provider,
       elevated,
       req
@@ -692,11 +705,23 @@ module.exports = function(db, permissionsHelper = null) {
         }
 
         const clientPlatformHeader = (req.headers?.['x-client-platform'] || '').toLowerCase();
+        const clientAppHeader = (req.headers?.['x-client-app'] || '').toLowerCase();
+        const parsedClientType = (clientType || '').toLowerCase();
+        const parsedDeviceType = (deviceType || '').toLowerCase();
+        const detectedAppName = getClientApp(req, deviceType, clientType);
         const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
-        const isAndroidApp = (clientType === 'native_android') || (deviceType && (deviceType.toLowerCase() === 'android' || deviceType.toLowerCase() === 'android app')) || (clientPlatformHeader === 'android' && !isPWA) || (req.headers?.['x-app-type'] === 'native_android');
+        const isAndroidApp =
+          (clientType === 'native_android') ||
+          (deviceType && (parsedDeviceType === 'android' || parsedDeviceType === 'android app')) ||
+          (clientPlatformHeader === 'android' && !isPWA) ||
+          (req.headers?.['x-app-type'] === 'native_android') ||
+          (clientAppHeader === 'android') ||
+          (parsedClientType === 'android') ||
+          (parsedClientType === 'native_android');
+        const isZentraApp = (detectedAppName === 'zentra') || (clientAppHeader === 'zentra') || (parsedClientType === 'zentra');
         const isWebLogin = !isAndroidApp;
 
-        const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : 'web');
+        const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : (isZentraApp ? 'web' : 'web'));
         const resolvedDeviceType = isAndroidApp ? 'Android App' : (isPWA ? 'Mobile (PWA)' : (deviceType || (isWebLogin ? 'Desktop' : 'Mobile')));
 
         // Record device info scoped specifically to this authenticated user
@@ -721,15 +746,16 @@ module.exports = function(db, permissionsHelper = null) {
 
         db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(user.id);
         db.prepare(`
-          INSERT INTO user_devices (user_id, device_name, device_type, client_type, is_current, last_login, last_seen)
-          VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+          INSERT INTO user_devices (user_id, device_name, device_type, client_type, app_name, is_current, last_login, last_seen)
+          VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
           ON CONFLICT(user_id, device_name) DO UPDATE SET
             last_login = excluded.last_login,
             last_seen = excluded.last_seen,
             is_current = 1,
             device_type = excluded.device_type,
-            client_type = excluded.client_type
-        `).run(user.id, resolvedDeviceName, resolvedDeviceType, resolvedClientType, 1);
+            client_type = excluded.client_type,
+            app_name = excluded.app_name
+        `).run(user.id, resolvedDeviceName, resolvedDeviceType, resolvedClientType, detectedAppName, 1);
 
         // Record history and get deviceId
         const device = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
@@ -745,22 +771,22 @@ module.exports = function(db, permissionsHelper = null) {
           : null;
 
         if (isWebLogin) {
-          const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType);
+          const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType, detectedAppName);
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
           const token = createSessionToken(user, deviceId);
           setSessionCookie(req, res, token);
-          return res.json({ success: true, sessionId: session.sessionId, token, user: publicUser(user, deviceId), permissions });
+          return res.json({ success: true, sessionId: session.sessionId, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
         }
 
         if (typeof req?.get === 'function') {
           const mobileSession = issueMobileSession(req, user, deviceId);
           auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
-          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId), permissions });
+          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId), permissions, appName: 'android' });
         }
 
         const token = createSessionToken(user, deviceId);
         setSessionCookie(req, res, token);
-        return res.json({ success: true, token, user: publicUser(user, deviceId), permissions });
+        return res.json({ success: true, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
 
       } catch (error) {
         console.error('Login error:', error);
@@ -793,8 +819,11 @@ module.exports = function(db, permissionsHelper = null) {
         res.json({
           devices: devices.map(d => {
             const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
+            const resolvedApp = (d.app_name || (d.device_type?.includes('Android') ? 'android' : 'macos')).toString().trim().toLowerCase() || 'macos';
             return {
               ...d,
+              app_name: resolvedApp,
+              appName: resolvedApp,
               client_type: resolvedClient,
               clientType: resolvedClient,
               isCurrent: Boolean(d.is_current_device),
@@ -818,6 +847,7 @@ module.exports = function(db, permissionsHelper = null) {
         const { id } = req.params;
         const userId = req.user.userId || req.user.id;
         const isSelf = (req.user.deviceId && req.user.deviceId === id);
+        const device = db.prepare('SELECT id, app_name FROM user_devices WHERE id = ? AND user_id = ?').get(id, userId);
 
         db.transaction(() => {
           db.prepare('DELETE FROM user_devices WHERE id = ? AND user_id = ?').run(id, userId);
@@ -832,6 +862,7 @@ module.exports = function(db, permissionsHelper = null) {
         res.json({
           success: true,
           isSelf,
+          appName: device?.app_name || 'macos',
           message: isSelf ? 'Current device session ended' : 'Device logged out successfully'
         });
       } catch (error) {
@@ -849,14 +880,15 @@ module.exports = function(db, permissionsHelper = null) {
         const currentDeviceId = req.user.deviceId || null;
         const currentSessionId = req.user.sessionId || null;
         const keepCurrent = req.query.keepCurrent === 'true' || req.body?.keepCurrent === true;
+        const requestedAppName = ((req.headers?.['x-client-app'] || req.body?.appName || req.query?.appName || '').toString().trim().toLowerCase() || req.user?.appName || 'macos');
 
         if (keepCurrent && currentDeviceId) {
-          // Keep this device, remove all other devices & sessions
+          // Keep this device, remove other devices & sessions only from the same app scope.
           db.transaction(() => {
-            db.prepare('DELETE FROM user_devices WHERE user_id = ? AND id != ?').run(userId, currentDeviceId);
-            sessionService.revokeOtherSessions(userId, currentSessionId, 'all_other_devices_logged_out');
+            db.prepare('DELETE FROM user_devices WHERE user_id = ? AND id != ? AND app_name = ?').run(userId, currentDeviceId, requestedAppName);
+            sessionService.revokeOtherSessions(userId, currentSessionId, 'all_other_devices_logged_out', requestedAppName);
           })();
-          res.json({ success: true, message: 'All other devices logged out successfully' });
+          res.json({ success: true, appName: requestedAppName, message: 'All other devices for this app were logged out successfully' });
         } else {
           // Complete global logout
           db.transaction(() => {

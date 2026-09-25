@@ -18,7 +18,7 @@ function requestIp(req) {
 }
 
 function createSessionService(db) {
-  const create = ({ userId, deviceId = null, platform = 'web', provider = null, req, elevated = false }) => {
+  const create = ({ userId, deviceId = null, platform = 'web', appName = 'macos', provider = null, req, elevated = false }) => {
     const secret = crypto.randomBytes(SESSION_SECRET_BYTES).toString('base64url');
     const sessionId = crypto.randomUUID();
     const now = Date.now();
@@ -26,14 +26,15 @@ function createSessionService(db) {
 
     db.prepare(`
       INSERT INTO auth_sessions (
-        id, secret_hash, user_id, device_id, platform, provider,
+        id, secret_hash, user_id, device_id, app_name, platform, provider,
         ip_address, ip_hash, user_agent, idle_expires_at, absolute_expires_at, elevated_until
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       sessionId,
       hashSecret(secret),
       userId,
       deviceId,
+      appName,
       platform,
       provider,
       ip,
@@ -75,6 +76,7 @@ function createSessionService(db) {
       userId: session.user_id,
       id: session.user_id,
       deviceId: session.device_id,
+      appName: session.app_name || 'macos',
       platform: session.platform,
       provider: session.provider,
       role: session.role,
@@ -111,8 +113,18 @@ function createSessionService(db) {
     `).run(reason, userId, deviceId);
   };
 
-  const revokeOtherSessions = (userId, currentSessionId, reason = 'other_sessions_revoked') => {
+  const revokeOtherSessions = (userId, currentSessionId, reason = 'other_sessions_revoked', appName = null) => {
     if (!userId) return;
+    const normalizedAppName = appName ? String(appName).trim().toLowerCase() : null;
+    if (normalizedAppName) {
+      db.prepare(`
+        UPDATE auth_sessions
+        SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = ?
+        WHERE user_id = ? AND id != ? AND app_name = ? AND revoked_at IS NULL
+      `).run(reason, userId, currentSessionId || '', normalizedAppName);
+      return;
+    }
+
     db.prepare(`
       UPDATE auth_sessions
       SET revoked_at = CURRENT_TIMESTAMP, revoked_reason = ?
