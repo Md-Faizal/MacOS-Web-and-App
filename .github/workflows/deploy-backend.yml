@@ -60,24 +60,12 @@ permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
-    name: 🚀 Build & Deploy
+  pre-flight-check:
+    name: 🛡️ Pre-Flight Verification
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 🏷️ Auto-Bump Version & Git Tag
-        if: ${{ inputs.bump_version != 'none' && !inputs.dry_run }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main --rebase
-          npm version ${{ inputs.bump_version }} --force -m "chore(release): %s"
-          git push origin main --follow-tags
-          echo "✅ Version bumped to $(node -p "require('./package.json').version") and tag pushed!"
 
       - name: ⚙️ Setup Node.js 20
         uses: actions/setup-node@v4
@@ -101,6 +89,41 @@ jobs:
           VITE_API_BASE_URL: https://mac.faizal.uk
           APP_URL: https://mac.faizal.uk
         run: npm run build
+
+      - name: 📤 Upload Build Artifacts
+        if: ${{ !inputs.skip_npm_install }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-frontend-dist
+          path: dist/
+          retention-days: 1
+
+  deploy-production:
+    name: 🚀 Deploy to Production VM
+    needs: [pre-flight-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Auto-Bump Version & Git Tag
+        if: ${{ inputs.bump_version != 'none' && !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
+          npm version ${{ inputs.bump_version }} --force -m "chore(release): %s"
+          git push origin main --follow-tags
+          echo "✅ Version bumped to $(node -p "require('./package.json').version") and tag pushed!"
+
+      - name: 📥 Download Frontend Artifacts
+        if: ${{ !inputs.skip_npm_install }}
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-frontend-dist
+          path: dist/
 
       - name: 🔍 Check Secrets Configuration
         env:
@@ -158,12 +181,8 @@ jobs:
           echo "   Time : $TIMESTAMP"
           echo "======================================================"
 
-          echo "🛡️ Step 1: Remote SQLite snapshot, disk hygiene & directory permissions..."
+          echo "🛡️ Step 1: Remote SQLite snapshot & directory permissions..."
           ssh production "
-            # Proactive disk cleanup on remote VM to guarantee plenty of free space
-            docker builder prune -f --keep-storage 1000MB 2>/dev/null || true
-            docker container prune -f 2>/dev/null || true
-            sudo journalctl --vacuum-time=2d 2>/dev/null || true
             mkdir -p $TARGET_DIR/database/backups \
                      $TARGET_DIR/storage/wallpapers/builtin \
                      $TARGET_DIR/storage/wallpapers/marketplace \
@@ -206,27 +225,7 @@ jobs:
             --exclude='/zentra-analytics-dashboard/dist' \
             ./ production:"$TARGET_DIR/"
 
-          echo "🩹 Step 2.5: Checking for stale port binds..."
-          ssh production bash -s <<'PREFLIGHT'
-          set -e
-          check_port_health() {
-            curl -fsS "http://127.0.0.1:${1}/api/health" >/dev/null 2>&1
-          }
-          for port in 3001 3004; do
-            if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${port}$|\[::\]:${port}$|0\.0\.0\.0:${port}$"; then
-              if check_port_health "$port"; then
-                echo "Port ${port}: healthy, leaving alone."
-                continue
-              fi
-              echo "Port ${port}: unhealthy — clearing stale containers..."
-              docker rm -f macos-server-blue macos-server-green 2>/dev/null || true
-              sleep 2
-              break
-            fi
-          done
-          PREFLIGHT
-
-          echo "🔄 Step 3: Blue-Green Docker deployment..."
+          echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment..."
           ssh production bash -s <<'REMOTE'
           set -e
           cd /home/ubuntu/MacOS-Production
@@ -254,3 +253,4 @@ jobs:
             echo "❌ Smoke test FAILED after 15s (last HTTP: $HTTP)"
             exit 1
           fi
+

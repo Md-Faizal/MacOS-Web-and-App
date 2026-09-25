@@ -73,20 +73,15 @@ fi
 echo "📍 Current Active Slot: $CURRENT_ACTIVE"
 echo "🎯 Deploying to Slot:   $TARGET_SLOT (Port: $TARGET_PORT)"
 
-# 2.4 Disk & Docker Cache Hygiene - prevent 'no space left on device' errors
-echo "🧹 Checking host disk space and Docker cache..."
+# 2.4 Host Disk Space Check
+echo "🧹 Checking host disk space..."
 AVAIL_MB=$(df -m / 2>/dev/null | awk 'NR==2 {print $4}' || echo "99999")
-if [ "$AVAIL_MB" -lt 3000 ]; then
-    echo "⚠️ Low disk space detected (${AVAIL_MB}MB available). Running proactive Docker & system cleanup..."
-    docker builder prune -a -f 2>/dev/null || true
-    docker image prune -a -f --filter "until=12h" 2>/dev/null || true
+if [ "$AVAIL_MB" -lt 1500 ]; then
+    echo "⚠️ Low disk space detected (${AVAIL_MB}MB available). Running light cleanup..."
     docker container prune -f 2>/dev/null || true
     sudo journalctl --vacuum-time=1d 2>/dev/null || true
-    sudo rm -rf /tmp/* /tmp/.* 2>/dev/null || true
+    sudo rm -rf /tmp/* 2>/dev/null || true
     echo "✓ Post-cleanup free space: $(df -h / | awk 'NR==2 {print $4}')"
-else
-    docker builder prune -f --keep-storage 1000MB 2>/dev/null || true
-    docker container prune -f 2>/dev/null || true
 fi
 
 # 2.5 Ensure target port is free before spin-up, otherwise an old stale container or orphaned process can block deploys
@@ -96,7 +91,7 @@ if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${TARGET_PORT
 fi
 
 if [ "$PORT_BOUND" = true ]; then
-    echo "⚠️ Port 127.0.0.1:$TARGET_PORT is already bound. Clearing stale Docker slot state and checking whether it is a dead container..."
+    echo "⚠️ Port 127.0.0.1:$TARGET_PORT is already bound. Clearing stale Docker slot state..."
     docker compose -f "$COMPOSE_FILE" stop "macos-server-$TARGET_SLOT" 2>/dev/null || true
     docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
     docker rm -f "macos-server-$TARGET_SLOT" 2>/dev/null || true
@@ -115,28 +110,33 @@ mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
 chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
 
-# 2.7 Smart build detection: Only rebuild Docker image if manifests/Dockerfile changed or forced
+# 2.7 Smart build detection:
+# Routine deploys update frontend/backend/dist via host volume mounts with zero build time.
+# Rebuild is ONLY triggered if dependencies changed, image is missing, or explicitly forced.
 BUILD_HASH_FILE=".docker_build_hash"
-CURRENT_HASH=$(sha256sum package.json package-lock.json Dockerfile tools/python/requirements.txt 2>/dev/null | sha256sum | awk '{print $1}')
+CURRENT_HASH=$(sha256sum package.json package-lock.json tools/python/requirements.txt 2>/dev/null | sha256sum | awk '{print $1}')
 IMAGE_EXISTS=$(docker image inspect macos-server:latest >/dev/null 2>&1 && echo "yes" || echo "no")
 
 NEEDS_BUILD=false
 if [ "$IMAGE_EXISTS" != "yes" ]; then
     echo "🔨 macos-server:latest image not found on host. Initial build required..."
     NEEDS_BUILD=true
-elif [ ! -f "$BUILD_HASH_FILE" ] || [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE" 2>/dev/null)" ]; then
-    echo "📦 Dependencies, requirements, or Dockerfile changed. Rebuilding Docker image..."
-    NEEDS_BUILD=true
 elif [ "$1" = "--rebuild" ] || [ "$2" = "--rebuild" ] || [ "$FORCE_BUILD" = "true" ]; then
     echo "🔄 Rebuild requested via flag..."
     NEEDS_BUILD=true
+elif [ -f "$BUILD_HASH_FILE" ] && [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE" 2>/dev/null)" ]; then
+    echo "📦 Dependencies or requirements changed. Rebuilding Docker image..."
+    NEEDS_BUILD=true
+elif [ ! -f "$BUILD_HASH_FILE" ]; then
+    echo "📌 Recording initial build hash for existing macos-server:latest..."
+    echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+    NEEDS_BUILD=false
 fi
 
 # 3. Clean up any stopped/stale container for target slot and start fresh
 docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
 
 if [ "$NEEDS_BUILD" = "true" ]; then
-    docker builder prune -f --keep-storage 500MB 2>/dev/null || true
     echo "📦 Building and starting container macos-server-$TARGET_SLOT..."
     docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
     echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
@@ -147,25 +147,25 @@ fi
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
-MAX_RETRIES=45
+MAX_RETRIES=30
 COUNT=0
 HEALTHY=false
 
 while [ $COUNT -lt $MAX_RETRIES ]; do
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "http://127.0.0.1:$TARGET_PORT/api/health" 2>/dev/null || echo "000")
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:$TARGET_PORT/api/health" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         HEALTHY=true
-        echo " [HTTP 200 - Healthy!]"
+        echo " [HTTP 200 - Healthy in ${COUNT}s!]"
         break
     fi
-    sleep 2
+    sleep 1
     COUNT=$((COUNT + 1))
     echo -n ".[$HTTP_CODE]"
 done
 echo ""
 
 if [ "$HEALTHY" != "true" ]; then
-    echo "❌ ERROR: Target container macos-server-$TARGET_SLOT failed to become healthy on port $TARGET_PORT after $((MAX_RETRIES * 2))s!"
+    echo "❌ ERROR: Target container macos-server-$TARGET_SLOT failed to become healthy on port $TARGET_PORT after ${MAX_RETRIES}s!"
     echo "Last response probe from http://127.0.0.1:$TARGET_PORT/api/health:"
     curl -v -m 5 "http://127.0.0.1:$TARGET_PORT/api/health" 2>&1 || true
     echo "Logs from macos-server-$TARGET_SLOT:"
@@ -205,13 +205,12 @@ echo "✅ Traffic successfully switched to $TARGET_SLOT!"
 
 # 7. Graceful Retirement of old container to free memory (954MB total VM RAM)
 echo "🧹 Stopping previous slot macos-server-$OLD_SLOT to preserve RAM..."
-sleep 3
+sleep 2
 docker compose -f "$COMPOSE_FILE" stop "macos-server-$OLD_SLOT" || true
 
-# Prune unused docker images, stopped containers, and builder cache to keep disk lean
+# Clean up stopped container instances to keep disk lean
 docker container prune -f >/dev/null 2>&1 || true
-docker image prune -f >/dev/null 2>&1 || true
-docker builder prune -f --keep-storage 1000MB >/dev/null 2>&1 || true
+
 
 echo "========================================================"
 echo "🎉 Zero-Downtime Deployment to $TARGET_SLOT Complete!"

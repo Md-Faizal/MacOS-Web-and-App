@@ -29,10 +29,10 @@ COPY backend/ ./backend/
 # Build static distribution bundles into dist/
 RUN npm run build
 
-# Prune devDependencies and strip test/coverage/documentation bloat to keep image ultra-slim
+# Prune devDependencies and remove heavyweight unnecessary test/coverage folders
 RUN npm prune --omit=dev \
-    && find node_modules -type d \( -name "test" -o -name "tests" -o -name "coverage" -o -name ".github" -o -name "docs" -o -name "example" -o -name "examples" \) -exec rm -rf {} + 2>/dev/null || true \
-    && find node_modules -type f \( -name "*.md" -o -name "*.ts" -o -name "*.map" \) -delete 2>/dev/null || true
+    && rm -rf node_modules/fluent-ffmpeg/coverage node_modules/**/test node_modules/**/tests 2>/dev/null || true
+
 
 # ==========================================================
 # STAGE 2: Lightweight Production Runtime
