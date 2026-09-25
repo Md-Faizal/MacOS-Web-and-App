@@ -304,9 +304,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   useEffect(() => {
     if (justLoggedOut) {
+      setAnimPhase('locking');
+      // Show locking animation for 1.9s (allowing entrance blur to complete and leaving the red lock & signed out message clearly visible for ~1.4s), then settle to idle
       const timer = setTimeout(() => {
         setAnimPhase('idle');
-      }, 550);
+      }, 1900);
       return () => clearTimeout(timer);
     }
   }, [justLoggedOut]);
@@ -601,14 +603,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const isWebsiteLoading = animPhase === 'website-loading' || animPhase === 'counter-exit';
   const isExpandingToLogin = animPhase === 'expanding-to-login';
-  const isUnlocked = animPhase === 'unlocking' || animPhase === 'fading-out' || animPhase === 'expanding' || animPhase === 'locking';
+  const isLocking = animPhase === 'locking';
+  const isUnlocked = animPhase === 'unlocking' || animPhase === 'fading-out' || animPhase === 'expanding';
   const isFading = animPhase === 'fading-out' || animPhase === 'expanding';
   const isExpanding = animPhase === 'expanding';
 
-  const getDropClass = (tier: 1 | 2 | 3) => {
+  const getDropClass = (tier: 1 | 2 | 3 | 4 | 5) => {
     if (isFading) return 'animate-login-exit pointer-events-none';
     if (isExpandingToLogin || (justLoggedOut && animPhase === 'locking')) {
-      return tier === 1 ? 'animate-login-drop-1' : tier === 2 ? 'animate-login-drop-2' : 'animate-login-drop-3';
+      return `animate-login-drop-${tier}`;
     }
     return '';
   };
@@ -630,7 +633,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               ? 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]' 
               : 'max-w-[1280px] flex flex-col shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
         }`}
-        style={!isWebsiteLoading && !isExpanding ? { maxHeight: '100%' } : undefined}
+        style={
+          isWebsiteLoading
+            ? undefined
+            : isExpanding
+              ? { height: 'calc(100dvh - 32px)', maxHeight: 'calc(100dvh - 32px)' }
+              : { height: 'min(720px, calc(100dvh - 32px))', maxHeight: 'min(720px, calc(100dvh - 32px))' }
+        }
       >
         {/* Background Layers with Smooth Crossfade */}
         <div 
@@ -740,33 +749,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 style={{ animationDelay: isFading ? '200ms' : undefined }}
               >
                 <div>
-                  <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'}`}>
-                    {isUnlocked ? 'Access Granted' : 'Authentication'}
+                  <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${
+                    isLocking ? 'text-red-500 font-semibold' : isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'
+                  }`}>
+                    {isLocking ? 'Session Secured' : isUnlocked ? 'Access Granted' : 'Authentication'}
                   </div>
                   <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] transition-colors duration-500 text-[#111111]">
-                    {isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : 'Fast Biometric Access'}
+                    {isLocking ? 'Signed Out' : isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : 'Fast Biometric Access'}
                   </h2>
                 </div>
 
-                {/* Animated Lock Badge: Springs into unlocked state with emerald glow */}
+                {/* Animated Lock Badge: Red locking on logout, springs to emerald on login */}
                 <div 
                   className={`relative flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                    isUnlocked
-                      ? 'bg-[#111111] text-emerald-400 ring-2 ring-emerald-500/40 shadow-[0_0_32px_rgba(16,185,129,0.35)] scale-110'
-                      : 'bg-[#111111] text-white shadow-[0_12px_24px_rgba(17,17,17,0.18)]'
+                    isLocking
+                      ? 'bg-red-600 text-white ring-2 ring-red-500/60 shadow-[0_0_28px_rgba(220,38,38,0.6)] scale-110 zentra-lock-badge-pulse'
+                      : isUnlocked
+                        ? 'bg-[#111111] text-emerald-400 ring-2 ring-emerald-500/40 shadow-[0_0_32px_rgba(16,185,129,0.35)] scale-110'
+                        : 'bg-[#111111] text-white shadow-[0_12px_24px_rgba(17,17,17,0.18)]'
                   }`}
-                  aria-label={isUnlocked ? 'Unlocked' : 'Locked'}
+                  aria-label={isLocking ? 'Session Locked' : isUnlocked ? 'Unlocked' : 'Locked'}
                 >
+                  {/* Locking state: red pulsing lock that snaps shut */}
+                  <div 
+                    className={`absolute inset-0 flex items-center justify-center ${
+                      isLocking ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                    }`}
+                  >
+                    <LockKeyhole className="h-5 w-5 text-white zentra-locking-snap" />
+                  </div>
+
+                  {/* Idle / normal locked state */}
                   <div 
                     className={`absolute inset-0 flex items-center justify-center transition-all duration-400 ease-in-out ${
-                      isUnlocked ? 'opacity-0 scale-75 -rotate-12 pointer-events-none' : 'opacity-100 scale-100 rotate-0'
+                      isUnlocked || isLocking ? 'opacity-0 scale-75 -rotate-12 pointer-events-none' : 'opacity-100 scale-100 rotate-0'
                     }`}
                   >
                     <LockKeyhole className="h-5 w-5" />
                   </div>
+
+                  {/* Unlocked (login success) state */}
                   <div 
                     className={`absolute inset-0 flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                      isUnlocked ? 'opacity-100 scale-105 rotate-0 text-emerald-400' : 'opacity-0 scale-50 rotate-12 pointer-events-none'
+                      isUnlocked && !isLocking ? 'opacity-100 scale-105 rotate-0 text-emerald-400' : 'opacity-0 scale-50 rotate-12 pointer-events-none'
                     }`}
                   >
                     <UnlockKeyhole className="h-5 w-5" />
@@ -869,7 +894,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {/* ─── THE ENCLOSED INPUT FIELDS BOX (Exact Git Dimensions & Screenshot Layout) ─── */}
                   <form 
                     onSubmit={handleSubmit}
-                    className={`rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_18px_40px_rgba(0,0,0,0.05)] sm:p-7 backdrop-blur-md ${getDropClass(2)}`}
+                    className={`rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_18px_40px_rgba(0,0,0,0.05)] sm:p-7 backdrop-blur-md ${getDropClass(3)}`}
                     style={{ animationDelay: isFading ? '100ms' : undefined }}
                   >
                     <div className="space-y-4">
@@ -966,25 +991,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                   {/* ─── ACTION BUTTONS (Sign in + Google/Passkey + Footer outside form box) ─── */}
                   <div 
-                    className={`mt-5 space-y-3 ${getDropClass(3)}`}
+                    className="mt-5 space-y-3"
                     style={{ animationDelay: isFading ? '0ms' : undefined }}
                   >
-                    {/* Primary Sign In Button (Exact Git Size) */}
-                    <button
-                      type="submit"
-                      onClick={handleSubmit}
-                      disabled={loading || animPhase !== 'idle'}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] hover:shadow-[0_8px_16px_rgba(17,17,17,0.2)] disabled:cursor-not-allowed disabled:opacity-70 shadow-sm"
-                    >
-                      {loading || animPhase !== 'idle' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <>
-                          Sign in
-                          <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </button>
+                    {/* Primary Sign In Button (Exact Git Size) — Tier 4 */}
+                    <div className={getDropClass(4)}>
+                      <button
+                        type="submit"
+                        onClick={handleSubmit}
+                        disabled={loading || animPhase !== 'idle'}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 py-3 text-[15px] font-medium text-white transition-all active:scale-[0.98] hover:bg-[#1a1a1a] hover:shadow-[0_8px_16px_rgba(17,17,17,0.2)] disabled:cursor-not-allowed disabled:opacity-70 shadow-sm"
+                      >
+                        {loading || animPhase !== 'idle' ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <>
+                            Sign in
+                            <ArrowRight className="h-4 w-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Secondary Auth Methods Row: Google & Passkey — Tier 5 */}
+                    <div className={getDropClass(5)}>
 
                     {/* Secondary Auth Methods Row: Google & Passkey */}
                     {passkeyHardwareSupported && hasPasskeyConfigured ? (
@@ -1059,6 +1089,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <div className="mt-4 flex items-center justify-center gap-3 text-[11px] uppercase tracking-[0.14em] text-[#666666]">
                       <MonitorSmartphone className="h-3.5 w-3.5" />
                       Secure access
+                    </div>
                     </div>
                   </div>
                 </>

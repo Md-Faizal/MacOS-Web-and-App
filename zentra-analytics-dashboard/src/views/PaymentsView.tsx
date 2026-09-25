@@ -113,8 +113,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       >
         <div id="widget-grid" data-group="widget-grid" className="dashboard-grid gap-4 sm:gap-5">
           
-          {/* Top KPI Cards (12 Cols) */}
-          <section className="col-span-1 md:col-span-12 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {/* Top KPI Cards (12 Cols) — Sublayer 3a */}
+          <section data-widget-sublayer="3a" className="col-span-1 md:col-span-12 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="soft-card rounded-[22px] p-4 bg-white/95">
               <span className="text-[12px] font-semibold text-[#666] uppercase tracking-wider">Gross Volume</span>
               <div className="mt-2 text-2xl font-bold tracking-tight text-[#111]">$148,920.00</div>
@@ -148,8 +148,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
           </section>
 
-          {/* Main Transactions Feed Table (8 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
+          {/* Main Transactions Feed Table (8 cols LG) — Sublayer 3b */}
+          <section data-widget-sublayer="3b" className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
             <div className="soft-card flex h-full flex-col justify-between overflow-hidden rounded-[26px] bg-white/95 p-5 sm:p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-black/[0.06]">
                 <div>
@@ -219,8 +219,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
           </section>
 
-          {/* Payment Methods & Rails (4 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
+          {/* Payment Methods & Rails (4 cols LG) — Sublayer 3c */}
+          <section data-widget-sublayer="3c" className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
             <div className="soft-card rounded-[26px] bg-white/95 p-5 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <h3 className="text-base font-semibold text-[#111]">Payment Method Split</h3>
               <p className="text-xs text-[#777] mb-4">Volume breakdown across payment networks</p>

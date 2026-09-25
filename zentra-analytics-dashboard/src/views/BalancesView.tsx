@@ -74,8 +74,8 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
       >
         <div id="widget-grid" data-group="widget-grid" className="dashboard-grid gap-4 sm:gap-5">
           
-          {/* Slot 1: Available Balance Hero (7 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-7 flex flex-col">
+          {/* Slot 1: Available Balance Hero (7 cols LG) — Sublayer 3a */}
+          <section data-widget-sublayer="3a" className="col-span-1 md:col-span-12 lg:col-span-7 flex flex-col">
             <div className="soft-card flex h-full flex-col justify-between rounded-[28px] bg-white/95 p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div>
                 <div className="flex items-center justify-between">
@@ -105,8 +105,8 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
             </div>
           </section>
 
-          {/* Slot 2: Pending & Reserves (5 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-5 flex flex-col gap-4">
+          {/* Slot 2: Pending & Reserves (5 cols LG) — Sublayer 3b */}
+          <section data-widget-sublayer="3b" className="col-span-1 md:col-span-12 lg:col-span-5 flex flex-col gap-4">
             <div className="soft-card rounded-[26px] bg-white/95 p-5 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <span className="text-xs font-semibold uppercase tracking-wider text-[#666]">Pending Settlements</span>
               <div className="mt-2 text-3xl font-bold tracking-tight text-[#111]">$8,920.40</div>

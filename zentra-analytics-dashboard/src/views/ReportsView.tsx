@@ -69,8 +69,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       >
         <div id="widget-grid" data-group="widget-grid" className="dashboard-grid gap-4 sm:gap-5">
           
-          {/* Executive P&L Financial Summary (8 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
+          {/* Executive P&L Financial Summary (8 cols LG) — Sublayer 3a */}
+          <section data-widget-sublayer="3a" className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
             <div className="soft-card flex h-full flex-col justify-between rounded-[28px] bg-white/95 p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
@@ -114,8 +114,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
           </section>
 
-          {/* Quick Reports & Exports (4 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
+          {/* Quick Reports & Exports (4 cols LG) — Sublayer 3b */}
+          <section data-widget-sublayer="3b" className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
             <div className="soft-card rounded-[26px] bg-white/95 p-5 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <h3 className="text-base font-semibold text-[#111] mb-1">Standard Report Downloads</h3>
               <p className="text-xs text-[#777] mb-3">Pre-compiled tax and regulatory audit packages</p>

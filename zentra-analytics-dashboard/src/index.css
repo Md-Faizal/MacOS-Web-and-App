@@ -230,149 +230,293 @@
 .glow-white {
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(255, 255, 255, 0.9) inset;
 }
+
+/* ─── LOCKING ANIMATION: Red lock snapping shut on logout ─── */
+/* Simulates the shackle swinging down and snapping into the lock body */
+@keyframes zentra-lock-snap {
+  0% {
+    transform: translateY(-5px) rotate(-16deg) scale(0.9);
+    opacity: 0.3;
+  }
+  38% {
+    transform: translateY(2px) rotate(6deg) scale(1.16);
+    opacity: 1;
+  }
+  58% {
+    transform: translateY(-1px) rotate(-3deg) scale(1.04);
+  }
+  75% {
+    transform: translateY(1px) rotate(1.5deg) scale(1.01);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Red badge pulsing glow during locking */
+@keyframes zentra-lock-red-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5), 0 0 8px rgba(220, 38, 38, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 38px rgba(220, 38, 38, 0.8), 0 0 16px rgba(220, 38, 38, 0.5);
+  }
+}
+
+.zentra-locking-snap {
+  animation: zentra-lock-snap 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.zentra-lock-badge-pulse {
+  animation: zentra-lock-red-pulse 0.7s ease-in-out infinite;
+}
+
 @keyframes dashboard-enter {
   0% {
     opacity: 0;
-    transform: translateY(-22px) scale(0.99);
+    transform: translateY(-24px) scale(0.985);
+    filter: blur(10px);
   }
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0px);
   }
 }
 
 .animate-dashboard-enter {
-  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: dashboard-enter 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 @keyframes dashboard-exit {
   0% {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0px);
   }
   100% {
     opacity: 0;
-    transform: translateY(-22px) scale(0.99);
+    transform: translateY(-26px) scale(0.98);
+    filter: blur(12px);
   }
 }
 
 .animate-dashboard-exit {
-  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: dashboard-exit 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 @keyframes login-section-exit {
   0% {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0px);
   }
   100% {
     opacity: 0;
-    transform: translateY(-24px) scale(0.99);
+    transform: translateY(-24px) scale(0.98);
+    filter: blur(10px);
   }
 }
 
 .animate-login-exit {
-  animation: login-section-exit 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: login-section-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 @keyframes login-enter {
   0% {
     opacity: 0;
-    transform: translateY(-22px) scale(0.99);
+    transform: translateY(-24px) scale(0.985);
+    filter: blur(10px);
   }
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0px);
   }
 }
 
 .animate-login-enter {
-  animation: login-enter 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: login-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
 }
 
 /* ─── PAGE TAB SWITCHING TRANSITIONS ─── */
-/* Layer 3 exits first (0ms), then Layer 2 exits (75ms) upwards (bottom-to-top disappear) */
+/* Layer 3 exits first (0ms), then Layer 2 exits (120ms) upwards (bottom-to-top disappear) */
 @keyframes page-layer-exit-up {
   0% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     filter: blur(0px);
   }
   100% {
     opacity: 0;
-    transform: translateY(-20px);
-    filter: blur(1.5px);
+    transform: translateY(-18px) scale(0.98);
+    filter: blur(10px);
   }
 }
 
-/* Layer 2 enters first (0ms), then Layer 3 enters (90ms) downwards (top-to-bottom appear) */
+/* Layer 2 enters first (0ms), then Layer 3 sub-layers cascade down (top-to-bottom appear) */
 @keyframes page-layer-enter-down {
   0% {
     opacity: 0;
-    transform: translateY(-22px);
-    filter: blur(1.5px);
+    transform: translateY(-22px) scale(0.985);
+    filter: blur(10px);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     filter: blur(0px);
   }
 }
 
-.animate-page-exit-layer3 {
-  animation: page-layer-exit-up 0.22s cubic-bezier(0.4, 0, 1, 1) 0ms both;
-  pointer-events: none;
-  will-change: transform, opacity, filter;
+/* ─── STAGGERED WIDGET SUBLAYER ANIMATIONS ─── */
+/* Each sublayer has an increasing drop distance (--widget-drop-y).
+   Top row drops only 12px, bottom rows drop up to 28px.
+   Rich frosted blur brings visible depth of field. */
+
+@keyframes widget-enter-sublayer {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--widget-drop-y, 16px)) scale(var(--widget-scale-start, 0.97));
+    filter: blur(10px);
+  }
+  50% {
+    opacity: 0.8;
+    filter: blur(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
 }
+
+@keyframes widget-exit-sublayer {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 0.5;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--widget-drop-y, 16px) * -0.85)) scale(var(--widget-scale-start, 0.97));
+    filter: blur(12px);
+  }
+}
+
+/* ─── PAGE EXIT ─── */
+.animate-page-exit-layer3 {
+  pointer-events: none;
+}
+
+/* When layer3 is exiting, each child sublayer animates out with stagger */
+.animate-page-exit-layer3 [data-widget-sublayer] {
+  animation: widget-exit-sublayer 0.32s cubic-bezier(0.4, 0, 0.8, 0.8) both;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Exit stagger: top exits first, lower ones exit progressively later */
+.animate-page-exit-layer3 [data-widget-sublayer="3a"] { animation-delay: 0ms;   --widget-drop-y: 12px; --widget-scale-start: 0.99; }
+.animate-page-exit-layer3 [data-widget-sublayer="3b"] { animation-delay: 30ms;  --widget-drop-y: 16px; --widget-scale-start: 0.98; }
+.animate-page-exit-layer3 [data-widget-sublayer="3c"] { animation-delay: 60ms;  --widget-drop-y: 20px; --widget-scale-start: 0.97; }
+.animate-page-exit-layer3 [data-widget-sublayer="3d"] { animation-delay: 90ms;  --widget-drop-y: 22px; --widget-scale-start: 0.97; }
+.animate-page-exit-layer3 [data-widget-sublayer="3e"] { animation-delay: 110ms; --widget-drop-y: 24px; --widget-scale-start: 0.96; }
+.animate-page-exit-layer3 [data-widget-sublayer="3f"] { animation-delay: 130ms; --widget-drop-y: 28px; --widget-scale-start: 0.96; }
 
 .animate-page-exit-layer2 {
-  animation: page-layer-exit-up 0.22s cubic-bezier(0.4, 0, 1, 1) 75ms both;
+  animation: page-layer-exit-up 0.30s cubic-bezier(0.4, 0, 0.8, 0.8) 120ms both;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* ─── PAGE ENTER ─── */
+.animate-page-enter-layer2 {
+  animation: page-layer-enter-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  will-change: transform, opacity;
+}
+
+/* Layer 3 container — sub-layers animate individually */
+.animate-page-enter-layer3 {
+  /* container itself is instant, children handle stagger */
+}
+
+/* Staggered entry: each lower widget drops from further down, appearing later */
+.animate-page-enter-layer3 [data-widget-sublayer] {
+  animation: widget-enter-sublayer 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.animate-page-enter-layer3 [data-widget-sublayer="3a"] { animation-delay: 80ms;   --widget-drop-y: 12px; --widget-scale-start: 0.99; }
+.animate-page-enter-layer3 [data-widget-sublayer="3b"] { animation-delay: 160ms;  --widget-drop-y: 16px; --widget-scale-start: 0.98; }
+.animate-page-enter-layer3 [data-widget-sublayer="3c"] { animation-delay: 230ms;  --widget-drop-y: 20px; --widget-scale-start: 0.97; }
+.animate-page-enter-layer3 [data-widget-sublayer="3d"] { animation-delay: 295ms;  --widget-drop-y: 22px; --widget-scale-start: 0.97; }
+.animate-page-enter-layer3 [data-widget-sublayer="3e"] { animation-delay: 355ms;  --widget-drop-y: 24px; --widget-scale-start: 0.96; }
+.animate-page-enter-layer3 [data-widget-sublayer="3f"] { animation-delay: 410ms;  --widget-drop-y: 28px; --widget-scale-start: 0.96; }
+
+/* ─── FULL DASHBOARD LOGIN / LOGOUT SEQUENCING ─── */
+/* Login: Top-to-Bottom enter (Layer 1 at 0ms, Layer 2 at 140ms, Layer 3 at 280ms+sublayer stagger) */
+.animate-login-layer1 {
+  animation: dashboard-enter 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  will-change: transform, opacity, filter;
+}
+.animate-login-layer2 {
+  animation: dashboard-enter 0.85s cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
+  will-change: transform, opacity, filter;
+}
+/* Layer 3 container slides in, sublayers cascade on top */
+.animate-login-layer3 {
+  animation: dashboard-enter 0.85s cubic-bezier(0.16, 1, 0.3, 1) 280ms both;
+  will-change: transform, opacity, filter;
+}
+
+/* Login sublayer stagger — deeper widgets drop more and appear later with frosted blur */
+.animate-login-layer3 [data-widget-sublayer] {
+  animation: widget-enter-sublayer 0.80s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+.animate-login-layer3 [data-widget-sublayer="3a"] { animation-delay: 280ms;  --widget-drop-y: 14px; --widget-scale-start: 0.99; }
+.animate-login-layer3 [data-widget-sublayer="3b"] { animation-delay: 370ms;  --widget-drop-y: 18px; --widget-scale-start: 0.98; }
+.animate-login-layer3 [data-widget-sublayer="3c"] { animation-delay: 460ms;  --widget-drop-y: 22px; --widget-scale-start: 0.97; }
+.animate-login-layer3 [data-widget-sublayer="3d"] { animation-delay: 540ms;  --widget-drop-y: 25px; --widget-scale-start: 0.97; }
+.animate-login-layer3 [data-widget-sublayer="3f"] { animation-delay: 700ms;  --widget-drop-y: 32px; --widget-scale-start: 0.96; }
+
+/* Logout: Bottom-to-Top exit in 3 sections with sub-sections, blur, and elegant timing */
+/* Layer 3 sublayers exit first in reverse (3f -> 3a), then Layer 2, then Layer 1 */
+.animate-logout-layer1 {
+  animation: dashboard-exit 0.48s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  will-change: transform, opacity, filter;
+}
+.animate-logout-layer2 {
+  animation: dashboard-exit 0.48s cubic-bezier(0.16, 1, 0.3, 1) 130ms both;
+  will-change: transform, opacity, filter;
+}
+.animate-logout-layer3 {
+  /* container stays, sublayers animate out in reverse (bottom first) */
+  pointer-events: none;
+}
+
+/* Logout sublayer stagger — bottom slots exit first with slow, elegant blur */
+.animate-logout-layer3 [data-widget-sublayer] {
+  animation: widget-exit-sublayer 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
   pointer-events: none;
   will-change: transform, opacity, filter;
 }
-
-.animate-page-enter-layer2 {
-  animation: page-layer-enter-down 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
-  will-change: transform, opacity, filter;
-}
-
-.animate-page-enter-layer3 {
-  animation: page-layer-enter-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
-  will-change: transform, opacity, filter;
-}
-
-/* ─── FULL DASHBOARD LOGIN / LOGOUT SEQUENCING ─── */
-/* Login: Top-to-Bottom enter (Layer 1 at 0ms, Layer 2 at 100ms, Layer 3 at 200ms) */
-.animate-login-layer1 {
-  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
-  will-change: transform, opacity;
-}
-.animate-login-layer2 {
-  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
-  will-change: transform, opacity;
-}
-.animate-login-layer3 {
-  animation: dashboard-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
-  will-change: transform, opacity;
-}
-
-/* Logout: Bottom-to-Top exit (Layer 3 at 0ms, Layer 2 at 100ms, Layer 1 at 200ms) */
-.animate-logout-layer1 {
-  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
-  will-change: transform, opacity;
-}
-.animate-logout-layer2 {
-  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
-  will-change: transform, opacity;
-}
-.animate-logout-layer3 {
-  animation: dashboard-exit 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
-  will-change: transform, opacity;
-}
+.animate-logout-layer3 [data-widget-sublayer="3a"] { animation-delay: 150ms; --widget-drop-y: 14px; --widget-scale-start: 0.99; }
+.animate-logout-layer3 [data-widget-sublayer="3b"] { animation-delay: 120ms; --widget-drop-y: 18px; --widget-scale-start: 0.98; }
+.animate-logout-layer3 [data-widget-sublayer="3c"] { animation-delay: 90ms;  --widget-drop-y: 22px; --widget-scale-start: 0.97; }
+.animate-logout-layer3 [data-widget-sublayer="3d"] { animation-delay: 60ms;  --widget-drop-y: 25px; --widget-scale-start: 0.97; }
+.animate-logout-layer3 [data-widget-sublayer="3e"] { animation-delay: 30ms;  --widget-drop-y: 28px; --widget-scale-start: 0.96; }
+.animate-logout-layer3 [data-widget-sublayer="3f"] { animation-delay: 0ms;   --widget-drop-y: 32px; --widget-scale-start: 0.96; }
 
 /* ─── 3-DIGIT ROLLING COUNTER ANIMATIONS (Smooth, Slow & Elegant) ─── */
 /* Current digit exits upwards */
@@ -413,11 +557,75 @@
   will-change: transform, opacity, filter;
 }
 
-/* ─── LOGIN PAGE ELEMENTS: STAGGERED TOP-TO-BOTTOM DROP-IN ─── */
+/* ─── LOGIN PAGE ELEMENTS: STAGGERED TOP-TO-BOTTOM DROP-IN WITH FROSTED BLUR ─── */
 @keyframes login-element-drop {
   0% {
     opacity: 0;
-    transform: translateY(-22px);
+    transform: translateY(-26px) scale(0.98);
+    filter: blur(12px);
+  }
+  50% {
+    opacity: 0.75;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-login-drop-1 {
+  animation: login-element-drop 0.70s cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-2 {
+  animation: login-element-drop 0.70s cubic-bezier(0.16, 1, 0.3, 1) 130ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-3 {
+  animation: login-element-drop 0.70s cubic-bezier(0.16, 1, 0.3, 1) 220ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-4 {
+  animation: login-element-drop 0.70s cubic-bezier(0.16, 1, 0.3, 1) 310ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-login-drop-5 {
+  animation: login-element-drop 0.70s cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
+  will-change: transform, opacity, filter;
+}
+
+/* ─── QUICK POPUP & DROPDOWN FROSTED BLUR ENTRANCE (Snappy & Responsive) ─── */
+@keyframes popup-frost-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+    filter: blur(8px);
+  }
+  50% {
+    opacity: 0.85;
+    filter: blur(2.5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes popup-item-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+    filter: blur(5px);
+  }
+  60% {
+    opacity: 0.88;
     filter: blur(1.5px);
   }
   100% {
@@ -427,18 +635,46 @@
   }
 }
 
-.animate-login-drop-1 {
-  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+.animate-popup-frost {
+  animation: popup-frost-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+  transform-origin: top right;
+}
+
+.animate-popup-frost-left {
+  animation: popup-frost-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+  transform-origin: top left;
+}
+
+.animate-popup-frost-center {
+  animation: popup-frost-enter 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+  transform-origin: center;
+}
+
+.animate-popup-tier-1 {
+  animation: popup-item-drop 0.22s cubic-bezier(0.16, 1, 0.3, 1) 20ms both;
   will-change: transform, opacity, filter;
 }
 
-.animate-login-drop-2 {
-  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+.animate-popup-tier-2 {
+  animation: popup-item-drop 0.22s cubic-bezier(0.16, 1, 0.3, 1) 50ms both;
   will-change: transform, opacity, filter;
 }
 
-.animate-login-drop-3 {
-  animation: login-element-drop 0.65s cubic-bezier(0.16, 1, 0.3, 1) 320ms both;
+.animate-popup-tier-3 {
+  animation: popup-item-drop 0.22s cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-popup-tier-4 {
+  animation: popup-item-drop 0.22s cubic-bezier(0.16, 1, 0.3, 1) 110ms both;
+  will-change: transform, opacity, filter;
+}
+
+.animate-popup-tier-5 {
+  animation: popup-item-drop 0.22s cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
   will-change: transform, opacity, filter;
 }
 

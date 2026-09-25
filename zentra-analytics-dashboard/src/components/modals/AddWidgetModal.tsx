@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Check, BarChart2, TrendingUp, Users, DollarSign, PieChart, Layers } from 'lucide-react';
 
 interface AddWidgetModalProps {
@@ -60,10 +60,23 @@ export const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
     onClose();
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-[28px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-black/[0.08] max-w-lg w-full p-6 relative animate-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between pb-4 border-b border-black/[0.06]">
+    <div 
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/45 backdrop-blur-md"
+    >
+      <div className="bg-white/95 rounded-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,255,255,0.85)_inset] border border-black/[0.08] max-w-lg w-full max-h-[min(90dvh,560px)] flex flex-col p-4 sm:p-6 relative backdrop-blur-xl animate-popup-frost-center">
+        <div className="flex items-center justify-between pb-4 border-b border-black/[0.06] shrink-0 animate-popup-tier-1">
           <div>
             <h3 className="text-xl font-bold text-[#111111] tracking-tight">Add Analytics Widget</h3>
             <p className="text-xs text-[#737373] mt-0.5">Customize your overview dashboard metrics</p>
@@ -71,22 +84,23 @@ export const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-black/[0.05] flex items-center justify-center text-[#777777] hover:text-[#111111]"
+            className="w-8 h-8 rounded-full hover:bg-black/[0.05] flex items-center justify-center text-[#777777] hover:text-[#111111] transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="py-4 space-y-2.5 max-h-[380px] overflow-y-auto">
-          {availableWidgets.map((item) => {
+        <div className="py-4 space-y-2.5 overflow-y-auto flex-1 min-h-0 pr-0.5">
+          {availableWidgets.map((item, idx) => {
             const Icon = item.icon;
             const isSelected = selectedWidgets.includes(item.id);
+            const tierClass = idx === 0 ? 'animate-popup-tier-2' : idx === 1 ? 'animate-popup-tier-3' : idx === 2 ? 'animate-popup-tier-4' : 'animate-popup-tier-5';
 
             return (
               <div
                 key={item.id}
                 onClick={() => handleToggle(item.id)}
-                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between active:scale-[0.99] ${tierClass} ${
                   isSelected
                     ? 'border-blue-500 bg-blue-50/50 shadow-xs'
                     : 'border-black/[0.06] hover:bg-black/[0.02]'
@@ -115,11 +129,11 @@ export const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
           })}
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-black/[0.06]">
+        <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-black/[0.06] shrink-0 animate-popup-tier-4">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-[#666666] hover:text-[#111111] rounded-xl hover:bg-black/[0.04]"
+            className="px-4 py-2 text-xs font-medium text-[#666666] hover:text-[#111111] rounded-xl hover:bg-black/[0.04] transition active:scale-[0.98]"
           >
             Cancel
           </button>
@@ -127,7 +141,7 @@ export const AddWidgetModal: React.FC<AddWidgetModalProps> = ({
             type="button"
             onClick={handleApply}
             disabled={selectedWidgets.length === 0}
-            className="px-5 py-2 text-xs font-semibold bg-[#222222] hover:bg-black text-white rounded-xl shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="px-5 py-2 text-xs font-semibold bg-[#222222] hover:bg-black text-white rounded-xl shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition active:scale-[0.98]"
           >
             Add Selected ({selectedWidgets.length})
           </button>

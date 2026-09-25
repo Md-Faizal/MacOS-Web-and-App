@@ -44,6 +44,9 @@ export default function App() {
     return Boolean(readStoredSession().token);
   });
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [exitingHeight, setExitingHeight] = useState<number | null>(null);
+
   // When user is already authenticated on initial load, remove static preloader
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -70,16 +73,17 @@ export default function App() {
     };
   }, []);
 
-  const [dashPhase, setDashPhase] = useState<'entering' | 'idle' | 'exiting'>('idle');
+  const [dashPhase, setDashPhase] = useState<'entering' | 'idle' | 'exiting' | 'contracting'>('idle');
   const [justLoggedOut, setJustLoggedOut] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0, opacity: 0 });
 
   // Transition dashPhase to idle once the top-to-bottom login entrance finishes
   useEffect(() => {
     if (dashPhase === 'entering' && isAuthenticated) {
+      // 280ms base + 720ms last sublayer delay + 750ms animation = ~1750ms total, idle after 1400ms
       const timer = setTimeout(() => {
         setDashPhase('idle');
-      }, 950);
+      }, 1400);
       return () => clearTimeout(timer);
     }
   }, [dashPhase, isAuthenticated]);
@@ -98,16 +102,41 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    // Smoothly scroll window to top so scaling happens centered in viewport
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Step 1: All dashboard elements gracefully float upwards with blur and disappear (3-section cascade)
+    // The outer dashboard card remains completely full-sized (1760px) and static during this time
     setDashPhase('exiting');
-    
-    // 3-layer bottom-to-top disappear (exit animation 500ms + 200ms delay = 700ms) + smooth container contraction
+
+    // Step 2: Once elements have cleanly dissolved (~680ms), start contracting the empty shell
+    // This shaves ~600ms off the wait, making the animation snappy and responsive
+    setTimeout(() => {
+      const padY = window.innerWidth >= 1024 ? 32 : window.innerWidth >= 640 ? 24 : 16;
+      const currentH = cardRef.current ? cardRef.current.offsetHeight : (window.innerHeight - padY);
+      const targetH = Math.min(720, window.innerHeight - padY);
+
+      // Lock current starting height in exact pixels
+      setExitingHeight(currentH);
+      setDashPhase('contracting');
+
+      // Next animation frame: animate height & width down to login card dimensions over 650ms
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExitingHeight(targetH);
+        });
+      });
+    }, 680);
+
+    // Step 3: Complete logout handover right as the 650ms shell contraction finishes (680ms + 650ms = 1330ms)
     setTimeout(() => {
       clearSession();
       setUser(null);
       setJustLoggedOut(true);
       setIsAuthenticated(false);
       setDashPhase('idle');
-    }, 750);
+      setExitingHeight(null);
+    }, 1350);
   };
 
   // ─── TAB SWITCH TRANSITION (Header stays, bottom 2 layers animate) ───
@@ -120,25 +149,27 @@ export default function App() {
     if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
     if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
 
-    // Step 1: Disappear from bottom to top (Layer 3 at 0ms, Layer 2 at 75ms)
+    // Step 1: Disappear — layer2 exits at 120ms delay (130ms exit = 250ms total)
     setPagePhase('exiting');
 
-    // Step 2: Swap content and enter from top to bottom (Layer 2 at 0ms, Layer 3 at 90ms)
+    // Step 2: Swap content and enter from top to bottom
+    // Wait for exit to complete: 120ms delay + 300ms exit = 420ms
     transitionTimerRef.current = setTimeout(() => {
       setCurrentView(nextTab);
       setPagePhase('entering');
 
       // Step 3: Complete transition to idle
+      // Layer2 enter: 550ms + layer3f enter: 420ms delay + 650ms = 1070ms total
       finishTimerRef.current = setTimeout(() => {
         setPagePhase('idle');
-      }, 440);
-    }, 260);
+      }, 750);
+    }, 430);
   };
 
   // ─── ANIMATION CLASS COMPUTATION ───
   // Layer 1 (Header): Animates on login/logout; stays fixed in place during tab changes
   let headerClass = '';
-  if (dashPhase === 'exiting') {
+  if (dashPhase === 'exiting' || dashPhase === 'contracting') {
     headerClass = 'animate-logout-layer1';
   } else if (dashPhase === 'entering') {
     headerClass = 'animate-login-layer1';
@@ -148,7 +179,7 @@ export default function App() {
   let layer2Class = '';
   let layer3Class = '';
 
-  if (dashPhase === 'exiting') {
+  if (dashPhase === 'exiting' || dashPhase === 'contracting') {
     layer2Class = 'animate-logout-layer2';
     layer3Class = 'animate-logout-layer3';
   } else if (dashPhase === 'entering') {
@@ -212,15 +243,28 @@ export default function App() {
           }} 
         />
       ) : (
-        <div className={`min-h-[100dvh] w-full flex items-center justify-center transition-all duration-[750ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          dashPhase === 'exiting' ? 'px-4 py-8' : 'p-2 sm:p-3 lg:p-4'
-        }`}>
+        <div 
+          className={`min-h-[100dvh] w-full flex items-center justify-center transition-all duration-[650ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            dashPhase === 'contracting' ? 'p-4 sm:p-5 lg:p-6 overflow-hidden' : 'p-2 sm:p-3 lg:p-4'
+          }`}
+          style={dashPhase === 'contracting' ? { height: '100dvh', overflow: 'hidden' } : undefined}
+        >
           <div 
-            className={`w-full transition-all duration-[750ms] ease-[cubic-bezier(0.16,1,0.3,1)] relative rounded-[32px] overflow-hidden backdrop-blur-[24px] sm:backdrop-blur-[28px] backdrop-saturate-[180%] bg-[linear-gradient(135deg,rgba(255,255,255,0.32)_0%,rgba(244,242,238,0.18)_50%,rgba(255,255,255,0.36)_100%)] border border-white/80 ${
-              dashPhase === 'exiting'
-                ? 'max-w-[1280px] min-h-[600px] shadow-[0_2px_4px_rgba(0,0,0,0.02),0_12px_28px_-6px_rgba(17,17,17,0.08),0_28px_80px_-16px_rgba(17,17,17,0.14)]'
-                : 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)]'
+            ref={cardRef}
+            className={`w-full transition-all duration-[650ms] ease-[cubic-bezier(0.16,1,0.3,1)] relative rounded-[32px] sm:rounded-[36px] overflow-hidden backdrop-blur-[24px] sm:backdrop-blur-[28px] backdrop-saturate-[180%] bg-[linear-gradient(135deg,rgba(255,255,255,0.32)_0%,rgba(244,242,238,0.18)_50%,rgba(255,255,255,0.36)_100%)] border border-white/80 shadow-[0_28px_80px_-20px_rgba(17,17,17,0.16),0_0_0_1px_rgba(255,255,255,0.7)_inset,0_2px_4px_rgba(0,0,0,0.02)] ${
+              dashPhase === 'contracting'
+                ? 'max-w-[1280px]'
+                : 'max-w-[1760px] min-h-[calc(100dvh-16px)] sm:min-h-[calc(100dvh-24px)] lg:min-h-[calc(100dvh-32px)] scale-100 opacity-100'
             }`}
+            style={
+              dashPhase === 'contracting' && exitingHeight !== null
+                ? {
+                    height: `${exitingHeight}px`,
+                    maxHeight: `${exitingHeight}px`,
+                    overflow: 'hidden',
+                  }
+                : undefined
+            }
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
           >

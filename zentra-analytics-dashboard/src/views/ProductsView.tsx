@@ -110,8 +110,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       >
         <div id="widget-grid" data-group="widget-grid" className="dashboard-grid gap-4 sm:gap-5">
           
-          {/* Product Cards Grid (12 cols) */}
-          <section className="col-span-1 md:col-span-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          {/* Product Cards Grid (12 cols) — Sublayer 3a */}
+          <section data-widget-sublayer="3a" className="col-span-1 md:col-span-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {PRODUCTS.map((prod, idx) => (
               <div 
                 key={idx}

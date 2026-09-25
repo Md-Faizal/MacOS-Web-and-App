@@ -83,8 +83,8 @@ export const ConnectView: React.FC<ConnectViewProps> = ({
       >
         <div id="widget-grid" data-group="widget-grid" className="dashboard-grid gap-4 sm:gap-5">
           
-          {/* Active Integrations Grid (8 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
+          {/* Active Integrations Grid (8 cols LG) — Sublayer 3a */}
+          <section data-widget-sublayer="3a" className="col-span-1 md:col-span-12 lg:col-span-8 flex flex-col">
             <div className="soft-card flex h-full flex-col justify-between rounded-[28px] bg-white/95 p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
