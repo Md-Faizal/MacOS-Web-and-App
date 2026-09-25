@@ -38,6 +38,26 @@ const USER_KEY = 'zentra-auth-user';
 const REMEMBERED_USERS_KEY = 'macos_remembered_users';
 const ACTIVE_USER_KEY = 'macos_active_user_id';
 
+const viteEnv = typeof import.meta !== 'undefined' ? ((import.meta as any)?.env ?? {}) : {};
+
+function getSessionStorageSafe() {
+  const target = typeof window !== 'undefined' ? window : globalThis as any;
+  try {
+    return target.sessionStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocalStorageSafe() {
+  const target = typeof window !== 'undefined' ? window : globalThis as any;
+  try {
+    return target.localStorage || null;
+  } catch {
+    return null;
+  }
+}
+
 function getApiCandidates(): string[] {
   const candidates: string[] = [];
 
@@ -47,7 +67,7 @@ function getApiCandidates(): string[] {
   }
 
   // 2. Configured custom target if provided
-  const configured = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_TARGET || '').trim();
+  const configured = (viteEnv.VITE_API_BASE_URL || viteEnv.VITE_API_TARGET || '').trim();
   if (configured) {
     const clean = configured.replace(/\/$/, '');
     if (!candidates.includes(clean)) {
@@ -179,8 +199,9 @@ export async function apiFetch<T = any>(endpoint: string, init?: RequestInit): P
 
 export function readStoredSession() {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    const userRaw = localStorage.getItem(USER_KEY);
+    const sessionStore = getSessionStorageSafe();
+    const raw = sessionStore ? sessionStore.getItem(SESSION_KEY) : null;
+    const userRaw = sessionStore ? sessionStore.getItem(USER_KEY) : null;
     return {
       token: raw || null,
       user: userRaw ? JSON.parse(userRaw) : null,
@@ -191,12 +212,15 @@ export function readStoredSession() {
 }
 
 export function saveSession(payload: AuthSessionPayload) {
+  const sessionStore = getSessionStorageSafe();
+  if (!sessionStore) return;
+
   if (payload.token) {
-    localStorage.setItem(SESSION_KEY, payload.token);
+    sessionStore.setItem(SESSION_KEY, payload.token);
   }
 
   if (payload.user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+    sessionStore.setItem(USER_KEY, JSON.stringify(payload.user));
   }
 }
 
@@ -296,9 +320,15 @@ export function saveRememberedAccount(user: UserRecord | null, identifierOverrid
 }
 
 export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(USER_KEY);
-  localStorage.removeItem('zentra-auth-session');
+  const sessionStore = getSessionStorageSafe();
+  const localStore = getLocalStorageSafe();
+
+  sessionStore?.removeItem(SESSION_KEY);
+  sessionStore?.removeItem(USER_KEY);
+  localStore?.removeItem(SESSION_KEY);
+  localStore?.removeItem(USER_KEY);
+  localStore?.removeItem('zentra-auth-session');
+
   if (typeof document !== 'undefined') {
     document.cookie = 'auth_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
   }
@@ -703,7 +733,7 @@ export async function updateWorkerSecurityCredentials(payload: {
   username?: string;
 }, token?: string): Promise<{ success: boolean; message?: string }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const bearerToken = token || localStorage.getItem(SESSION_KEY) || localStorage.getItem('token') || localStorage.getItem('macos_token');
+  const bearerToken = token || getSessionStorageSafe()?.getItem(SESSION_KEY) || getLocalStorageSafe()?.getItem(SESSION_KEY) || getSessionStorageSafe()?.getItem('token') || getLocalStorageSafe()?.getItem('token') || getSessionStorageSafe()?.getItem('macos_token') || getLocalStorageSafe()?.getItem('macos_token');
   if (bearerToken) {
     headers['Authorization'] = `Bearer ${bearerToken}`;
   }
