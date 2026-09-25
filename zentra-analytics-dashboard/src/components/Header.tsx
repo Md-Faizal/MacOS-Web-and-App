@@ -166,14 +166,18 @@ export const Header: React.FC<HeaderProps> = ({
     isDraggingMenu.current = true;
     dragStartY.current = e.clientY;
     hasDraggedMenu.current = false;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handleMenuPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDraggingMenu.current || dragStartY.current == null) return;
     const deltaY = e.clientY - dragStartY.current;
     if (Math.abs(deltaY) > 5) {
-      hasDraggedMenu.current = true;
+      if (!hasDraggedMenu.current) {
+        hasDraggedMenu.current = true;
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {}
+      }
     }
     if (!hasDraggedMenu.current) return;
 
@@ -217,7 +221,9 @@ export const Header: React.FC<HeaderProps> = ({
     isDraggingMenu.current = false;
     dragStartY.current = null;
     try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      }
     } catch {}
 
     if (hasDraggedMenu.current && activeDragTab) {
@@ -236,8 +242,12 @@ export const Header: React.FC<HeaderProps> = ({
         setShowNavMenu(false);
         setActiveDragTab(null);
       }, 200);
+      setTimeout(() => {
+        hasDraggedMenu.current = false;
+      }, 150);
     } else {
       setActiveDragTab(null);
+      hasDraggedMenu.current = false;
     }
   };
 
@@ -246,13 +256,17 @@ export const Header: React.FC<HeaderProps> = ({
     isDraggingDesktop.current = true;
     dragDesktopStartX.current = event.clientX;
     hasDraggedDesktop.current = false;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
 
   const handleDesktopPointerMove = (event: React.PointerEvent<HTMLElement>) => {
     if (!isDraggingDesktop.current || dragDesktopStartX.current == null) return;
     if (Math.abs(event.clientX - dragDesktopStartX.current) > 6) {
-      hasDraggedDesktop.current = true;
+      if (!hasDraggedDesktop.current) {
+        hasDraggedDesktop.current = true;
+        try {
+          (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        } catch {}
+      }
     }
     if (!hasDraggedDesktop.current) return;
 
@@ -276,11 +290,17 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleDesktopPointerUp = (event: React.PointerEvent<HTMLElement>) => {
+    if (!isDraggingDesktop.current) return;
     isDraggingDesktop.current = false;
     dragDesktopStartX.current = null;
     try {
-      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+      if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
+        (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+      }
     } catch {}
+    setTimeout(() => {
+      hasDraggedDesktop.current = false;
+    }, 150);
   };
 
   return (
@@ -367,8 +387,12 @@ export const Header: React.FC<HeaderProps> = ({
                 ref={(element) => {
                   navButtonRefs.current[index] = element;
                 }}
-                onClick={() => handleTabClick(item)}
-                className={`relative z-10 rounded-[12px] px-4 py-2.5 text-[14px] font-medium transition-all duration-300 ${
+                onClick={() => {
+                  if (!hasDraggedDesktop.current) {
+                    handleTabClick(item);
+                  }
+                }}
+                className={`relative z-10 rounded-[12px] px-4 py-2.5 text-[14px] font-medium transition-all duration-300 cursor-pointer ${
                   currentTab === item
                     ? 'text-white'
                     : 'text-[#2b2b2b] hover:bg-black/[0.04]'
@@ -600,7 +624,7 @@ export const Header: React.FC<HeaderProps> = ({
                       setShowNavMenu(false);
                     }
                   }}
-                  className={`relative z-10 flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors duration-150 active:scale-[0.98] ${
+                  className={`relative z-10 flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors duration-150 active:scale-[0.98] cursor-pointer ${
                     isSelected ? 'text-white' : 'text-[#333333] hover:bg-black/[0.04]'
                   } ${tierClass}`}
                 >
