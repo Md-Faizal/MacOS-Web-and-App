@@ -291,6 +291,8 @@ export function saveRememberedAccount(user: UserRecord | null, identifierOverrid
   if (normalized.displayPicture) {
     localStorage.setItem('macos_user_display_picture', normalized.displayPicture);
   }
+
+  return normalized;
 }
 
 export function clearSession() {

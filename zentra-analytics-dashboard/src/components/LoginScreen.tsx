@@ -197,6 +197,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 setGoogleLinkingEmail(result.email || '');
                 setPanelMode('google-link');
               } else if (result.status === 'pending') {
+                setPendingGoogleCredential(res.credential);
                 setWorkerInviteCode(result.inviteCode || '');
                 setPanelMode('worker-pending');
               } else if (result.user) {
@@ -263,7 +264,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     async function checkStatus() {
       try {
-        const res = await fetch('/api/auth/worker/status');
+        const query = workerInviteCode ? `?inviteCode=${encodeURIComponent(workerInviteCode)}` : '';
+        const res = await fetch(`/api/auth/worker/status${query}`);
         if (res.ok) {
           const data = await res.json();
           if (data.approved && !cancelled) {
@@ -273,21 +275,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 handlePostAuthCheck(loginResult.user, loginResult, loginResult.user.email || loginResult.user.username);
                 return;
               }
+            } else {
+              // Approved, prompt user to continue with Google
+              setPanelMode('login');
+              setError('Your access has been approved! Please sign in with Google to continue.');
+              return;
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Worker status poll error:', e);
+      }
       if (!cancelled) {
-        timer = setTimeout(checkStatus, 4000);
+        timer = setTimeout(checkStatus, 3000);
       }
     }
 
-    timer = setTimeout(checkStatus, 4000);
+    timer = setTimeout(checkStatus, 2000);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [panelMode, pendingGoogleCredential]);
+  }, [panelMode, workerInviteCode, pendingGoogleCredential]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -395,10 +404,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   // ─── FINALIZE AUTHENTICATION & SAVE STATE ───
   function finalizeAuth(user: any, session: any, id: string, touchId = false) {
+    let savedAccount: RememberedAccount | undefined;
     if (rememberMe) {
-      saveRememberedAccount(user, id, touchId);
+      savedAccount = saveRememberedAccount(user, id, touchId);
     }
-    setActiveRememberedAccount(activeAccount?.id || `${Date.now()}`);
+    const updatedAccounts = getRememberedAccounts();
+    setAccounts(updatedAccounts);
+
+    const targetAccountId = savedAccount?.id || activeAccount?.id || (user?.id ? String(user.id) : null) || `${Date.now()}`;
+    setActiveRememberedAccount(targetAccountId);
+    setSelectedAccountId(targetAccountId);
     saveSession(session);
     animateAndAuthenticate(user);
   }
