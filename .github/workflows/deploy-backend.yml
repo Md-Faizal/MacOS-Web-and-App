@@ -60,37 +60,8 @@ permissions:
   contents: write
 
 jobs:
-  pre-flight:
-    name: 🛡️ Pre-Flight Verification
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: ⚙️ Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: 📦 Install & Build MacOS Frontend
-        if: ${{ !inputs.skip_npm_install }}
-        env:
-          VITE_API_BASE_URL: https://mac.faizal.uk
-          APP_URL: https://mac.faizal.uk
-        run: |
-          npm ci
-          npm run build
-
-      - name: 🔍 Syntax Validation
-        run: |
-          node --check backend/main/macos-api-server.js
-          node --check server-prod.js
-          node --check tools/healthcheck.mjs
-
-  deploy:
-    name: 🚀 Deploy to Production VM
-    needs: pre-flight
+  build-and-deploy:
+    name: 🚀 Build & Deploy
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Repository
@@ -114,14 +85,22 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: 📦 Install & Build MacOS Frontend
+      - name: 📦 Install Dependencies
+        if: ${{ !inputs.skip_npm_install }}
+        run: npm ci
+
+      - name: 🔍 Syntax Validation
+        run: |
+          node --check backend/main/macos-api-server.js
+          node --check server-prod.js
+          node --check tools/healthcheck.mjs
+
+      - name: 🏗️ Build MacOS Frontend
         if: ${{ !inputs.skip_npm_install }}
         env:
           VITE_API_BASE_URL: https://mac.faizal.uk
           APP_URL: https://mac.faizal.uk
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
       - name: 🔍 Check Secrets Configuration
         env:
@@ -179,8 +158,12 @@ jobs:
           echo "   Time : $TIMESTAMP"
           echo "======================================================"
 
-          echo "🛡️ Step 1: Remote SQLite snapshot & directory permissions..."
+          echo "🛡️ Step 1: Remote SQLite snapshot, disk hygiene & directory permissions..."
           ssh production "
+            # Proactive disk cleanup on remote VM to guarantee plenty of free space
+            docker builder prune -f --keep-storage 1000MB 2>/dev/null || true
+            docker container prune -f 2>/dev/null || true
+            sudo journalctl --vacuum-time=2d 2>/dev/null || true
             mkdir -p $TARGET_DIR/database/backups \
                      $TARGET_DIR/storage/wallpapers/builtin \
                      $TARGET_DIR/storage/wallpapers/marketplace \
@@ -256,12 +239,18 @@ jobs:
 
       - name: ✅ Smoke Test — mac.faizal.uk
         run: |
-          echo "⏳ Waiting 20s for nginx to settle..."
-          sleep 20
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://mac.faizal.uk/api/health" || echo "000")
-          echo "mac.faizal.uk/api/health → HTTP $HTTP"
-          if [ "$HTTP" != "200" ]; then
-            echo "❌ Smoke test FAILED (expected 200, got $HTTP)"
+          echo "⏳ Verifying live production endpoint..."
+          SUCCESS=false
+          for i in $(seq 1 15); do
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "https://mac.faizal.uk/api/health" || echo "000")
+            if [ "$HTTP" = "200" ]; then
+              SUCCESS=true
+              echo "✅ mac.faizal.uk is live and healthy (HTTP 200 after ${i}s)!"
+              break
+            fi
+            sleep 1
+          done
+          if [ "$SUCCESS" != "true" ]; then
+            echo "❌ Smoke test FAILED after 15s (last HTTP: $HTTP)"
             exit 1
           fi
-          echo "✅ mac.faizal.uk is live and healthy!"

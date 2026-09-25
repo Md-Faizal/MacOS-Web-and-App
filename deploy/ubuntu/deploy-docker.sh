@@ -73,6 +73,22 @@ fi
 echo "📍 Current Active Slot: $CURRENT_ACTIVE"
 echo "🎯 Deploying to Slot:   $TARGET_SLOT (Port: $TARGET_PORT)"
 
+# 2.4 Disk & Docker Cache Hygiene - prevent 'no space left on device' errors
+echo "🧹 Checking host disk space and Docker cache..."
+AVAIL_MB=$(df -m / 2>/dev/null | awk 'NR==2 {print $4}' || echo "99999")
+if [ "$AVAIL_MB" -lt 3000 ]; then
+    echo "⚠️ Low disk space detected (${AVAIL_MB}MB available). Running proactive Docker & system cleanup..."
+    docker builder prune -a -f 2>/dev/null || true
+    docker image prune -a -f --filter "until=12h" 2>/dev/null || true
+    docker container prune -f 2>/dev/null || true
+    sudo journalctl --vacuum-time=1d 2>/dev/null || true
+    sudo rm -rf /tmp/* /tmp/.* 2>/dev/null || true
+    echo "✓ Post-cleanup free space: $(df -h / | awk 'NR==2 {print $4}')"
+else
+    docker builder prune -f --keep-storage 1000MB 2>/dev/null || true
+    docker container prune -f 2>/dev/null || true
+fi
+
 # 2.5 Ensure target port is free before spin-up, otherwise an old stale container or orphaned process can block deploys
 PORT_BOUND=false
 if ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "127\.0\.0\.1:${TARGET_PORT}$|\[::\]:${TARGET_PORT}$"; then
@@ -99,10 +115,35 @@ mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
 chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
 
+# 2.7 Smart build detection: Only rebuild Docker image if manifests/Dockerfile changed or forced
+BUILD_HASH_FILE=".docker_build_hash"
+CURRENT_HASH=$(sha256sum package.json package-lock.json Dockerfile tools/python/requirements.txt 2>/dev/null | sha256sum | awk '{print $1}')
+IMAGE_EXISTS=$(docker image inspect macos-server:latest >/dev/null 2>&1 && echo "yes" || echo "no")
+
+NEEDS_BUILD=false
+if [ "$IMAGE_EXISTS" != "yes" ]; then
+    echo "🔨 macos-server:latest image not found on host. Initial build required..."
+    NEEDS_BUILD=true
+elif [ ! -f "$BUILD_HASH_FILE" ] || [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE" 2>/dev/null)" ]; then
+    echo "📦 Dependencies, requirements, or Dockerfile changed. Rebuilding Docker image..."
+    NEEDS_BUILD=true
+elif [ "$1" = "--rebuild" ] || [ "$2" = "--rebuild" ] || [ "$FORCE_BUILD" = "true" ]; then
+    echo "🔄 Rebuild requested via flag..."
+    NEEDS_BUILD=true
+fi
+
 # 3. Clean up any stopped/stale container for target slot and start fresh
 docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/null || true
-echo "📦 Starting container macos-server-$TARGET_SLOT..."
-docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
+
+if [ "$NEEDS_BUILD" = "true" ]; then
+    docker builder prune -f --keep-storage 500MB 2>/dev/null || true
+    echo "📦 Building and starting container macos-server-$TARGET_SLOT..."
+    docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
+    echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+else
+    echo "⚡ Fast zero-downtime swap (dependencies unchanged, mounting updated host volumes)..."
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps "macos-server-$TARGET_SLOT"
+fi
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
@@ -167,8 +208,10 @@ echo "🧹 Stopping previous slot macos-server-$OLD_SLOT to preserve RAM..."
 sleep 3
 docker compose -f "$COMPOSE_FILE" stop "macos-server-$OLD_SLOT" || true
 
-# Prune unused docker images/build cache periodically to keep disk lean
-docker image prune -f --filter "until=48h" > /dev/null 2>&1 || true
+# Prune unused docker images, stopped containers, and builder cache to keep disk lean
+docker container prune -f >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --keep-storage 1000MB >/dev/null 2>&1 || true
 
 echo "========================================================"
 echo "🎉 Zero-Downtime Deployment to $TARGET_SLOT Complete!"

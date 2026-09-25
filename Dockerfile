@@ -29,8 +29,10 @@ COPY backend/ ./backend/
 # Build static distribution bundles into dist/
 RUN npm run build
 
-# Prune devDependencies to keep runtime node_modules slim
-RUN npm prune --omit=dev
+# Prune devDependencies and strip test/coverage/documentation bloat to keep image ultra-slim
+RUN npm prune --omit=dev \
+    && find node_modules -type d \( -name "test" -o -name "tests" -o -name "coverage" -o -name ".github" -o -name "docs" -o -name "example" -o -name "examples" \) -exec rm -rf {} + 2>/dev/null || true \
+    && find node_modules -type f \( -name "*.md" -o -name "*.ts" -o -name "*.map" \) -delete 2>/dev/null || true
 
 # ==========================================================
 # STAGE 2: Lightweight Production Runtime
@@ -60,23 +62,19 @@ COPY tools/python/requirements.txt /tmp/requirements.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
-# Copy production node_modules from builder
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy built frontend assets from builder
-COPY --from=builder /app/dist ./dist
-
-# Copy backend application source code, tools, and configurations
-COPY package.json ./
-COPY backend/ ./backend/
-COPY frontend/ ./frontend/
-COPY tools/ ./tools/
-
-# Create required mount point directories with fallback files
+# Create required mount point directories before copying app files
 RUN mkdir -p database database/backups CloudStorage Wallpapers backend/uploads logs \
     storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive tools \
     && chown -R node:node /app \
-    && chmod -R 777 /app/storage /app/logs /app/backend/uploads /app/CloudStorage /app/Wallpapers 2>/dev/null || true
+    && chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
+
+# Copy files directly with node:node ownership to prevent layer duplication and save disk space
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node package.json ./
+COPY --chown=node:node backend/ ./backend/
+COPY --chown=node:node frontend/ ./frontend/
+COPY --chown=node:node tools/ ./tools/
 
 # Switch to non-root user for security
 USER node
