@@ -546,6 +546,7 @@ app.get('/api/auth/verify', authModule.authMiddleware, authModule.verify);
 app.post('/api/auth/logout', authModule.logout);
 app.get('/api/auth/status', authModule.getStatus);
 app.get('/api/auth/questions', authModule.getSecurityQuestions);
+app.get('/api/auth/check-username', authModule.checkUsername);
 app.get('/api/auth/challenge', authModule.getChallengeQuestion);
 app.post('/api/auth/verify-answer', authModule.verifyAnswer);
 app.get('/api/auth/verify-answer', (req, res) => {

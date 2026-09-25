@@ -397,16 +397,35 @@ export async function verifySession(token?: string): Promise<{ valid: boolean; u
   }
 }
 
-export function removeRememberedAccount(id: string): RememberedAccount[] {
+export function removeRememberedAccount(idOrKey: string): RememberedAccount[] {
+  if (!idOrKey) return getRememberedAccounts();
+  const rawTarget = String(idOrKey).trim().toLowerCase();
   const accounts = getRememberedAccounts();
-  const next = accounts.filter(a => a.id !== id && a.identifier !== id);
+
+  const next = accounts.filter(a => {
+    const aid = String(a.id || '').trim().toLowerCase();
+    const aIdent = String(a.identifier || '').trim().toLowerCase();
+    const aName = String(a.displayName || '').trim().toLowerCase();
+    return aid !== rawTarget && aIdent !== rawTarget && aName !== rawTarget;
+  });
+
   localStorage.setItem(REMEMBERED_USERS_KEY, JSON.stringify(next));
+
   const activeId = localStorage.getItem(ACTIVE_USER_KEY);
-  if (activeId === id) {
+  const legacyIdent = localStorage.getItem('macos_user_identifier');
+
+  const matchedActive = activeId && (
+    activeId.toLowerCase() === rawTarget ||
+    !next.some(a => a.id === activeId)
+  );
+  const matchedLegacy = legacyIdent && legacyIdent.toLowerCase() === rawTarget;
+
+  if (matchedActive || matchedLegacy || next.length === 0) {
     if (next.length > 0) {
       localStorage.setItem(ACTIVE_USER_KEY, next[0].id);
       localStorage.setItem('macos_user_identifier', next[0].identifier);
       if (next[0].displayName) localStorage.setItem('macos_user_display_name', next[0].displayName);
+      if (next[0].displayPicture) localStorage.setItem('macos_user_display_picture', next[0].displayPicture);
     } else {
       localStorage.removeItem(ACTIVE_USER_KEY);
       localStorage.removeItem('macos_remember_account');
@@ -415,6 +434,12 @@ export function removeRememberedAccount(id: string): RememberedAccount[] {
       localStorage.removeItem('macos_user_display_picture');
     }
   }
+
+  // Also dispatch a window event so all tabs or sync listeners update
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('macos-profiles-updated', { detail: { users: next } }));
+  }
+
   return next;
 }
 
@@ -653,3 +678,48 @@ export async function fetchSecurityQuestions(): Promise<string[]> {
     return [];
   }
 }
+
+export async function checkUsernameAvailability(username: string): Promise<{ available: boolean; message: string }> {
+  const clean = username.trim();
+  if (!clean) return { available: false, message: '' };
+  try {
+    const res = await fetchWithFallback(`/api/auth/check-username?username=${encodeURIComponent(clean)}`);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return { available: Boolean(data.available), message: data.message || (data.available ? 'Username available' : 'Username taken') };
+    }
+    return { available: false, message: data.message || data.error || 'Username not available' };
+  } catch {
+    return { available: false, message: 'Could not verify username' };
+  }
+}
+
+export async function updateWorkerSecurityCredentials(payload: {
+  newPassword: string;
+  securityQuestion: string;
+  securityAnswer: string;
+  identifier: string;
+  email?: string;
+  username?: string;
+}, token?: string): Promise<{ success: boolean; message?: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const bearerToken = token || localStorage.getItem(SESSION_KEY) || localStorage.getItem('token') || localStorage.getItem('macos_token');
+  if (bearerToken) {
+    headers['Authorization'] = `Bearer ${bearerToken}`;
+  }
+
+  const res = await fetchWithFallback('/api/auth/update-security', {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to save local credentials');
+  }
+
+  return data;
+}
+

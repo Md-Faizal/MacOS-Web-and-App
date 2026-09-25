@@ -12,6 +12,11 @@ import {
   UserRound,
   Loader2,
   Fingerprint,
+  KeyRound,
+  Shield,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
 } from 'lucide-react';
 import {
   getRememberedAccounts,
@@ -29,8 +34,12 @@ import {
   authenticateWithPasskey,
   registerPasskey,
   checkAccountHasPasskey,
+  fetchSecurityQuestions,
+  checkUsernameAvailability,
+  updateWorkerSecurityCredentials,
   RememberedAccount,
 } from '../lib/auth';
+
 import { BrandLogo } from './common/BrandLogo';
 import { RollingCounter } from './RollingCounter';
 
@@ -39,6 +48,16 @@ interface LoginScreenProps {
   justLoggedOut?: boolean;
   onStartMatrixDraw?: () => void;
 }
+
+const DEFAULT_SECURITY_QUESTIONS = [
+  'What was the name of your first pet?',
+  'In what city were you born?',
+  'What was your childhood nickname?',
+  'What is the name of your favorite book?',
+  'What was the model of your first car?',
+  'What school did you attend for sixth grade?',
+  'What is the name of your favorite childhood friend?',
+];
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ 
   onAuthenticated, 
@@ -62,7 +81,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   // ─── INLINE PANEL MODES (Zero Modals! Native In-Card Transitions) ───
   const [panelMode, setPanelMode] = useState<
-    'login' | 'forgot-password' | 'google-link' | 'worker-pending' | 'passkey-setup'
+    'login' | 'forgot-password' | 'google-link' | 'worker-pending' | 'passkey-setup' | 'worker-credential-setup'
   >('login');
 
   // Input refs for mouseless focus advancement
@@ -98,11 +117,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [setupPasskeyLoading, setSetupPasskeyLoading] = useState(false);
   const [setupPasskeyError, setSetupPasskeyError] = useState('');
 
+  // Worker local account creation prompt state
+  const [workerCredStep, setWorkerCredStep] = useState<1 | 2 | 'dismiss'>(1);
+  const [workerCredType, setWorkerCredType] = useState<'email' | 'username'>('email');
+  const [workerCredIdentifier, setWorkerCredIdentifier] = useState('');
+  const [workerCredUseGoogleEmail, setWorkerCredUseGoogleEmail] = useState(true);
+  const [workerCredPassword, setWorkerCredPassword] = useState('');
+  const [workerCredConfirmPassword, setWorkerCredConfirmPassword] = useState('');
+  const [workerCredShowPassword, setWorkerCredShowPassword] = useState(false);
+  const [workerCredShowConfirm, setWorkerCredShowConfirm] = useState(false);
+  const [workerUsernameStatus, setWorkerUsernameStatus] = useState<{
+    checking: boolean;
+    available?: boolean;
+    message?: string;
+  }>({ checking: false });
+  const [workerSecurityQuestions, setWorkerSecurityQuestions] = useState<string[]>(DEFAULT_SECURITY_QUESTIONS);
+  const [workerSelectedQuestion, setWorkerSelectedQuestion] = useState(DEFAULT_SECURITY_QUESTIONS[0]);
+  const [workerSecurityAnswer, setWorkerSecurityAnswer] = useState('');
+  const [workerCredLoading, setWorkerCredLoading] = useState(false);
+  const [workerCredError, setWorkerCredError] = useState('');
+
   // Google OAuth linking / pending state
   const [googleLinkingEmail, setGoogleLinkingEmail] = useState('');
   const [googleLinkPassword, setGoogleLinkPassword] = useState('');
   const [pendingGoogleCredential, setPendingGoogleCredential] = useState<string | null>(null);
   const [workerInviteCode, setWorkerInviteCode] = useState('');
+
 
   // Website initial load starts in 'website-loading'
   const [animPhase, setAnimPhase] = useState<
@@ -298,6 +338,55 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     };
   }, [panelMode, workerInviteCode, pendingGoogleCredential]);
 
+  // ─── REAL-TIME DEBOUNCED USERNAME VALIDATION ───
+  useEffect(() => {
+    if (panelMode !== 'worker-credential-setup' || workerCredStep !== 1 || workerCredType !== 'username') {
+      setWorkerUsernameStatus({ checking: false });
+      return;
+    }
+
+    const clean = workerCredIdentifier.trim();
+    if (!clean) {
+      setWorkerUsernameStatus({ checking: false });
+      return;
+    }
+
+    if (clean.length < 3) {
+      setWorkerUsernameStatus({ checking: false, available: false, message: 'Must be at least 3 characters' });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_.-]+$/.test(clean)) {
+      setWorkerUsernameStatus({ checking: false, available: false, message: 'Letters, numbers, underscores only' });
+      return;
+    }
+
+    setWorkerUsernameStatus({ checking: true, message: 'Checking availability...' });
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkUsernameAvailability(clean);
+        if (!cancelled) {
+          setWorkerUsernameStatus({
+            checking: false,
+            available: res.available,
+            message: res.available ? (res.message || 'Username available') : (res.message || 'Username taken'),
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkerUsernameStatus({ checking: false });
+        }
+      }
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [panelMode, workerCredStep, workerCredType, workerCredIdentifier]);
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setMousePos({
@@ -418,8 +507,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     animateAndAuthenticate(user);
   }
 
-  // ─── POST-AUTH PASSKEY CHECK: PROMPT IF NOT YET CONFIGURED ───
+  // ─── POST-AUTH CHECKS: WORKER CREDENTIALS & PASSKEY SETUP ───
   function handlePostAuthCheck(user: any, session: any, id: string) {
+    const isWorker = user?.role === 'worker' || session?.role === 'worker' || session?.user?.role === 'worker';
+    const hasLocalPassword = Boolean(user?.hasLocalPassword || session?.user?.hasLocalPassword);
+    const promptDismissed = localStorage.getItem('worker_password_prompt_dismissed') === 'true';
+
+    if (isWorker && !hasLocalPassword && !promptDismissed) {
+      setPendingAuthSession({ user, session, identifier: id });
+      const googleEmail = user?.email || session?.user?.email || (id && id.includes('@') ? id : '');
+      setWorkerCredIdentifier(googleEmail);
+      setWorkerCredType('email');
+      setWorkerCredUseGoogleEmail(Boolean(googleEmail));
+      setWorkerCredStep(1);
+      setWorkerCredPassword('');
+      setWorkerCredConfirmPassword('');
+      setWorkerCredError('');
+      setWorkerSecurityAnswer('');
+      setPanelMode('worker-credential-setup');
+      setLoading(false);
+
+      fetchSecurityQuestions().then((questions) => {
+        if (questions && questions.length > 0) {
+          setWorkerSecurityQuestions(questions);
+          setWorkerSelectedQuestion(questions[0]);
+        }
+      });
+      return;
+    }
+
+    proceedToPasskeyOrFinalize(user, session, id);
+  }
+
+  function proceedToPasskeyOrFinalize(user: any, session: any, id: string) {
     const userAlreadyHasPasskey = hasPasskeyConfigured || localStorage.getItem('touchIdEnabled') === 'true';
     if (!userAlreadyHasPasskey && passkeyHardwareSupported) {
       setPendingAuthSession({ user, session, identifier: id });
@@ -429,6 +549,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       finalizeAuth(user, session, id, userAlreadyHasPasskey);
     }
   }
+
 
   // ─── PASSWORD LOGIN SUBMIT ───
   async function handleSubmit(event: React.FormEvent) {
@@ -499,11 +620,156 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     finalizeAuth(pendingAuthSession.user, pendingAuthSession.session, pendingAuthSession.identifier, false);
   }
 
+  // ─── WORKER CREDENTIAL CREATION HANDLERS ───
+  async function handleWorkerCredStep1Submit(e: React.FormEvent) {
+    e.preventDefault();
+    setWorkerCredError('');
+    const cleanId = workerCredIdentifier.trim();
+    if (!cleanId) {
+      setWorkerCredError(`Please enter ${workerCredType === 'email' ? 'an email address' : 'a username'}.`);
+      return;
+    }
+
+    if (workerCredType === 'username') {
+      if (cleanId.length < 3) {
+        setWorkerCredError('Username must be at least 3 characters.');
+        return;
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(cleanId)) {
+        setWorkerCredError('Username can only contain letters, numbers, underscores, dashes, and periods.');
+        return;
+      }
+      if (workerUsernameStatus.available === false) {
+        setWorkerCredError(workerUsernameStatus.message || 'This username is already taken. Please choose another.');
+        return;
+      }
+      if (workerUsernameStatus.available === undefined) {
+        setWorkerCredLoading(true);
+        try {
+          const chk = await checkUsernameAvailability(cleanId);
+          if (!chk.available) {
+            setWorkerCredError(chk.message || 'This username is already taken. Please choose another.');
+            setWorkerCredLoading(false);
+            return;
+          }
+        } catch {
+          // ignore
+        } finally {
+          setWorkerCredLoading(false);
+        }
+      }
+    } else {
+      if (!cleanId.includes('@')) {
+        setWorkerCredError('Please enter a valid email address.');
+        return;
+      }
+    }
+
+    if (!workerCredPassword) {
+      setWorkerCredError('Please enter a password.');
+      return;
+    }
+
+    if (workerCredPassword.length < 6) {
+      setWorkerCredError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (workerCredPassword !== workerCredConfirmPassword) {
+      setWorkerCredError('Passwords do not match.');
+      return;
+    }
+
+    setWorkerCredStep(2);
+  }
+
+  async function handleWorkerCredStep2Submit(e: React.FormEvent) {
+    e.preventDefault();
+    setWorkerCredError('');
+
+    if (!workerSelectedQuestion) {
+      setWorkerCredError('Please select a security question.');
+      return;
+    }
+
+    if (!workerSecurityAnswer.trim()) {
+      setWorkerCredError('Please enter an answer to your security question.');
+      return;
+    }
+
+    if (!pendingAuthSession) {
+      setWorkerCredError('Session expired. Please sign in again.');
+      return;
+    }
+
+    setWorkerCredLoading(true);
+    try {
+      const cleanId = workerCredIdentifier.trim();
+      const payload: {
+        newPassword: string;
+        securityQuestion: string;
+        securityAnswer: string;
+        identifier: string;
+        email?: string;
+        username?: string;
+      } = {
+        newPassword: workerCredPassword,
+        securityQuestion: workerSelectedQuestion,
+        securityAnswer: workerSecurityAnswer.trim(),
+        identifier: cleanId,
+      };
+
+      if (workerCredType === 'username' || !cleanId.includes('@')) {
+        payload.username = cleanId;
+      } else {
+        payload.email = cleanId;
+      }
+
+      await updateWorkerSecurityCredentials(payload, pendingAuthSession.session?.token);
+
+      const updatedUser = {
+        ...pendingAuthSession.user,
+        hasLocalPassword: true,
+        username: payload.username || pendingAuthSession.user?.username,
+        email: payload.email || pendingAuthSession.user?.email,
+      };
+
+      proceedToPasskeyOrFinalize(updatedUser, pendingAuthSession.session, cleanId);
+    } catch (err: any) {
+      setWorkerCredError(err.message || 'Failed to save local credentials.');
+    } finally {
+      setWorkerCredLoading(false);
+    }
+  }
+
+  function handleDismissWorkerCreds(dontAskAgain: boolean) {
+    if (dontAskAgain) {
+      localStorage.setItem('worker_password_prompt_dismissed', 'true');
+    }
+    if (pendingAuthSession) {
+      proceedToPasskeyOrFinalize(
+        pendingAuthSession.user,
+        pendingAuthSession.session,
+        pendingAuthSession.identifier
+      );
+    } else {
+      setPanelMode('login');
+    }
+  }
+
   // ─── RIGHT-CLICK ACCOUNT REMOVAL (Zero Modals!) ───
-  function handleRemoveAccount(accountId: string) {
-    const nextAccounts = removeRememberedAccount(accountId);
+  function handleRemoveAccount(account: RememberedAccount) {
+    // Try removing by ID first, then identifier or displayName
+    const keyToRemove = account.id || account.identifier || account.displayName;
+    const nextAccounts = removeRememberedAccount(keyToRemove);
     setAccounts(nextAccounts);
-    if (selectedAccountId === accountId) {
+
+    const isCurrentSelected = 
+      selectedAccountId === account.id || 
+      selectedAccountId === account.identifier ||
+      identifier.trim().toLowerCase() === account.identifier.trim().toLowerCase();
+
+    if (isCurrentSelected) {
       if (nextAccounts.length > 0) {
         setSelectedAccountId(nextAccounts[0].id);
         setIdentifier(nextAccounts[0].identifier);
@@ -767,11 +1033,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <div className={`text-[11px] uppercase tracking-[0.18em] transition-colors duration-500 ${
                     isLocking ? 'text-red-500 font-semibold' : isUnlocked ? 'text-emerald-600 font-semibold' : 'text-[#6b6b6b]'
                   }`}>
-                    {isLocking ? 'Session Secured' : isUnlocked ? 'Access Granted' : 'Authentication'}
+                    {isLocking ? 'Session Secured' : isUnlocked ? 'Access Granted' : panelMode === 'worker-credential-setup' ? 'Account Setup' : 'Authentication'}
                   </div>
                   <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] transition-colors duration-500 text-[#111111]">
-                    {isLocking ? 'Signed Out' : isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : 'Fast Biometric Access'}
+                    {isLocking ? 'Signed Out' : isUnlocked ? 'Welcome' : panelMode === 'login' ? 'Welcome back' : panelMode === 'forgot-password' ? 'Password Recovery' : panelMode === 'google-link' ? 'Link Google Account' : panelMode === 'worker-pending' ? 'Approval Required' : panelMode === 'worker-credential-setup' ? 'Create Local Account' : 'Fast Biometric Access'}
                   </h2>
+
                 </div>
 
                 {/* Animated Lock Badge: Red locking on logout, springs to emerald on login */}
@@ -830,7 +1097,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {/* Accounts Picker with Right-Click Context Deletion (Exact Git Dimensions) */}
                   {accounts.length > 0 && (
                     <div 
-                      className={`mb-5 rounded-[24px] border border-black/10 bg-white/80 p-3 shadow-[0_12px_24px_rgba(0,0,0,0.05)] backdrop-blur-md ${getDropClass(2)}`}
+                      className={`mb-5 rounded-[24px] border border-black/10 bg-white/80 p-3 shadow-[0_12px_24px_rgba(0,0,0,0.05)] backdrop-blur-md ${accountToDelete ? 'relative z-40' : 'relative z-20'} ${getDropClass(2)}`}
                       style={{ animationDelay: isFading ? '100ms' : undefined }}
                     >
                       <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-[#6b6b6b]">
@@ -880,20 +1147,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                                   <button
                                     type="button"
                                     onClick={(e) => {
+                                      e.preventDefault();
                                       e.stopPropagation();
-                                      handleRemoveAccount(account.id);
+                                      handleRemoveAccount(account);
                                     }}
-                                    className="rounded-lg bg-red-600 px-2 py-0.5 text-xs font-semibold text-white transition hover:bg-red-700 active:scale-95"
+                                    className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-red-700 active:scale-95 shadow-sm cursor-pointer"
                                   >
                                     Yes
                                   </button>
                                   <button
                                     type="button"
                                     onClick={(e) => {
+                                      e.preventDefault();
                                       e.stopPropagation();
                                       setAccountToDelete(null);
                                     }}
-                                    className="rounded-lg bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-200 active:scale-95"
+                                    className="rounded-lg bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600 transition hover:bg-neutral-200 active:scale-95 cursor-pointer"
                                   >
                                     Cancel
                                   </button>
@@ -1402,6 +1671,296 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* ═════════════════════════════════════════════════════════════
+                  MODE 6: INLINE WORKER CREDENTIAL ONBOARDING PROMPT
+                 ═════════════════════════════════════════════════════════════ */}
+              {panelMode === 'worker-credential-setup' && (
+                <div className="rounded-[28px] border border-black/10 bg-white/85 p-6 sm:p-7 shadow-[0_12px_24px_rgba(0,0,0,0.04)] backdrop-blur-md min-h-[380px] flex flex-col justify-between animate-in fade-in">
+                  {workerCredStep === 1 && (
+                    <form onSubmit={handleWorkerCredStep1Submit} className="space-y-4">
+                      <div className="text-center pt-1 mb-2">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1d5cff]/10 text-[#1d5cff] shadow-[0_6px_16px_rgba(29,92,255,0.15)]">
+                          <KeyRound className="h-6 w-6" />
+                        </div>
+                        <h3 className="mt-3 text-lg font-bold text-[#111111]">Create a Local Account</h3>
+                        <p className="mt-1 text-xs text-[#666666] leading-relaxed max-w-[340px] mx-auto">
+                          Set up alternative login credentials linked with your Google account. Google remains your primary sign-in.
+                        </p>
+                      </div>
+
+                      {/* Smart Identifier Field (Email / Username) */}
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <label className="text-xs font-medium text-[#2f2f2f]">
+                            {workerCredType === 'email' ? 'Email address' : 'Username'}
+                          </label>
+                          <div className="flex rounded-xl bg-black/[0.06] p-0.5 gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWorkerCredType('email');
+                                if (workerCredUseGoogleEmail && pendingAuthSession?.user?.email) {
+                                  setWorkerCredIdentifier(pendingAuthSession.user.email);
+                                }
+                              }}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                workerCredType === 'email'
+                                  ? 'bg-white text-[#111111] shadow-sm font-semibold'
+                                  : 'text-[#666666] hover:text-[#111111]'
+                              }`}
+                            >
+                              Email
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWorkerCredType('username');
+                                if (workerCredIdentifier.includes('@')) {
+                                  setWorkerCredIdentifier(workerCredIdentifier.split('@')[0]);
+                                }
+                              }}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-all ${
+                                workerCredType === 'username'
+                                  ? 'bg-white text-[#111111] shadow-sm font-semibold'
+                                  : 'text-[#666666] hover:text-[#111111]'
+                              }`}
+                            >
+                              Username
+                            </button>
+                          </div>
+                        </div>
+
+                        <input
+                          type={workerCredType === 'email' ? 'email' : 'text'}
+                          value={workerCredIdentifier}
+                          readOnly={workerCredType === 'email' && workerCredUseGoogleEmail}
+                          onChange={(e) => setWorkerCredIdentifier(e.target.value)}
+                          placeholder={workerCredType === 'email' ? 'name@example.com' : 'e.g. john_doe'}
+                          className={`w-full rounded-2xl border border-black/10 px-3.5 py-2.5 text-[14px] outline-none transition-all duration-200 ${
+                            workerCredType === 'email' && workerCredUseGoogleEmail
+                              ? 'bg-neutral-100 text-neutral-600 cursor-not-allowed border-black/5'
+                              : 'bg-[#f8f8f7] text-[#111111] focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20'
+                          }`}
+                        />
+
+                        {/* Real-time Username Availability Status */}
+                        {workerCredType === 'username' && workerCredIdentifier.trim().length > 0 && (
+                          <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                            {workerUsernameStatus.checking ? (
+                              <span className="flex items-center gap-1 text-[#666666]">
+                                <Loader2 className="h-3 w-3 animate-spin text-[#1d5cff]" />
+                                Checking availability...
+                              </span>
+                            ) : workerUsernameStatus.available ? (
+                              <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                {workerUsernameStatus.message || 'Username available'}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-red-600 font-medium">
+                                <XCircle className="h-3.5 w-3.5 text-red-500" />
+                                {workerUsernameStatus.message || 'Username taken'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Google Email Checkbox */}
+                        {workerCredType === 'email' && (
+                          <label className="mt-2 flex items-center gap-2 text-xs text-[#555555] cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={workerCredUseGoogleEmail}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setWorkerCredUseGoogleEmail(checked);
+                                if (checked && pendingAuthSession?.user?.email) {
+                                  setWorkerCredIdentifier(pendingAuthSession.user.email);
+                                }
+                              }}
+                              className="h-3.5 w-3.5 rounded border-neutral-300 text-[#1d5cff] focus:ring-[#1d5cff] accent-[#1d5cff]"
+                            />
+                            <span>Use same as Google email</span>
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Password Field */}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[#2f2f2f]">Password</label>
+                        <div className="relative">
+                          <input
+                            type={workerCredShowPassword ? 'text' : 'password'}
+                            value={workerCredPassword}
+                            onChange={(e) => setWorkerCredPassword(e.target.value)}
+                            placeholder="Password"
+                            className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-2.5 pr-10 text-[14px] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setWorkerCredShowPassword(!workerCredShowPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 transition-colors"
+                          >
+                            {workerCredShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Confirm Password Field */}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[#2f2f2f]">Confirm password</label>
+                        <div className="relative">
+                          <input
+                            type={workerCredShowConfirm ? 'text' : 'password'}
+                            value={workerCredConfirmPassword}
+                            onChange={(e) => setWorkerCredConfirmPassword(e.target.value)}
+                            placeholder="Confirm password"
+                            className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-2.5 pr-10 text-[14px] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setWorkerCredShowConfirm(!workerCredShowConfirm)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 transition-colors"
+                          >
+                            {workerCredShowConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {workerCredError && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                          {workerCredError}
+                        </div>
+                      )}
+
+                      {/* Buttons */}
+                      <div className="flex gap-2.5 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setWorkerCredStep('dismiss')}
+                          className="flex-1 rounded-2xl border border-black/10 bg-white/70 py-2.5 text-xs font-medium text-[#666666] transition-all hover:bg-neutral-50 hover:text-[#111111] active:scale-[0.98]"
+                        >
+                          Not Now
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={workerCredLoading}
+                          className="flex-[1.4] flex items-center justify-center gap-1.5 rounded-2xl bg-[#111111] py-2.5 text-xs font-medium text-white transition-all hover:bg-[#1a1a1a] active:scale-[0.98] shadow-sm disabled:opacity-50"
+                        >
+                          {workerCredLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <>Continue <ArrowRight className="h-3.5 w-3.5" /></>}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {workerCredStep === 2 && (
+                    <form onSubmit={handleWorkerCredStep2Submit} className="space-y-4">
+                      <div className="text-center pt-1 mb-2">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#ff8000]/10 text-[#ff8000] shadow-[0_6px_16px_rgba(255,128,0,0.15)]">
+                          <Shield className="h-6 w-6" />
+                        </div>
+                        <h3 className="mt-3 text-lg font-bold text-[#111111]">Security Question</h3>
+                        <p className="mt-1 text-xs text-[#666666] leading-relaxed max-w-[340px] mx-auto">
+                          Choose a security question to secure and recover your local account credentials.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[#2f2f2f]">Select a question</label>
+                        <select
+                          value={workerSelectedQuestion}
+                          onChange={(e) => setWorkerSelectedQuestion(e.target.value)}
+                          className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-2.5 text-[13px] text-[#111111] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20 cursor-pointer"
+                        >
+                          {workerSecurityQuestions.map((q) => (
+                            <option key={q} value={q}>
+                              {q}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-[#2f2f2f]">Your Answer</label>
+                        <input
+                          type="text"
+                          value={workerSecurityAnswer}
+                          onChange={(e) => setWorkerSecurityAnswer(e.target.value)}
+                          placeholder="Secret answer"
+                          autoFocus
+                          className="w-full rounded-2xl border border-black/10 bg-[#f8f8f7] px-3.5 py-2.5 text-[14px] outline-none transition-all duration-200 focus:border-[#1d5cff] focus:bg-white focus:ring-4 focus:ring-[#1d5cff]/10 hover:border-black/20"
+                        />
+                      </div>
+
+                      {workerCredError && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                          {workerCredError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2.5 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWorkerCredError('');
+                            setWorkerCredStep(1);
+                          }}
+                          className="flex-1 rounded-2xl border border-black/10 bg-white/70 py-2.5 text-xs font-medium text-[#666666] transition-all hover:bg-neutral-50 hover:text-[#111111] active:scale-[0.98]"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={workerCredLoading}
+                          className="flex-[1.4] flex items-center justify-center gap-1.5 rounded-2xl bg-[#111111] py-2.5 text-xs font-medium text-white transition-all hover:bg-[#1a1a1a] active:scale-[0.98] shadow-sm disabled:opacity-50"
+                        >
+                          {workerCredLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save Account'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {workerCredStep === 'dismiss' && (
+                    <div className="text-center py-2 flex flex-col justify-between h-full min-h-[300px]">
+                      <div>
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 shadow-[0_6px_16px_rgba(245,158,11,0.15)] mb-3">
+                          <HelpCircle className="h-6 w-6" />
+                        </div>
+                        <h3 className="text-base font-bold text-[#111111]">Continue without local credentials?</h3>
+                        <p className="mt-2 text-xs text-[#666666] leading-relaxed max-w-[320px] mx-auto">
+                          You can continue signing in with Google and set up a local account anytime in Settings.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2.5 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => handleDismissWorkerCreds(true)}
+                          className="w-full rounded-2xl border border-black/10 bg-neutral-100 py-2.5 text-xs font-medium text-[#333333] transition-all hover:bg-neutral-200 active:scale-[0.98]"
+                        >
+                          Don't ask again on this device
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDismissWorkerCreds(false)}
+                          className="w-full rounded-2xl bg-[#111111] py-2.5 text-xs font-medium text-white transition-all hover:bg-[#1a1a1a] active:scale-[0.98] shadow-sm"
+                        >
+                          Not Now
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWorkerCredStep(1)}
+                          className="text-xs text-[#666666] hover:text-[#111111] underline transition-colors pt-1 block mx-auto cursor-pointer"
+                        >
+                          Back to setup
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
 
             </div>
             </div>
