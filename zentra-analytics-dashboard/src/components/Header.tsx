@@ -4,23 +4,31 @@ import { Search, Bell, X, CheckCircle, ArrowUpRight, Menu } from 'lucide-react';
 
 interface HeaderProps {
   activeTab?: string;
+  isSettingsView?: boolean;
   onTabChange?: (tab: string) => void;
   user?: {
     username?: string;
     email?: string;
     full_name?: string;
+    fullName?: string;
+    avatar?: string;
     role?: string;
   };
   onSignOut?: () => void;
+  onProfileClick?: () => void;
+  onWorkspaceSettingsClick?: () => void;
 }
 
 const NAV_ITEMS = ['Home', 'Payments', 'Balances', 'Customers', 'Products', 'Billing', 'Reports', 'Connect'] as const;
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab = 'Home',
+  isSettingsView = false,
   onTabChange,
   user,
   onSignOut,
+  onProfileClick,
+  onWorkspaceSettingsClick,
 }) => {
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [showSearch, setShowSearch] = useState(false);
@@ -371,14 +379,16 @@ export const Header: React.FC<HeaderProps> = ({
             onPointerCancel={handleDesktopPointerUp}
           >
             <div
-              className={`absolute top-1 left-0 h-[calc(100%-8px)] rounded-[12px] bg-[#171717] shadow-[0_8px_18px_rgba(17,17,17,0.16)] pointer-events-none cursor-grab active:cursor-grabbing ${
-                isDraggingDesktop.current ? 'transition-none scale-[1.02]' : 'transition-[left,width,transform] duration-300 ease-out'
-              }`}
+              className={`absolute top-1 left-0 z-20 flex h-[calc(100%-8px)] items-center justify-center rounded-[12px] bg-[#171717] shadow-[0_8px_18px_rgba(17,17,17,0.16)] pointer-events-none cursor-grab active:cursor-grabbing transition-[left,width,transform,opacity,filter] duration-300 ease-out ${
+                isDraggingDesktop.current ? 'scale-[1.02]' : ''
+              } ${isSettingsView ? 'opacity-0 blur-[1px] scale-[0.96]' : 'opacity-100 blur-0 scale-100'}`}
               style={{
                 left: `${selectorStyle.left}px`,
                 width: `${selectorStyle.width}px`,
               }}
-            />
+            >
+              <span className="text-[14px] font-medium text-white">{currentTab}</span>
+            </div>
             {navItems.map((item, index) => (
               <button
                 key={item}
@@ -393,9 +403,11 @@ export const Header: React.FC<HeaderProps> = ({
                   }
                 }}
                 className={`relative z-10 rounded-[12px] px-4 py-2.5 text-[14px] font-medium transition-all duration-300 cursor-pointer ${
-                  currentTab === item
-                    ? 'text-white'
-                    : 'text-[#2b2b2b] hover:bg-black/[0.04]'
+                  isSettingsView
+                    ? 'text-[#2b2b2b]'
+                    : currentTab === item
+                      ? 'text-transparent'
+                      : 'text-[#2b2b2b] hover:bg-black/[0.04]'
                 }`}
               >
                 {item}
@@ -536,7 +548,7 @@ export const Header: React.FC<HeaderProps> = ({
               }}
             >
               <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&h=160&q=80"
+                src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&h=160&q=80'}
                 alt="User Avatar"
                 referrerPolicy="no-referrer"
                 className="h-full w-full object-cover rounded-full border-2 border-white"
@@ -550,20 +562,38 @@ export const Header: React.FC<HeaderProps> = ({
                 <div className="flex items-center gap-2.5 border-b border-black/[0.06] pb-2.5 shrink-0 animate-popup-tier-1">
                   <div className="h-9 w-9 overflow-hidden rounded-full bg-gray-100 shrink-0 ring-1 ring-black/5">
                     <img
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&h=160&q=80"
+                      src={user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&h=160&q=80'}
                       alt="User Profile"
                       referrerPolicy="no-referrer"
                       className="h-full w-full object-cover"
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-[#111111] truncate">{user?.full_name || user?.username || 'Workspace Owner'}</div>
+                    <div className="text-xs font-semibold text-[#111111] truncate">{user?.fullName || user?.full_name || user?.username || 'Workspace Owner'}</div>
                     <div className="text-[11px] text-[#777777] truncate">{user?.email || 'owner@zentra.io'}</div>
                   </div>
                 </div>
                 <div className="mt-2 space-y-0.5 text-xs text-[#333333]">
-                  <div className="cursor-pointer rounded-lg px-2 py-2 hover:bg-black/[0.04] transition active:scale-[0.99] animate-popup-tier-2">Workspace Settings</div>
-                  <div className="cursor-pointer rounded-lg px-2 py-2 hover:bg-black/[0.04] transition active:scale-[0.99] animate-popup-tier-3">API Keys & Webhooks</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      onProfileClick?.();
+                    }}
+                    className="w-full rounded-lg px-2 py-2 text-left hover:bg-black/[0.04] transition active:scale-[0.99] animate-popup-tier-2"
+                  >
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      onWorkspaceSettingsClick?.();
+                    }}
+                    className="w-full rounded-lg px-2 py-2 text-left hover:bg-black/[0.04] transition active:scale-[0.99] animate-popup-tier-3"
+                  >
+                    Workspace Settings
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -597,16 +627,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {/* Draggable Active Selector Pill */}
             <div
-              className={`absolute rounded-xl bg-[#171717] shadow-[0_8px_18px_rgba(17,17,17,0.16)] pointer-events-none ${
-                isDraggingMenu.current ? 'transition-none scale-[1.02]' : 'transition-[top,height,transform] duration-200 ease-out'
-              }`}
+              className={`absolute z-20 flex items-center justify-center rounded-xl bg-[#171717] shadow-[0_8px_18px_rgba(17,17,17,0.16)] pointer-events-none transition-[top,height,transform,opacity,filter] duration-200 ease-out ${
+                isDraggingMenu.current ? 'scale-[1.02]' : ''
+              } ${isSettingsView ? 'opacity-0 blur-[1px] scale-[0.96]' : 'opacity-100 blur-0 scale-100'}`}
               style={{
                 left: `${menuSelectorStyle.left}px`,
                 top: `${menuSelectorStyle.top}px`,
                 width: `${menuSelectorStyle.width}px`,
                 height: `${menuSelectorStyle.height}px`,
               }}
-            />
+            >
+              <span className="text-sm font-medium text-white">{currentTab}</span>
+            </div>
 
             {navItems.map((item, index) => {
               const isSelected = (activeDragTab || currentTab) === item;
@@ -625,7 +657,11 @@ export const Header: React.FC<HeaderProps> = ({
                     }
                   }}
                   className={`relative z-10 flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors duration-150 active:scale-[0.98] cursor-pointer ${
-                    isSelected ? 'text-white' : 'text-[#333333] hover:bg-black/[0.04]'
+                    isSettingsView
+                      ? 'text-[#333333]'
+                      : isSelected
+                        ? 'text-transparent'
+                        : 'text-[#333333] hover:bg-black/[0.04]'
                   } ${tierClass}`}
                 >
                   <span>{item}</span>

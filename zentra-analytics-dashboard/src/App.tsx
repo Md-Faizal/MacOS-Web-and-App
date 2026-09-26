@@ -14,6 +14,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { DynamicHalftoneBackground } from './components/DynamicHalftoneBackground';
 import { CustomScrollbarTrack } from './components/common/CustomScrollbar';
 import { readStoredSession, clearSession } from './lib/auth';
+import { ProfileView } from './views/ProfileView';
 
 // ─── CODE SPLITTING: DYNAMIC LAZY LOADING OF DASHBOARD VIEWS & MODALS ───
 const HomeView = React.lazy(() => import('./views/HomeView').then(m => ({ default: m.HomeView })));
@@ -24,11 +25,13 @@ const ProductsView = React.lazy(() => import('./views/ProductsView').then(m => (
 const BillingView = React.lazy(() => import('./views/BillingView').then(m => ({ default: m.BillingView })));
 const ReportsView = React.lazy(() => import('./views/ReportsView').then(m => ({ default: m.ReportsView })));
 const ConnectView = React.lazy(() => import('./views/ConnectView').then(m => ({ default: m.ConnectView })));
+const WorkspaceSettingsView = React.lazy(() => import('./views/WorkspaceSettingsView').then(m => ({ default: m.WorkspaceSettingsView })));
 const AddWidgetModal = React.lazy(() => import('./components/modals/AddWidgetModal').then(m => ({ default: m.AddWidgetModal })));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Home');
   const [currentView, setCurrentView] = useState('Home');
+  const [workspaceSettingsSection, setWorkspaceSettingsSection] = useState<'general' | 'profile' | 'security' | 'workers' | 'integrations'>('general');
   const [pagePhase, setPagePhase] = useState<'idle' | 'exiting' | 'entering'>('idle');
   const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const finishTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -140,8 +143,43 @@ export default function App() {
   };
 
   // ─── TAB SWITCH TRANSITION (Header stays, bottom 2 layers animate) ───
+  const handleBackHome = () => {
+    setCurrentView('Home');
+    setActiveTab('Home');
+    setPagePhase('idle');
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+  };
+
+  const handleOpenProfile = () => {
+    if (pagePhase === 'exiting') return;
+    setWorkspaceSettingsSection('profile');
+    setCurrentView('WorkspaceSettings');
+    setActiveTab('Home');
+    setPagePhase('entering');
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+    finishTimerRef.current = setTimeout(() => setPagePhase('idle'), 450);
+  };
+
+  const handleOpenWorkspaceSettings = (section: 'general' | 'profile' | 'security' | 'workers' | 'integrations' = 'general') => {
+    if (pagePhase === 'exiting') return;
+    setWorkspaceSettingsSection(section);
+    setCurrentView('WorkspaceSettings');
+    setActiveTab('Home');
+    setPagePhase('entering');
+    if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+    finishTimerRef.current = setTimeout(() => setPagePhase('idle'), 450);
+  };
+
   const handleTabChange = (nextTab: string) => {
-    if (nextTab === activeTab || pagePhase === 'exiting') return;
+    if (pagePhase === 'exiting') return;
+    if (nextTab === activeTab && currentView === 'Home') return;
+    if (nextTab === 'Home' && (currentView === 'Profile' || currentView === 'WorkspaceSettings')) {
+      handleBackHome();
+      return;
+    }
 
     // Immediately update header tab selector
     setActiveTab(nextTab);
@@ -212,6 +250,10 @@ export default function App() {
               return <ReportsView layer2Class={layer2Class} layer3Class={layer3Class} />;
             case 'Connect':
               return <ConnectView layer2Class={layer2Class} layer3Class={layer3Class} />;
+            case 'Profile':
+              return <WorkspaceSettingsView layer2Class={layer2Class} layer3Class={layer3Class} initialSection="profile" onBackHome={handleBackHome} />;
+            case 'WorkspaceSettings':
+              return <WorkspaceSettingsView layer2Class={layer2Class} layer3Class={layer3Class} initialSection={workspaceSettingsSection} onBackHome={handleBackHome} />;
             case 'Home':
             default:
               return (
@@ -316,9 +358,12 @@ export default function App() {
               >
                 <Header
                   activeTab={activeTab}
+                  isSettingsView={currentView === 'Profile' || currentView === 'WorkspaceSettings'}
                   onTabChange={handleTabChange}
                   user={user}
                   onSignOut={handleSignOut}
+                  onProfileClick={handleOpenProfile}
+                  onWorkspaceSettingsClick={() => handleOpenWorkspaceSettings('general')}
                 />
               </section>
 
