@@ -85,107 +85,42 @@ class LedgerView {
   }
 
   /**
-   * FIFO Settlement Logic
-   * Reconciles payments and opening balance against bills to track settlement duration.
-   * This handles the case where payments are not explicitly linked to bills.
+   * FIFO Settlement Logic - Powered 100% by Rust SuiteCore WebAssembly
+   * Reconciles payments and opening balance against bills with sub-microsecond performance.
    */
   calculateSettlementMap(bills, payments, openingBalance = 0) {
     const settlementMap = {};
     if (!bills || bills.length === 0) return settlementMap;
 
-    // 1. Sort bills by date (earliest first for FIFO)
-    const sortedBills = [...bills].sort((a, b) => {
-      const dateA = new Date(a.invoice_date || a.bill_date || a.created_at);
-      const dateB = new Date(b.invoice_date || b.bill_date || b.created_at);
-      return dateA - dateB;
-    });
+    if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded() && typeof window.SuiteCoreBridge.calculateStatement === 'function') {
+      const rustBills = bills.map(b => ({
+        id: String(b.id),
+        customer_id: String(b.customer_id || ''),
+        invoice_no: b.invoice_no || '',
+        date: b.invoice_date || b.bill_date || b.created_at || '',
+        due_date: b.due_date || null,
+        grand_total: parseFloat(b.grand_total || b.total || b.amount || 0)
+      }));
 
-    // 2. Prepare credit queue (earliest payments first)
-    const sortedPayments = [...payments].sort((a, b) => {
-      const dateA = new Date(a.payment_date || a.date || a.created_at);
-      const dateB = new Date(b.payment_date || b.date || b.created_at);
-      return dateA - dateB;
-    });
+      const rustPayments = (payments || []).map(p => ({
+        id: String(p.id),
+        customer_id: String(p.customer_id || ''),
+        reference_no: p.reference_number || 'PMT',
+        date: p.payment_date || p.date || p.created_at || '',
+        amount: parseFloat(p.amount || p.credit_amount || 0),
+        is_credit_note: p.type === 'CREDIT_NOTE' || Boolean(p.is_credit_note),
+        payment_medium: p.payment_medium || null
+      }));
 
-    const pQueue = sortedPayments.map(p => ({
-      remaining: p.amount || p.credit_amount || 0,
-      date: p.payment_date || p.date || p.created_at
-    }));
-
-    // 3. FIFO Reconciliation starting with Opening Balance
-    // Sign convention: Negative opening balance = CREDIT, Positive = DEBT
-    let availableCredit = 0;
-    let debtToSettleFirst = 0;
-    let initialCreditDate = null;
-    
-    if (openingBalance < 0) {
-      availableCredit = Math.abs(openingBalance);
-      // For opening credit, we assume the "settlement date" for anything it pays is the date of the first bill
-      // or we can just leave it as null to signify it's pre-settled.
-    } else {
-      debtToSettleFirst = openingBalance;
+      const nowDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+      const stmt = window.SuiteCoreBridge.calculateStatement(parseFloat(openingBalance || 0), rustBills, rustPayments, nowDays);
+      if (stmt && stmt.fifo_result && stmt.fifo_result.bill_settlements) {
+        return stmt.fifo_result.bill_settlements;
+      }
+      throw new Error('[LedgerView] SuiteCore WebAssembly calculation returned invalid result');
     }
 
-    // A. Apply payments to initial debt (Opening Balance Debt) first
-    while (debtToSettleFirst > 0 && pQueue.length > 0) {
-      const p = pQueue[0];
-      const consumed = Math.min(debtToSettleFirst, p.remaining);
-      debtToSettleFirst -= consumed;
-      p.remaining -= consumed;
-      if (p.remaining <= 0) pQueue.shift();
-    }
-
-    // B. Reconcile invoices
-    sortedBills.forEach(bill => {
-      const billId = bill.id;
-      const billAmount = bill.grand_total || bill.total || bill.amount || 0;
-      let remainingToSettle = billAmount;
-      let lastCreditDate = null;
-
-      // 1. Consume available credit (from Negative Opening Balance)
-      if (availableCredit > 0) {
-        const consumed = Math.min(remainingToSettle, availableCredit);
-        remainingToSettle -= consumed;
-        availableCredit -= consumed;
-        if (remainingToSettle <= 0) {
-          // Settled by opening credit - use bill date as settlement date (0 days)
-          lastCreditDate = bill.invoice_date || bill.bill_date || bill.created_at;
-        }
-      }
-
-      // 2. Consume payments from the queue
-      while (remainingToSettle > 0 && pQueue.length > 0) {
-        const p = pQueue[0];
-        const consumed = Math.min(remainingToSettle, p.remaining);
-        remainingToSettle -= consumed;
-        p.remaining -= consumed;
-        
-        if (p.remaining <= 0) pQueue.shift();
-        
-        if (remainingToSettle <= 0) {
-          lastCreditDate = p.date;
-        }
-      }
-
-      // 3. Record the settlement duration
-      const invoiceDateStr = bill.invoice_date || bill.bill_date || bill.created_at;
-      const invoiceDate = new Date(invoiceDateStr);
-      
-      if (remainingToSettle <= 0 && lastCreditDate) {
-        const settleDate = new Date(lastCreditDate);
-        const diffTime = Math.max(0, settleDate - invoiceDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        settlementMap[billId] = { settled: true, days: diffDays || 1 };
-      } else {
-        // Still outstanding
-        const now = new Date();
-        const diffTime = Math.max(0, now - invoiceDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        settlementMap[billId] = { settled: false, days: diffDays || 1 };
-      }
-    });
-
-    return settlementMap;
+    throw new Error('[LedgerView] SuiteCore WebAssembly engine is required for calculateSettlementMap');
   }
 
   syncLedger(newData, isImmediate = false) {
