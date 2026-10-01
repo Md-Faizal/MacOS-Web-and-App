@@ -45,12 +45,44 @@ class EditBillsPayments {
 
   /**
    * Format a date for <input type="date"> (YYYY-MM-DD)
+  parseDateSafe(dateInput) {
+    if (!dateInput) return null;
+    if (dateInput instanceof Date) return isNaN(dateInput.getTime()) ? null : dateInput;
+    if (typeof dateInput === 'string') {
+      const str = dateInput.trim();
+      const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (dmy) {
+        const day = parseInt(dmy[1], 10);
+        const month = parseInt(dmy[2], 10) - 1;
+        const year = parseInt(dmy[3], 10);
+        const hours = dmy[4] ? parseInt(dmy[4], 10) : 12;
+        const mins = dmy[5] ? parseInt(dmy[5], 10) : 0;
+        return new Date(year, month, day, hours, mins);
+      }
+      const ymd = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (ymd) {
+        const year = parseInt(ymd[1], 10);
+        const month = parseInt(ymd[2], 10) - 1;
+        const day = parseInt(ymd[3], 10);
+        const hours = ymd[4] ? parseInt(ymd[4], 10) : 12;
+        const mins = ymd[5] ? parseInt(ymd[5], 10) : 0;
+        return new Date(year, month, day, hours, mins);
+      }
+      const d = new Date(str);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(dateInput);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
+   * Format a date for <input type="date"> (YYYY-MM-DD)
    * Ensures local time is used to avoid UTC shifts
    */
   formatDateForInput(dateInput) {
     if (!dateInput) return '';
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return '';
+    const date = this.parseDateSafe(dateInput);
+    if (!date) return '';
     
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -64,8 +96,11 @@ class EditBillsPayments {
    */
   formatDateTimeForInput(dateInput) {
     if (!dateInput) return '';
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return '';
+    if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateInput.trim())) {
+      return dateInput.trim().slice(0, 16);
+    }
+    const date = this.parseDateSafe(dateInput);
+    if (!date) return '';
     
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -225,8 +260,8 @@ class EditBillsPayments {
       normalized_customer_name: billData.customer_name
     });
     
-    // Normalize bill date field
-    billData.bill_date = billData.bill_date || billData.created_at || billData.invoice_date || this.formatDateTimeForInput(new Date());
+    // Normalize bill date field (strictly prioritize invoice_date over created_at)
+    billData.bill_date = billData.invoice_date || billData.bill_date || billData.created_at || this.formatDateTimeForInput(new Date());
     
     // Normalize items to products for BillEditor
     if (!billData.products && billData.items) {
@@ -1378,8 +1413,8 @@ class EditBillsPayments {
       
       // Fetch the full bill details from API in the same way as new bill page
       if (this.billingApp.billEditor) {
-        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${itemIdNum}`;
-        fetch(apiUrl)
+        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${itemIdNum}?_t=${Date.now()}`;
+        fetch(apiUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } })
           .then(response => response.json())
           .then(async (result) => {
             // Normalize and validate bill data from API
@@ -1480,8 +1515,8 @@ class EditBillsPayments {
    */
   editBill(billId) {
     // Fetch bill from API and open in BillEditor
-    const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${billId}`;
-    fetch(apiUrl)
+    const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${billId}?_t=${Date.now()}`;
+    fetch(apiUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } })
       .then(response => response.json())
       .then(async (result) => {
         // Normalize and validate bill data from API

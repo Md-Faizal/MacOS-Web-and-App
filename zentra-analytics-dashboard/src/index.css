@@ -49,7 +49,16 @@
     display: none;
   }
 
+  .zentra-modal-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 
+  .zentra-modal-scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 
   button,
   input {

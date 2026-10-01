@@ -153,7 +153,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           </section>
 
           {/* Promotion / Pricing Strategy Summary (12 cols) */}
-          <section className="col-span-1 md:col-span-12">
+          <section data-widget-sublayer="3b" className="col-span-1 md:col-span-12">
             <div className="soft-card rounded-[26px] bg-white/95 p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 border border-blue-100">

@@ -2350,16 +2350,11 @@ export class BillingApp extends AppWindow {
 
   async editBill(billId) {
     try {
-      // Switch to edit view first (shows the edit list)
-      this.switchView('edit');
-      
-      // Then let EditBillsPayments handle opening the specific bill for editing
-      // This will fetch the bill data and open it in the editor
+      // Open the specific bill for editing directly without competing list view render
       if (this.editBillsPayments && this.editBillsPayments.handleEditItemSelection) {
-        // Give the view time to render before opening the bill
-        setTimeout(async () => {
-          this.editBillsPayments.handleEditItemSelection(billId, 'bill');
-        }, 100);
+        this.editBillsPayments.handleEditItemSelection(billId, 'bill');
+      } else if (this.editBillsPayments && this.editBillsPayments.editBill) {
+        this.editBillsPayments.editBill(billId);
       }
     } catch (error) {
       console.error('Error editing bill:', error);

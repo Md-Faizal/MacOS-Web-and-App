@@ -64,8 +64,8 @@ class BillCalculator {
    * @returns {Object} Calculated values: amount, discount_1_amount, discount_2_amount, gst_amount, final_amount
    */
   static calculateLineItem(product) {
-    // Normalize input values
-    let rate = parseFloat(product.mrp || product.rate || 0) || 0;
+    // Normalize input values - preserve explicit rate if provided, otherwise fallback to mrp
+    let rate = parseFloat((product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0) ? product.rate : (product.mrp || 0)) || 0;
     const qty = parseInt(product.qty || 1) || 1;
     const disc1Percent = parseFloat(product.disc1 || product.discount_1_percent || 0) || 0;
     const disc2Percent = parseFloat(product.disc2 || product.discount_2_percent || 0) || 0;
@@ -252,6 +252,7 @@ class BillCalculator {
     const lineCalc = this.calculateLineItem(frontendProduct);
 
     return {
+      id: frontendProduct.id || frontendProduct.item_id || null,
       product_id: frontendProduct.product_id,
       product_name: frontendProduct.product_name || frontendProduct.name,
       variant_id: frontendProduct.variant_id,

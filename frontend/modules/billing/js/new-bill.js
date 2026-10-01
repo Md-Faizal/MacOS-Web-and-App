@@ -113,20 +113,42 @@ class BillEditor {
   formatDateTimeForInput(dateInput) {
     if (!dateInput) return '';
     
-    // Handle both Date objects and strings
     let date;
     if (dateInput instanceof Date) {
       date = dateInput;
-    } else {
-      // Try parsing common formats
-      // If it's already YYYY-MM-DDTHH:mm, just return it
-      if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateInput)) {
-        return dateInput.slice(0, 16);
+    } else if (typeof dateInput === 'string') {
+      const str = dateInput.trim();
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
+        return str.slice(0, 16);
       }
+      // Match DD-MM-YYYY or DD/MM/YYYY with optional time
+      const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (dmy) {
+        const day = parseInt(dmy[1], 10);
+        const month = parseInt(dmy[2], 10) - 1;
+        const year = parseInt(dmy[3], 10);
+        const hours = dmy[4] ? parseInt(dmy[4], 10) : 12;
+        const mins = dmy[5] ? parseInt(dmy[5], 10) : 0;
+        date = new Date(year, month, day, hours, mins);
+      } else {
+        // Match YYYY-MM-DD or SQLite YYYY-MM-DD HH:mm:ss
+        const ymd = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+        if (ymd) {
+          const year = parseInt(ymd[1], 10);
+          const month = parseInt(ymd[2], 10) - 1;
+          const day = parseInt(ymd[3], 10);
+          const hours = ymd[4] ? parseInt(ymd[4], 10) : 12;
+          const mins = ymd[5] ? parseInt(ymd[5], 10) : 0;
+          date = new Date(year, month, day, hours, mins);
+        } else {
+          date = new Date(str);
+        }
+      }
+    } else {
       date = new Date(dateInput);
     }
 
-    if (isNaN(date.getTime())) return '';
+    if (!date || isNaN(date.getTime())) return '';
     
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -369,24 +391,22 @@ class BillEditor {
     // Set bill date/time
     const billDateTime = document.getElementById('billDateTime');
     if (isEditMode && billDataToEdit) {
-      // Editing: prefill with existing bill data
-      const billDate = billDataToEdit.bill_date || billDataToEdit.invoice_date || billDataToEdit.created_at;
+      // Editing: prefill with existing bill data (strictly prioritize invoice_date)
+      const billDate = billDataToEdit.invoice_date || billDataToEdit.bill_date || billDataToEdit.created_at;
       
       if (billDateTime) {
-        // Use setTimeout to ensure DOM is ready and any competing scripts have finished
-        setTimeout(() => {
-          const formattedDate = this.formatDateTimeForInput(billDate) || this.formatDateTimeForInput(new Date());
-          console.log('📅 [DEBUG] Setting billDateTime value:', {
-            inputExists: !!billDateTime,
-            inputId: billDateTime.id,
-            billDateRaw: billDate,
-            formattedDate: formattedDate,
-            previousValue: billDateTime.value
-          });
+        const formattedDate = this.formatDateTimeForInput(billDate);
+        if (formattedDate) {
           billDateTime.value = formattedDate;
-          console.log('📅 [DEBUG] After setting:', {
-            actualValue: billDateTime.value
-          });
+        } else {
+          billDateTime.value = this.formatDateTimeForInput(new Date());
+        }
+
+        // Use setTimeout to ensure DOM is ready and any competing scripts cannot overwrite it
+        setTimeout(() => {
+          if (formattedDate && billDateTime.value !== formattedDate) {
+            billDateTime.value = formattedDate;
+          }
         }, 100);
       }
       
@@ -2173,7 +2193,7 @@ class BillEditor {
         qty: parseFloat((parseFloat(product.qty || 1)).toFixed(2)),
         free: parseFloat((parseFloat(product.free || 0)).toFixed(2)),
         mrp: parseFloat((parseFloat(product.mrp || product.rate || 0)).toFixed(2)),
-        rate: parseFloat((parseFloat(product.mrp || product.rate || 0)).toFixed(2)),
+        rate: parseFloat((parseFloat(product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0 ? product.rate : (product.mrp || 0))).toFixed(2)),
         disc1: parseFloat((parseFloat(product.disc1 || product.discount_1_percent || 0)).toFixed(2)),
         disc2: parseFloat((parseFloat(product.disc2 || product.discount_2_percent || 0)).toFixed(2)),
         sgst: parseFloat((parseFloat(product.sgst || 0)).toFixed(2)),
@@ -2622,7 +2642,7 @@ class BillEditor {
       product[fieldName] = newValue;
       
       // Recalculate based on what was edited
-      this.recalculateProductFields(product);
+      this.recalculateProductFields(product, fieldName);
 
       console.log('✅ Field saved:', { fieldName, newValue, productId });
 
@@ -2697,7 +2717,8 @@ class BillEditor {
 
     const applyScheme = (newScheme) => {
       product.scheme = newScheme;
-      this.recalculateProductFields(product);
+      product.free = this.calculateFreeItems(product.qty, newScheme);
+      this.recalculateProductFields(product, 'scheme');
       
       // Update customer item memory too
       const customerName = document.getElementById('customerName')?.value?.trim();
@@ -2894,14 +2915,16 @@ class BillEditor {
     }, 200);
   }
 
-  recalculateProductFields(product) {
-    // Recalculate rate if MRP or disc1 changed
-    if (product.mrp > 0) {
+  recalculateProductFields(product, fieldChanged = null) {
+    // Only recalculate rate if MRP or disc1 explicitly changed
+    if ((fieldChanged === 'mrp' || fieldChanged === 'disc1') && product.mrp > 0) {
       product.rate = product.mrp - (product.mrp * (product.disc1 / 100));
     }
 
     // Recalculate free items if qty or scheme changed
-    product.free = this.calculateFreeItems(product.qty, product.scheme);
+    if (fieldChanged === 'qty' || fieldChanged === 'scheme' || !fieldChanged) {
+      product.free = this.calculateFreeItems(product.qty, product.scheme);
+    }
 
     // Synchronize tax fields (gstTotal, gst_percent, sgst, cgst)
     if (product.gstTotal !== undefined && product.gstTotal !== null && !isNaN(product.gstTotal)) {
@@ -2973,7 +2996,8 @@ class BillEditor {
     const lineItems = this.currentBillProducts.map((product, idx) => {
       // Calculate each product line item
       const lineCalc = BillCalculator.calculateLineItem({
-        rate: product.mrp || product.rate || 0,
+        rate: (product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0) ? product.rate : (product.mrp || 0),
+        mrp: product.mrp || product.rate || 0,
         qty: product.qty || 1,
         disc1: product.disc1 || 0,
         disc2: product.disc2 || 0,
@@ -3054,12 +3078,20 @@ class BillEditor {
     // Calculate bill summary using BillCalculator
     const summary = BillCalculator.calculateBillSummary(formattedProducts);
     
-    // Calculate Due Date (7 days after invoice date)
+    // Calculate Due Date (preserve existing due_date when editing, avoid UTC timezone shift)
     const billDateTimeVal = document.getElementById('billDateTime').value;
-    const invDate = new Date(billDateTimeVal);
-    const dueDate = new Date(invDate);
-    dueDate.setDate(invDate.getDate() + 7);
-    const dueDateVal = dueDate.toISOString().split('T')[0];
+    let dueDateVal = (this.billDataToEdit && this.billDataToEdit.due_date) ? this.billDataToEdit.due_date : '';
+    if (!dueDateVal && billDateTimeVal) {
+      const invDate = new Date(billDateTimeVal);
+      if (!isNaN(invDate.getTime())) {
+        const dueDate = new Date(invDate);
+        dueDate.setDate(dueDate.getDate() + 7);
+        const y = dueDate.getFullYear();
+        const m = String(dueDate.getMonth() + 1).padStart(2, '0');
+        const d = String(dueDate.getDate()).padStart(2, '0');
+        dueDateVal = `${y}-${m}-${d}`;
+      }
+    }
     const invoiceDateVal = billDateTimeVal;
 
     const subtotal = summary.subtotal;

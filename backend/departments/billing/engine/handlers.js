@@ -505,8 +505,8 @@ module.exports = function(db) {
               item.qty,
               item.scheme || null,
               item.free || 0,
+              item.mrp || item.rate || 0,
               item.rate,
-              item.discounted_rate,
               item.amount,
               item.discount_1_percent,
               item.discount_1_amount,
@@ -623,6 +623,10 @@ module.exports = function(db) {
     // Get all invoices
     getBills: (req, res) => {
       try {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
         const { customer_id, limit = 100, offset = 0 } = req.query;
 
         // Join with contacts to get customer names
@@ -739,6 +743,10 @@ module.exports = function(db) {
     // Get single invoice with all items
     getBill: (req, res) => {
       try {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
         const { id } = req.params;
 
         // Join with contacts to get customer name
@@ -802,6 +810,7 @@ module.exports = function(db) {
 
           return {
             ...item,
+            mrp: (item.mrp && item.mrp > 0) ? item.mrp : (item.rate || 0),
             // Add calculated percentages for frontend
             sgst_percent: sgstPercent,
             cgst_percent: cgstPercent
@@ -940,8 +949,8 @@ module.exports = function(db) {
                 item.qty,
                 item.scheme || null,
                 item.free || 0,
-                item.mrp || 0,
-                item.discounted_rate,
+                item.mrp || item.rate || 0,
+                item.rate,
                 item.amount,
                 item.discount_1_percent,
                 item.discount_1_amount,
@@ -1198,8 +1207,8 @@ module.exports = function(db) {
             item.qty,
             item.scheme,
             item.free,
+            item.mrp || item.rate || 0,
             item.rate,
-            item.discounted_rate,
             item.amount,
             item.discount_1_percent,
             item.discount_1_amount,

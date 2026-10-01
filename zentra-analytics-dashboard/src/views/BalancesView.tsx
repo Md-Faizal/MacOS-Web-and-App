@@ -133,7 +133,7 @@ export const BalancesView: React.FC<BalancesViewProps> = ({
           </section>
 
           {/* Slot 3: Payout History (12 cols) */}
-          <section className="col-span-1 md:col-span-12 flex flex-col">
+          <section data-widget-sublayer="3c" className="col-span-1 md:col-span-12 flex flex-col">
             <div className="soft-card rounded-[28px] bg-white/95 p-6 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
                 <h3 className="text-lg font-semibold text-[#111]">Recent Payout Transfers</h3>

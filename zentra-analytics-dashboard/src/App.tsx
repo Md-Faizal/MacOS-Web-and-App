@@ -13,6 +13,7 @@ import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { DynamicHalftoneBackground } from './components/DynamicHalftoneBackground';
 import { CustomScrollbarTrack } from './components/common/CustomScrollbar';
+import { AIBubble } from './components/AIBubble';
 import { readStoredSession, clearSession } from './lib/auth';
 import { ProfileView } from './views/ProfileView';
 
@@ -272,6 +273,7 @@ export default function App() {
   return (
     <>
       <DynamicHalftoneBackground drawFromBottom={matrixDrawn} />
+      {isAuthenticated && <AIBubble user={user} />}
       {!isAuthenticated ? (
         <LoginScreen 
           justLoggedOut={justLoggedOut}

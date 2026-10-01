@@ -184,9 +184,9 @@ module.exports = function(db) {
             calculated.qty,
             calculated.scheme || null,
             originalItem.free || 0,
-            originalItem.mrp || null,
-            calculated.discounted_rate,
-            calculated.discountedAmount,
+            originalItem.mrp || calculated.rate || null,
+            calculated.rate,
+            calculated.amount,
             calculated.discount_1_percent || 0,
             calculated.discount_1_amount || 0,
             calculated.discount_2_percent || 0,
@@ -227,6 +227,10 @@ module.exports = function(db) {
      */
     getInvoices: (req, res) => {
       try {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
         const { customer_id, limit = 100, offset = 0 } = req.query;
         let sql = `
           SELECT 
@@ -309,7 +313,7 @@ module.exports = function(db) {
               quantity: item.qty,
               scheme: item.scheme,
               free: item.free,
-              mrp: item.mrp,
+              mrp: (item.mrp && item.mrp > 0) ? item.mrp : item.rate,
               rate: item.rate,
               discount_1: item.discount_1_percent,
               discount_2: item.discount_2_percent,
@@ -341,6 +345,10 @@ module.exports = function(db) {
      */
     getInvoice: (req, res) => {
       try {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
         const { id } = req.params;
         // Get invoice header
         const invoice = db.prepare(`
@@ -431,7 +439,7 @@ module.exports = function(db) {
             quantity: item.qty,
             scheme: item.scheme,
             free: item.free,
-            mrp: item.mrp,
+            mrp: (item.mrp && item.mrp > 0) ? item.mrp : item.rate,
             rate: item.rate,
             // Map discount columns correctly for frontend
             discount_1: item.discount_1_percent,  // Frontend expects percentage
@@ -642,9 +650,9 @@ module.exports = function(db) {
               calculated.qty,
               calculated.scheme || null,
               originalItem.free || 0,
-              originalItem.mrp || null,
-              calculated.discounted_rate,
-              calculated.discountedAmount,
+              originalItem.mrp || calculated.rate || null,
+              calculated.rate,
+              calculated.amount,
               calculated.discount_1_percent || 0,
               calculated.discount_1_amount || 0,
               calculated.discount_2_percent || 0,

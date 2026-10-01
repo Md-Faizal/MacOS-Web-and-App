@@ -126,7 +126,7 @@ export const ConnectView: React.FC<ConnectViewProps> = ({
           </section>
 
           {/* Webhook Activity Stream (4 cols LG) */}
-          <section className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
+          <section data-widget-sublayer="3b" className="col-span-1 md:col-span-12 lg:col-span-4 flex flex-col gap-4">
             <div className="soft-card rounded-[26px] bg-white/95 p-5 shadow-[0_20px_42px_-26px_rgba(17,17,17,0.18)]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
