@@ -922,39 +922,79 @@ export class SettingsApp extends AppWindow {
             <div class="health-card-header">
               <span class="health-icon">🐳</span>
               <div class="health-card-info">
-                <div class="health-label">Docker Zero-Downtime Cluster</div>
+                <div class="health-label">Production Cluster — Zero-Downtime Architecture</div>
                 <div class="health-value" id="dockerClusterStatus" style="color: #34c759;">🟢 Active Slot: Detecting...</div>
               </div>
             </div>
             <div class="health-details" style="display: flex; flex-direction: column; gap: 10px;">
+
+              <!-- Primary VM: my-mac (Blue + Green) -->
+              <div style="font-size: 11px; font-weight: 600; color: var(--settings-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; border-bottom: 1px solid var(--settings-border);">
+                🖥️ Primary VM — my-mac
+              </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <!-- Blue Slot -->
-                <div id="dockerBlueSlotCard" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 10px; background: rgba(0, 122, 255, 0.05);">
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <div id="dockerBlueSlotCard" style="border: 1px solid var(--settings-border); border-radius: 10px; padding: 12px; background: rgba(0, 122, 255, 0.05); transition: all 0.4s ease;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <div style="font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                      <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #007aff;"></span>
+                      <span id="dockerBlueDot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #007aff; transition: all 0.4s ease;"></span>
                       <span>Blue Slot (3001)</span>
                     </div>
-                    <span id="dockerBlueBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;">Standby</span>
+                    <span id="dockerBlueBadge" style="font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; transition: all 0.4s ease;">Standby</span>
                   </div>
-                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.4;">
+                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.6;">
                     Container: <code>macos-server-blue</code><br/>
                     Target: <code>127.0.0.1:3001</code>
                   </div>
                 </div>
 
                 <!-- Green Slot -->
-                <div id="dockerGreenSlotCard" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 10px; background: rgba(52, 199, 89, 0.05);">
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <div id="dockerGreenSlotCard" style="border: 1px solid var(--settings-border); border-radius: 10px; padding: 12px; background: rgba(52, 199, 89, 0.05); transition: all 0.4s ease;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <div style="font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                      <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #34c759;"></span>
+                      <span id="dockerGreenDot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #34c759; transition: all 0.4s ease;"></span>
                       <span>Green Slot (3004)</span>
                     </div>
-                    <span id="dockerGreenBadge" style="font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600;">Standby</span>
+                    <span id="dockerGreenBadge" style="font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; transition: all 0.4s ease;">Standby</span>
                   </div>
-                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.4;">
+                  <div style="font-size: 11px; color: var(--settings-text-secondary); line-height: 1.6;">
                     Container: <code>macos-server-green</code><br/>
                     Target: <code>127.0.0.1:3004</code>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Replication arrow -->
+              <div style="display: flex; align-items: center; gap: 10px; padding: 4px 0;">
+                <div style="flex: 1; height: 1px; background: linear-gradient(to right, var(--settings-border), #ff9f0a, var(--settings-border));"></div>
+                <div style="font-size: 10px; font-weight: 600; color: #ff9f0a; letter-spacing: 0.5px; white-space: nowrap;">⟳ DB REPLICA EVERY 2HRS</div>
+                <div style="flex: 1; height: 1px; background: linear-gradient(to right, var(--settings-border), #ff9f0a, var(--settings-border));"></div>
+              </div>
+
+              <!-- Secondary VM: cos -->
+              <div style="font-size: 11px; font-weight: 600; color: var(--settings-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; border-bottom: 1px solid var(--settings-border);">
+                🛡️ Standby VM — container-of-souls (cos)
+              </div>
+              <div id="cosVmCard" style="border: 1px solid var(--settings-border); border-radius: 10px; padding: 12px; background: rgba(255, 159, 10, 0.05); transition: all 0.4s ease;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div style="font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span id="cosDot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ff9f0a; transition: all 0.4s ease;"></span>
+                    <span>cos — 10.0.0.195</span>
+                  </div>
+                  <span id="cosBadge" style="font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; background: rgba(255,159,10,0.15); color: #ff9f0a; transition: all 0.4s ease;">DB REPLICA STANDBY</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 4px;">
+                  <div style="text-align: center; padding: 6px; border-radius: 6px; background: var(--settings-bg-secondary);">
+                    <div style="font-size: 10px; color: var(--settings-text-secondary); margin-bottom: 2px;">STACK</div>
+                    <div id="cosStackStatus" style="font-size: 11px; font-weight: 600;">⚙️ Not yet deployed</div>
+                  </div>
+                  <div style="text-align: center; padding: 6px; border-radius: 6px; background: var(--settings-bg-secondary);">
+                    <div style="font-size: 10px; color: var(--settings-text-secondary); margin-bottom: 2px;">DB REPLICA</div>
+                    <div id="cosReplicaStatus" style="font-size: 11px; font-weight: 600;">⏳ Checking...</div>
+                  </div>
+                  <div style="text-align: center; padding: 6px; border-radius: 6px; background: var(--settings-bg-secondary);">
+                    <div style="font-size: 10px; color: var(--settings-text-secondary); margin-bottom: 2px;">ROLE</div>
+                    <div id="cosRoleStatus" style="font-size: 11px; font-weight: 600;">🔄 Warm Standby</div>
                   </div>
                 </div>
               </div>
@@ -1417,37 +1457,88 @@ export class SettingsApp extends AppWindow {
           const greenBadge = document.getElementById('dockerGreenBadge');
           const blueCard = document.getElementById('dockerBlueSlotCard');
           const greenCard = document.getElementById('dockerGreenSlotCard');
+          const blueDot = document.getElementById('dockerBlueDot');
+          const greenDot = document.getElementById('dockerGreenDot');
 
           if (clusterStatus) {
-            clusterStatus.textContent = `🟢 Active: ${activeSlot.toUpperCase()} (Port ${healthData.docker.hostPort})`;
+            clusterStatus.textContent = `🟢 Active: ${activeSlot.toUpperCase()} (Port ${healthData.docker.hostPort}) — my-mac`;
+          }
+
+          // Inject pulse keyframes if not already present
+          if (!document.getElementById('cluster-pulse-style')) {
+            const style = document.createElement('style');
+            style.id = 'cluster-pulse-style';
+            style.textContent = `
+              @keyframes clusterPulse {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(52,199,89,0.4); }
+                50% { box-shadow: 0 0 0 5px rgba(52,199,89,0); }
+              }
+              @keyframes bluePulse {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(0,122,255,0.4); }
+                50% { box-shadow: 0 0 0 5px rgba(0,122,255,0); }
+              }
+              @keyframes cosPulse {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(255,159,10,0.4); }
+                50% { box-shadow: 0 0 0 5px rgba(255,159,10,0); }
+              }
+              .slot-active-pulse { animation: clusterPulse 2s infinite; }
+              .slot-active-blue-pulse { animation: bluePulse 2s infinite; }
+              .cos-online-pulse { animation: cosPulse 2s infinite; }
+            `;
+            document.head.appendChild(style);
           }
 
           if (activeSlot === 'blue') {
-            if (blueBadge) {
-              blueBadge.textContent = 'ACTIVE (TRAFFIC)';
-              blueBadge.style.background = '#007aff';
-              blueBadge.style.color = '#ffffff';
-            }
-            if (greenBadge) {
-              greenBadge.textContent = 'STANDBY (OFF)';
-              greenBadge.style.background = 'rgba(120, 120, 128, 0.2)';
-              greenBadge.style.color = 'var(--settings-text-secondary)';
-            }
-            if (blueCard) blueCard.style.borderColor = '#007aff';
-            if (greenCard) greenCard.style.borderColor = 'var(--settings-border)';
+            if (blueBadge) { blueBadge.textContent = 'ACTIVE (TRAFFIC)'; blueBadge.style.background = '#007aff'; blueBadge.style.color = '#fff'; }
+            if (greenBadge) { greenBadge.textContent = 'STANDBY (OFF)'; greenBadge.style.background = 'rgba(120,120,128,0.2)'; greenBadge.style.color = 'var(--settings-text-secondary)'; }
+            if (blueCard) { blueCard.style.borderColor = '#007aff'; blueCard.style.boxShadow = '0 0 12px rgba(0,122,255,0.15)'; }
+            if (greenCard) { greenCard.style.borderColor = 'var(--settings-border)'; greenCard.style.boxShadow = 'none'; }
+            if (blueDot) { blueDot.classList.add('slot-active-blue-pulse'); }
+            if (greenDot) { greenDot.style.background = '#8e8e93'; greenDot.classList.remove('slot-active-pulse', 'slot-active-blue-pulse'); }
           } else {
-            if (greenBadge) {
-              greenBadge.textContent = 'ACTIVE (TRAFFIC)';
-              greenBadge.style.background = '#34c759';
-              greenBadge.style.color = '#ffffff';
+            if (greenBadge) { greenBadge.textContent = 'ACTIVE (TRAFFIC)'; greenBadge.style.background = '#34c759'; greenBadge.style.color = '#fff'; }
+            if (blueBadge) { blueBadge.textContent = 'STANDBY (OFF)'; blueBadge.style.background = 'rgba(120,120,128,0.2)'; blueBadge.style.color = 'var(--settings-text-secondary)'; }
+            if (greenCard) { greenCard.style.borderColor = '#34c759'; greenCard.style.boxShadow = '0 0 12px rgba(52,199,89,0.15)'; }
+            if (blueCard) { blueCard.style.borderColor = 'var(--settings-border)'; blueCard.style.boxShadow = 'none'; }
+            if (greenDot) { greenDot.classList.add('slot-active-pulse'); }
+            if (blueDot) { blueDot.style.background = '#8e8e93'; blueDot.classList.remove('slot-active-pulse', 'slot-active-blue-pulse'); }
+          }
+        }
+
+        // cos VM Standby Node
+        if (healthData.cos) {
+          const cos = healthData.cos;
+          const cosCard = document.getElementById('cosVmCard');
+          const cosDot = document.getElementById('cosDot');
+          const cosBadge = document.getElementById('cosBadge');
+          const cosStack = document.getElementById('cosStackStatus');
+          const cosReplica = document.getElementById('cosReplicaStatus');
+          const cosRole = document.getElementById('cosRoleStatus');
+
+          if (cos.online) {
+            if (cosCard) { cosCard.style.borderColor = '#34c759'; cosCard.style.boxShadow = '0 0 12px rgba(52,199,89,0.12)'; cosCard.style.background = 'rgba(52,199,89,0.05)'; }
+            if (cosDot) { cosDot.style.background = '#34c759'; cosDot.classList.add('slot-active-pulse'); }
+            if (cosBadge) { cosBadge.textContent = 'LIVE STANDBY'; cosBadge.style.background = 'rgba(52,199,89,0.15)'; cosBadge.style.color = '#34c759'; }
+            if (cosStack) cosStack.textContent = '✅ Stack Running';
+            if (cosRole) cosRole.textContent = '🟢 Hot Standby';
+          } else {
+            if (cosCard) { cosCard.style.borderColor = 'rgba(255,159,10,0.4)'; cosCard.style.boxShadow = 'none'; cosCard.style.background = 'rgba(255,159,10,0.05)'; }
+            if (cosDot) { cosDot.style.background = '#ff9f0a'; cosDot.classList.remove('slot-active-pulse'); }
+            if (cosBadge) { cosBadge.textContent = 'DB REPLICA STANDBY'; cosBadge.style.background = 'rgba(255,159,10,0.15)'; cosBadge.style.color = '#ff9f0a'; }
+            if (cosStack) cosStack.textContent = '⚙️ Not yet deployed';
+            if (cosRole) cosRole.textContent = '🔄 Warm Standby';
+          }
+
+          if (cosReplica) {
+            if (cos.replicaAgeMinutes !== null && cos.replicaAgeMinutes !== undefined) {
+              const age = cos.replicaAgeMinutes;
+              const ageText = age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ${age%60}m ago`;
+              const isSynced = cos.replicaStatus === 'synced';
+              cosReplica.textContent = isSynced ? `✅ Synced (${ageText})` : `⚠️ Stale (${ageText})`;
+              cosReplica.style.color = isSynced ? '#34c759' : '#ff9f0a';
+            } else {
+              cosReplica.textContent = '⏳ No snapshot yet';
             }
-            if (blueBadge) {
-              blueBadge.textContent = 'STANDBY (OFF)';
-              blueBadge.style.background = 'rgba(120, 120, 128, 0.2)';
-              blueBadge.style.color = 'var(--settings-text-secondary)';
-            }
-            if (greenCard) greenCard.style.borderColor = '#34c759';
-            if (blueCard) blueCard.style.borderColor = 'var(--settings-border)';
           }
         }
 

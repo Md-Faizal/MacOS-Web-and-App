@@ -295,6 +295,34 @@ module.exports = function(db) {
         const publicHealth = await probeUrl('https://mac.faizal.uk/api/health');
         const publicHealthz = await probeUrl('https://mac.faizal.uk/healthz');
 
+        // Probe cos VM standby (10.0.0.195) — becomes live once cos Docker stack is deployed
+        const cosHealth = await probeUrl('http://10.0.0.195:3001/api/health').catch(() => ({ ok: false, status: 0 }));
+        // Read cos replica age from the replicated DB snapshot directory
+        let cosReplicaAge = null;
+        const cosReplicaPathCandidates = [
+          '/opt/db-snapshots',
+          '/opt/db-snapshots'
+        ];
+        try {
+          const snapshotDir = '/opt/db-snapshots';
+          if (fs.existsSync(snapshotDir)) {
+            const files = fs.readdirSync(snapshotDir)
+              .filter(f => f.startsWith('MacOS_') && f.endsWith('.db'))
+              .sort().reverse();
+            if (files.length > 0) {
+              const latestFile = files[0];
+              const match = latestFile.match(/(\d{8})_(\d{6})/);
+              if (match) {
+                const ts = new Date(
+                  `${match[1].slice(0,4)}-${match[1].slice(4,6)}-${match[1].slice(6,8)}T` +
+                  `${match[2].slice(0,2)}:${match[2].slice(2,4)}:${match[2].slice(4,6)}Z`
+                );
+                cosReplicaAge = Math.floor((Date.now() - ts.getTime()) / 60000); // minutes
+              }
+            }
+          }
+        } catch (_) { /* ignore */ }
+
         const heartbeatPaths = [
           '/app/logs/healthwatch.heartbeat',
           'logs/healthwatch.heartbeat',
@@ -411,6 +439,18 @@ module.exports = function(db) {
             standbySlot: standbySlot,
             standbyPort: standbyPort,
             architecture: 'Zero-Downtime Blue/Green (Nginx Upstream Switch)'
+          },
+          cos: {
+            ip: '10.0.0.195',
+            hostname: 'container-of-souls',
+            role: 'standby-vm',
+            online: cosHealth.ok,
+            status: cosHealth.ok ? 'online' : 'standby',
+            replicaAgeMinutes: cosReplicaAge,
+            replicaStatus: cosReplicaAge !== null
+              ? (cosReplicaAge < 150 ? 'synced' : 'stale')
+              : 'unknown',
+            stackDeployed: cosHealth.ok
           },
           production: productionStatus,
           watchdog,
