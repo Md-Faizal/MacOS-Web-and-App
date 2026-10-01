@@ -111,34 +111,12 @@ chmod -R 777 database storage logs backend/uploads CloudStorage Wallpapers 2>/de
 chmod 666 database/*.db* 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
 
-# Auto-heal: If database has 0 invoices, search backups for the latest backup with real production data
-DB_INVOICES=0
-if [ -f "database/MacOS.db" ]; then
-    DB_INVOICES=$(sqlite3 database/MacOS.db "SELECT COUNT(*) FROM invoices;" 2>/dev/null || echo "0")
-fi
-
-if [ "$DB_INVOICES" = "0" ] || [ -z "$DB_INVOICES" ]; then
-    echo "🔍 Current database has 0 invoices. Scanning host backups for existing production data..."
-    BEST_BACKUP=""
-    MAX_INVOICES=0
-
-    for candidate in database/backups/*.db database/backups/*.bak database/*.bak backups/*/*.db /home/ubuntu/backups/*/*.db /home/ubuntu/stack/apps/macos-desktop/database/MacOS.db /home/ubuntu/stack/apps/macos-desktop/database/backups/*.db /opt/backups/*/*.db; do
-        if [ -f "$candidate" ] && [ -s "$candidate" ]; then
-            CNT=$(sqlite3 "$candidate" "SELECT COUNT(*) FROM invoices;" 2>/dev/null || echo "0")
-            if [ "$CNT" -gt "$MAX_INVOICES" ] 2>/dev/null; then
-                MAX_INVOICES=$CNT
-                BEST_BACKUP="$candidate"
-            fi
-        fi
-    done
-
-    if [ -n "$BEST_BACKUP" ] && [ "$MAX_INVOICES" -gt 0 ]; then
-        echo "✅ Found production backup '$BEST_BACKUP' with $MAX_INVOICES invoices! Restoring to database/MacOS.db..."
-        cp "$BEST_BACKUP" database/MacOS.db
-        chmod 666 database/MacOS.db
-    else
-        echo "ℹ️  No host backup with invoices found. Migration 026 will seed standard production dataset on startup."
-    fi
+# DB Safety Check: Verify database exists and is non-empty (NEVER overwrite — DB is managed via Docker volume)
+if [ ! -f "database/MacOS.db" ] || [ ! -s "database/MacOS.db" ]; then
+    echo "⚠️  WARNING: database/MacOS.db is missing or empty on host."
+    echo "   The database is a Docker bind-mount volume — it must be managed separately."
+    echo "   To restore: copy a backup to database/MacOS.db and re-run deploy."
+    echo "   Continuing startup — server will initialise a fresh schema if needed."
 fi
 
 # Auto-heal: Ensure .env exists and has required production authentication secrets
