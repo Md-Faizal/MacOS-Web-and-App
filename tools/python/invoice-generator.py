@@ -593,37 +593,27 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     
     # -------------------------------------------------------------
     # 1. LEFT SIDEBAR (`.sidebar` - width 75mm, height 297mm)
-    # SUSTAINABLE PRINT: White background + thin left accent strip
-    # replaces the old solid dark #0b1c17 fill (~85% less ink on this panel)
+    # SUSTAINABLE PRINT: Very light gray background (#f3f4f6) on white page
+    # Minimal ink consumption (~95% ink savings), zero paper saturation
+    # Palette: Light gray base (#f3f4f6), slate-800 (#1e293b) headings & chevron,
+    # slate-600 (#475569) secondary text, crisp white (#ffffff) QR cards with slate codes.
     # -------------------------------------------------------------
     sidebar_w = mm_to_pt(75) # ~212.60 pt
-    accent_strip_w = mm_to_pt(4)  # 4mm green left edge accent strip
 
-    # White sidebar base (zero ink)
-    c.setFillColor(colors.HexColor('#ffffff'))
+    # Very light gray sidebar base (ink-sustainable, soft subtle separation)
+    c.setFillColor(colors.HexColor('#f3f4f6'))
     c.rect(0, 0, sidebar_w, page_h, fill=1, stroke=0)
 
-    # Narrow dark-green left accent strip (brand identity preserved, minimal ink)
-    c.setFillColor(colors.HexColor('#0b1c17'))
-    c.rect(0, 0, accent_strip_w, page_h, fill=1, stroke=0)
-
-    # Very light green tint wash behind QR area for gentle visual separation
-    c.setFillColor(colors.HexColor('#f0f7f4'))
-    c.setFillAlpha(0.55)
-    c.rect(accent_strip_w, 0, sidebar_w - accent_strip_w, page_h, fill=1, stroke=0)
-    c.setFillAlpha(1)
-
-    # Sidebar Background SVGs — visible on light bg with low-opacity green strokes
-    # scale_x = 212.598 / 200 = 1.0630, scale_y = 841.89 / 800 = 1.0524
+    # Sidebar Background SVGs — subtle slate watermark curves and dots
     c.saveState()
     # Path 1: M-50,50 C150,200 -50,350 150,500 C350,650 -50,800 150,950
     p1 = c.beginPath()
     p1.moveTo(-53.15, page_h - 52.62)
     p1.curveTo(159.45, page_h - 210.47, -53.15, page_h - 368.33, 159.45, page_h - 526.18)
     p1.curveTo(372.05, page_h - 684.04, -53.15, page_h - 841.89, 159.45, page_h - 999.74)
-    c.setStrokeColor(colors.HexColor('#0b1c17'))
-    c.setLineWidth(1.5)
-    c.setStrokeAlpha(0.07)
+    c.setStrokeColor(colors.HexColor('#94a3b8'))
+    c.setLineWidth(1.2)
+    c.setStrokeAlpha(0.12)
     c.drawPath(p1, fill=0, stroke=1)
 
     # Path 2: M250,-50 C50,100 300,250 100,400 C-100,550 300,700 50,850
@@ -631,28 +621,27 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     p2.moveTo(265.75, page_h + 52.62)
     p2.curveTo(53.15, page_h - 105.24, 318.90, page_h - 263.09, 106.30, page_h - 420.94)
     p2.curveTo(-106.30, page_h - 578.80, 318.90, page_h - 736.65, 53.15, page_h - 894.51)
-    c.setLineWidth(1)
-    c.setStrokeAlpha(0.05)
+    c.setLineWidth(0.8)
+    c.setStrokeAlpha(0.09)
     c.drawPath(p2, fill=0, stroke=1)
 
-    # Circles — subtle gold dots as before
-    c.setFillColor(colors.HexColor('#c59b27'))
-    c.setFillAlpha(0.25)
-    c.circle(31.89, page_h - 157.85, 3.19, fill=1, stroke=0) # cx=30, cy=150, r=3
-    c.setFillAlpha(0.30)
-    c.circle(180.71, page_h - 473.56, 4.25, fill=1, stroke=0) # cx=170, cy=450, r=4
-    c.setFillAlpha(0.25)
-    c.circle(53.15, page_h - 684.04, 2.66, fill=1, stroke=0) # cx=50, cy=650, r=2.5
-    c.setFillAlpha(0.20)
-    c.circle(170.08, page_h - 210.47, 2.13, fill=1, stroke=0) # cx=160, cy=200, r=2
+    # Circles — subtle slate dots
+    c.setFillColor(colors.HexColor('#94a3b8'))
+    c.setFillAlpha(0.15)
+    c.circle(31.89, page_h - 157.85, 3.19, fill=1, stroke=0)
+    c.setFillAlpha(0.18)
+    c.circle(180.71, page_h - 473.56, 4.25, fill=1, stroke=0)
+    c.setFillAlpha(0.15)
+    c.circle(53.15, page_h - 684.04, 2.66, fill=1, stroke=0)
+    c.setFillAlpha(0.12)
+    c.circle(170.08, page_h - 210.47, 2.13, fill=1, stroke=0)
     c.restoreState()
     
     # Top Chevron Logo Icon (margin-top: 10mm inside 15mm top padding -> 25mm from top)
-    # 30x30 scaled viewBox 0 0 24 24 -> scale 1.25
-    chev_y = page_h - mm_to_pt(25) - 15 # center at 25mm + 15px top
+    chev_y = page_h - mm_to_pt(25) - 15
     chev_x = sidebar_w / 2.0
     c.saveState()
-    c.setStrokeColor(colors.HexColor('#0b1c17'))  # Dark green chevron on white bg
+    c.setStrokeColor(colors.HexColor('#334155'))  # Clean dark slate
     c.setLineWidth(2)
     p_chev = c.beginPath()
     # M12 2L2 7l10 5 10-5-10-5z
@@ -673,19 +662,22 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     c.restoreState()
     
     # --- Sidebar QR Container 1: PAYMENT QR (margin-top: 25mm below chevron div) ---
-    qr1_title_y = page_h - mm_to_pt(59) # ~675 pt
-    c.setFillColor(colors.HexColor('#c59b27'))
+    qr1_title_y = page_h - mm_to_pt(59)
+    c.setFillColor(colors.HexColor('#1e293b'))
     draw_spaced_string(c, sidebar_w / 2.0, qr1_title_y, "PAYMENT QR", "Helvetica-Bold", 8.5, spacing=2, align='center')
     
-    qr_box_size = mm_to_pt(42) + 16 # 42mm + 16px padding = ~131.06 pt
+    qr_box_size = mm_to_pt(42) + 16 # ~135 pt
     qr1_box_x = (sidebar_w - qr_box_size) / 2.0
-    qr1_box_y = qr1_title_y - 12 - qr_box_size # margin-bottom: 12px
+    qr1_box_y = qr1_title_y - 12 - qr_box_size
     
+    # White card with delicate border on light gray background
     c.setFillColor(colors.HexColor('#ffffff'))
-    c.roundRect(qr1_box_x, qr1_box_y, qr_box_size, qr_box_size, radius=12, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#e2e8f0'))
+    c.setLineWidth(0.75)
+    c.roundRect(qr1_box_x, qr1_box_y, qr_box_size, qr_box_size, radius=10, fill=1, stroke=1)
     
-    qr_inner_size = mm_to_pt(42) # ~119.06 pt
-    qr1_x = qr1_box_x + 8 # 8px padding
+    qr_inner_size = mm_to_pt(42)
+    qr1_x = qr1_box_x + 8
     qr1_y = qr1_box_y + 8
     
     payment_qr_img = app_settings.get('payment_qr_image', '')
@@ -717,7 +709,6 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     img_drawn = False
     temp_img_path = None
     try:
-        # If a static image is provided AND no dynamic amount is needed, or if static image preference applies
         if payment_qr_img and not (grand_total > 0):
             if payment_qr_img.startswith('data:image/'):
                 header_part, base64_data = payment_qr_img.split(',', 1)
@@ -751,7 +742,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
             
     if not img_drawn:
         try:
-            w = qr.QrCodeWidget(upi_str, barFillColor=colors.HexColor('#0b1c17'), barStrokeColor=colors.HexColor('#0b1c17'))
+            w = qr.QrCodeWidget(upi_str, barFillColor=colors.HexColor('#0f172a'), barStrokeColor=colors.HexColor('#0f172a'))
             bounds = w.getBounds()
             w_w = bounds[2] - bounds[0]
             w_h = bounds[3] - bounds[1]
@@ -760,33 +751,33 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
             renderPDF.draw(d, c, qr1_x, qr1_y)
         except Exception as e:
             c.setFont("Helvetica", 8)
-            c.setFillColor(colors.HexColor('#0b1c17'))
+            c.setFillColor(colors.HexColor('#0f172a'))
             c.drawString(qr1_x + 5, qr1_y + qr_inner_size/2, f"UPI: {display_upi}")
             
-    c.setFillColor(colors.HexColor('#555555'))  # Dark grey — legible on white/light bg
+    c.setFillColor(colors.HexColor('#475569'))
     draw_spaced_string(c, sidebar_w / 2.0, qr1_box_y - 18, f"UPI: {display_upi}", "Helvetica-Bold", 8, spacing=0.5, align='center')
 
-    # Render Dues Summary — dark text on light sidebar background
-    c.setFont("Helvetica-Bold", 7.5)
-    c.setFillColor(colors.HexColor('#333333'))  # Dark on light bg (was white-on-dark)
+    # Render Dues Summary — clear slate text on light gray sidebar
+    c.setFont("Helvetica", 7.5)
+    c.setFillColor(colors.HexColor('#475569'))
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 30, f"Bill Amt: Rs. {grand_total:,.2f}")
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 41, f"Prev Due: Rs. {prev_due:,.2f}")
 
-    # Standout Total Due in brand gold (works on light bg too)
+    # Standout Total Due in prominent dark slate (strong contrast without vibrancy)
     c.setFont("Helvetica-Bold", 8.5)
-    c.setFillColor(colors.HexColor('#b8860b'))  # Slightly darker gold for better contrast on white
+    c.setFillColor(colors.HexColor('#0f172a'))
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 54, f"TOTAL DUE: Rs. {total_due:,.2f}")
     
     # Draw digital clickable "PAY VIA UPI APP" button if mode is export
     if invoice_data.get('export_mode', False):
         c.saveState()
-        c.setFillColor(colors.HexColor('#0b1c17'))  # Dark green button on light sidebar
+        c.setFillColor(colors.HexColor('#1e293b'))
         btn_w = 85
         btn_h = 16
         btn_x = (sidebar_w / 2.0) - (btn_w / 2.0)
         btn_y = (qr1_box_y - 78) - (btn_h / 2.0)
         c.roundRect(btn_x, btn_y, btn_w, btn_h, radius=4, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor('#c59b27'))  # Gold text on dark green button
+        c.setFillColor(colors.HexColor('#ffffff'))
         c.setFont("Helvetica-Bold", 7)
         c.drawCentredString(sidebar_w / 2.0, btn_y + 4.5, "PAY VIA UPI APP")
         c.linkURL(upi_str, (btn_x, btn_y, btn_x + btn_w, btn_y + btn_h), thickness=0)
@@ -794,12 +785,14 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         
     # --- Sidebar QR Container 2: PORTAL ACCESS (margin-top: 35mm below qr1 sub) ---
     qr2_title_y = qr1_box_y - 18 - mm_to_pt(35)
-    c.setFillColor(colors.HexColor('#0b1c17'))  # Dark green label on light background
+    c.setFillColor(colors.HexColor('#1e293b'))
     draw_spaced_string(c, sidebar_w / 2.0, qr2_title_y, "PORTAL ACCESS", "Helvetica-Bold", 8.5, spacing=2, align='center')
     
     qr2_box_y = qr2_title_y - 12 - qr_box_size
     c.setFillColor(colors.HexColor('#ffffff'))
-    c.roundRect(qr1_box_x, qr2_box_y, qr_box_size, qr_box_size, radius=12, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#e2e8f0'))
+    c.setLineWidth(0.75)
+    c.roundRect(qr1_box_x, qr2_box_y, qr_box_size, qr_box_size, radius=10, fill=1, stroke=1)
     
     qr2_x = qr1_box_x + 8
     qr2_y = qr2_box_y + 8
@@ -813,7 +806,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         portal_url = f"{portal_base}/customer-ledger.html?id={customer_id}"
     
     try:
-        w_p = qr.QrCodeWidget(portal_url, barFillColor=colors.HexColor('#0b1c17'), barStrokeColor=colors.HexColor('#0b1c17'))
+        w_p = qr.QrCodeWidget(portal_url, barFillColor=colors.HexColor('#0f172a'), barStrokeColor=colors.HexColor('#0f172a'))
         bounds_p = w_p.getBounds()
         w_pw = bounds_p[2] - bounds_p[0]
         w_ph = bounds_p[3] - bounds_p[1]
@@ -822,10 +815,10 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         renderPDF.draw(d_p, c, qr2_x, qr2_y)
     except Exception as e:
         c.setFont("Helvetica", 8)
-        c.setFillColor(colors.HexColor('#0b1c17'))
+        c.setFillColor(colors.HexColor('#0f172a'))
         c.drawString(qr2_x + 5, qr2_y + qr_inner_size/2, "Portal QR")
         
-    c.setFillColor(colors.HexColor('#555555'))  # Readable grey on light bg
+    c.setFillColor(colors.HexColor('#475569'))
     draw_spaced_string(c, sidebar_w / 2.0, qr2_box_y - 18, "SCAN TO OPEN", "Helvetica-Bold", 8, spacing=0.5, align='center')
     
     # -------------------------------------------------------------
@@ -845,7 +838,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     p_acc.lineTo(main_left + 500 * 0.7654, page_h)
     p_acc.lineTo(main_left + 500 * 0.7654, page_h - 100 * 1.0524)
     p_acc.close()
-    c.setFillColor(colors.HexColor('#c59b27'))
+    c.setFillColor(colors.HexColor('#94a3b8'))
     c.setFillAlpha(0.08)
     c.drawPath(p_acc, fill=1, stroke=0)
     
@@ -853,8 +846,8 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     # We use a Knockout Transparency Group Form XObject to ensure all 5 overlapping paths
     # at the stem composite as one uniform flat transparency layer without any dark overlap spots.
     c.beginForm('flower_bg')
-    c.setStrokeColor(colors.HexColor('#0b1c17'))
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.setStrokeColor(colors.HexColor('#94a3b8'))
+    c.setFillColor(colors.HexColor('#94a3b8'))
     c.setLineWidth(3.65)
     # Origin of <g> in ReportLab: X = main_left + 480 * 0.7654 = main_left + 367.37, Y = page_h - 780 * 1.0524 = 21.05
     # Scale of <g> in ReportLab: S_x = 4 * 0.7654 = 3.0614, S_y = 4 * 1.0524 = 4.2094
@@ -934,20 +927,22 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     cur_main_y = page_h - mm_to_pt(18) # ~790.87 pt
     
     # --- Header Block (.header) ---
+    # --- Header Block (.header) ---
     cur_main_y -= 26 # baseline for 26pt
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.setFillColor(colors.HexColor('#0f172a'))
     draw_spaced_string(c, main_pad_x, cur_main_y, "UTKAL CHEMICAL", "Helvetica-Bold", 26, spacing=1)
     
     cur_main_y -= 24 # margin-top: 4px + 19pt text
-    c.setFillColor(colors.HexColor('#c59b27'))
+    # #660033 wine/plum font for rich contrast and high visibility
+    c.setFillColor(colors.HexColor('#660033'))
     draw_spaced_string(c, main_pad_x, cur_main_y, "AUSHADHALAYA", "Helvetica-Bold", 19, spacing=3)
     
     cur_main_y -= 22 # margin-bottom: 12px + 9pt
-    c.setStrokeColor(colors.HexColor('#c59b27'))
+    c.setStrokeColor(colors.HexColor('#660033'))
     c.setLineWidth(3)
     c.line(main_pad_x, cur_main_y - 12, main_pad_x, cur_main_y + 11)
     
-    c.setFillColor(colors.HexColor('#666666'))
+    c.setFillColor(colors.HexColor('#475569'))
     draw_spaced_string(c, main_pad_x + 10, cur_main_y + 1, "PAYMENT QR CODE, BANK ACCOUNT", "Helvetica-Bold", 9, spacing=0.5)
     draw_spaced_string(c, main_pad_x + 10, cur_main_y - 11.6, "DETAILS & DIGITAL LEDGER PORTAL", "Helvetica-Bold", 9, spacing=0.5)
     
@@ -985,19 +980,19 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     
     # .section-num watermark "01" (top: -16px (~12pt), left: -10px (~7.5pt))
     c.saveState()
-    c.setFillColor(colors.HexColor('#c59b27'))
-    c.setFillAlpha(0.15)
+    c.setFillColor(colors.HexColor('#660033'))
+    c.setFillAlpha(0.12)
     draw_spaced_string(c, main_pad_x - 7.5, cur_main_y - 11, "01", "Helvetica-Bold", 45, spacing=-1.5)
     c.restoreState()
     
     # .section-title
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.setFillColor(colors.HexColor('#0f172a'))
     title_s1 = "BANK TRANSFER DETAILS"
     draw_spaced_string(c, main_pad_x, cur_main_y, title_s1, "Helvetica-Bold", 13, spacing=1)
     w_ts1 = sum(c.stringWidth(ch, "Helvetica-Bold", 13) + (1 if i < len(title_s1)-1 else 0) for i, ch in enumerate(title_s1))
     
-    # border-bottom: 2px solid #c59b27, padding-bottom: 5px (~3.75pt)
-    c.setStrokeColor(colors.HexColor('#c59b27'))
+    # border-bottom: 2px solid #660033 accent
+    c.setStrokeColor(colors.HexColor('#660033'))
     c.setLineWidth(2)
     c.line(main_pad_x, cur_main_y - 3.75, main_pad_x + w_ts1, cur_main_y - 3.75)
     
@@ -1042,18 +1037,19 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     
     # .section-num watermark "02"
     c.saveState()
-    c.setFillColor(colors.HexColor('#c59b27'))
-    c.setFillAlpha(0.15)
+    c.setFillColor(colors.HexColor('#660033'))
+    c.setFillAlpha(0.12)
     draw_spaced_string(c, main_pad_x - 7.5, cur_main_y - 11, "02", "Helvetica-Bold", 45, spacing=-1.5)
     c.restoreState()
     
     # .section-title
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.setFillColor(colors.HexColor('#0f172a'))
     title_s2 = "CUSTOMER PORTAL"
     draw_spaced_string(c, main_pad_x, cur_main_y, title_s2, "Helvetica-Bold", 13, spacing=1)
     w_ts2 = sum(c.stringWidth(ch, "Helvetica-Bold", 13) + (1 if i < len(title_s2)-1 else 0) for i, ch in enumerate(title_s2))
     
-    c.setStrokeColor(colors.HexColor('#c59b27'))
+    # border-bottom: 2px solid #660033 accent
+    c.setStrokeColor(colors.HexColor('#660033'))
     c.setLineWidth(2)
     c.line(main_pad_x, cur_main_y - 3.75, main_pad_x + w_ts2, cur_main_y - 3.75)
     
@@ -1069,7 +1065,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         "View real-time account ledger balances",
         "Download copies of previous invoices and receipts",
         "Track pending dues and payment history instantly",
-        "Secure digital access powered by Utkal Chemical"
+        "Verify transactions and reconcile statements anytime"
     ]
     c.setFont("Helvetica", 10)
     c.setFillColor(colors.HexColor('#444444'))
@@ -1085,9 +1081,9 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     cur_main_y -= 15
     box_h = 45
     box_y = cur_main_y - box_h
-    c.setFillColor(colors.HexColor('#f8faf9'))
+    c.setFillColor(colors.HexColor('#f8fafc'))
     c.rect(main_pad_x, box_y, main_content_w, box_h, fill=1, stroke=0)
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.setFillColor(colors.HexColor('#0f172a'))
     c.rect(main_pad_x, box_y, 4, box_h, fill=1, stroke=0)
     
     c.setFillColor(colors.HexColor('#666666'))
