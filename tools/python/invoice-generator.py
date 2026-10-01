@@ -593,12 +593,27 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     
     # -------------------------------------------------------------
     # 1. LEFT SIDEBAR (`.sidebar` - width 75mm, height 297mm)
+    # SUSTAINABLE PRINT: White background + thin left accent strip
+    # replaces the old solid dark #0b1c17 fill (~85% less ink on this panel)
     # -------------------------------------------------------------
     sidebar_w = mm_to_pt(75) # ~212.60 pt
-    c.setFillColor(colors.HexColor('#0b1c17'))
+    accent_strip_w = mm_to_pt(4)  # 4mm green left edge accent strip
+
+    # White sidebar base (zero ink)
+    c.setFillColor(colors.HexColor('#ffffff'))
     c.rect(0, 0, sidebar_w, page_h, fill=1, stroke=0)
-    
-    # Sidebar Background SVGs (`sidebar_svg` exact coordinates: viewBox="0 0 200 800")
+
+    # Narrow dark-green left accent strip (brand identity preserved, minimal ink)
+    c.setFillColor(colors.HexColor('#0b1c17'))
+    c.rect(0, 0, accent_strip_w, page_h, fill=1, stroke=0)
+
+    # Very light green tint wash behind QR area for gentle visual separation
+    c.setFillColor(colors.HexColor('#f0f7f4'))
+    c.setFillAlpha(0.55)
+    c.rect(accent_strip_w, 0, sidebar_w - accent_strip_w, page_h, fill=1, stroke=0)
+    c.setFillAlpha(1)
+
+    # Sidebar Background SVGs — visible on light bg with low-opacity green strokes
     # scale_x = 212.598 / 200 = 1.0630, scale_y = 841.89 / 800 = 1.0524
     c.saveState()
     # Path 1: M-50,50 C150,200 -50,350 150,500 C350,650 -50,800 150,950
@@ -606,29 +621,29 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     p1.moveTo(-53.15, page_h - 52.62)
     p1.curveTo(159.45, page_h - 210.47, -53.15, page_h - 368.33, 159.45, page_h - 526.18)
     p1.curveTo(372.05, page_h - 684.04, -53.15, page_h - 841.89, 159.45, page_h - 999.74)
-    c.setStrokeColor(colors.HexColor('#c59b27'))
-    c.setLineWidth(2)
-    c.setStrokeAlpha(0.25)
+    c.setStrokeColor(colors.HexColor('#0b1c17'))
+    c.setLineWidth(1.5)
+    c.setStrokeAlpha(0.07)
     c.drawPath(p1, fill=0, stroke=1)
-    
+
     # Path 2: M250,-50 C50,100 300,250 100,400 C-100,550 300,700 50,850
     p2 = c.beginPath()
     p2.moveTo(265.75, page_h + 52.62)
     p2.curveTo(53.15, page_h - 105.24, 318.90, page_h - 263.09, 106.30, page_h - 420.94)
     p2.curveTo(-106.30, page_h - 578.80, 318.90, page_h - 736.65, 53.15, page_h - 894.51)
-    c.setLineWidth(1.5)
-    c.setStrokeAlpha(0.15)
+    c.setLineWidth(1)
+    c.setStrokeAlpha(0.05)
     c.drawPath(p2, fill=0, stroke=1)
-    
-    # Circles
+
+    # Circles — subtle gold dots as before
     c.setFillColor(colors.HexColor('#c59b27'))
-    c.setFillAlpha(0.4)
+    c.setFillAlpha(0.25)
     c.circle(31.89, page_h - 157.85, 3.19, fill=1, stroke=0) # cx=30, cy=150, r=3
-    c.setFillAlpha(0.5)
+    c.setFillAlpha(0.30)
     c.circle(180.71, page_h - 473.56, 4.25, fill=1, stroke=0) # cx=170, cy=450, r=4
-    c.setFillAlpha(0.4)
+    c.setFillAlpha(0.25)
     c.circle(53.15, page_h - 684.04, 2.66, fill=1, stroke=0) # cx=50, cy=650, r=2.5
-    c.setFillAlpha(0.3)
+    c.setFillAlpha(0.20)
     c.circle(170.08, page_h - 210.47, 2.13, fill=1, stroke=0) # cx=160, cy=200, r=2
     c.restoreState()
     
@@ -637,7 +652,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     chev_y = page_h - mm_to_pt(25) - 15 # center at 25mm + 15px top
     chev_x = sidebar_w / 2.0
     c.saveState()
-    c.setStrokeColor(colors.HexColor('#c59b27'))
+    c.setStrokeColor(colors.HexColor('#0b1c17'))  # Dark green chevron on white bg
     c.setLineWidth(2)
     p_chev = c.beginPath()
     # M12 2L2 7l10 5 10-5-10-5z
@@ -748,29 +763,30 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
             c.setFillColor(colors.HexColor('#0b1c17'))
             c.drawString(qr1_x + 5, qr1_y + qr_inner_size/2, f"UPI: {display_upi}")
             
+    c.setFillColor(colors.HexColor('#555555'))  # Dark grey — legible on white/light bg
     draw_spaced_string(c, sidebar_w / 2.0, qr1_box_y - 18, f"UPI: {display_upi}", "Helvetica-Bold", 8, spacing=0.5, align='center')
-    
-    # Render Dues Summary below the UPI ID in light readable colors
+
+    # Render Dues Summary — dark text on light sidebar background
     c.setFont("Helvetica-Bold", 7.5)
-    c.setFillColor(colors.HexColor('#ffffff')) # White contrast on dark green sidebar
+    c.setFillColor(colors.HexColor('#333333'))  # Dark on light bg (was white-on-dark)
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 30, f"Bill Amt: Rs. {grand_total:,.2f}")
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 41, f"Prev Due: Rs. {prev_due:,.2f}")
-    
-    # Standout Total Due in brand gold
+
+    # Standout Total Due in brand gold (works on light bg too)
     c.setFont("Helvetica-Bold", 8.5)
-    c.setFillColor(colors.HexColor('#c59b27'))
+    c.setFillColor(colors.HexColor('#b8860b'))  # Slightly darker gold for better contrast on white
     c.drawCentredString(sidebar_w / 2.0, qr1_box_y - 54, f"TOTAL DUE: Rs. {total_due:,.2f}")
     
     # Draw digital clickable "PAY VIA UPI APP" button if mode is export
     if invoice_data.get('export_mode', False):
         c.saveState()
-        c.setFillColor(colors.HexColor('#c59b27'))
+        c.setFillColor(colors.HexColor('#0b1c17'))  # Dark green button on light sidebar
         btn_w = 85
         btn_h = 16
         btn_x = (sidebar_w / 2.0) - (btn_w / 2.0)
         btn_y = (qr1_box_y - 78) - (btn_h / 2.0)
         c.roundRect(btn_x, btn_y, btn_w, btn_h, radius=4, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor('#0b1c17'))
+        c.setFillColor(colors.HexColor('#c59b27'))  # Gold text on dark green button
         c.setFont("Helvetica-Bold", 7)
         c.drawCentredString(sidebar_w / 2.0, btn_y + 4.5, "PAY VIA UPI APP")
         c.linkURL(upi_str, (btn_x, btn_y, btn_x + btn_w, btn_y + btn_h), thickness=0)
@@ -778,7 +794,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         
     # --- Sidebar QR Container 2: PORTAL ACCESS (margin-top: 35mm below qr1 sub) ---
     qr2_title_y = qr1_box_y - 18 - mm_to_pt(35)
-    c.setFillColor(colors.HexColor('#c59b27'))
+    c.setFillColor(colors.HexColor('#0b1c17'))  # Dark green label on light background
     draw_spaced_string(c, sidebar_w / 2.0, qr2_title_y, "PORTAL ACCESS", "Helvetica-Bold", 8.5, spacing=2, align='center')
     
     qr2_box_y = qr2_title_y - 12 - qr_box_size
@@ -809,6 +825,7 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
         c.setFillColor(colors.HexColor('#0b1c17'))
         c.drawString(qr2_x + 5, qr2_y + qr_inner_size/2, "Portal QR")
         
+    c.setFillColor(colors.HexColor('#555555'))  # Readable grey on light bg
     draw_spaced_string(c, sidebar_w / 2.0, qr2_box_y - 18, "SCAN TO OPEN", "Helvetica-Bold", 8, spacing=0.5, align='center')
     
     # -------------------------------------------------------------
