@@ -67,6 +67,17 @@ function up(db) {
     console.warn('⚠️ Pending owner cleanup warning:', err.message);
   }
 
+  // 2.5 Ensure users table has all required columns (username, security_answer)
+  if (tableExists(db, 'users')) {
+    const userCols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+    if (!userCols.includes('username')) {
+      try { db.exec('ALTER TABLE users ADD COLUMN username TEXT'); } catch (_) {}
+    }
+    if (!userCols.includes('security_answer')) {
+      try { db.exec('ALTER TABLE users ADD COLUMN security_answer TEXT'); } catch (_) {}
+    }
+  }
+
   // 3. Ensure 'admin_auth' exists in users table with full owner credentials
   try {
     const existing = db.prepare('SELECT id, password_hash, security_question FROM users WHERE id = ?').get(OWNER_ID);

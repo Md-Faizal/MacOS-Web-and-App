@@ -122,7 +122,7 @@ if [ "$DB_INVOICES" = "0" ] || [ -z "$DB_INVOICES" ]; then
     BEST_BACKUP=""
     MAX_INVOICES=0
 
-    for candidate in database/backups/*.db database/backups/*.bak database/*.bak backups/*/*.db /home/ubuntu/backups/*/*.db; do
+    for candidate in database/backups/*.db database/backups/*.bak database/*.bak backups/*/*.db /home/ubuntu/backups/*/*.db /home/ubuntu/stack/apps/macos-desktop/database/MacOS.db /home/ubuntu/stack/apps/macos-desktop/database/backups/*.db /opt/backups/*/*.db; do
         if [ -f "$candidate" ] && [ -s "$candidate" ]; then
             CNT=$(sqlite3 "$candidate" "SELECT COUNT(*) FROM invoices;" 2>/dev/null || echo "0")
             if [ "$CNT" -gt "$MAX_INVOICES" ] 2>/dev/null; then
