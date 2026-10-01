@@ -215,7 +215,8 @@ module.exports = function(db, permissionsHelper) {
           if (targetUser) {
             // Account exists but is not linked to this Google ID
             if (targetUser.role === 'owner' && !existingOwnerGoogleLink) {
-              if (!linkPassword || !targetUser.password_hash || !bcrypt.compareSync(linkPassword, targetUser.password_hash)) {
+              const isOwnerGoogleEmail = targetUser.email && (googleUser.email.toLowerCase() === targetUser.email.toLowerCase());
+              if (!isOwnerGoogleEmail && (!linkPassword || !targetUser.password_hash || !bcrypt.compareSync(linkPassword, targetUser.password_hash))) {
                 return res.status(409).json({
                   error: 'OwnerLinkRequired',
                   message: 'Enter your existing local password once to link this Google account.',
@@ -223,8 +224,8 @@ module.exports = function(db, permissionsHelper) {
                   email: googleUser.email
                 });
               }
-              db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
-              db.prepare("UPDATE users SET google_id = ?, google_email = ?, google_name = ?, google_picture = ? WHERE id = ?").run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+              db.prepare("INSERT OR REPLACE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+              db.prepare("UPDATE users SET google_id = ?, google_email = ?, google_name = ?, google_picture = ?, is_verified = 1 WHERE id = ?").run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
             } else if (targetUser.role === 'owner' && existingOwnerGoogleLink) {
               db.prepare(`
                 INSERT OR IGNORE INTO user_identities
@@ -241,18 +242,27 @@ module.exports = function(db, permissionsHelper) {
               // -------------------------------------------------------------
               targetUser = await handleDeletedWorkerReapplication(targetUser);
             } else if (targetUser.role === 'worker' && targetUser.status === 'pending') {
-              // Worker is currently pending approval; update Google link if needed
-              db.prepare(`
-                UPDATE users SET
-                  google_id = COALESCE(google_id, ?),
-                  google_email = COALESCE(google_email, ?),
-                  google_name = COALESCE(google_name, ?),
-                  google_picture = COALESCE(google_picture, ?),
-                  updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-              `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
-              db.prepare("INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
-              targetUser._inviteCode = targetUser.invite_code;
+              const configuredOwnerEmail = (process.env.OWNER_EMAIL || 'fazztronic@gmail.com').toLowerCase().trim();
+              if (targetUser.email && targetUser.email.toLowerCase() === configuredOwnerEmail) {
+                // Auto-promote accidentally demoted/pending owner account
+                db.prepare(`
+                  UPDATE users SET role = 'owner', status = 'active', google_id = ?, google_email = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?
+                `).run(googleUser.sub, googleUser.email, targetUser.id);
+                targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(targetUser.id);
+              } else {
+                // Worker is currently pending approval; update Google link if needed
+                db.prepare(`
+                  UPDATE users SET
+                    google_id = COALESCE(google_id, ?),
+                    google_email = COALESCE(google_email, ?),
+                    google_name = COALESCE(google_name, ?),
+                    google_picture = COALESCE(google_picture, ?),
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ?
+                `).run(googleUser.sub, googleUser.email, googleUser.name, googleUser.picture, targetUser.id);
+                db.prepare("INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), targetUser.id, googleUser.sub, googleUser.email);
+                targetUser._inviteCode = targetUser.invite_code;
+              }
             } else if (targetUser.role === 'worker' && !existingGoogleLink) {
               // Active worker attempting to link Google
               const localIdentity = db.prepare("SELECT * FROM user_identities WHERE user_id = ? AND provider = 'local'").get(targetUser.id);
@@ -359,26 +369,61 @@ module.exports = function(db, permissionsHelper) {
               }
             }
           } else {
-            // 3. New Worker Registration (First time login)
-            const newUserId = crypto.randomUUID();
-            const inviteCode = String(crypto.randomInt(10000, 100000));
-            const inviteQr = await generateQrDataUrl(inviteCode);
+            const configuredOwnerEmail = (process.env.OWNER_EMAIL || 'fazztronic@gmail.com').toLowerCase().trim();
+            if (googleUser.email && googleUser.email.toLowerCase() === configuredOwnerEmail) {
+              // Automatically link and promote to canonical owner
+              const OWNER_ID = 'admin_auth';
+              db.prepare(`
+                INSERT INTO users (
+                  id, username, google_id, google_email, google_name, google_picture,
+                  full_name, email, role, status, update_channel, token_version, is_verified
+                ) VALUES (?, 'faizal', ?, ?, ?, ?, ?, ?, 'owner', 'active', 'production', 1, 1)
+                ON CONFLICT(id) DO UPDATE SET
+                  role = 'owner',
+                  status = 'active',
+                  google_id = excluded.google_id,
+                  google_email = excluded.google_email,
+                  google_name = excluded.google_name,
+                  google_picture = excluded.google_picture,
+                  email = excluded.email,
+                  is_verified = 1
+              `).run(
+                OWNER_ID, googleUser.sub, googleUser.email, googleUser.name, googleUser.picture,
+                googleUser.name || 'Mohammad Faizal', googleUser.email
+              );
 
-            db.prepare(`
-              INSERT INTO users (
-                id, google_id, google_email, google_name, google_picture,
-                full_name, email, role, status, invite_code, invite_qr_base64,
-                update_channel, token_version, is_verified
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'worker', 'pending', ?, ?, 'production', 0, 1)
-            `).run(
-              newUserId, googleUser.sub, googleUser.email, googleUser.name, googleUser.picture,
-              googleUser.name, googleUser.email, inviteCode, inviteQr
-            );
-            
-            db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), newUserId, googleUser.sub, googleUser.email);
-            targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(newUserId);
-            targetUser._isNewWorker = true;
-            targetUser._inviteCode = inviteCode;
+              db.prepare(`
+                INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified)
+                VALUES (?, ?, 'google', ?, ?, 1)
+                ON CONFLICT(provider, provider_user_id) DO UPDATE SET
+                  user_id = excluded.user_id,
+                  provider_email = excluded.provider_email,
+                  is_verified = 1
+              `).run(crypto.randomUUID(), OWNER_ID, googleUser.sub, googleUser.email);
+
+              targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(OWNER_ID);
+            } else {
+              // 3. New Worker Registration (First time login)
+              const newUserId = crypto.randomUUID();
+              const inviteCode = String(crypto.randomInt(10000, 100000));
+              const inviteQr = await generateQrDataUrl(inviteCode);
+
+              db.prepare(`
+                INSERT INTO users (
+                  id, google_id, google_email, google_name, google_picture,
+                  full_name, email, role, status, invite_code, invite_qr_base64,
+                  update_channel, token_version, is_verified
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'worker', 'pending', ?, ?, 'production', 0, 1)
+              `).run(
+                newUserId, googleUser.sub, googleUser.email, googleUser.name, googleUser.picture,
+                googleUser.name, googleUser.email, inviteCode, inviteQr
+              );
+              
+              db.prepare("INSERT INTO user_identities (id, user_id, provider, provider_user_id, provider_email, is_verified) VALUES (?, ?, 'google', ?, ?, 1)").run(crypto.randomUUID(), newUserId, googleUser.sub, googleUser.email);
+              targetUser = db.prepare("SELECT * FROM users WHERE id = ?").get(newUserId);
+              targetUser._isNewWorker = true;
+              targetUser._inviteCode = inviteCode;
+            }
           }
         }
 

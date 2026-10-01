@@ -193,13 +193,20 @@ jobs:
                      $TARGET_DIR/storage/wallpapers/custom \
                      $TARGET_DIR/storage/temp_uploads \
                      $TARGET_DIR/storage/android-updates/archive
-            chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true
-            if [ -f $TARGET_DIR/database/MacOS.db ]; then
+            chmod -R 777 $TARGET_DIR/database $TARGET_DIR/storage 2>/dev/null || true
+            chmod 666 $TARGET_DIR/database/*.db* 2>/dev/null || true
+            if [ -f $TARGET_DIR/database/MacOS.db ] && [ -s $TARGET_DIR/database/MacOS.db ]; then
               cp $TARGET_DIR/database/MacOS.db \
                  $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db
               echo '✅ Database backed up'
             else
-              echo '⚠️  No database file found to backup.'
+              echo '⚠️  No valid non-empty database file found to backup.'
+              LATEST_BACKUP=$(ls -t $TARGET_DIR/database/backups/MacOS_backup_*.db 2>/dev/null | head -n 1 || true)
+              if [ -n "$LATEST_BACKUP" ] && [ -s "$LATEST_BACKUP" ]; then
+                echo "🔄 Restoring from latest backup: $LATEST_BACKUP..."
+                cp "$LATEST_BACKUP" $TARGET_DIR/database/MacOS.db
+                chmod 666 $TARGET_DIR/database/MacOS.db
+              fi
             fi
           "
 

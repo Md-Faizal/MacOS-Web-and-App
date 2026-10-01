@@ -52,14 +52,24 @@ module.exports = function(db, permissionsHelper = null) {
       permissionsHelper = require('./permissions')(db);
     } catch (_) {}
   }
-  const getOwner = () => db.prepare(`
-    SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
-           role, status, token_version
-    FROM users
-    WHERE role = 'owner'
-    ORDER BY created_at ASC
-    LIMIT 1
-  `).get();
+  const getOwner = () => {
+    return db.prepare(`
+      SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
+             role, status, token_version
+      FROM users
+      WHERE role = 'owner' OR id = 'admin_auth'
+      ORDER BY 
+        CASE 
+          WHEN id = 'admin_auth' AND password_hash IS NOT NULL THEN 0
+          WHEN role = 'owner' AND password_hash IS NOT NULL THEN 1
+          WHEN id = 'admin_auth' THEN 2
+          WHEN role = 'owner' THEN 3
+          ELSE 4
+        END,
+        created_at ASC
+      LIMIT 1
+    `).get() || null;
+  };
 
   const getUserById = (userId) => db.prepare(`
     SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
@@ -71,13 +81,41 @@ module.exports = function(db, permissionsHelper = null) {
   const findUserByIdentifier = (identifier) => {
     if (!identifier || typeof identifier !== 'string') return null;
     const normalizedIdentifier = identifier.trim().toLowerCase();
-    return db.prepare(`
+    
+    // Direct lookup by username, email, full name, or user id
+    const user = db.prepare(`
       SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
              role, status, token_version
       FROM users
-      WHERE LOWER(username) = ? OR LOWER(email) = ? OR LOWER(full_name) = ?
+      WHERE LOWER(username) = ? 
+         OR LOWER(email) = ? 
+         OR LOWER(full_name) = ?
+         OR id = ?
+         OR (role = 'owner' AND ? IN ('admin', 'owner', 'administrator'))
+      ORDER BY 
+        CASE 
+          WHEN LOWER(username) = ? THEN 0 
+          WHEN LOWER(email) = ? THEN 1 
+          WHEN id = 'admin_auth' THEN 2
+          WHEN role = 'owner' THEN 3
+          ELSE 4 
+        END
       LIMIT 1
-    `).get(normalizedIdentifier, normalizedIdentifier, normalizedIdentifier);
+    `).get(
+      normalizedIdentifier,
+      normalizedIdentifier,
+      normalizedIdentifier,
+      normalizedIdentifier,
+      normalizedIdentifier,
+      normalizedIdentifier,
+      normalizedIdentifier
+    );
+
+    if (user) return user;
+    if (['admin', 'owner', 'administrator'].includes(normalizedIdentifier)) {
+      return getOwner();
+    }
+    return null;
   };
 
   const createSessionToken = (user, deviceId, options = {}) => jwt.sign({

@@ -107,8 +107,19 @@ fi
 echo "📁 Ensuring host data and storage directories exist..."
 mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
     storage/wallpapers/builtin storage/wallpapers/marketplace storage/wallpapers/custom storage/temp_uploads storage/android-updates/archive tools
-chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
+chmod -R 777 database storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
+chmod 666 database/*.db* 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
+
+# Auto-heal: If database is missing or empty, restore from newest backup if available
+if [ ! -f "database/MacOS.db" ] || [ ! -s "database/MacOS.db" ]; then
+    LATEST_BACKUP=$(ls -t database/backups/MacOS_backup_*.db 2>/dev/null | head -n 1 || true)
+    if [ -n "$LATEST_BACKUP" ] && [ -s "$LATEST_BACKUP" ]; then
+        echo "🔄 Restoring database from latest backup: $LATEST_BACKUP..."
+        cp "$LATEST_BACKUP" database/MacOS.db
+        chmod 666 database/MacOS.db
+    fi
+fi
 
 # Auto-heal: Ensure .env exists and has required production authentication secrets
 if [ ! -f .env ] || ! grep -q "JWT_SECRET" .env; then
@@ -121,6 +132,7 @@ GOOGLE_ANDROID_CLIENT_ID=540487611333-2sknab3189vnh0f4dm6ftnsnddsl447f.apps.goog
 GOOGLE_REDIRECT_URI=https://mac.faizal.uk/api/auth/google/callback
 JWT_SECRET=Z2CuHUqZaKvWxBQ4etO2F-y8ZqAvUK0nixpJPnGprem79ceQPest-vd-YK0yuRJ9
 RECOVERY_KEY=ncfMIes1QCf9IDbR-7j3VW734VYdzw8zgjhLbG9ag_c
+OWNER_EMAIL=fazztronic@gmail.com
 PORT=3001
 HOST=0.0.0.0
 NODE_ENV=production
