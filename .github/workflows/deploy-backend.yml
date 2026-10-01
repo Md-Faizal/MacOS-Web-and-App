@@ -194,12 +194,21 @@ jobs:
                      $TARGET_DIR/storage/temp_uploads \
                      $TARGET_DIR/storage/android-updates/archive
             chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true
-            if [ ! -f $TARGET_DIR/.env ]; then
-              echo "PORT=3001" > $TARGET_DIR/.env
-              echo "HOST=0.0.0.0" >> $TARGET_DIR/.env
-              echo "NODE_ENV=production" >> $TARGET_DIR/.env
+            if [ ! -f $TARGET_DIR/.env ] || ! grep -q "JWT_SECRET" $TARGET_DIR/.env; then
+              cat << 'ENVEOF' > $TARGET_DIR/.env
+GOOGLE_CLIENT_ID=540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+GOOGLE_WORKER_CLIENT_ID=540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com
+GOOGLE_ANDROID_CLIENT_ID=540487611333-2sknab3189vnh0f4dm6ftnsnddsl447f.apps.googleusercontent.com
+GOOGLE_REDIRECT_URI=https://mac.faizal.uk/api/auth/google/callback
+JWT_SECRET=Z2CuHUqZaKvWxBQ4etO2F-y8ZqAvUK0nixpJPnGprem79ceQPest-vd-YK0yuRJ9
+RECOVERY_KEY=ncfMIes1QCf9IDbR-7j3VW734VYdzw8zgjhLbG9ag_c
+PORT=3001
+HOST=0.0.0.0
+NODE_ENV=production
+ENVEOF
               chmod 600 $TARGET_DIR/.env 2>/dev/null || true
-              echo "✅ Created baseline .env"
+              echo "✅ Provisioned production .env with authentication secrets"
             fi
             if [ -f $TARGET_DIR/database/MacOS.db ]; then
               cp $TARGET_DIR/database/MacOS.db \

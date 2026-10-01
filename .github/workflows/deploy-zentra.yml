@@ -134,8 +134,14 @@ jobs:
           echo "   Time : $TIMESTAMP"
           echo "======================================================"
 
-          # Ensure target directory exists on VM
-          ssh production "mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist"
+          # Ensure target directory exists on VM and erp.faizal.uk vhost is enabled
+          ssh production "
+            mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist
+            if [ ! -f /etc/nginx/sites-enabled/erp.faizal.uk ] && [ -f $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh ]; then
+              echo '🔧 Auto-activating erp.faizal.uk nginx vhost...'
+              bash $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh 2>/dev/null || true
+            fi
+          "
 
           # Rsync ONLY the built dist — no Docker restart needed.
           # The backend containers volume-mount this path directly.

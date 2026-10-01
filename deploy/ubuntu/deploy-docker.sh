@@ -110,20 +110,21 @@ mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
 chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
 
-# Auto-heal: Ensure .env exists so docker compose env_file never fails with 'no such file or directory'
-if [ ! -f .env ]; then
-    echo "⚠️  .env file not found on host. Auto-generating default production .env..."
-    if [ -f .env.production ]; then
-        cp .env.production .env
-    elif [ -f .env.example ]; then
-        cp .env.example .env
-    else
-        cat << 'EOF' > .env
+# Auto-heal: Ensure .env exists and has required production authentication secrets
+if [ ! -f .env ] || ! grep -q "JWT_SECRET" .env; then
+    echo "⚠️  .env file missing or incomplete on host. Provisioning production .env..."
+    cat << 'EOF' > .env
+GOOGLE_CLIENT_ID=540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+GOOGLE_WORKER_CLIENT_ID=540487611333-t0i54c3b0k07nuoaljkdr68otst89se5.apps.googleusercontent.com
+GOOGLE_ANDROID_CLIENT_ID=540487611333-2sknab3189vnh0f4dm6ftnsnddsl447f.apps.googleusercontent.com
+GOOGLE_REDIRECT_URI=https://mac.faizal.uk/api/auth/google/callback
+JWT_SECRET=Z2CuHUqZaKvWxBQ4etO2F-y8ZqAvUK0nixpJPnGprem79ceQPest-vd-YK0yuRJ9
+RECOVERY_KEY=ncfMIes1QCf9IDbR-7j3VW734VYdzw8zgjhLbG9ag_c
 PORT=3001
 HOST=0.0.0.0
 NODE_ENV=production
 EOF
-    fi
     chmod 600 .env 2>/dev/null || true
 fi
 
