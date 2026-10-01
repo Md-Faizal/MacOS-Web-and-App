@@ -888,6 +888,17 @@ class LedgerView {
           folderBtn.style.cssText = 'font-size: 10px; padding: 4px 8px; background: #ffffff; color: #000000; border: 1px solid #000000; border-radius: 2px; cursor: pointer; margin-left: 12px; font-weight: 700; font-family: "Courier New", monospace; vertical-align: middle;';
           folderBtn.onclick = () => this.setExportFolder(selectedCustomer);
           customerHeader.appendChild(folderBtn);
+          // Async: highlight button if a folder is already saved for this customer
+          if (window.LedgerFileUtils) {
+            window.LedgerFileUtils.getHandle(selectedCustomer).then(handle => {
+              if (handle && document.getElementById('setLedgerFolderBtn') === folderBtn) {
+                folderBtn.innerHTML = `✅ ${handle.name}`;
+                folderBtn.style.background = '#e8f5e9';
+                folderBtn.style.borderColor = '#4CAF50';
+                folderBtn.style.color = '#2e7d32';
+              }
+            }).catch(() => {});
+          }
         }
         
         if (headerContainer && !headerContainer.querySelector('#shareLedgerBtn')) {
@@ -2727,7 +2738,22 @@ class LedgerView {
     if (!customerName) return;
     const handle = await window.LedgerFileUtils.pickDirectory(customerName);
     if (handle) {
-      alert(`✓ Export folder set for ${customerName}:\n${handle.name}`);
+      // Update button appearance to confirm the folder is saved
+      const folderBtn = document.getElementById('setLedgerFolderBtn');
+      if (folderBtn) {
+        folderBtn.innerHTML = `✅ ${handle.name}`;
+        folderBtn.style.background = '#e8f5e9';
+        folderBtn.style.borderColor = '#4CAF50';
+        folderBtn.style.color = '#2e7d32';
+      }
+      // Show toast instead of blocking alert
+      const toastId = 'folder-set-toast-' + Date.now();
+      const toast = document.createElement('div');
+      toast.id = toastId;
+      toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#4CAF50;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;font-family:"Courier New",monospace;';
+      toast.textContent = `✓ Export folder set for ${customerName}: ${handle.name}`;
+      document.body.appendChild(toast);
+      setTimeout(() => { const el = document.getElementById(toastId); if (el) el.remove(); }, 4000);
     }
   }
 

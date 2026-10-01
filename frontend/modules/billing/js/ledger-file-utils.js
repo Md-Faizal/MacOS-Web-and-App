@@ -62,22 +62,24 @@ class LedgerFileUtils {
    */
   static async exportToLocation(customerName, fileName, blob) {
     try {
-      // 1. Try to get remembered directory handle
-      const handle = await this.getHandle(customerName);
-      
-      if (handle) {
-        // Attempt to verify/request permission (requires user gesture context)
-        const hasPermission = await this.verifyPermission(handle);
-        if (hasPermission) {
-          const fileHandle = await handle.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          return { success: true, folder: handle.name, fileName: fileName };
+      // 1. Try to get remembered directory handle (only when we have a customer key)
+      if (customerName) {
+        const handle = await this.getHandle(customerName);
+        
+        if (handle) {
+          // Attempt to verify/request permission (requires user gesture context)
+          const hasPermission = await this.verifyPermission(handle);
+          if (hasPermission) {
+            const fileHandle = await handle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return { success: true, folder: handle.name, fileName: fileName };
+          }
         }
       }
 
-      // 2. If no handle OR permission denied, use showSaveFilePicker (Save As)
+      // 2. If no handle OR permission denied OR no customer name, use showSaveFilePicker (Save As)
       if (window.showSaveFilePicker) {
         const pickerOptions = {
           suggestedName: fileName,
@@ -123,12 +125,20 @@ class LedgerFileUtils {
       alert('Your browser does not support picking a directory.');
       return null;
     }
+    if (!customerName) {
+      console.warn('LedgerFileUtils.pickDirectory: customerName is required to save a folder preference.');
+      return null;
+    }
     
     try {
-      const handle = await window.showDirectoryPicker();
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await this.saveHandle(customerName, handle);
       return handle;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        // User cancelled the picker — not an error
+        return null;
+      }
       console.error('Directory Picker Error:', error);
       return null;
     }
