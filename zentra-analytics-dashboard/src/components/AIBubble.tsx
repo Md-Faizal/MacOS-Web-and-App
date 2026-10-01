@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../lib/auth';
 
 type UserLike = {
@@ -116,7 +116,7 @@ const formatAssistantText = (text: string) => {
     if (/^-\s+/.test(trimmed) || /^\*\s+/.test(trimmed)) {
       if (listType !== 'ul') {
         if (listType) {
-          formatted.push(listType === 'ol' ? '</ol>' : '</ul>');
+          formatted.push('</ol>');
         }
         formatted.push('<ul class="zentra-ai-list">');
         listType = 'ul';
@@ -128,7 +128,7 @@ const formatAssistantText = (text: string) => {
     if (/^\d+\.\s+/.test(trimmed)) {
       if (listType !== 'ol') {
         if (listType) {
-          formatted.push(listType === 'ol' ? '</ol>' : '</ul>');
+          formatted.push('</ul>');
         }
         formatted.push('<ol class="zentra-ai-list">');
         listType = 'ol';

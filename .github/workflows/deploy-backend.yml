@@ -59,6 +59,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: production-vm-deploy
+  cancel-in-progress: false
+
 jobs:
   pre-flight-check:
     name: 🛡️ Pre-Flight Verification
@@ -190,6 +194,13 @@ jobs:
                      $TARGET_DIR/storage/temp_uploads \
                      $TARGET_DIR/storage/android-updates/archive
             chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true
+            if [ ! -f $TARGET_DIR/.env ]; then
+              echo "PORT=3001" > $TARGET_DIR/.env
+              echo "HOST=0.0.0.0" >> $TARGET_DIR/.env
+              echo "NODE_ENV=production" >> $TARGET_DIR/.env
+              chmod 600 $TARGET_DIR/.env 2>/dev/null || true
+              echo "✅ Created baseline .env"
+            fi
             if [ -f $TARGET_DIR/database/MacOS.db ]; then
               cp $TARGET_DIR/database/MacOS.db \
                  $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db

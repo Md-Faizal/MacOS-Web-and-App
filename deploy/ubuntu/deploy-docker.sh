@@ -110,6 +110,23 @@ mkdir -p database/backups CloudStorage Wallpapers backend/uploads logs \
 chmod -R 777 storage logs backend/uploads CloudStorage Wallpapers 2>/dev/null || true
 chmod -R 755 tools 2>/dev/null || true
 
+# Auto-heal: Ensure .env exists so docker compose env_file never fails with 'no such file or directory'
+if [ ! -f .env ]; then
+    echo "⚠️  .env file not found on host. Auto-generating default production .env..."
+    if [ -f .env.production ]; then
+        cp .env.production .env
+    elif [ -f .env.example ]; then
+        cp .env.example .env
+    else
+        cat << 'EOF' > .env
+PORT=3001
+HOST=0.0.0.0
+NODE_ENV=production
+EOF
+    fi
+    chmod 600 .env 2>/dev/null || true
+fi
+
 # 2.7 Smart build detection:
 # Routine deploys update frontend/backend/dist via host volume mounts with zero build time.
 # Rebuild is ONLY triggered if dependencies changed, image is missing, or explicitly forced.
