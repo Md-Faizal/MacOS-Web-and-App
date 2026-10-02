@@ -205,6 +205,10 @@ main() {
         exit 0
     fi
 
+    log "Active slot recovery failed. Attempting to start standby slot $standby_slot..."
+    attempt_recreate_slot "$standby_slot"
+    sleep 5
+
     if check_slot "$standby_slot"; then
         write_count "$ACTIVE_FAILURES_FILE" 0
         write_count "$STANDBY_SUCCESS_FILE" 0
