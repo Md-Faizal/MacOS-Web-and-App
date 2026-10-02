@@ -1,4 +1,9 @@
-import { windowGeometryManager } from './window-geometry-contract.js';
+import {
+  WindowGeometryManager,
+  windowGeometryManager,
+  WindowResizer,
+  windowResizer
+} from './window-geometry-contract.js';
 
 /**
  * AppWindow - A standardized macOS-style window component
@@ -67,8 +72,13 @@ class AppWindow {
     this.resizable = config.resizable ?? (presetDefaults.resizable !== undefined ? presetDefaults.resizable : true);
     this.fixedSize = config.fixedSize ?? (presetDefaults.fixedSize !== undefined ? presetDefaults.fixedSize : false);
     
+    // Default open maximized behavior:
+    // Any resizable window opens maximized by default unless explicitly configured otherwise
+    this.startMaximized = config.startMaximized ?? (!this.fixedSize && this.resizable);
+    this.isManuallyResized = false; // Tracks if user has manually dragged or resized this window
+
     // Window state
-    this.windowState = 'normal'; // 'normal', 'minimized', 'maximized'
+    this.windowState = this.startMaximized ? 'maximized' : 'normal';
     this.originalPosition = { top: 0, left: 0, width: 0, height: 0 };
     this.isAnimating = false; // Prevent rapid consecutive calls
     this.appBarIcon = null;
@@ -81,24 +91,69 @@ class AppWindow {
     this.createWindow();
     this.setupElements();
     
-    // Apply initial dimensions from config (before other setup methods)
-    // Handle both numeric (pixels) and string (vh/vw/%) values
-    this.window.style.width = typeof this.initialWidth === 'string' ? this.initialWidth : this.initialWidth + 'px';
-    this.window.style.height = typeof this.initialHeight === 'string' ? this.initialHeight : this.initialHeight + 'px';
-    
-    // Apply positioning if provided (for mobile dynamic sizing)
-    if (this.initialTop) {
-      this.window.style.top = typeof this.initialTop === 'string' ? this.initialTop : this.initialTop + 'px';
-    }
-    if (this.initialLeft) {
-      this.window.style.left = typeof this.initialLeft === 'string' ? this.initialLeft : this.initialLeft + 'px';
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const resizer = window.windowResizer || windowResizer;
+    const workArea = resizer?.getWorkAreaRect() || geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+
+    // Default restore frame if the user un-maximizes later
+    const initialW = typeof this.initialWidth === 'number' ? this.initialWidth : parseInt(this.initialWidth, 10) || 700;
+    const initialH = typeof this.initialHeight === 'number' ? this.initialHeight : parseInt(this.initialHeight, 10) || 520;
+    const restoreW = Math.min(initialW, Math.max(300, window.innerWidth - 40));
+    const restoreH = Math.min(initialH, Math.max(220, window.innerHeight - 80));
+    const restoreLeft = Math.max(8, Math.round((window.innerWidth - restoreW) / 2));
+    const restoreTop = Math.max(typeof workArea.top === 'number' ? workArea.top : 36, Math.round((window.innerHeight - restoreH) / 2));
+
+    this.restoreFrame = {
+      left: `${restoreLeft}px`,
+      top: `${restoreTop}px`,
+      width: `${restoreW}px`,
+      height: `${restoreH}px`,
+      transform: 'none'
+    };
+
+    if (this.startMaximized && !this.fixedSize) {
+      this.windowState = 'maximized';
+      const leftStr = typeof workArea.left === 'number' ? `${workArea.left}px` : workArea.left;
+      const topStr = typeof workArea.top === 'number' ? `${workArea.top}px` : workArea.top;
+      const widthStr = typeof workArea.width === 'number' ? `${workArea.width}px` : workArea.width;
+      const heightStr = typeof workArea.height === 'number' ? `${workArea.height}px` : workArea.height;
+
+      this.window.style.left = leftStr;
+      this.window.style.top = topStr;
+      this.window.style.width = widthStr;
+      this.window.style.height = heightStr;
+      this.window.style.transform = 'none';
+      this.window.classList.add('maximized');
+      this.window.dataset.windowState = 'maximized';
+    } else {
+      this.windowState = 'normal';
+      this.window.style.width = typeof this.initialWidth === 'string' ? this.initialWidth : this.initialWidth + 'px';
+      this.window.style.height = typeof this.initialHeight === 'string' ? this.initialHeight : this.initialHeight + 'px';
+      
+      // Apply positioning if provided (for mobile dynamic sizing)
+      if (this.initialTop) {
+        this.window.style.top = typeof this.initialTop === 'string' ? this.initialTop : this.initialTop + 'px';
+      }
+      if (this.initialLeft) {
+        this.window.style.left = typeof this.initialLeft === 'string' ? this.initialLeft : this.initialLeft + 'px';
+      }
     }
     
     this.setupEventListeners();
     this.injectStyles();
     this.findAppBarIcon();
+    this.updateAppBarIconState();
     this.applyOpeningAnimation();
     
+    // Register with WindowResizer and WindowGeometryManager
+    if (resizer) {
+      resizer.register(this);
+    }
+    if (geomMgr) {
+      geomMgr.registerWindow(this.appId, this, this.window);
+      geomMgr.setState(this.appId, this.windowState);
+    }
+
     // Track this app as recently opened
     if (window.recentAppTracker) {
       window.recentAppTracker.trackAppOpen(this.appName, this.appId);
@@ -114,8 +169,14 @@ class AppWindow {
       // Fail silently if bringToFront isn't available yet
     }
 
-    // Listen for viewport resize to maintain window constraints
-    window.addEventListener('resize', () => this.constrainWindowToViewport());
+    // Listen for viewport resize and fullscreen events to auto-adapt window
+    this._handleViewportResizeBound = () => this.handleViewportResize();
+    window.addEventListener('resize', this._handleViewportResizeBound);
+    document.addEventListener('fullscreenchange', this._handleViewportResizeBound);
+    document.addEventListener('webkitfullscreenchange', this._handleViewportResizeBound);
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', this._handleViewportResizeBound);
+    }
   }
 
   /**
@@ -132,10 +193,51 @@ class AppWindow {
   }
 
   applyOpeningAnimation() {
-    // Apply fade-in animation on opening
-    this.window.style.opacity = '1';
-    this.window.style.pointerEvents = 'auto';
-    this.window.style.animation = 'windowAppear 0.3s ease-out';
+    if (!this.window) return;
+    this.window.style.display = 'flex';
+    this.window.style.pointerEvents = 'none';
+    this.window.style.transformOrigin = 'center center';
+
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const dockTarget = geomMgr?.getDockIconRect(this.appId) || {
+      centerX: window.innerWidth / 2,
+      centerY: window.innerHeight - 32
+    };
+
+    const curRect = this.window.getBoundingClientRect();
+    const curCenterX = curRect.left + curRect.width / 2;
+    const curCenterY = curRect.top + curRect.height / 2;
+
+    const dx = Math.round(dockTarget.centerX - curCenterX);
+    const dy = Math.round(dockTarget.centerY - curCenterY);
+
+    // Gradual, smooth animated scale up to full window dimensions on desktop
+    const anim = this.window.animate([
+      {
+        transform: `translate3d(${dx}px, ${dy}px, 0) scale(0.05)`,
+        opacity: 0,
+        filter: 'blur(2px)'
+      },
+      {
+        transform: 'translate3d(0px, 0px, 0) scale(1)',
+        opacity: 1,
+        filter: 'blur(0px)'
+      }
+    ], {
+      duration: 440,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'forwards'
+    });
+
+    anim.onfinish = () => {
+      if (this.window) {
+        this.window.style.transform = 'none';
+        this.window.style.opacity = '1';
+        this.window.style.filter = 'none';
+        this.window.style.pointerEvents = 'auto';
+        anim.cancel();
+      }
+    };
   }
 
   createWindow() {
@@ -210,6 +312,13 @@ class AppWindow {
       }
     });
     this.maximizeBtn?.addEventListener('click', () => this.toggleMaximize());
+
+    // macOS Title Bar Double Click to toggle maximize/restore
+    this.titleBar?.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.app-traffic-lights') || e.target.closest('.traffic-light')) return;
+      if (!this.resizable || this.fixedSize) return;
+      this.toggleMaximize();
+    });
 
     // Drag window
     this.titleBar?.addEventListener('mousedown', (e) => {
@@ -292,6 +401,12 @@ class AppWindow {
         font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         user-select: none;
         overflow: hidden;
+      }
+
+      .app-window.maximized {
+        border-radius: 12px;
+        max-width: none !important;
+        max-height: none !important;
       }
 
       /* Dark theme for Calculator app */
@@ -581,11 +696,22 @@ class AppWindow {
       @keyframes windowAppear {
         from {
           opacity: 0;
-          transform: translate(-50%, -50%) scale(0.9);
+          transform: translate(-50%, -50%) scale(0.6);
         }
         to {
           opacity: 1;
           transform: translate(-50%, -50%) scale(1);
+        }
+      }
+
+      @keyframes windowAppearMaximized {
+        from {
+          opacity: 0;
+          transform: scale(0.6);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
         }
       }
 
@@ -782,6 +908,10 @@ class AppWindow {
       
       if (!isDragging && Math.hypot(dx, dy) > 5) {
         isDragging = true;
+        this.isManuallyResized = true;
+        const resizer = window.windowResizer || windowResizer;
+        resizer?.notifyManualDragStart(this);
+
         this.window.classList.add('is-dragging');
         
         shield = document.createElement('div');
@@ -851,8 +981,13 @@ class AppWindow {
         
         if (activeSnapZone.type === 'fullscreen') {
           this.windowState = 'maximized';
+          this.isManuallyResized = false;
+          const resizer = window.windowResizer || windowResizer;
+          resizer?.notifyMaximize(this);
           if (geomMgr) geomMgr.setState(this.appId, 'maximized');
           this.updateAppBarIconState();
+        } else {
+          this.isManuallyResized = true;
         }
         
         if (typeof this.applyFrame === 'function') {
@@ -898,6 +1033,10 @@ class AppWindow {
     const startHeight = rect.height;
     const startLeft = rect.left;
     const startTop = rect.top;
+
+    this.isManuallyResized = true;
+    const resizer = window.windowResizer || windowResizer;
+    resizer?.notifyManualResizeStart(this);
 
     const geomMgr = window.windowGeometryManager || windowGeometryManager;
     const workArea = geomMgr?.getWorkAreaRect() || { top: 32, left: 0, width: window.innerWidth, height: window.innerHeight };
@@ -1019,6 +1158,64 @@ class AppWindow {
   }
 
 
+  /**
+   * Handle viewport and screen size changes (fullscreen enter/exit, responsive testing, window resize)
+   * Auto-resizes maximized or un-resized windows to fill available work area without bottom gaps
+   * Preserves manual user adjustments until un-maximized or re-maximized
+   */
+  handleViewportResize(workArea = null) {
+    if (!this.window || this.windowState === 'closed' || this.windowState === 'minimized') return;
+
+    if (this.fixedSize) {
+      this.constrainWindowToViewport();
+      return;
+    }
+
+    const resizer = window.windowResizer || windowResizer;
+    const geomMgr = window.windowGeometryManager || windowGeometryManager;
+    const wa = workArea || resizer?.getWorkAreaRect() || geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+
+    const leftStr = typeof wa.left === 'number' ? `${wa.left}px` : wa.left;
+    const topStr = typeof wa.top === 'number' ? `${wa.top}px` : wa.top;
+    const widthStr = typeof wa.width === 'number' ? `${wa.width}px` : wa.width;
+    const heightStr = typeof wa.height === 'number' ? `${wa.height}px` : wa.height;
+
+    // RULE 2:
+    // If window is currently maximized OR has not been manually resized by the user:
+    // Auto-adapt to fill the work area (e.g. non-fullscreen to fullscreen, or responsive testing viewport resize)
+    if (this.windowState === 'maximized' || !this.isManuallyResized) {
+      this.windowState = 'maximized';
+      this.window.dataset.windowState = 'maximized';
+      this.window.classList.add('maximized');
+
+      this.applyFrame({
+        left: leftStr,
+        top: topStr,
+        width: widthStr,
+        height: heightStr,
+        transform: 'none'
+      }, { animate: false });
+
+      if (geomMgr) geomMgr.setState(this.appId, 'maximized');
+      this.updateAppBarIconState();
+    } else if (typeof this.windowState === 'string' && this.windowState.startsWith('tiled-')) {
+      switch (this.windowState) {
+        case 'tiled-left': this.tileLeft?.(); break;
+        case 'tiled-right': this.tileRight?.(); break;
+        case 'tiled-top': this.tileTop?.(); break;
+        case 'tiled-bottom': this.tileBottom?.(); break;
+        case 'tiled-top-left': this.tileTopLeft?.(); break;
+        case 'tiled-top-right': this.tileTopRight?.(); break;
+        case 'tiled-bottom-left': this.tileBottomLeft?.(); break;
+        case 'tiled-bottom-right': this.tileBottomRight?.(); break;
+        default: this.constrainWindowToViewport();
+      }
+    } else {
+      // User manually resized / moved window: keep custom size & position within viewport
+      this.constrainWindowToViewport();
+    }
+  }
+
   constrainWindowToViewport() {
     /**
      * Checks and adjusts position and size to prevent window from going outside viewport
@@ -1068,10 +1265,10 @@ class AppWindow {
 
     // Adjust size if window is larger than viewport
     if (width > vw) {
-      width = Math.max(400, vw - 20); // Keep 10px margin on each side
+      width = Math.min(width, Math.max(260, vw - 16));
     }
     if (height > vh) {
-      height = Math.max(300, vh - 20); // Keep 10px margin on each side
+      height = Math.min(height, Math.max(180, vh - 20));
     }
 
     // Apply adjustments to window
@@ -1109,7 +1306,7 @@ class AppWindow {
     if (!frame || !this.window) return;
     const previous = this.window.style.transition;
     if (animate) {
-      this.window.style.transition = 'left 320ms cubic-bezier(0.16, 1, 0.3, 1), top 320ms cubic-bezier(0.16, 1, 0.3, 1), width 320ms cubic-bezier(0.16, 1, 0.3, 1), height 320ms cubic-bezier(0.16, 1, 0.3, 1), transform 320ms cubic-bezier(0.16, 1, 0.3, 1)';
+      this.window.style.transition = 'left 400ms cubic-bezier(0.16, 1, 0.3, 1), top 400ms cubic-bezier(0.16, 1, 0.3, 1), width 400ms cubic-bezier(0.16, 1, 0.3, 1), height 400ms cubic-bezier(0.16, 1, 0.3, 1), transform 400ms cubic-bezier(0.16, 1, 0.3, 1)';
     }
     this.window.style.transform = frame.transform || 'none';
     this.window.style.left = frame.left;
@@ -1119,14 +1316,15 @@ class AppWindow {
     if (animate) {
       setTimeout(() => {
         if (this.window) this.window.style.transition = previous;
-      }, 340);
+      }, 420);
     }
   }
 
   getWorkAreaFrame() {
+    const resizer = window.windowResizer || windowResizer;
     const geomMgr = window.windowGeometryManager || windowGeometryManager;
-    if (geomMgr) {
-      const rect = geomMgr.getWorkAreaRect();
+    const rect = resizer?.getWorkAreaRect() || geomMgr?.getWorkAreaRect();
+    if (rect) {
       return {
         left: rect.left + 'px',
         top: rect.top + 'px',
@@ -1137,15 +1335,19 @@ class AppWindow {
     }
     const topBar = document.querySelector('.top-bar')?.getBoundingClientRect();
     const dock = document.querySelector('.dock-container');
-    const dockRect = dock && !dock.classList.contains('dock-hidden') ? dock.getBoundingClientRect() : null;
-    const inset = 10;
-    const top = Math.max(inset, (topBar?.bottom || 0) + 4);
-    const bottom = dockRect && dockRect.top > top ? dockRect.top - 10 : window.innerHeight - inset;
+    const isDockHidden = dock?.classList.contains('dock-hidden') || false;
+    const dockRect = dock && !isDockHidden ? dock.getBoundingClientRect() : null;
+    const margin = window.innerWidth < 480 ? 4 : 8;
+    const top = Math.max(margin, (topBar ? Math.round(topBar.bottom) : 0) + margin);
+    let bottom = window.innerHeight - margin;
+    if (dockRect && dockRect.top > top + 100) {
+      bottom = Math.round(dockRect.top - margin);
+    }
     return {
-      left: inset + 'px',
+      left: margin + 'px',
       top: top + 'px',
-      width: Math.max(320, window.innerWidth - inset * 2) + 'px',
-      height: Math.max(220, bottom - top) + 'px',
+      width: Math.max(260, window.innerWidth - margin * 2) + 'px',
+      height: Math.max(180, bottom - top) + 'px',
       transform: 'none'
     };
   }
@@ -2741,14 +2943,24 @@ class AppWindow {
     const dx = Math.round(dockTarget.centerX - curCenterX);
     const dy = Math.round(dockTarget.centerY - curCenterY);
 
-    this.window.style.transition = 'transform 360ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 280ms ease, filter 360ms ease';
-    this.window.style.transformOrigin = 'center center';
     this.window.style.pointerEvents = 'none';
+    this.window.style.transformOrigin = 'center center';
 
-    requestAnimationFrame(() => {
-      this.window.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.05)`;
-      this.window.style.opacity = '0';
-      this.window.style.filter = 'blur(1px)';
+    const anim = this.window.animate([
+      {
+        transform: 'translate3d(0px, 0px, 0) scale(1)',
+        opacity: 1,
+        filter: 'blur(0px)'
+      },
+      {
+        transform: `translate3d(${dx}px, ${dy}px, 0) scale(0.05)`,
+        opacity: 0,
+        filter: 'blur(1.5px)'
+      }
+    ], {
+      duration: 400,
+      easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)',
+      fill: 'forwards'
     });
 
     this.windowState = 'minimized';
@@ -2758,54 +2970,53 @@ class AppWindow {
     this.updateAppBarIconState();
     this.callbacks.onMinimize?.();
 
-    setTimeout(() => {
+    anim.onfinish = () => {
       if (this.window && this.windowState === 'minimized') {
         this.window.style.display = 'none';
         this.window.style.transform = 'none';
         this.window.style.filter = 'none';
+        anim.cancel();
       }
       this.isAnimating = false;
-    }, 380);
+    };
   }
 
   restore() {
     if (this.isAnimating) return;
     this.isAnimating = true;
 
-    const restoreFrame = this.minimizedFrame || this.restoreFrame || this.captureFrame();
     const targetState = this.minimizedFromState === 'minimized' ? 'normal' : this.minimizedFromState;
     this.windowState = targetState;
 
+    const resizer = window.windowResizer || windowResizer;
     const geomMgr = window.windowGeometryManager || windowGeometryManager;
     const dockTarget = geomMgr?.getDockIconRect(this.appId) || {
       centerX: window.innerWidth / 2,
       centerY: window.innerHeight - 32
     };
 
+    let restoreFrame = this.minimizedFrame || this.restoreFrame || this.captureFrame();
+    if (targetState === 'maximized') {
+      const wa = resizer?.getWorkAreaRect() || geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+      restoreFrame = {
+        left: typeof wa.left === 'number' ? `${wa.left}px` : wa.left,
+        top: typeof wa.top === 'number' ? `${wa.top}px` : wa.top,
+        width: typeof wa.width === 'number' ? `${wa.width}px` : wa.width,
+        height: typeof wa.height === 'number' ? `${wa.height}px` : wa.height,
+        transform: 'none'
+      };
+    }
+
     this.applyFrame(restoreFrame, { animate: false });
     this.window.style.display = 'flex';
-    void this.window.offsetHeight;
+    this.window.style.pointerEvents = 'none';
+    this.window.style.transformOrigin = 'center center';
 
     const curRect = this.window.getBoundingClientRect();
     const curCenterX = curRect.left + curRect.width / 2;
     const curCenterY = curRect.top + curRect.height / 2;
     const dx = Math.round(dockTarget.centerX - curCenterX);
     const dy = Math.round(dockTarget.centerY - curCenterY);
-
-    this.window.style.transition = 'none';
-    this.window.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.08)`;
-    this.window.style.opacity = '0';
-    this.window.style.filter = 'blur(2px)';
-    this.window.style.pointerEvents = 'none';
-
-    void this.window.offsetHeight;
-
-    this.window.style.transition = 'transform 360ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease, filter 360ms ease';
-    requestAnimationFrame(() => {
-      this.window.style.transform = 'none';
-      this.window.style.opacity = '1';
-      this.window.style.filter = 'none';
-    });
 
     if (geomMgr) {
       geomMgr.setState(this.appId, targetState);
@@ -2814,19 +3025,43 @@ class AppWindow {
     this.updateAppBarIconState();
     this.callbacks.onOpen?.();
 
-    setTimeout(() => {
+    // Symmetrical, gradual, fluid scale up from dock icon to desktop
+    const anim = this.window.animate([
+      {
+        transform: `translate3d(${dx}px, ${dy}px, 0) scale(0.05)`,
+        opacity: 0,
+        filter: 'blur(2px)'
+      },
+      {
+        transform: 'translate3d(0px, 0px, 0) scale(1)',
+        opacity: 1,
+        filter: 'blur(0px)'
+      }
+    ], {
+      duration: 440,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'forwards'
+    });
+
+    anim.onfinish = () => {
       if (this.window) {
+        this.window.style.transform = 'none';
+        this.window.style.opacity = '1';
+        this.window.style.filter = 'none';
         this.window.style.pointerEvents = 'auto';
-        this.window.style.transition = '';
+        anim.cancel();
       }
       this.isAnimating = false;
-    }, 380);
+    };
   }
 
   toggleMaximize() {
+    const resizer = window.windowResizer || windowResizer;
     const geomMgr = window.windowGeometryManager || windowGeometryManager;
     if (this.windowState === 'maximized') {
       this.windowState = 'normal';
+      this.isManuallyResized = true;
+      resizer?.notifyRestore(this);
       const frameToRestore = this.restoreFrame || this.captureFrame();
       this.applyFrame(frameToRestore, { animate: true });
       if (geomMgr) geomMgr.setState(this.appId, 'normal');
@@ -2834,12 +3069,18 @@ class AppWindow {
     } else {
       this.restoreFrame = this.captureFrame();
       this.windowState = 'maximized';
-      const workArea = geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+      this.isManuallyResized = false;
+      resizer?.notifyMaximize(this);
+      const workArea = resizer?.getWorkAreaRect() || geomMgr?.getWorkAreaRect() || this.getWorkAreaFrame();
+      const leftStr = typeof workArea.left === 'number' ? `${workArea.left}px` : workArea.left;
+      const topStr = typeof workArea.top === 'number' ? `${workArea.top}px` : workArea.top;
+      const widthStr = typeof workArea.width === 'number' ? `${workArea.width}px` : workArea.width;
+      const heightStr = typeof workArea.height === 'number' ? `${workArea.height}px` : workArea.height;
       this.applyFrame({
-        left: `${workArea.left}px`,
-        top: `${workArea.top}px`,
-        width: `${workArea.width}px`,
-        height: `${workArea.height}px`,
+        left: leftStr,
+        top: topStr,
+        width: widthStr,
+        height: heightStr,
         transform: 'none'
       }, { animate: true });
       if (geomMgr) geomMgr.setState(this.appId, 'maximized');
@@ -2851,6 +3092,21 @@ class AppWindow {
     const container = document.getElementById(this.containerId);
     if (container) {
       this.windowState = 'closed';
+
+      if (this._handleViewportResizeBound) {
+        window.removeEventListener('resize', this._handleViewportResizeBound);
+        document.removeEventListener('fullscreenchange', this._handleViewportResizeBound);
+        document.removeEventListener('webkitfullscreenchange', this._handleViewportResizeBound);
+        if (window.screen?.orientation) {
+          window.screen.orientation.removeEventListener('change', this._handleViewportResizeBound);
+        }
+      }
+
+      const resizer = window.windowResizer || windowResizer;
+      if (resizer) {
+        resizer.unregister(this);
+      }
+
       const geomMgr = window.windowGeometryManager || windowGeometryManager;
       if (geomMgr) {
         geomMgr.setState(this.appId, 'closed');
@@ -3006,6 +3262,20 @@ class AppWindow {
   }
 }
 
-// Export for use in other files
-window.AppWindow = AppWindow;
+// Expose all consolidated window engine components globally
+if (typeof window !== 'undefined') {
+  window.WindowGeometryManager = WindowGeometryManager;
+  window.windowGeometryManager = windowGeometryManager;
+  window.WindowResizer = WindowResizer;
+  window.windowResizer = windowResizer;
+  window.AppWindow = AppWindow;
+}
+
+export {
+  WindowGeometryManager,
+  windowGeometryManager,
+  WindowResizer,
+  windowResizer,
+  AppWindow
+};
 export default AppWindow;

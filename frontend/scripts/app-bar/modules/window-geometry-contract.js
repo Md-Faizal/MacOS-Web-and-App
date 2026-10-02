@@ -1,7 +1,12 @@
 /**
  * WindowGeometryContract & WindowGeometryManager
- * Authoritative single source of truth for macOS window geometry, state machine,
- * work area calculation, Dock target anchoring, and z-index layering.
+ * 
+ * Authoritative single source of truth for:
+ * 1. Desktop work area calculations (accounting for top bar and floating dock)
+ * 2. Viewport & screen size change tracking (fullscreen enter/exit, window resize, responsive testing)
+ * 3. Auto-adaptation for maximized / un-resized windows (eliminates empty space at bottom)
+ * 4. Tracking manual resize/drag interactions (auto-resizing until user manually resizes)
+ * 5. Window state machine, snap overlay preview, z-index layering, and dock anchor coordinates
  */
 
 export class WindowGeometryManager {
@@ -10,11 +15,48 @@ export class WindowGeometryManager {
     this.baseZIndex = 900000;
     this.currentZIndex = 900000;
     this.snapOverlay = null;
+    this.rafId = null;
+    this.debounceTimer = null;
 
-    // Viewport resize tracking
-    window.addEventListener('resize', () => {
-      this.handleViewportResize();
-    });
+    this.initListeners();
+  }
+
+  /**
+   * Initialize screen change and resize listeners
+   */
+  initListeners() {
+    if (typeof window === 'undefined') return;
+
+    const handleScreenChange = () => {
+      if (this.rafId) cancelAnimationFrame(this.rafId);
+      this.rafId = requestAnimationFrame(() => {
+        this.handleViewportResize();
+      });
+
+      // Staged checks for fullscreen transitions and layout settle
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        this.handleViewportResize();
+      }, 60);
+
+      setTimeout(() => {
+        this.handleViewportResize();
+      }, 180);
+
+      setTimeout(() => {
+        this.handleViewportResize();
+      }, 350);
+    };
+
+    window.addEventListener('resize', handleScreenChange);
+    document.addEventListener('fullscreenchange', handleScreenChange);
+    document.addEventListener('webkitfullscreenchange', handleScreenChange);
+    document.addEventListener('mozfullscreenchange', handleScreenChange);
+    document.addEventListener('MSFullscreenChange', handleScreenChange);
+
+    if (window.screen?.orientation) {
+      window.screen.orientation.addEventListener('change', handleScreenChange);
+    }
   }
 
   /**
@@ -24,14 +66,14 @@ export class WindowGeometryManager {
     if (!appId || !element) return null;
 
     const existing = this.windows.get(appId);
-    const rect = element.getBoundingClientRect();
+    const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : { left: 100, top: 80, width: 600, height: 500 };
 
     const record = existing || {
       appId,
       instance,
       element,
       state: instance.windowState || 'normal',
-      spaceId: element.dataset.spaceId || 'desktop-1',
+      spaceId: element.dataset?.spaceId || 'desktop-1',
       normalRect: {
         left: rect.left || 100,
         top: rect.top || 80,
@@ -40,15 +82,32 @@ export class WindowGeometryManager {
       },
       restoreRect: null,
       preMinimizeRect: null,
-      zIndex: parseInt(window.getComputedStyle(element).zIndex, 10) || this.baseZIndex,
+      zIndex: (typeof window !== 'undefined' ? parseInt(window.getComputedStyle(element).zIndex, 10) : 900000) || this.baseZIndex,
       isFocused: false
     };
 
     record.instance = instance;
     record.element = element;
+    record.state = instance.windowState || record.state;
     this.windows.set(appId, record);
 
     return record;
+  }
+
+  /**
+   * Convenience registration method for AppWindow instance
+   */
+  register(instance) {
+    if (!instance) return null;
+    return this.registerWindow(instance.appId, instance, instance.window || instance.element);
+  }
+
+  /**
+   * Convenience unregister method
+   */
+  unregister(instanceOrAppId) {
+    const appId = typeof instanceOrAppId === 'string' ? instanceOrAppId : instanceOrAppId?.appId;
+    if (appId) this.unregisterWindow(appId);
   }
 
   /**
@@ -82,7 +141,7 @@ export class WindowGeometryManager {
    */
   captureGeometry(appId) {
     const record = this.windows.get(appId);
-    if (!record || !record.element) return null;
+    if (!record || !record.element || !record.element.getBoundingClientRect) return null;
     const rect = record.element.getBoundingClientRect();
     return {
       left: Math.round(rect.left),
@@ -108,38 +167,42 @@ export class WindowGeometryManager {
 
   /**
    * Calculate exact macOS desktop work area
-   * Respects top status bar, bottom dock (visible vs autohidden), and screen padding.
+   * Respects top bar, bottom dock (visible vs autohidden), and screen padding.
+   * Eliminates empty bottom space when entering/exiting fullscreen.
    */
   getWorkAreaRect(margin = 8) {
+    if (typeof window === 'undefined') return { left: 8, top: 36, width: 1200, height: 750, bottom: 786, margin: 8 };
+
+    const isMobile = window.innerWidth < 480;
+    const actualMargin = isMobile ? 4 : margin;
+
     const topBar = document.querySelector('.top-bar')?.getBoundingClientRect();
     const dock = document.querySelector('.dock-container');
     const isDockHidden = dock?.classList.contains('dock-hidden') || false;
     const dockRect = dock && !isDockHidden ? dock.getBoundingClientRect() : null;
 
-    const top = Math.max(margin, (topBar ? topBar.bottom : 0) + margin);
-    const bottom = dockRect && dockRect.top > top 
-      ? Math.max(top + 200, dockRect.top - margin)
-      : window.innerHeight - margin;
+    const top = Math.max(actualMargin, (topBar ? Math.round(topBar.bottom) : 0) + actualMargin);
+    let bottom = window.innerHeight - actualMargin;
+    if (dockRect && dockRect.top > top + 100) {
+      bottom = Math.round(dockRect.top - actualMargin);
+    }
 
-    const left = margin;
-    const width = Math.max(320, window.innerWidth - (margin * 2));
-    const height = Math.max(240, bottom - top);
+    const left = actualMargin;
+    const width = Math.max(260, window.innerWidth - (actualMargin * 2));
+    const height = Math.max(180, bottom - top);
 
-    return { left, top, width, height };
+    return { left, top, width, height, bottom, margin: actualMargin };
   }
 
   /**
    * Get bounding box of Dock item for this app to anchor minimize/restore animations
    */
   getDockIconRect(appId) {
+    if (typeof window === 'undefined') return { left: 0, top: 0, width: 48, height: 48, centerX: 24, centerY: 24 };
+
     let icon = document.getElementById(`app-${appId}`);
-    if (!icon) {
-      icon = document.getElementById(`app-${appId}-recent`);
-    }
-    if (!icon) {
-      // Look for data-app attribute or similar
-      icon = document.querySelector(`.dock-item[data-app="${appId}"]`);
-    }
+    if (!icon) icon = document.getElementById(`app-${appId}-recent`);
+    if (!icon) icon = document.querySelector(`.dock-item[data-app="${appId}"]`);
 
     if (icon) {
       const rect = icon.getBoundingClientRect();
@@ -155,7 +218,6 @@ export class WindowGeometryManager {
       }
     }
 
-    // Fallback: center-bottom of screen or dock container
     const dock = document.querySelector('.dock-container') || document.querySelector('.dock');
     if (dock) {
       const rect = dock.getBoundingClientRect();
@@ -190,7 +252,6 @@ export class WindowGeometryManager {
     record.zIndex = this.currentZIndex;
     record.element.style.zIndex = record.zIndex;
 
-    // Update focus state across all records
     this.windows.forEach((rec, id) => {
       rec.isFocused = (id === appId);
       if (rec.element) {
@@ -199,7 +260,9 @@ export class WindowGeometryManager {
       }
     });
 
-    window.dispatchEvent(new CustomEvent('app-window-focused', { detail: { appId } }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('app-window-focused', { detail: { appId } }));
+    }
   }
 
   /**
@@ -216,20 +279,22 @@ export class WindowGeometryManager {
       record.element.classList.toggle('minimized', state === 'minimized');
     }
 
-    // Update app-bar and dock
-    if (typeof window.setAppState === 'function') {
+    if (typeof window !== 'undefined' && typeof window.setAppState === 'function') {
       window.setAppState(appId, state === 'normal' || state === 'maximized' ? 'open' : state);
     }
 
-    window.dispatchEvent(new CustomEvent('app-window-state-changed', {
-      detail: { appId, state }
-    }));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('app-window-state-changed', {
+        detail: { appId, state }
+      }));
+    }
   }
 
   /**
    * Show snap preview zone overlay on hover
    */
   showSnapPreview(rect) {
+    if (typeof document === 'undefined') return;
     if (!this.snapOverlay) {
       this.snapOverlay = document.createElement('div');
       this.snapOverlay.className = 'macos-snap-preview-overlay';
@@ -275,12 +340,16 @@ export class WindowGeometryManager {
   }
 
   /**
-   * Handle global viewport resize to clamp normal and maximized windows
+   * Handle global viewport and screen size changes
+   * Auto-resizes maximized / un-resized windows to fill available space
    */
   handleViewportResize() {
     const workArea = this.getWorkAreaRect();
     this.windows.forEach((record) => {
-      if (record.state === 'maximized' && record.instance?.applyFrame) {
+      if (!record.instance || !record.element) return;
+      if (typeof record.instance.handleViewportResize === 'function') {
+        record.instance.handleViewportResize(workArea);
+      } else if (record.state === 'maximized' && record.instance?.applyFrame) {
         record.instance.applyFrame({
           left: `${workArea.left}px`,
           top: `${workArea.top}px`,
@@ -288,13 +357,81 @@ export class WindowGeometryManager {
           height: `${workArea.height}px`,
           transform: 'none'
         }, { animate: false });
-      } else if (record.state === 'normal' && record.instance?.constrainWindowToViewport) {
+      } else if (record.instance?.constrainWindowToViewport) {
         record.instance.constrainWindowToViewport();
       }
     });
   }
+
+  /**
+   * Track manual resizing start
+   */
+  notifyManualResizeStart(appInstance) {
+    if (!appInstance) return;
+    appInstance.isManuallyResized = true;
+
+    if (appInstance.windowState === 'maximized') {
+      appInstance.windowState = 'normal';
+      if (appInstance.window) {
+        appInstance.window.dataset.windowState = 'normal';
+        appInstance.window.classList.remove('maximized');
+      }
+      appInstance.updateAppBarIconState?.();
+      this.setState(appInstance.appId, 'normal');
+    }
+  }
+
+  /**
+   * Track manual dragging start
+   */
+  notifyManualDragStart(appInstance) {
+    if (!appInstance) return;
+    appInstance.isManuallyResized = true;
+
+    if (appInstance.windowState === 'maximized') {
+      appInstance.windowState = 'normal';
+      if (appInstance.window) {
+        appInstance.window.dataset.windowState = 'normal';
+        appInstance.window.classList.remove('maximized');
+      }
+      appInstance.updateAppBarIconState?.();
+      this.setState(appInstance.appId, 'normal');
+    }
+  }
+
+  /**
+   * Handle explicit maximize action
+   */
+  notifyMaximize(appInstance) {
+    if (!appInstance) return;
+    appInstance.isManuallyResized = false;
+    appInstance.windowState = 'maximized';
+  }
+
+  /**
+   * Handle restore to normal window
+   */
+  notifyRestore(appInstance) {
+    if (!appInstance) return;
+    appInstance.isManuallyResized = true;
+    appInstance.windowState = 'normal';
+  }
 }
 
 // Global singleton instance
-window.windowGeometryManager = window.windowGeometryManager || new WindowGeometryManager();
-export const windowGeometryManager = window.windowGeometryManager;
+export const windowGeometryManager = (typeof window !== 'undefined' && window.windowGeometryManager)
+  ? window.windowGeometryManager
+  : new WindowGeometryManager();
+
+// Standard aliases for backwards compatibility
+export const WindowResizer = WindowGeometryManager;
+export const windowResizer = windowGeometryManager;
+
+if (typeof window !== 'undefined') {
+  window.WindowGeometryManager = WindowGeometryManager;
+  window.windowGeometryManager = windowGeometryManager;
+  window.WindowResizer = WindowResizer;
+  window.windowResizer = windowResizer;
+}
+
+export default windowGeometryManager;
