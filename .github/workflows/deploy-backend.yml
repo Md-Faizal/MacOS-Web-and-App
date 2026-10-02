@@ -1,4 +1,4 @@
-﻿name: 🚀 Deploy — Backend & MacOS Frontend
+name: 🚀 Deploy — Backend & MacOS Frontend
 
 # ──────────────────────────────────────────────────────────────
 # Triggers:
@@ -55,6 +55,9 @@ on:
       SSH_HOST: { required: true }
       SSH_USER: { required: true }
       SSH_KEY:  { required: true }
+      SSH_HOST_VM2: { required: false }
+      SSH_USER_VM2: { required: false }
+      SSH_KEY_VM2:  { required: false }
 
 permissions:
   contents: write
@@ -147,10 +150,14 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY:  ${{ secrets.SSH_KEY }}
+          SSH_HOST_VM2: ${{ secrets.SSH_HOST_VM2 }}
+          SSH_USER_VM2: ${{ secrets.SSH_USER_VM2 }}
+          SSH_KEY_VM2:  ${{ secrets.SSH_KEY_VM2 }}
           DRY_RUN:  ${{ inputs.dry_run }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
+          # 1. Setup Primary VM Key
           if echo "$SSH_KEY" | grep -q "^LS0t"; then
             echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
           elif echo "$SSH_KEY" | grep -q "BEGIN"; then
@@ -160,11 +167,41 @@ jobs:
           fi
           chmod 600 ~/.ssh/deploy_key
 
-          cat <<'SSHEOF' > ~/.ssh/config
+          # 2. Setup Secondary VM Key (re-uses deploy_key if SSH_KEY_VM2 not set)
+          if [ -n "$SSH_KEY_VM2" ]; then
+            if echo "$SSH_KEY_VM2" | grep -q "^LS0t"; then
+              echo "$SSH_KEY_VM2" | base64 -d > ~/.ssh/deploy_key_vm2
+            elif echo "$SSH_KEY_VM2" | grep -q "BEGIN"; then
+              echo "$SSH_KEY_VM2" | tr -d '\r' > ~/.ssh/deploy_key_vm2
+            else
+              echo "$SSH_KEY_VM2" | base64 -d > ~/.ssh/deploy_key_vm2 2>/dev/null || echo "$SSH_KEY_VM2" > ~/.ssh/deploy_key_vm2
+            fi
+          else
+            cp ~/.ssh/deploy_key ~/.ssh/deploy_key_vm2
+          fi
+          chmod 600 ~/.ssh/deploy_key_vm2
+
+          VM2_USER="${SSH_USER_VM2:-$SSH_USER}"
+          TARGET_DIR="/home/ubuntu/MacOS-Production"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+          cat <<SSHEOF > ~/.ssh/config
           Host production
-            HostName ${{ secrets.SSH_HOST }}
-            User ${{ secrets.SSH_USER }}
+            HostName $SSH_HOST
+            User $SSH_USER
             IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+
+          Host vm2
+            HostName $SSH_HOST_VM2
+            User $VM2_USER
+            IdentityFile ~/.ssh/deploy_key_vm2
             Port 22
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
@@ -175,17 +212,16 @@ jobs:
           SSHEOF
           chmod 600 ~/.ssh/config
 
-          TARGET_DIR="/home/ubuntu/MacOS-Production"
-          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-
+          # ──────────────────────────────────────────────────────────
+          # 🚀 DEPLOY TO PRIMARY VM 1 (my-mac)
+          # ──────────────────────────────────────────────────────────
           echo "======================================================"
-          echo "🚀 Backend + MacOS Frontend Deployment"
-          echo "   Host : $SSH_USER@$SSH_HOST"
+          echo "🚀 Primary VM 1 Deployment: $SSH_USER@$SSH_HOST"
           echo "   Path : $TARGET_DIR"
           echo "   Time : $TIMESTAMP"
           echo "======================================================"
 
-          echo "Step 1: Remote directory permissions and pre-deploy DB snapshot..."
+          echo "Step 1: Remote directory permissions and pre-deploy DB snapshot on VM 1..."
           ssh production "
             mkdir -p $TARGET_DIR/database/backups \
                      $TARGET_DIR/storage/wallpapers/builtin \
@@ -197,9 +233,9 @@ jobs:
             chmod 666 $TARGET_DIR/database/*.db* 2>/dev/null || true
             if [ -f $TARGET_DIR/database/MacOS.db ] && [ -s $TARGET_DIR/database/MacOS.db ]; then
               cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db 2>/dev/null || true
-              echo DB pre-deploy snapshot taken
+              echo 'DB pre-deploy snapshot taken'
             else
-              echo WARNING: No database file found. DB is Docker-volume managed. Safe to continue.
+              echo 'WARNING: No database file found. DB is Docker-volume managed. Safe to continue.'
             fi
           "
 
@@ -208,7 +244,7 @@ jobs:
             exit 0
           fi
 
-          echo "📦 Step 2: Syncing files to VM..."
+          echo "📦 Step 2: Syncing files to Primary VM 1..."
           rsync -avz --delete \
             --exclude='/database/*.db*' \
             --exclude='/database/backups' \
@@ -229,16 +265,83 @@ jobs:
             --exclude='/zentra-analytics-dashboard/dist' \
             ./ production:"$TARGET_DIR/"
 
-          echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment..."
+          echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment on VM 1..."
           ssh production bash -s <<'REMOTE'
           set -e
           cd /home/ubuntu/MacOS-Production
           chmod +x deploy/ubuntu/deploy-docker.sh
           ./deploy/ubuntu/deploy-docker.sh
           echo "======================================================"
-          echo "🎉 Backend + MacOS Frontend — Deployment Complete!"
+          echo "🎉 Primary VM 1 — Deployment Complete!"
           echo "======================================================"
           REMOTE
+
+          # ──────────────────────────────────────────────────────────
+          # 🚀 DEPLOY TO SECONDARY VM 2 (cos) [Optional / Auto]
+          # ──────────────────────────────────────────────────────────
+          if [ -n "$SSH_HOST_VM2" ]; then
+            echo ""
+            echo "======================================================"
+            echo "🚀 Secondary VM 2 Deployment: $VM2_USER@$SSH_HOST_VM2"
+            echo "   Path : $TARGET_DIR"
+            echo "   Time : $(date +'%Y%m%d_%H%M%S')"
+            echo "======================================================"
+
+            echo "Step 1: Remote directory setup on VM 2..."
+            ssh vm2 "
+              mkdir -p $TARGET_DIR/database/backups \
+                       $TARGET_DIR/storage/wallpapers/builtin \
+                       $TARGET_DIR/storage/wallpapers/marketplace \
+                       $TARGET_DIR/storage/wallpapers/custom \
+                       $TARGET_DIR/storage/temp_uploads \
+                       $TARGET_DIR/storage/android-updates/archive \
+                       $TARGET_DIR/logs \
+                       $TARGET_DIR/Wallpapers \
+                       $TARGET_DIR/CloudStorage
+              chmod -R 777 $TARGET_DIR/database $TARGET_DIR/storage 2>/dev/null || true
+              chmod 666 $TARGET_DIR/database/*.db* 2>/dev/null || true
+              if [ -f $TARGET_DIR/database/MacOS.db ] && [ -s $TARGET_DIR/database/MacOS.db ]; then
+                cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db 2>/dev/null || true
+              fi
+            "
+
+            echo "📦 Step 2: Syncing files to Secondary VM 2..."
+            rsync -avz --delete \
+              --exclude='/database/*.db*' \
+              --exclude='/database/backups' \
+              --exclude='/backups' \
+              --exclude='/backend/uploads' \
+              --exclude='/CloudStorage' \
+              --exclude='/Wallpapers' \
+              --exclude='/storage/wallpapers/custom' \
+              --exclude='/storage/temp_uploads' \
+              --exclude='/storage/android-updates' \
+              --exclude='/logs' \
+              --exclude='/tmp' \
+              --exclude='/.env*' \
+              --exclude='/.git' \
+              --exclude='/android' \
+              --exclude='/node_modules' \
+              --exclude='/zentra-analytics-dashboard/node_modules' \
+              --exclude='/zentra-analytics-dashboard/dist' \
+              ./ vm2:"$TARGET_DIR/"
+
+            echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment on VM 2..."
+            ssh vm2 bash -s <<'REMOTE_VM2'
+            set -e
+            cd /home/ubuntu/MacOS-Production
+            chmod +x deploy/ubuntu/deploy-docker.sh
+            ./deploy/ubuntu/deploy-docker.sh
+            echo "======================================================"
+            echo "🎉 Secondary VM 2 — Deployment Complete!"
+            echo "======================================================"
+            REMOTE_VM2
+
+            echo "Verifying VM 2 health..."
+            ssh vm2 "curl -f -s -m 5 http://127.0.0.1:3001/api/health >/dev/null || curl -f -s -m 5 http://127.0.0.1:3004/api/health >/dev/null" && echo "✅ VM 2 is live and healthy!"
+          else
+            echo "ℹ️ SSH_HOST_VM2 secret not configured. Skipping Secondary VM deployment."
+          fi
 
       - name: ✅ Smoke Test — mac.faizal.uk
         run: |

@@ -33,6 +33,9 @@ on:
       SSH_HOST: { required: true }
       SSH_USER: { required: true }
       SSH_KEY:  { required: true }
+      SSH_HOST_VM2: { required: false }
+      SSH_USER_VM2: { required: false }
+      SSH_KEY_VM2:  { required: false }
 
 concurrency:
   group: production-vm-deploy
@@ -93,10 +96,16 @@ jobs:
       - name: 🔌 Setup SSH
         if: ${{ !inputs.dry_run }}
         env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+          SSH_HOST_VM2: ${{ secrets.SSH_HOST_VM2 }}
+          SSH_USER_VM2: ${{ secrets.SSH_USER_VM2 }}
+          SSH_KEY_VM2:  ${{ secrets.SSH_KEY_VM2 }}
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
+          # Primary VM key
           if echo "$SSH_KEY" | grep -q "^LS0t"; then
             echo "$SSH_KEY" | base64 -d > ~/.ssh/deploy_key
           elif echo "$SSH_KEY" | grep -q "BEGIN"; then
@@ -106,11 +115,39 @@ jobs:
           fi
           chmod 600 ~/.ssh/deploy_key
 
-          cat <<'SSHEOF' > ~/.ssh/config
+          # Secondary VM key (defaults to same key if not provided)
+          if [ -n "$SSH_KEY_VM2" ]; then
+            if echo "$SSH_KEY_VM2" | grep -q "^LS0t"; then
+              echo "$SSH_KEY_VM2" | base64 -d > ~/.ssh/deploy_key_vm2
+            elif echo "$SSH_KEY_VM2" | grep -q "BEGIN"; then
+              echo "$SSH_KEY_VM2" | tr -d '\r' > ~/.ssh/deploy_key_vm2
+            else
+              echo "$SSH_KEY_VM2" | base64 -d > ~/.ssh/deploy_key_vm2 2>/dev/null || echo "$SSH_KEY_VM2" > ~/.ssh/deploy_key_vm2
+            fi
+          else
+            cp ~/.ssh/deploy_key ~/.ssh/deploy_key_vm2
+          fi
+          chmod 600 ~/.ssh/deploy_key_vm2
+
+          VM2_USER="${SSH_USER_VM2:-$SSH_USER}"
+
+          cat <<SSHEOF > ~/.ssh/config
           Host production
-            HostName ${{ secrets.SSH_HOST }}
-            User ${{ secrets.SSH_USER }}
+            HostName $SSH_HOST
+            User $SSH_USER
             IdentityFile ~/.ssh/deploy_key
+            Port 22
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+
+          Host vm2
+            HostName $SSH_HOST_VM2
+            User $VM2_USER
+            IdentityFile ~/.ssh/deploy_key_vm2
             Port 22
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
@@ -123,18 +160,21 @@ jobs:
 
       - name: 📦 Rsync Zentra dist to VM
         if: ${{ !inputs.dry_run }}
+        env:
+          SSH_HOST_VM2: ${{ secrets.SSH_HOST_VM2 }}
+          SSH_USER_VM2: ${{ secrets.SSH_USER_VM2 }}
         run: |
           TARGET_DIR="/home/ubuntu/MacOS-Production"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
           echo "======================================================"
-          echo "🎯 Zentra Dashboard Deployment"
+          echo "🎯 Zentra Dashboard Deployment — Primary VM 1"
           echo "   Host : ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
           echo "   Path : $TARGET_DIR/zentra-analytics-dashboard/dist/"
           echo "   Time : $TIMESTAMP"
           echo "======================================================"
 
-          # Ensure target directory exists on VM and erp.faizal.uk vhost is enabled
+          # Ensure target directory exists on VM 1 and erp.faizal.uk vhost is enabled
           ssh production "
             mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist
             if [ ! -f /etc/nginx/sites-enabled/erp.faizal.uk ] && [ -f $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh ]; then
@@ -144,14 +184,39 @@ jobs:
           "
 
           # Rsync ONLY the built dist — no Docker restart needed.
-          # The backend containers volume-mount this path directly.
-          echo "📤 Syncing zentra-analytics-dashboard/dist/ to VM..."
+          echo "📤 Syncing zentra-analytics-dashboard/dist/ to Primary VM 1..."
           rsync -avz --delete \
             zentra-analytics-dashboard/dist/ \
             production:"$TARGET_DIR/zentra-analytics-dashboard/dist/"
 
-          echo "✅ Zentra dist deployed — no container restart required."
-          echo "   Backend picks up new files immediately via volume mount."
+          echo "✅ Zentra dist deployed to Primary VM 1."
+
+          # Deploy to VM 2 if configured
+          if [ -n "$SSH_HOST_VM2" ]; then
+            echo ""
+            echo "======================================================"
+            echo "🎯 Zentra Dashboard Deployment — Secondary VM 2"
+            echo "   Host : ${SSH_USER_VM2:-${{ secrets.SSH_USER }}}@$SSH_HOST_VM2"
+            echo "   Path : $TARGET_DIR/zentra-analytics-dashboard/dist/"
+            echo "   Time : $(date +'%Y%m%d_%H%M%S')"
+            echo "======================================================"
+
+            ssh vm2 "
+              mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist
+              if [ ! -f /etc/nginx/sites-enabled/erp.faizal.uk ] && [ -f $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh ]; then
+                echo '🔧 Auto-activating erp.faizal.uk nginx vhost on VM 2...'
+                bash $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh 2>/dev/null || true
+              fi
+            "
+
+            rsync -avz --delete \
+              zentra-analytics-dashboard/dist/ \
+              vm2:"$TARGET_DIR/zentra-analytics-dashboard/dist/"
+
+            echo "✅ Zentra dist deployed to Secondary VM 2."
+          else
+            echo "ℹ️ SSH_HOST_VM2 not configured. Skipping Secondary VM Zentra deploy."
+          fi
 
       - name: ✅ Smoke Test — erp.faizal.uk
         if: ${{ !inputs.dry_run }}

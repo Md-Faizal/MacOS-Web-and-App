@@ -205,7 +205,11 @@ fi
 # 5. Run full verification suite on target port
 echo "🧪 Running comprehensive endpoint verification suite against target..."
 if [ -f "tools/verify-docker.js" ]; then
-    node tools/verify-docker.js "$TARGET_PORT"
+    if command -v node >/dev/null 2>&1; then
+        node tools/verify-docker.js "$TARGET_PORT"
+    else
+        docker exec "macos-server-$TARGET_SLOT" node tools/verify-docker.js 3001
+    fi
 fi
 
 # 6. Atomic Nginx Switch: Update upstream config and reload Nginx

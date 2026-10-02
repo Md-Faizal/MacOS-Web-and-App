@@ -39,7 +39,8 @@ set -e  # Exit on error
 
 # Configuration - from environment or defaults
 DEV_DIR="${DEV_DIR:-.}"  # Current directory if DEV_DIR not set
-SSH_TARGET="${SSH_TARGET:-}"  # SSH alias or user@host (e.g., my-mac or ubuntu@192.168.1.100)
+SSH_TARGET="${SSH_TARGET:-my-mac}"  # Primary VM alias (e.g. my-mac)
+SSH_TARGET_VM2="${SSH_TARGET_VM2:-cos}"  # Secondary VM alias (e.g. cos)
 UBUNTU_PROD_DIR="${UBUNTU_PROD_DIR:-/home/ubuntu/MacOS-Production}"  # Matches Windows: C:\Users\HP\Desktop\MacOS Project\MacOS-Production
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 DRY_RUN=false
