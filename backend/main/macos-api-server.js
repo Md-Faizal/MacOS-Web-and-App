@@ -119,6 +119,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-request-id', 'Accept'],
 }));
 
+const trafficMonitor = require('../core/telemetry/traffic-monitor');
+app.use(trafficMonitor.middleware());
+
 const { attachResponseHelpers, sendSuccess, sendError } = require('../shared/api/response');
 const { toLegacyShape } = require('../shared/api/compat');
 const auditService = authDepartment.audit;
@@ -664,6 +667,13 @@ for (const route of routes) {
         req.path === '/marketplace';
 
       if (publicRead) return next();
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
+  } else if (route.path === '/api/settings') {
+    // Allow public GET to telemetry and cluster health status for monitoring dashboards
+    app.use(route.path, (req, res, next) => {
+      const publicTelemetry = req.method === 'GET' && (req.path === '/network/telemetry' || req.path === '/health/status');
+      if (publicTelemetry) return next();
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else {

@@ -27,7 +27,11 @@ module.exports = function(router, handlers) {
   
   // Docker Cluster Management
   router.post('/docker/switch', handlers.switchClusterSlot);
+  router.post('/docker/toggle-vm', handlers.togglePrimaryVm);
   router.post('/docker/restart', handlers.restartClusterSlot);
+  
+  // Real-Time Network & Cluster Telemetry
+  router.get('/network/telemetry', handlers.getNetworkTelemetry);
   
   return router;
 };

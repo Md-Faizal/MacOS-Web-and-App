@@ -11,6 +11,7 @@ import { BillingSettingsComponent } from './BillingSettings.js';
 import { WorkerAccessComponent as AdminComponent } from './workers/WorkerAccessComponent.js';
 import { SystemLogsComponent } from './SystemLogs.js';
 import { WallpaperComponent } from './WallpaperComponent.js';
+import { NetworkTrafficComponent } from './NetworkTrafficComponent.js';
 
 export class SettingsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
@@ -34,7 +35,8 @@ export class SettingsApp extends AppWindow {
       return `${baseKey}__user_${safeUserId}`;
     };
 
-    this.currentSection = 'appearance';
+    const urlSection = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('section') : null;
+    this.currentSection = callbacks?.section || callbacks?.params?.section || urlSection || 'appearance';
     
     // Sidebar-based Navigation Order
     this.sectionsOrder = [
@@ -63,6 +65,9 @@ export class SettingsApp extends AppWindow {
     if (this.adminModule?.destroy) {
       this.adminModule.destroy();
     }
+    if (this.networkTrafficModule?.destroy) {
+      this.networkTrafficModule.destroy();
+    }
     super.close();
   }
 
@@ -82,6 +87,9 @@ export class SettingsApp extends AppWindow {
                 this.cleanupWallpapers();
                 if (this.adminModule?.destroy) {
                   this.adminModule.destroy();
+                }
+                if (this.networkTrafficModule?.destroy) {
+                  this.networkTrafficModule.destroy();
                 }
                 observer.disconnect();
               }
@@ -359,9 +367,10 @@ export class SettingsApp extends AppWindow {
           <span>Bluetooth</span>
         </button>
 
-        <button class="settings-sidebar-item" data-section="network">
-          <span class="settings-sidebar-icon">🌐</span>
-          <span>Network</span>
+        <button class="settings-sidebar-item" data-section="network" id="sidebar-item-network">
+          <span class="settings-sidebar-icon">⚡</span>
+          <span>Network & Cluster</span>
+          <span class="settings-sidebar-badge-live">LIVE</span>
         </button>
 
         <button class="settings-sidebar-item" data-section="energy">
@@ -609,15 +618,7 @@ export class SettingsApp extends AppWindow {
         </div>
       </div>
 
-      <div class="settings-panel hidden" id="network-panel">
-        <div class="settings-section">
-          <div class="settings-section-title">Network</div>
-          <div class="appearance-item">
-            <div class="appearance-label">Network Settings</div>
-            <div class="appearance-value">Connected</div>
-          </div>
-        </div>
-      </div>
+      <div class="settings-panel hidden" id="network-panel"></div>
 
       <div class="settings-panel hidden" id="energy-panel">
         <div class="settings-section">
@@ -819,6 +820,22 @@ export class SettingsApp extends AppWindow {
 
       <div class="settings-panel hidden" id="systemhealth-panel">
         <div class="settings-section">
+          <!-- Flow Visualizer Shortcut Banner -->
+          <div class="health-card" style="cursor: pointer; border-left: 3.5px solid #00f0ff; background: rgba(0, 240, 255, 0.05); margin-bottom: 14px;" id="bannerOpenNetworkFlow">
+            <div class="health-card-header">
+              <span class="health-icon">⚡</span>
+              <div class="health-card-info" style="flex: 1;">
+                <div class="health-label" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span style="font-weight: 700; color: var(--settings-text);">Multi-VM Blue/Green Cluster Flow</span>
+                  <span class="settings-sidebar-badge-live">LIVE</span>
+                </div>
+                <div class="health-value" style="font-size: 11px; color: var(--settings-text-secondary); margin-top: 2px;">
+                  Real-time 2-VM Dual-Container Traffic Visualizer • Click to open ➔
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-section-title">Backend & Database Status</div>
           
           <!-- Backend Status Card -->
@@ -1050,6 +1067,14 @@ export class SettingsApp extends AppWindow {
         this.switchSection(item.getAttribute('data-section'));
       });
     });
+
+    // Flow visualizer banner in systemhealth panel
+    const bannerFlow = document.getElementById('bannerOpenNetworkFlow');
+    if (bannerFlow) {
+      bannerFlow.addEventListener('click', () => {
+        this.switchSection('network');
+      });
+    }
 
     // Toggle switches
     this.toggles.forEach(toggle => {
@@ -1883,7 +1908,7 @@ export class SettingsApp extends AppWindow {
       'admin': 'Worker Access',
       'wifi': 'Wi-Fi',
       'bluetooth': 'Bluetooth',
-      'network': 'Network',
+      'network': 'Network & Cluster Flow',
       'energy': 'Energy',
       'general': 'General',
       'billing': 'Billing & Invoices',
@@ -1959,6 +1984,11 @@ export class SettingsApp extends AppWindow {
           this.billingModule = new BillingSettingsComponent(panel);
         }
         this.billingModule.render();
+      } else if (section === 'network') {
+        if (!this.networkTrafficModule) {
+          this.networkTrafficModule = new NetworkTrafficComponent(panel);
+        }
+        this.networkTrafficModule.render();
       } else if (section === 'android-update') {
         this.bindAndroidUpdateControls();
       }
@@ -2203,5 +2233,14 @@ export class SettingsApp extends AppWindow {
 // Backwards-compat: allow non-module pages to access it
 if (typeof window !== 'undefined') {
   window.SettingsApp = SettingsApp;
+
+  window.openNetworkFlow = () => {
+    if (window.currentSettingsApp) {
+      window.currentSettingsApp.bringToFront?.();
+      window.currentSettingsApp.switchSection('network');
+    } else if (typeof AppWindow !== 'undefined' && typeof window.SettingsApp !== 'undefined') {
+      AppWindow.launchApp('settings', window.SettingsApp, 'settingsAppContainer', { section: 'network' });
+    }
+  };
 }
 

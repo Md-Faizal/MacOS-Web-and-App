@@ -1017,6 +1017,10 @@ module.exports = function(db) {
 
         // If target is down or cannot be reached directly, try executing the host deploy-docker.sh via sudo if available
         const { exec } = require('child_process');
+        const trafficMonitor = require('../../../core/telemetry/traffic-monitor');
+        trafficMonitor.setActiveSlot(nextSlot);
+
+        // Run deployment script in background if in linux environment
         exec(`bash deploy/ubuntu/deploy-docker.sh --target ${nextSlot}`, (err, stdout, stderr) => {
           if (err) {
             console.warn('[Docker Cluster] Deploy script execution notice:', err.message);
@@ -1037,6 +1041,23 @@ module.exports = function(db) {
       }
     },
 
+    togglePrimaryVm: (req, res) => {
+      try {
+        const trafficMonitor = require('../../../core/telemetry/traffic-monitor');
+        const currentVm = trafficMonitor.primaryVm || 'vm1';
+        const nextVm = currentVm === 'vm1' ? 'vm2' : 'vm1';
+        trafficMonitor.setPrimaryVm(nextVm);
+        res.json({
+          success: true,
+          previousVm: currentVm,
+          currentVm: nextVm,
+          message: `Cluster routed to ${nextVm === 'vm1' ? 'Oracle VM 1 (Primary)' : 'Oracle VM 2 (Disaster Recovery)'}`
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+
     restartClusterSlot: (req, res) => {
       try {
         const currentSlot = process.env.DOCKER_SLOT || (process.env.PORT === '3004' ? 'green' : 'blue');
@@ -1047,6 +1068,20 @@ module.exports = function(db) {
         res.json({ success: true, slot: currentSlot, message: `Container macos-server-${currentSlot} restarting...` });
       } catch (error) {
         res.status(500).json({ error: error.message });
+      }
+    },
+
+    getNetworkTelemetry: (req, res) => {
+      try {
+        const trafficMonitor = require('../../../core/telemetry/traffic-monitor');
+        const snapshot = trafficMonitor.getSnapshot();
+        res.json({
+          success: true,
+          ...snapshot
+        });
+      } catch (error) {
+        console.error('[Settings] getNetworkTelemetry error:', error);
+        res.status(500).json({ success: false, error: error.message });
       }
     }
   };
