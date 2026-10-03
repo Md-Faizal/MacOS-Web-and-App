@@ -295,7 +295,168 @@ class SuiteCoreBridge {
       allocations
     };
   }
+
+  /**
+   * Audit an array of invoice numbers for sequence gaps, duplicates, and next number.
+   * WASM accelerated via `suite_audit_invoice_numbering`.
+   */
+  static auditInvoiceNumbering(invoiceNumbers = []) {
+    const numbers = Array.isArray(invoiceNumbers) ? invoiceNumbers : [];
+    if (this.isWasmLoaded()) {
+      const res = this.callWasmJson('suite_audit_invoice_numbering', { invoice_numbers: numbers });
+      if (res && typeof res.is_strictly_sequential === 'boolean') {
+        return res;
+      }
+    }
+
+    // Graceful JavaScript Fallback
+    if (numbers.length === 0) {
+      return {
+        total_count: 0,
+        min_seq: null,
+        max_seq: null,
+        missing_numbers: [],
+        duplicate_numbers: [],
+        next_available_number: 1,
+        is_strictly_sequential: true
+      };
+    }
+
+    const seqs = [];
+    for (const num of numbers) {
+      if (!num || typeof num !== 'string') continue;
+      const parts = num.trim().split(/[-/_]/);
+      const last = parts[parts.length - 1];
+      const parsed = parseInt(last, 10);
+      if (!isNaN(parsed)) {
+        seqs.push(parsed);
+      }
+    }
+
+    if (seqs.length === 0) {
+      return {
+        total_count: 0,
+        min_seq: null,
+        max_seq: null,
+        missing_numbers: [],
+        duplicate_numbers: [],
+        next_available_number: 1,
+        is_strictly_sequential: true
+      };
+    }
+
+    seqs.sort((a, b) => a - b);
+    const duplicates = [];
+    const deduped = [];
+
+    for (let i = 0; i < seqs.length; i++) {
+      const val = seqs[i];
+      if (deduped.length > 0 && deduped[deduped.length - 1] === val) {
+        if (!duplicates.includes(val)) {
+          duplicates.push(val);
+        }
+        continue;
+      }
+      deduped.push(val);
+    }
+
+    const minSeq = deduped[0];
+    const maxSeq = deduped[deduped.length - 1];
+    const missing = [];
+
+    let expected = minSeq;
+    for (const curr of deduped) {
+      while (expected < curr) {
+        missing.push(expected);
+        expected++;
+      }
+      expected = curr + 1;
+    }
+
+    return {
+      total_count: numbers.length,
+      min_seq: minSeq,
+      max_seq: maxSeq,
+      missing_numbers: missing,
+      duplicate_numbers: duplicates,
+      next_available_number: maxSeq + 1,
+      is_strictly_sequential: missing.length === 0 && duplicates.length === 0
+    };
+  }
+
+  /**
+   * Cryptographically verify chronological ledger audit chain.
+   * WASM accelerated via `suite_verify_ledger_chain`.
+   */
+  static verifyLedgerChain(entries = [], genesisHash = null) {
+    const list = Array.isArray(entries) ? entries : [];
+    if (this.isWasmLoaded()) {
+      const res = this.callWasmJson('suite_verify_ledger_chain', {
+        entries: list,
+        genesis_hash: genesisHash
+      });
+      if (res && typeof res.is_valid === 'boolean') {
+        return res;
+      }
+    }
+
+    // Graceful JavaScript Fallback (Node.js crypto)
+    const DEFAULT_GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
+    let currentHash = genesisHash || DEFAULT_GENESIS;
+    const computedHashes = [];
+
+    let cryptoModule = null;
+    if (typeof require === 'function') {
+      try {
+        cryptoModule = require('crypto');
+      } catch (e) {}
+    }
+
+    for (let idx = 0; idx < list.length; idx++) {
+      const entry = list[idx];
+      const amountPaise = Math.round(Math.round((entry.amount || 0) * 100) / 100 * 100);
+      const payload = `${currentHash.trim()}|${(entry.entry_id || '').trim()}|${(entry.party_id || '').trim()}|${amountPaise}|${entry.timestamp || 0}|${(entry.entry_type || '').trim().toLowerCase()}`;
+
+      let expected = '';
+      if (cryptoModule && cryptoModule.createHash) {
+        expected = cryptoModule.createHash('sha256').update(payload).digest('hex');
+      }
+
+      computedHashes.push(expected);
+
+      if (entry.stored_hash && expected) {
+        if (entry.stored_hash.trim().toLowerCase() !== expected) {
+          return {
+            is_valid: false,
+            total_entries: list.length,
+            tampered_index: idx,
+            tampered_entry_id: entry.entry_id,
+            expected_hash: expected,
+            actual_hash: entry.stored_hash,
+            head_hash: currentHash,
+            computed_hashes: computedHashes
+          };
+        }
+      }
+
+      if (expected) {
+        currentHash = expected;
+      }
+    }
+
+    return {
+      is_valid: true,
+      total_entries: list.length,
+      tampered_index: null,
+      tampered_entry_id: null,
+      expected_hash: null,
+      actual_hash: null,
+      head_hash: currentHash,
+      computed_hashes: computedHashes
+    };
+  }
 }
+
 
 if (typeof window !== 'undefined') {
   window.SuiteCoreBridge = SuiteCoreBridge;

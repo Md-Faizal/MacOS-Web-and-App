@@ -260,3 +260,69 @@ pub unsafe extern "C" fn suite_deplete_inventory(ptr: *const u8, len: usize) -> 
     }
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AuditInvoiceNumberingPayload {
+    Object { invoice_numbers: Vec<String> },
+    List(Vec<String>),
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_audit_invoice_numbering(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<AuditInvoiceNumberingPayload>(slice) {
+        Ok(payload) => {
+            let numbers = match payload {
+                AuditInvoiceNumberingPayload::Object { invoice_numbers } => invoice_numbers,
+                AuditInvoiceNumberingPayload::List(list) => list,
+            };
+            let res = crate::finance::ledger::sequencing::audit_invoice_numbering(&numbers);
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct VerifyLedgerChainRequest {
+    entries: Vec<crate::finance::ledger::sequencing::LedgerAuditEntry>,
+    #[serde(default)]
+    genesis_hash: Option<String>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_verify_ledger_chain(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<VerifyLedgerChainRequest>(slice) {
+        Ok(req) => {
+            let res = crate::finance::ledger::sequencing::verify_ledger_chain(
+                &req.entries,
+                req.genesis_hash.as_deref(),
+            );
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+

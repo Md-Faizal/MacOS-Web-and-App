@@ -398,3 +398,116 @@ fn test_fefo_insufficient_stock_and_expired_handling() {
     assert_eq!(result.allocations[0].batch_no, "FRESH-2027");
 }
 
+#[test]
+fn test_invoice_sequencing_and_gap_detection() {
+    use suite_core::finance::ledger::sequencing::{
+        audit_invoice_numbering, format_invoice_number, parse_invoice_number, InvoiceSequenceConfig,
+    };
+
+    // 1. Formatting & Parsing
+    let config = InvoiceSequenceConfig {
+        prefix: "INV".to_string(),
+        year: Some("2026-27".to_string()),
+        separator: "/".to_string(),
+        padding: 4,
+    };
+    let formatted = format_invoice_number(&config, 42);
+    assert_eq!(formatted, "INV/2026-27/0042");
+
+    let parsed = parse_invoice_number(&formatted).expect("Should parse invoice number");
+    assert_eq!(parsed.prefix, "INV");
+    assert_eq!(parsed.year, Some("2026-27".to_string()));
+    assert_eq!(parsed.sequence_num, 42);
+
+    // 2. Continuous sequence
+    let perfect_series = vec![
+        "INV-0001".to_string(),
+        "INV-0002".to_string(),
+        "INV-0003".to_string(),
+        "INV-0004".to_string(),
+    ];
+    let audit_perfect = audit_invoice_numbering(&perfect_series);
+    assert!(audit_perfect.is_strictly_sequential);
+    assert_eq!(audit_perfect.missing_numbers.len(), 0);
+    assert_eq!(audit_perfect.duplicate_numbers.len(), 0);
+    assert_eq!(audit_perfect.min_seq, Some(1));
+    assert_eq!(audit_perfect.max_seq, Some(4));
+    assert_eq!(audit_perfect.next_available_number, 5);
+
+    // 3. Gaps and Duplicates
+    let flawed_series = vec![
+        "INV-0001".to_string(),
+        "INV-0002".to_string(),
+        "INV-0002".to_string(), // duplicate
+        "INV-0005".to_string(), // gap: missing 3, 4
+    ];
+    let audit_flawed = audit_invoice_numbering(&flawed_series);
+    assert!(!audit_flawed.is_strictly_sequential);
+    assert_eq!(audit_flawed.duplicate_numbers, vec![2]);
+    assert_eq!(audit_flawed.missing_numbers, vec![3, 4]);
+    assert_eq!(audit_flawed.next_available_number, 6);
+}
+
+#[test]
+fn test_ledger_cryptographic_hash_chain_and_tamper_detection() {
+    use suite_core::finance::ledger::sequencing::{
+        compute_ledger_entry_hash, verify_ledger_chain, LedgerAuditEntry, DEFAULT_GENESIS_HASH,
+    };
+
+    let mut entry1 = LedgerAuditEntry {
+        entry_id: "tx_001".to_string(),
+        invoice_no: Some("INV-0001".to_string()),
+        party_id: "cust_101".to_string(),
+        party_name: Some("Apollo Pharmacy".to_string()),
+        amount: 1500.50,
+        timestamp: 1775200000,
+        entry_type: "invoice".to_string(),
+        stored_hash: None,
+    };
+    let hash1 = compute_ledger_entry_hash(DEFAULT_GENESIS_HASH, &entry1);
+    entry1.stored_hash = Some(hash1.clone());
+
+    let mut entry2 = LedgerAuditEntry {
+        entry_id: "tx_002".to_string(),
+        invoice_no: None,
+        party_id: "cust_101".to_string(),
+        party_name: Some("Apollo Pharmacy".to_string()),
+        amount: 1000.00,
+        timestamp: 1775203600,
+        entry_type: "payment".to_string(),
+        stored_hash: None,
+    };
+    let hash2 = compute_ledger_entry_hash(&hash1, &entry2);
+    entry2.stored_hash = Some(hash2.clone());
+
+    let mut entry3 = LedgerAuditEntry {
+        entry_id: "tx_003".to_string(),
+        invoice_no: Some("INV-0002".to_string()),
+        party_id: "cust_102".to_string(),
+        party_name: Some("MedPlus".to_string()),
+        amount: 720.00,
+        timestamp: 1775207200,
+        entry_type: "invoice".to_string(),
+        stored_hash: None,
+    };
+    let hash3 = compute_ledger_entry_hash(&hash2, &entry3);
+    entry3.stored_hash = Some(hash3.clone());
+
+    let mut chain = vec![entry1, entry2, entry3];
+
+    // 1. Valid chain verification
+    let valid_report = verify_ledger_chain(&chain, None);
+    assert!(valid_report.is_valid);
+    assert_eq!(valid_report.total_entries, 3);
+    assert_eq!(valid_report.tampered_index, None);
+    assert_eq!(valid_report.head_hash, hash3);
+
+    // 2. Tamper entry 2 amount (fraud simulation: change from 1000.00 to 100.00)
+    chain[1].amount = 100.00;
+    let tampered_report = verify_ledger_chain(&chain, None);
+    assert!(!tampered_report.is_valid);
+    assert_eq!(tampered_report.tampered_index, Some(1));
+    assert_eq!(tampered_report.tampered_entry_id, Some("tx_002".to_string()));
+}
+
+
