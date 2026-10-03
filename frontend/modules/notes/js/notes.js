@@ -2049,6 +2049,14 @@ class NotesApp extends AppWindow {
   // ===== UTILITIES =====
 
   showNotification(message, type = 'info') {
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Notes',
+        title: 'Notes',
+        message: message,
+        type: type
+      });
+    }
     let notification = document.querySelector('.notes-notification');
     if (!notification) {
       notification = document.createElement('div');

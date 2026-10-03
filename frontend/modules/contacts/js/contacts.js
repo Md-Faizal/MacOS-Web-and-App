@@ -1365,6 +1365,14 @@ class ContactsApp extends AppWindow {
   }
 
   showNotification(message, type = 'info') {
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Contacts',
+        title: 'Contacts',
+        message: message,
+        type: type
+      });
+    }
     let notification = document.querySelector('.contacts-notification');
     if (!notification) {
       notification = document.createElement('div');

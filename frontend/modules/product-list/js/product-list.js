@@ -216,6 +216,15 @@ class NotificationManager {
   }
 
   show(message, type = 'info', duration = 3000) {
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Products',
+        title: 'Product List',
+        message: message,
+        type: type,
+        duration: duration
+      });
+    }
     const notification = document.createElement('div');
     const colors = {
       success: '#34c759',

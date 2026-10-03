@@ -17,8 +17,8 @@
 │ 01 │ Console Log Spam Suppression & Production Gating         │ 🟢 COMPLETED │ Phase 1: Cleanliness   │
 │ 02 │ Background API Throttling & Deduplication Caching        │ 🟢 COMPLETED │ Phase 2: Performance   │
 │ 03 │ Reactive Cross-App UI Synchronization (Zero-Refresh)     │ 🟢 COMPLETED │ Phase 3: Reactivity    │
-│ 04 │ Uniform On-Screen Glass & Native Device Notifications    │ 🟡 NEXT UP    │ Phase 4: Notifications │
-│ 05 │ Billion-Dollar Grade API & Architectural Documentation   │ ⚪ PENDING    │ Phase 5: Documentation │
+│ 04 │ Uniform On-Screen Glass & Native Device Notifications    │ 🟢 COMPLETED │ Phase 4: Notifications │
+│ 05 │ Billion-Dollar Grade API & Architectural Documentation   │ 🟡 NEXT UP    │ Phase 5: Documentation │
 │ 06 │ AI Camera OCR & Prescription Auto-Matching (Lazy DB)     │ ⚪ PENDING    │ Phase 6: AI Vision     │
 │ 07 │ Pure Rust Vector PDF Engine for Product List Catalog     │ ⚪ PENDING    │ Phase 7: Rust PDF V2   │
 │ 08 │ Deep QR Code & Barcode Hardware Scanning Integration     │ ⚪ PENDING    │ Phase 8: Hardware/Ops  │
@@ -198,13 +198,43 @@ According to GitHub repository analysis, the active multi-platform codebase dist
 
 ---
 
-### ⚪ PILLAR 04: Uniform On-Screen Glass & Native Device Notifications
+### 🟢 PILLAR 04: Uniform On-Screen Glass & Native Device Notifications (COMPLETED)
 
-* **Problem**: Different apps have divergent alert implementations (`showNotification` vs `alert` vs custom modals), and backgrounded browser windows miss critical business events.
-* **Solution**:
-  1. Central `MacOSNotificationManager` with unified glassmorphic toast stack in top-right corner.
-  2. Sound chime integration (`assets/sounds/`).
-  3. Integrated Web `Notification.requestPermission()`: when window is minimized or user is on another desktop space, dispatch native OS system notification for critical alerts (e.g. low stock, order created, payment recorded).
+#### Audit & Total Footprint:
+* **Initial State**: Divergent and conflicting notification mechanisms (`alert()` modals blocking JavaScript execution, custom ad-hoc DOM elements across `contacts.js`, `notes.js`, `product-list.js`, and `billing-app.js`, inconsistent styling, and zero notification visibility when browser tabs were backgrounded or minimized).
+* **Result**: **100% unified macOS Sequoia/Sonoma glassmorphic notification center** (`MacOSNotificationManager`), with Web Audio API chime synthesis, HTML5 native OS desktop notification dispatching, auto-dismiss pause on hover, interactive close buttons, and automatic `CoreDataBus` event integration across all modules.
+
+#### Industrial Architecture Implemented:
+1. **Glassmorphic On-Screen Toast Stack (`frontend/shared/notifications.css`)**:
+   - Fixed `#macos-notification-center` in top-right corner (`top: 38px; right: 16px; width: 340px`).
+   - Native macOS Sonoma backdrop blur (`backdrop-filter: blur(28px) saturate(190%)`), hairline border (`rgba(255, 255, 255, 0.45)` light / `0.14` dark), 14px rounded corners, and elevation shadow.
+   - Smooth 0.35s cubic-bezier entering spring animation and exit fade.
+   - Stack management: limits visible stack to 5 toasts, gracefully dismissing older notifications.
+   - Dynamic hairline duration countdown bar with hover-pause support.
+   - App icon badge, app name header, relative timestamp (`now`), and interactive close button (`✕`).
+2. **Crystal Web Audio API Acoustic Chimes (`frontend/shared/notifications.js`)**:
+   - Synthesizes clean, pleasant dual-tone harmonic bells (`AudioContext` sine + triangle overtone shimmer) with zero network requests or audio file lag:
+     - `info`: D5 (587.33 Hz) $\rightarrow$ A5 (880.00 Hz) classic macOS acoustic chime.
+     - `success`: G5 (783.99 Hz) $\rightarrow$ C6 (1046.50 Hz) celebratory harmonic chime.
+     - `warning`: E5 (659.25 Hz) $\rightarrow$ G5 (783.99 Hz).
+     - `error`: A4 (440.00 Hz) $\rightarrow$ F4 (349.23 Hz) low gentle caution tone.
+   - Audio preference toggle persisted in `localStorage` (`macos_notifications_sound`).
+3. **HTML5 Native Device OS Notifications**:
+   - Automatically detects when document is backgrounded (`document.hidden || !document.hasFocus()`).
+   - Dispatches native Windows / macOS system desktop notifications via `new Notification(title, { body, icon, tag })`.
+   - Clicking native OS notification focuses browser window (`window.focus()`) and triggers notification action callback.
+4. **Automatic `CoreDataBus` Reactive Stream Listener**:
+   - Subscribes to `window.CoreDataBus`:
+     - `billing:invoice:created`: Dispatches "Bill Created" toast with invoice number and total amount.
+     - `billing:payment:created`: Dispatches "Payment Received" toast with customer name and amount.
+     - `inventory:product:created`: Dispatches "Product Added" toast with item name.
+     - `contacts:customer:created`: Dispatches "Contact Saved" toast with customer profile name.
+5. **Universal Global Facade (`window.showNotification`)**:
+   - Backward-compatible wrapper normalizing all existing app calls:
+     - `showNotification('Message', 'success')`
+     - `showNotification('Title', 'Message', 'info')`
+     - `showNotification({ title, message, type, app, icon, duration, actions, onClick })`
+   - Fully integrated into `ProductListApp`, `ContactsApp`, `NotesApp`, and `BillingApp`.
 
 ---
 
@@ -242,6 +272,8 @@ According to GitHub repository analysis, the active multi-platform codebase dist
 > **Status & Current Focus**:
 > 1. **Pillar 01 (Console Log Spam Suppression & Production Gating)** is **🟢 COMPLETED** (Full production gating, ring buffer flight recorder, and complete source-level refactor across all 31 modules).
 > 2. **Pillar 02 (Background API Throttling & Deduplication Caching)** is **🟢 COMPLETED** (In-flight request deduplication, smart TTL read caching, automatic mutation cache invalidation, and 60-second focus cooldown gate).
-> 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], and ironclad zero-refresh synchronization across Billing, Ledger, Product List, and Contacts).
-> 4. **Pillar 04 (Uniform On-Screen Glass & Native Device Notifications)** is **🟡 NEXT UP**.
-> 5. Objective for Pillar 04: Build a centralized `MacOSNotificationManager` with a glassmorphic toast stack, audio chimes, and native OS notifications for backgrounded browser windows.
+> 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], keep-alive view panels, and ironclad zero-refresh synchronization across Billing, Ledger, Product List, Contacts, Notes, and Analytics).
+> 4. **Pillar 04 (Uniform On-Screen Glass & Native Device Notifications)** is **🟢 COMPLETED** (Unified macOS Sonoma glassmorphic toast stack, Web Audio acoustic chimes, native OS desktop notifications when backgrounded, automatic `CoreDataBus` alerts, and universal facade).
+> 5. **Pillar 05 (Billion-Dollar Grade API & Architectural Documentation)** is **🟡 NEXT UP**.
+> 6. Objective for Pillar 05: Construct complete OpenAPI/TypeScript interface contracts, interactive architectural sequence diagrams, and system blueprints across the WebApp, Native Android POS, and Rust compute layers.
+

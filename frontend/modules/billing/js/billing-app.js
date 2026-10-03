@@ -409,6 +409,15 @@ export class BillingApp extends AppWindow {
   }
 
   showNotification(message, type = 'info', duration = 3000) {
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Billing',
+        message: message,
+        type: type,
+        duration: duration
+      });
+    }
     const toast = document.createElement('div');
     toast.className = `billing-toast billing-toast-${type}`;
     const bg = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#0071e3');
