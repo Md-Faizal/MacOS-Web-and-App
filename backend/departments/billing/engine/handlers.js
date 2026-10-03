@@ -75,11 +75,80 @@ function getScriptsPath(scriptName) {
   return path.join(__dirname, '../../../../tools/python', scriptName);
 }
 
-// Helper to call Python invoice generator
+// Helper to call Rust WASM or Python invoice generator
 function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
   try {
     const tempDir = getTempDir();
     const pdfPath = path.join(tempDir, `invoice-${invoiceNo}-${Date.now()}.pdf`);
+
+    // --- Fast-Path: Native Rust WebAssembly PDF Engine (<10ms, Zero Child Process) ---
+    try {
+      const SuiteCoreBridge = require('../../../../../frontend/shared/suite_core_bridge.js');
+      if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded() && fs.existsSync(dbPath)) {
+        const Database = require('better-sqlite3');
+        const db = new Database(dbPath, { readonly: true });
+        
+        const invRow = db.prepare(`
+          SELECT 
+            i.invoice_no, 
+            COALESCE(i.invoice_date, i.created_at) as invoice_date, 
+            i.due_date, 
+            COALESCE(i.invoice_date, i.created_at) as lr_date,
+            c.name as party_name, 
+            c.address, 
+            c.phone, 
+            c.licence_no, 
+            c.pan, 
+            c.gstin,
+            i.total_amount, 
+            i.total_discount, 
+            (i.total_gst * 0.5) as total_sgst, 
+            (i.total_gst * 0.5) as total_cgst, 
+            i.round_off, 
+            i.grand_total,
+            i.previous_due
+          FROM invoices i
+          JOIN contacts c ON i.customer_id = c.id
+          WHERE i.invoice_no = ? OR CAST(i.id AS TEXT) = ?
+        `).get(invoiceNo, invoiceNo);
+
+        if (invRow) {
+          const items = db.prepare(`
+            SELECT 
+              p.name, p.classification as hsn, '' as mfg, 
+              COALESCE(CAST(CAST(ii.pack_value AS REAL) AS INTEGER) || ' ' || ii.pack_type, '') as pack, 
+              ii.batch_no, ii.exp_date, ii.qty, ii.free,
+              ii.mrp, ii.rate, ii.amount, 
+              ii.discount_1_percent as dis1, ii.discount_2_percent as dis2,
+              (ii.gst_percent / 2.0) as sgst_per, ii.sgst_amount as sgst_val,
+              (ii.gst_percent / 2.0) as cgst_per, ii.cgst_amount as cgst_val,
+              ii.final_amount as final_amt,
+              0 as is_gold
+            FROM invoice_items ii
+            JOIN products p ON ii.product_id = p.id
+            WHERE ii.invoice_id = (SELECT id FROM invoices WHERE invoice_no = ? OR CAST(id AS TEXT) = ?)
+          `).all(invoiceNo, invoiceNo);
+
+          db.close();
+
+          const renderData = {
+            ...invRow,
+            products: items || []
+          };
+
+          const res = SuiteCoreBridge.renderInvoicePdf(renderData);
+          if (res && res.success && res.pdf_base64) {
+            fs.writeFileSync(pdfPath, Buffer.from(res.pdf_base64, 'base64'));
+            return pdfPath;
+          }
+        } else {
+          db.close();
+        }
+      }
+    } catch (wasmPdfErr) {
+      console.warn('[Billing] Rust WASM PDF acceleration fallback to Python:', wasmPdfErr.message);
+    }
+
     const pythonScript = getScriptsPath('invoice-generator.py');
     
     // Verify files exist
@@ -92,6 +161,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
     
     // Call Python script with error capture
     let cmd = `${PYTHON_CMD} "${pythonScript}" --db "${dbPath}" --invoice "${invoiceNo}" --out "${pdfPath}" --mode "${mode}"`;
+
     if (duplex !== null && duplex !== undefined && duplex !== '') {
       cmd += ` --duplex "${duplex}"`;
     }

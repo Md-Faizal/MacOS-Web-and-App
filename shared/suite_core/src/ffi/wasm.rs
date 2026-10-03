@@ -325,4 +325,62 @@ pub unsafe extern "C" fn suite_verify_ledger_chain(ptr: *const u8, len: usize) -
     }
 }
 
+fn bytes_to_base64(data: &[u8]) -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
+
+        out.push(CHARSET[(b0 >> 2) as usize] as char);
+        out.push(CHARSET[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(CHARSET[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(CHARSET[(b2 & 0x3F) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_invoice_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::InvoiceRenderData>(slice) {
+        Ok(data) => {
+            let pdf_bytes = crate::documents::pdf::render_invoice_pdf(&data);
+            let b64 = bytes_to_base64(&pdf_bytes);
+            #[derive(Serialize)]
+            struct PdfResp {
+                success: bool,
+                pdf_base64: String,
+                byte_count: usize,
+            }
+            package_response(&PdfResp {
+                success: true,
+                pdf_base64: b64,
+                byte_count: pdf_bytes.len(),
+            })
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+
 

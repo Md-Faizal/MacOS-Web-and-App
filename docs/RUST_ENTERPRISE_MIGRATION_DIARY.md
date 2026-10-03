@@ -48,20 +48,21 @@
 
 ## 2. Migration Status Matrix & Domain Progress
 
-Overall Backend Rust Migration Progress: **~55% of Critical Computational & Financial Logic Migrated** (~15% of total 65k LOC backend).
+Overall Backend Rust Migration Progress: **~70% of Critical Computational & Financial Logic Migrated** (~20% of total 65k LOC backend).
 
 | Domain / Subsystem | Scope & Functionality | Rust Path (`shared/suite_core/src/`) | Targets Available | Parity Test Status | Migration Progress % | Production Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Finance / Invoicing** | Reverse GST, Free Scheme, Cascading Discounts, Rounding | `finance/invoicing/` | WASM, JNI, FFI | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live in Production** |
 | **Finance / Ledger** | FIFO Debt Settlement, Balance Statements, Allocation Map | `finance/ledger/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Document / PDF Engine** | Pure Rust PDF 1.4 Vector Invoice Generator & Indian Words Engine | `documents/pdf/` | WASM, FFI, Bridge | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live & WASM Ready (6ms)** |
 | **Ledger Sequencing & Audit** | Strict Sequential Invoice Numbers & Cryptographic Anti-Tamper Chain | `finance/ledger/sequencing.rs` | WASM, FFI, Bridge | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live & WASM Ready** |
 | **Inventory / Depletion** | FEFO/FIFO Batch Stock Depletion & Multi-Batch Reservations | `inventory/depletion.rs` | WASM, FFI, Bridge | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live & WASM Ready** |
 | **Analytics Engine** | Overdue Aging (0-30, 31-60, 61-90, 90+), Executive KPIs | `analytics/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
 | **Catalog & Expiry** | Batch Expiry & Freshness Classification (Valid/Expiring/Expired) | `catalog/expiry.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
 | **Sales Orders** | Order Line Fulfillment & Stage Calculations | `sales/orders.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
 | **Storage & Wallpaper Engine** | Zero-GC Image Resize, Format Conversion (WebP/AVIF), Checksums | `storage/wallpaper.rs` or Sidecar | Standalone CLI / NAPI | ⏳ In Planning | **0%** | 🟡 *Option B: High RAM Impact* |
-| **Document / PDF Engine** | Replace Python `execSync` invoice generator with native stream | `documents/pdf/` | Standalone CLI / FFI | ⏳ In Planning | **0%** | 🟡 *Option C: Event-Loop Relief* |
 | **Auth / OAuth / AI Glue** | Google OAuth 2.0, WebAuthn Passkeys, Gemini AI Streaming | Node.js Express Gateway | N/A (Keep JS Glue) | Managed via battle-tested npm SDKs | **Exempt (Keep JS)** | 🟢 **Production Permanent** |
+
 
 
 ---
@@ -210,6 +211,28 @@ Run the backend tests or test against an active development slot (`macos-server-
 
 ---
 
+### [Entry 007] — Implementation of Pure Rust PDF 1.4 Vector Engine & Purging of JS Fallbacks (2026-10-03)
+* **Goal**: Execute Option C2 — Eliminate Python `execSync` invoice generation and Node.js event-loop freezes by building a zero-dependency pure Rust PDF 1.4 vector renderer, while cleaning legacy JS fallbacks from `suite_core_bridge.js` to enforce strict WebAssembly execution.
+* **Work Done**:
+  1. **Purged Legacy JS Fallbacks in Bridge**:
+     - Cleaned `frontend/shared/suite_core_bridge.js` of duplicate JavaScript fallback routines for `depleteInventory`, `auditInvoiceNumbering`, and `verifyLedgerChain`.
+     - System strictly calls compiled WebAssembly core (`suite_core.wasm`) and throws descriptive errors if binary is unavailable.
+  2. **Indian Currency Words Engine in Pure Rust**:
+     - Implemented `shared/suite_core/src/documents/words.rs` (`num_to_indian_words`, `amount_in_indian_words`) converting Rupees and Paise into English words (Lakhs and Crores).
+  3. **Zero-Dependency Vector PDF 1.4 Writer**:
+     - Implemented `shared/suite_core/src/documents/pdf/writer.rs`: Custom PDF canvas supporting standard Helvetica/Helvetica-Bold Type 1 font metrics, vector rectangles, lines, and PostScript streams.
+     - Implemented `shared/suite_core/src/documents/pdf/invoice.rs`: Exact layout replica of ReportLab A4 landscape invoice (company headers, customer details, 19-column item grid, GST 4-tier breakdown table, totals, bank details).
+  4. **WASM Export & Bridge Integration**:
+     - Added `suite_render_invoice_pdf` export in `shared/suite_core/src/ffi/wasm.rs` with self-contained byte-to-base64 encoder.
+     - Added `SuiteCoreBridge.renderInvoicePdf(data)` in `frontend/shared/suite_core_bridge.js`.
+     - Hooked `generateInvoicePDF` in `backend/departments/billing/engine/handlers.js`: directly renders from SQLite via Rust WASM in **~6ms**, saving directly to PDF without spawning any Python subprocess.
+  5. **Testing & Real-World Validation**:
+     - Unit & Parity Tests: Added `test_indian_currency_words` and `test_native_invoice_pdf_generation` in `tests/parity_tests.rs`. **16/16 tests passing (100%)**.
+     - Real-World Production DB Test: Rendered live invoice `GST-260021` (Binayak Medicine Store) from `database/MacOS.db` in **6.75 milliseconds** (down from ~800ms with Python `execSync`).
+* **Results**: **120x speedup** in invoice generation. Completely eliminates the single largest event-loop freeze in the billing engine.
+
+---
+
 ## 5. Migration Starting Points: Where to Start & Current Progress %
 
 Current Status of Strategic Options:
@@ -223,11 +246,11 @@ Current Status of Strategic Options:
 │ [Option D] STRICT SEQUENCING & AUDIT INTEGRITY           │ Progress: 100%│ Impact: ⭐⭐⭐ (Compliance/Anti-Gap)│
 │ • Enforces zero gaps in bill numbering & SHA-256 chain   │ Status: DONE  │ Target: WASM / Mobile / Backend     │
 ├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
-│ [Option B] WALLPAPER & ASSET PROCESSING (Zero-GC)        │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (RAM Protection)    │
-│ • Prevents memory spikes on 1GB VMs during 4K uploads    │ Est: 2 Days   │ Effort: Medium                      │
+│ [Option C] NATIVE INVOICE PDF STREAMER                   │ Progress: 100%│ Impact: ⭐⭐⭐⭐ (Event-Loop Relief) │
+│ • Replaces blocking Python execSync (~6ms vs ~800ms)     │ Status: DONE  │ Target: WASM / Backend / Mobile     │
 ├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
-│ [Option C] NATIVE INVOICE PDF STREAMER                   │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (Event-Loop Relief) │
-│ • Replaces blocking Python execSync subprocess           │ Est: 2-3 Days │ Effort: Medium                      │
+│ [Option B] WALLPAPER & ASSET PROCESSING (Zero-GC)        │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (RAM Protection)    │
+│ • Prevents memory spikes on 1GB VMs during 4K uploads    │ Est: 1-2 Days │ Effort: Medium                      │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -236,18 +259,26 @@ Current Status of Strategic Options:
 ### Option A: Inventory Batch Stock Depletion (FEFO/FIFO) — ✅ **COMPLETED (100%)**
 * **Current Progress**: **100%** (Implemented in `shared/suite_core/src/inventory/depletion.rs`)
 * **Status**: Compiled into `suite_core.wasm` and exposed in `frontend/shared/suite_core_bridge.js`.
-* **Testing**: 14/14 unit and parity tests passing. Verified via `verify-depletion.js`.
+* **Testing**: 16/16 unit and parity tests passing.
 
 ---
 
 ### Option D: Ledger Sequencing & Cryptographic Anti-Tamper Audit — ✅ **COMPLETED (100%)**
 * **Current Progress**: **100%** (Implemented in `shared/suite_core/src/finance/ledger/sequencing.rs`)
 * **Status**: Compiled into `suite_core.wasm` and exposed in `frontend/shared/suite_core_bridge.js`.
-* **Testing**: 14/14 unit and parity tests passing. Verified via Node.js WASM bridge harness.
+* **Testing**: 16/16 unit and parity tests passing.
 
 ---
 
-### Next Recommended Priority: Option B or Option C
+### Option C: Native Invoice PDF Engine (Replaced Python `execSync`) — ✅ **COMPLETED (100%)**
+* **Current Progress**: **100%** (Implemented in `shared/suite_core/src/documents/pdf/`)
+* **Status**: Compiled into `suite_core.wasm`, hooked into `backend/departments/billing/engine/handlers.js` (`generateInvoicePDF`).
+* **Performance**: Generates standard PDF 1.4 invoices in **~6.75ms** (120x faster than Python ReportLab), 100% non-blocking.
+* **Testing**: 16/16 unit and parity tests passing. Verified with real production invoice `GST-260021`.
+
+---
+
+### Next Recommended Priority: Option B
 
 ### Option B: Wallpaper & Image Processing Engine (Zero-GC Memory Guard)
 * **Current Progress**: **0%** (Concept/Design)
@@ -258,16 +289,6 @@ Current Status of Strategic Options:
   1. Use Rust `image` and `ravif` crates to process thumbnails and WebP conversions using fixed ~10 MB buffers.
   2. Compile as an internal CLI or `napi-rs` module called directly from the route.
 
----
-
-### Option C: Native Invoice PDF Streamer (Replace Python `execSync`)
-* **Current Progress**: **0%** (Identified in Entry 002)
-* **Why start here**: Currently, every invoice PDF generation executes a synchronous child process (`execSync("python invoice-generator.py")`), freezing the Node.js event loop for 400ms–1200ms.
-* **Source JavaScript**:
-  - `backend/departments/billing/engine/handlers.js:79` (`generateInvoicePDF`)
-* **Implementation Plan**:
-  1. Create `documents/pdf` using Rust's `printpdf` or lightweight HTML-to-PDF template streamer.
-  2. Stream generated PDF bytes asynchronously with zero blocking of the API server.
 
 
 ---

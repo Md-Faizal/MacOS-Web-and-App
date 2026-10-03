@@ -238,222 +238,71 @@ class SuiteCoreBridge {
       current_date_days: options.current_date_days !== undefined ? options.current_date_days : null
     };
 
-    if (this.isWasmLoaded()) {
-      const res = this.callWasmJson('suite_deplete_inventory', {
-        requested_qty: requestedQty,
-        batches: batches || [],
-        options: defaultOptions
-      });
-      if (res && res.success !== undefined) return res;
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for depleteInventory');
     }
 
-    // Graceful JavaScript Fallback
-    const targetQty = Math.max(0, requestedQty || 0);
-    const validBatches = (batches || []).filter(b => (b.current_stock || 0) > 0);
-
-    validBatches.sort((a, b) => {
-      const expA = a.expiry_date || a.exp_date || '';
-      const expB = b.expiry_date || b.exp_date || '';
-      if (expA && expB) return expA.localeCompare(expB);
-      if (expA) return -1;
-      if (expB) return 1;
-      return (a.batch_no || '').localeCompare(b.batch_no || '');
+    const res = this.callWasmJson('suite_deplete_inventory', {
+      requested_qty: requestedQty,
+      batches: batches || [],
+      options: defaultOptions
     });
-
-    let remainingNeeded = targetQty;
-    const allocations = [];
-    let totalAllocated = 0;
-
-    for (const b of validBatches) {
-      if (remainingNeeded <= 0) break;
-      const stock = Math.max(0, b.current_stock || 0);
-      if (stock <= 0) continue;
-
-      const toDeduct = Math.min(remainingNeeded, stock);
-      const remainingInBatch = Math.round((stock - toDeduct) * 100) / 100;
-
-      allocations.push({
-        batch_id: b.batch_id || b.id || null,
-        batch_no: b.batch_no,
-        qty_deducted: toDeduct,
-        remaining_in_batch: remainingInBatch,
-        expiry_date: b.expiry_date || b.exp_date || null,
-        rate: b.rate || null
-      });
-
-      totalAllocated = Math.round((totalAllocated + toDeduct) * 100) / 100;
-      remainingNeeded = Math.round((remainingNeeded - toDeduct) * 100) / 100;
-    }
-
-    const unfulfilled = Math.max(0, remainingNeeded);
-    return {
-      success: true,
-      requested_qty: targetQty,
-      allocated_qty: totalAllocated,
-      unfulfilled_qty: unfulfilled,
-      is_fully_allocated: unfulfilled === 0,
-      allocations
-    };
+    if (res && res.success !== undefined) return res;
+    throw new Error('[SuiteCoreBridge] suite_deplete_inventory WASM call failed');
   }
 
   /**
    * Audit an array of invoice numbers for sequence gaps, duplicates, and next number.
-   * WASM accelerated via `suite_audit_invoice_numbering`.
+   * Strictly WASM accelerated via `suite_audit_invoice_numbering`.
    */
   static auditInvoiceNumbering(invoiceNumbers = []) {
     const numbers = Array.isArray(invoiceNumbers) ? invoiceNumbers : [];
-    if (this.isWasmLoaded()) {
-      const res = this.callWasmJson('suite_audit_invoice_numbering', { invoice_numbers: numbers });
-      if (res && typeof res.is_strictly_sequential === 'boolean') {
-        return res;
-      }
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for auditInvoiceNumbering');
     }
 
-    // Graceful JavaScript Fallback
-    if (numbers.length === 0) {
-      return {
-        total_count: 0,
-        min_seq: null,
-        max_seq: null,
-        missing_numbers: [],
-        duplicate_numbers: [],
-        next_available_number: 1,
-        is_strictly_sequential: true
-      };
+    const res = this.callWasmJson('suite_audit_invoice_numbering', { invoice_numbers: numbers });
+    if (res && typeof res.is_strictly_sequential === 'boolean') {
+      return res;
     }
-
-    const seqs = [];
-    for (const num of numbers) {
-      if (!num || typeof num !== 'string') continue;
-      const parts = num.trim().split(/[-/_]/);
-      const last = parts[parts.length - 1];
-      const parsed = parseInt(last, 10);
-      if (!isNaN(parsed)) {
-        seqs.push(parsed);
-      }
-    }
-
-    if (seqs.length === 0) {
-      return {
-        total_count: 0,
-        min_seq: null,
-        max_seq: null,
-        missing_numbers: [],
-        duplicate_numbers: [],
-        next_available_number: 1,
-        is_strictly_sequential: true
-      };
-    }
-
-    seqs.sort((a, b) => a - b);
-    const duplicates = [];
-    const deduped = [];
-
-    for (let i = 0; i < seqs.length; i++) {
-      const val = seqs[i];
-      if (deduped.length > 0 && deduped[deduped.length - 1] === val) {
-        if (!duplicates.includes(val)) {
-          duplicates.push(val);
-        }
-        continue;
-      }
-      deduped.push(val);
-    }
-
-    const minSeq = deduped[0];
-    const maxSeq = deduped[deduped.length - 1];
-    const missing = [];
-
-    let expected = minSeq;
-    for (const curr of deduped) {
-      while (expected < curr) {
-        missing.push(expected);
-        expected++;
-      }
-      expected = curr + 1;
-    }
-
-    return {
-      total_count: numbers.length,
-      min_seq: minSeq,
-      max_seq: maxSeq,
-      missing_numbers: missing,
-      duplicate_numbers: duplicates,
-      next_available_number: maxSeq + 1,
-      is_strictly_sequential: missing.length === 0 && duplicates.length === 0
-    };
+    throw new Error('[SuiteCoreBridge] suite_audit_invoice_numbering WASM call failed');
   }
 
   /**
    * Cryptographically verify chronological ledger audit chain.
-   * WASM accelerated via `suite_verify_ledger_chain`.
+   * Strictly WASM accelerated via `suite_verify_ledger_chain`.
    */
   static verifyLedgerChain(entries = [], genesisHash = null) {
     const list = Array.isArray(entries) ? entries : [];
-    if (this.isWasmLoaded()) {
-      const res = this.callWasmJson('suite_verify_ledger_chain', {
-        entries: list,
-        genesis_hash: genesisHash
-      });
-      if (res && typeof res.is_valid === 'boolean') {
-        return res;
-      }
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for verifyLedgerChain');
     }
 
-    // Graceful JavaScript Fallback (Node.js crypto)
-    const DEFAULT_GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
-    let currentHash = genesisHash || DEFAULT_GENESIS;
-    const computedHashes = [];
+    const res = this.callWasmJson('suite_verify_ledger_chain', {
+      entries: list,
+      genesis_hash: genesisHash
+    });
+    if (res && typeof res.is_valid === 'boolean') {
+      return res;
+    }
+    throw new Error('[SuiteCoreBridge] suite_verify_ledger_chain WASM call failed');
+  }
 
-    let cryptoModule = null;
-    if (typeof require === 'function') {
-      try {
-        cryptoModule = require('crypto');
-      } catch (e) {}
+  /**
+   * Render GST Invoice PDF directly in WebAssembly (<5ms, zero child process, zero Python).
+   * Returns { success, pdf_base64, byte_count }
+   * @param {Object} invoiceData - Invoice render data structure
+   */
+  static renderInvoicePdf(invoiceData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for renderInvoicePdf');
     }
 
-    for (let idx = 0; idx < list.length; idx++) {
-      const entry = list[idx];
-      const amountPaise = Math.round(Math.round((entry.amount || 0) * 100) / 100 * 100);
-      const payload = `${currentHash.trim()}|${(entry.entry_id || '').trim()}|${(entry.party_id || '').trim()}|${amountPaise}|${entry.timestamp || 0}|${(entry.entry_type || '').trim().toLowerCase()}`;
-
-      let expected = '';
-      if (cryptoModule && cryptoModule.createHash) {
-        expected = cryptoModule.createHash('sha256').update(payload).digest('hex');
-      }
-
-      computedHashes.push(expected);
-
-      if (entry.stored_hash && expected) {
-        if (entry.stored_hash.trim().toLowerCase() !== expected) {
-          return {
-            is_valid: false,
-            total_entries: list.length,
-            tampered_index: idx,
-            tampered_entry_id: entry.entry_id,
-            expected_hash: expected,
-            actual_hash: entry.stored_hash,
-            head_hash: currentHash,
-            computed_hashes: computedHashes
-          };
-        }
-      }
-
-      if (expected) {
-        currentHash = expected;
-      }
+    const res = this.callWasmJson('suite_render_invoice_pdf', invoiceData);
+    if (res && res.success && res.pdf_base64) {
+      return res;
     }
-
-    return {
-      is_valid: true,
-      total_entries: list.length,
-      tampered_index: null,
-      tampered_entry_id: null,
-      expected_hash: null,
-      actual_hash: null,
-      head_hash: currentHash,
-      computed_hashes: computedHashes
-    };
+    throw new Error(`[SuiteCoreBridge] suite_render_invoice_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
   }
 }
 

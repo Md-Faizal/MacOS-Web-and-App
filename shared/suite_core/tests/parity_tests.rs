@@ -510,4 +510,91 @@ fn test_ledger_cryptographic_hash_chain_and_tamper_detection() {
     assert_eq!(tampered_report.tampered_entry_id, Some("tx_002".to_string()));
 }
 
+#[test]
+fn test_indian_currency_words() {
+    use suite_core::documents::words::{amount_in_indian_words, num_to_indian_words};
+
+    assert_eq!(num_to_indian_words(0), "Zero");
+    assert_eq!(num_to_indian_words(18), "Eighteen");
+    assert_eq!(num_to_indian_words(95), "Ninety Five");
+    assert_eq!(num_to_indian_words(120), "One Hundred and Twenty");
+    assert_eq!(num_to_indian_words(1000), "One Thousand");
+    assert_eq!(num_to_indian_words(100000), "One Lakh");
+    assert_eq!(num_to_indian_words(1500000), "Fifteen Lakh");
+    assert_eq!(num_to_indian_words(20000000), "Two Crore");
+
+    assert_eq!(
+        amount_in_indian_words(25450.75),
+        "Twenty Five Thousand Four Hundred and Fifty and Seventy Five Paise Only"
+    );
+}
+
+#[test]
+fn test_native_invoice_pdf_generation() {
+    use suite_core::documents::pdf::{render_invoice_pdf, InvoiceProductItem, InvoiceRenderData};
+
+    let item1 = InvoiceProductItem {
+        name: "PARACETAMOL 500MG TAB".to_string(),
+        hsn: "30049011".to_string(),
+        mfg: "CIPLA".to_string(),
+        pack: "10 TAB".to_string(),
+        batch_no: "BATCH-889".to_string(),
+        exp_date: Some("2027-10-31".to_string()),
+        qty: 50.0,
+        free: 5.0,
+        mrp: 35.0,
+        rate: 28.0,
+        amount: 1400.0,
+        dis1: 5.0,
+        dis2: 0.0,
+        sgst_per: 6.0,
+        sgst_val: 79.80,
+        cgst_per: 6.0,
+        cgst_val: 79.80,
+        final_amt: 1489.60,
+        is_gold: false,
+    };
+
+    let data = InvoiceRenderData {
+        invoice_no: "INV-2026-0042".to_string(),
+        invoice_date: Some("2026-10-03".to_string()),
+        due_date: Some("2026-11-02".to_string()),
+        lr_no: Some("LR-9988".to_string()),
+        lr_date: Some("2026-10-03".to_string()),
+        party_name: "APOLLO PHARMACY BHUBANESWAR".to_string(),
+        address: "PLOT 102, JANPATH, SAHEED NAGAR, BHUBANESWAR".to_string(),
+        phone: "9876543210".to_string(),
+        licence_no: "20B-123456".to_string(),
+        pan: "ABCDE1234F".to_string(),
+        gstin: "21ABCDE1234F1Z5".to_string(),
+        total_amount: 1400.0,
+        total_discount: 70.0,
+        total_sgst: 79.80,
+        total_cgst: 79.80,
+        round_off: 0.40,
+        grand_total: 1490.0,
+        previous_due: 0.0,
+        products: vec![item1],
+        bank_account_holder: Some("MD FAIZAL".to_string()),
+        bank_account_number: Some("50100673684509".to_string()),
+        bank_ifsc: Some("HDFC0000236".to_string()),
+        bank_branch: Some("CUTTACK - ODISHA".to_string()),
+    };
+
+    let pdf_bytes = render_invoice_pdf(&data);
+
+    // Validate standard PDF structure
+    assert!(pdf_bytes.starts_with(b"%PDF-1.4"));
+    assert!(pdf_bytes.ends_with(b"%%EOF\n"));
+
+    let pdf_str = String::from_utf8_lossy(&pdf_bytes);
+    assert!(pdf_str.contains("UTKAL CHEMICAL AUSHADHALAYA"));
+    assert!(pdf_str.contains("GST INVOICE"));
+    assert!(pdf_str.contains("INV-2026-0042"));
+    assert!(pdf_str.contains("PARACETAMOL 500MG TAB"));
+    assert!(pdf_str.contains("APOLLO PHARMACY BHUBANESWAR"));
+    assert!(pdf_str.contains("Rs. One Thousand Four Hundred and Ninety Only"));
+}
+
+
 
