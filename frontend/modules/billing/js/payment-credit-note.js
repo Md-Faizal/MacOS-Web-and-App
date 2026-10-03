@@ -1491,7 +1491,9 @@ class PaymentCreditNote {
         throw new Error('Failed to delete payment');
       }
 
-      alert('Transaction deleted successfully');
+      if (this.billingApp?.showNotification) {
+        this.billingApp.showNotification('Transaction deleted successfully', 'success');
+      }
       
       // Reload transactions
       this.loadTransactionHistory();

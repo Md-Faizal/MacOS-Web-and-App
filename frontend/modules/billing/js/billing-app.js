@@ -408,6 +408,44 @@ export class BillingApp extends AppWindow {
     this.checkBackendConnection();
   }
 
+  showNotification(message, type = 'info', duration = 3000) {
+    const toast = document.createElement('div');
+    toast.className = `billing-toast billing-toast-${type}`;
+    const bg = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#0071e3');
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: ${bg};
+      color: #ffffff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      opacity: 0;
+      transform: translateY(12px);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+    });
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(12px)';
+      setTimeout(() => toast.remove(), 350);
+    }, duration);
+  }
+
   isWorkerUser() {
     return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
   }
@@ -1794,8 +1832,27 @@ export class BillingApp extends AppWindow {
 
     log.debug('Deleting bill:', billId);
 
+    // Optimistically remove from local billing data immediately (0ms UI latency)
+    const bill = this.billingData?.bills?.find(b => String(b.id) === String(billId));
+    const customerName = bill?.customer_name;
+    const invoiceNo = bill?.invoice_no;
+    if (this.billingData?.bills) {
+      this.billingData.bills = this.billingData.bills.filter(b => String(b.id) !== String(billId));
+    }
+
+    // In-place DOM removal with smooth fade out (No full ledger destruction)
+    const records = document.querySelectorAll(`[data-bill-id="${billId}"], [data-invoice-no="${invoiceNo}"]`);
+    records.forEach(rec => {
+      const container = rec.closest('.timeline-record') || rec;
+      container.style.transition = 'all 0.25s ease';
+      container.style.opacity = '0';
+      container.style.transform = 'scale(0.96)';
+      setTimeout(() => container.remove(), 250);
+    });
+
     try {
-      // Delete bill via API using fetch
+      if (this.api) this.api.invalidateCache('/billing');
+
       const response = await fetch(`/api/billing/${billId}`, {
         method: 'DELETE'
       });
@@ -1808,30 +1865,38 @@ export class BillingApp extends AppWindow {
 
       log.debug(`✓ Bill ${data.deleted?.invoice_no || billId} deleted successfully`);
       
-      // Show success with invoice details
       const msg = data.deleted?.invoice_no 
-        ? `✓ Invoice ${data.deleted.invoice_no} deleted successfully` 
-        : '✓ Bill deleted successfully';
-      alert(msg);
+        ? `Invoice ${data.deleted.invoice_no} deleted successfully` 
+        : 'Bill deleted successfully';
+      this.showNotification(msg, 'success');
 
-      // Reload billing data from API
-      if (this.loadBillingDataFromAPI) {
-        await this.loadBillingDataFromAPI();
+      // Publish events on CoreDataBus
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:invoice', 'deleted', { id: billId, customer_name: customerName, invoice_no: invoiceNo });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
       }
 
-      // Refresh the current view in real-time
-      const viewToRefresh = this.currentView;
-      if (viewToRefresh) {
-        this.switchView(viewToRefresh);
+      // Update ledger in-place without resetting customer selection or re-rendering whole view
+      const ledgerView = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
+      if (ledgerView && typeof ledgerView.syncWithServer === 'function') {
+        ledgerView.syncWithServer(false);
+      }
+
+      // Silently reload billing data in background
+      if (this.loadBillingDataFromAPI) {
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
     } catch (error) {
       log.error('Error deleting bill:', error);
-      alert(`✗ Error: ${error.message}`);
+      this.showNotification(`Error deleting bill: ${error.message}`, 'error');
+      if (this.loadBillingDataFromAPI) {
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+      }
     }
   }
 
   /**
-   * Delete a payment with confirmation
+   * Delete a payment with confirmation (0ms in-place removal, non-blocking toast, zero full-ledger reload)
    */
   async deletePayment(paymentId) {
     const confirmed = confirm('Are you sure you want to delete this payment? This action cannot be undone.');
@@ -1839,8 +1904,26 @@ export class BillingApp extends AppWindow {
 
     log.debug('Deleting payment:', paymentId);
 
+    // Optimistically remove from local billing data immediately
+    const payment = this.billingData?.payments?.find(p => String(p.id) === String(paymentId));
+    const customerName = payment?.customer_name;
+    if (this.billingData?.payments) {
+      this.billingData.payments = this.billingData.payments.filter(p => String(p.id) !== String(paymentId));
+    }
+
+    // In-place DOM removal with smooth fade out (No full ledger destruction)
+    const records = document.querySelectorAll(`[data-payment-id="${paymentId}"]`);
+    records.forEach(rec => {
+      const container = rec.closest('.timeline-record') || rec;
+      container.style.transition = 'all 0.25s ease';
+      container.style.opacity = '0';
+      container.style.transform = 'scale(0.96)';
+      setTimeout(() => container.remove(), 250);
+    });
+
     try {
-      // Delete payment via API using fetch
+      if (this.api) this.api.invalidateCache('/billing');
+
       const response = await fetch(`/api/billing/payments/${paymentId}`, {
         method: 'DELETE'
       });
@@ -1852,21 +1935,37 @@ export class BillingApp extends AppWindow {
       }
 
       log.debug(`✓ Payment deleted successfully`);
-      alert('✓ Payment deleted successfully');
+      this.showNotification('Payment deleted successfully', 'success');
 
-      // Reload billing data from API
-      if (this.loadBillingDataFromAPI) {
-        await this.loadBillingDataFromAPI();
+      // Publish events on CoreDataBus
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId, customer_name: customerName });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
       }
 
-      // Refresh the current view in real-time
-      const viewToRefresh = this.currentView;
-      if (viewToRefresh) {
-        this.switchView(viewToRefresh);
+      // Update ledger in-place without resetting customer selection or refreshing whole view
+      const ledgerView = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
+      if (ledgerView && typeof ledgerView.syncWithServer === 'function') {
+        ledgerView.syncWithServer(false);
+      }
+
+      // Refresh payment-credit view in-place if open
+      const paymentView = this._subviewInstances?.get('payment-credit');
+      if (paymentView && typeof paymentView.loadRecentTransactions === 'function') {
+        paymentView.loadRecentTransactions();
+        paymentView.updateStatsDisplay?.();
+      }
+
+      // Silently reload billing data in background
+      if (this.loadBillingDataFromAPI) {
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
     } catch (error) {
       log.error('Error deleting payment:', error);
-      alert(`✗ Error: ${error.message}`);
+      this.showNotification(`Error deleting payment: ${error.message}`, 'error');
+      if (this.loadBillingDataFromAPI) {
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+      }
     }
   }
 

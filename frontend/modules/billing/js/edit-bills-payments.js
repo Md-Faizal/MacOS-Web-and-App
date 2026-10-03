@@ -2924,7 +2924,9 @@ class EditBillsPayments {
       }
 
       log.debug('✓ Delete successful');
-      alert('✓ Transaction deleted successfully');
+      if (this.billingApp?.showNotification) {
+        this.billingApp.showNotification('Transaction deleted successfully', 'success');
+      }
 
       // Reload data from API
       if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
