@@ -171,25 +171,42 @@
         const guardStyle = document.getElementById('auth-guard-style');
         if (guardStyle) guardStyle.remove();
 
-        // 4. Start periodic background session validation & device heartbeat (every 30s)
+        // 4. Intelligent Background Session Validation & Heartbeat (AFK-aware, sleep-resilient)
         let consecutiveAuthFailures = 0;
-        setInterval(async () => {
-          if (!navigator.onLine) {
-            // Offline - do not terminate session due to temporary disconnect
-            return;
-          }
+        let lastUserActivity = Date.now();
+        let isChecking = false;
+
+        const updateActivity = () => {
+          lastUserActivity = Date.now();
+        };
+        ['mousemove', 'keydown', 'pointerdown', 'touchstart', 'scroll'].forEach(evt => {
+          window.addEventListener(evt, updateActivity, { passive: true });
+        });
+
+        const performSessionCheck = async () => {
+          if (isChecking || !navigator.onLine) return;
+          isChecking = true;
+
           try {
-            const checkRes = await fetch('/api/auth/verify');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+            const checkRes = await fetch('/api/auth/verify', {
+              signal: controller.signal,
+              cache: 'no-store'
+            });
+            clearTimeout(timeoutId);
+
             if (checkRes.status === 401) {
               consecutiveAuthFailures++;
               if (consecutiveAuthFailures >= 2) {
-                console.warn('Background session validation failed (terminated remotely or expired), locking screen...');
                 sessionStorage.removeItem('macos_session_active');
                 alert('Your session has ended or was terminated from another device.');
                 window.location.replace('index.html');
               }
               return;
             }
+
             if (checkRes.ok) {
               consecutiveAuthFailures = 0;
               const data = await checkRes.json();
@@ -212,11 +229,35 @@
               }
             }
           } catch (e) {
-            // Transient network error (laptop sleep/wake, Wi-Fi reconnection, packet drop)
-            // Silently log and wait for next interval instead of prematurely logging user out!
-            console.warn('Session verification background check temporarily unreachable:', e.message);
+            // Transient network disconnect (AFK sleep, socket close, Wi-Fi reconnect)
+            // Log to debug telemetry quietly without emitting alarming console warnings
+            if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Auth')) {
+              console.log('Session verification unreachable (network/sleep pause):', e.message);
+            }
+          } finally {
+            isChecking = false;
           }
-        }, 30000); // 30 seconds
+        };
+
+        // Poll every 30s only when tab is active and user is not AFK (> 3 min)
+        setInterval(() => {
+          if (document.hidden) return;
+          const isAfk = (Date.now() - lastUserActivity) > 180000;
+          if (isAfk) return;
+          performSessionCheck();
+        }, 30000);
+
+        // Immediate check on return from AFK / tab switch / screen wake
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) {
+            lastUserActivity = Date.now();
+            performSessionCheck();
+          }
+        });
+        window.addEventListener('focus', () => {
+          lastUserActivity = Date.now();
+          performSessionCheck();
+        });
       } catch (err) {
         console.error('Session verification error:', err);
         redirectToLogin();

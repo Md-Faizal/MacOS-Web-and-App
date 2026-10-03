@@ -1,0 +1,112 @@
+================================================================================
+MACOS & ZENTRA ENTERPRISE ECOSYSTEM - MASTER COMMANDS CHEATSHEET
+================================================================================
+
+1. LOCAL DEVELOPMENT RUNNERS
+--------------------------------------------------------------------------------
+# Start MacOS Full-Stack (Frontend localhost:5173 + Backend localhost:3002):
+npm run dev:local
+
+# Start Zentra Dashboard Full-Stack (Zentra localhost:3000 + Backend localhost:3002):
+npm run dev:zentra
+
+# Start All 3 Concurrently (MacOS + Zentra + Backend):
+concurrently "npm run backend" "npm run dev -- --host 0.0.0.0 --port 5173" "npm --prefix zentra-analytics-dashboard run dev -- --host 0.0.0.0 --port 3000"
+
+# Start Standalone Backend API (Port 3002):
+npm run backend
+
+# Start Standalone Frontend (Vite):
+npm run dev
+
+
+2. PRODUCTION DEPLOYMENT & REMOTE VM
+--------------------------------------------------------------------------------
+# Ubuntu Production Server Deployment (Dry Run - tests connection & preview):
+bash deploy/ubuntu/deploy.sh --dry-run
+
+# Ubuntu Production Server Deployment (Live Deploy):
+bash deploy/ubuntu/deploy.sh
+
+# Windows Host Deployment:
+powershell -ExecutionPolicy Bypass -File deploy/windows/deploy.ps1
+
+# Start Production via PM2:
+npm run pm2:start:prod
+
+# Stop PM2 Instances:
+npm run pm2:stop
+
+
+3. VERSIONING & GIT AUTOMATION
+--------------------------------------------------------------------------------
+# Bump Patch Version (e.g. 1.36.0 -> 1.36.1) & Push Tags to GitHub:
+npm version patch && git push origin main --tags
+
+# Bump Minor Version (e.g. 1.36.0 -> 1.37.0) & Push Tags to GitHub:
+npm version minor && git push origin main --tags
+
+# Standard Push to Main:
+git push origin main
+
+
+4. HEALTHCHECKS, TESTING & MIGRATIONS
+--------------------------------------------------------------------------------
+# System Healthcheck (Development):
+npm run check:dev
+
+# System Healthcheck (Production):
+npm run check:prod
+
+# Run Security & Account Flow Parity Contract Tests:
+npm run test:account-flow
+
+# Run Department Registry Tests:
+npm run test:departments
+
+# Run Calendar Department Tests:
+npm run test:calendar
+
+# Run Notes Department Tests:
+npm run test:notes
+
+# Dry Run Database Migration for Ledger:
+npm run migrate:ledger:preview
+
+# Apply Database Migration for Ledger:
+npm run migrate:ledger
+
+
+5. ANDROID NATIVE POS BUILD & DEPLOYMENT
+--------------------------------------------------------------------------------
+# Deploy Android App (Testing Channel):
+bash deploy/android/publish.sh --channel testing
+
+# Deploy Android App (Production Channel):
+bash deploy/android/publish.sh --channel production
+
+# Clean Android Build Cache:
+npm run clean:android
+
+
+6. BROWSER DEVTOOLS TELEMETRY & DIAGNOSTICS (PILLAR 01)
+--------------------------------------------------------------------------------
+# View recent 250 log breadcrumbs in pretty formatted table:
+MacOS.dumpLogs()
+
+# View breadcrumbs filtered by subsystem (e.g. 'Billing', 'Desktop', 'Auth'):
+MacOS.dumpLogs('Billing')
+
+# Turn ON full debug logging in DevTools console (persists across sessions):
+MacOS.enableDebug()
+
+# Turn ON debug logging for a specific subsystem only:
+MacOS.enableDebug('Billing')
+MacOS.enableDebug('Desktop')
+
+# Turn OFF debug logging (restores 100% clean production silence):
+MacOS.disableDebug()
+
+# Export full diagnostic health snapshot (OS, RAM, viewport, user, breadcrumbs):
+MacOS.exportDiagnostics()
+================================================================================
