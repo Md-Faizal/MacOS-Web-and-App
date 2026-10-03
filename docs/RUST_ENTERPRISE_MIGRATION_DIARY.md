@@ -1,4 +1,4 @@
-﻿# Engineering Diary: Enterprise Rust Migration & "Overkill Now for Easy Tomorrow" Playbook
+# Engineering Diary: Enterprise Rust Migration & "Overkill Now for Easy Tomorrow" Playbook
 
 > **Target**: Incrementally migrate heavy compute, math, financial accounting, and data validation from the macOS Business Suite (Node.js/JS) into a high-performance, single-source-of-truth Rust core (**`shared/suite_core`**).
 > 
@@ -46,19 +46,22 @@
 
 ---
 
-## 2. Migration Status Matrix
+## 2. Migration Status Matrix & Domain Progress
 
-| Module | Sub-Domain | Rust Path (`shared/suite_core/src/`) | Targets Available | Parity Test Status | Production Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Finance / Invoicing** | Reverse GST, Free Scheme, Line Item Math | `finance/invoicing/` | WASM, JNI, FFI | ✅ 100% Passing (`parity_tests.rs`) | **Live in Production** |
-| **Finance / Ledger** | FIFO Debt Settlement, Balance Statements | `finance/ledger/` | WASM, JNI, FFI | ✅ 100% Passing | **Live in Production** |
-| **Analytics Engine** | Overdue Aging (0-30, 31-60, 61-90, 90+), Executive KPIs | `analytics/` | WASM, JNI, FFI | ✅ 100% Passing | **Live in Production** |
-| **Catalog** | Batch Expiry & Freshness Classification | `catalog/expiry.rs` | WASM, JNI, FFI | ✅ 100% Passing | **Live in Production** |
-| **Sales** | Order Line Fulfillment & Stage Calculations | `sales/orders.rs` | WASM, JNI, FFI | ✅ 100% Passing | **Live in Production** |
-| **Inventory (Next)** | FEFO/FIFO Batch Stock Depletion & Reservations | `inventory/depletion.rs` | Queued | ⏳ Pending Implementation | *Next Priority* |
-| **Ledger Sequencing** | Strict Ordering & Reference Number Generation | `finance/ledger/sequencing.rs` | Queued | ⏳ Pending Implementation | *In Planning* |
-| **Document Engine** | Native Invoice PDF Renderer (Replace Python `execSync`) | `documents/pdf/` | Standalone CLI / FFI | ⏳ Pending Implementation | *In Planning* |
-| **Storage Engine** | Path Sanitizer, File Hash & Chunk Assembler | `storage/sanitize.rs` | WASM, FFI | ⏳ Pending Implementation | *In Planning* |
+Overall Backend Rust Migration Progress: **~35% of Critical Computational & Financial Logic Migrated** (~8% of total 65k LOC backend).
+
+| Domain / Subsystem | Scope & Functionality | Rust Path (`shared/suite_core/src/`) | Targets Available | Parity Test Status | Migration Progress % | Production Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Finance / Invoicing** | Reverse GST, Free Scheme, Cascading Discounts, Rounding | `finance/invoicing/` | WASM, JNI, FFI | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live in Production** |
+| **Finance / Ledger** | FIFO Debt Settlement, Balance Statements, Allocation Map | `finance/ledger/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Analytics Engine** | Overdue Aging (0-30, 31-60, 61-90, 90+), Executive KPIs | `analytics/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Catalog & Expiry** | Batch Expiry & Freshness Classification (Valid/Expiring/Expired) | `catalog/expiry.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Sales Orders** | Order Line Fulfillment & Stage Calculations | `sales/orders.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Inventory / Depletion** | FEFO/FIFO Batch Stock Depletion & Multi-Batch Reservations | `inventory/depletion.rs` | Standalone / FFI | ⏳ Pending Implementation | **0%** *(Ready to start)* | 🟡 *Option A: Next Priority* |
+| **Storage & Wallpaper Engine** | Zero-GC Image Resize, Format Conversion (WebP/AVIF), Checksums | `storage/wallpaper.rs` or Sidecar | Standalone CLI / NAPI | ⏳ In Planning | **0%** | 🟡 *Option B: High RAM Impact* |
+| **Document / PDF Engine** | Replace Python `execSync` invoice generator with native stream | `documents/pdf/` | Standalone CLI / FFI | ⏳ In Planning | **0%** | 🟡 *Option C: Event-Loop Relief* |
+| **Ledger Sequencing & Audit** | Strict Sequential Invoice Numbers & Anti-Tamper Checksums | `finance/ledger/sequencing.rs` | WASM, FFI | ⏳ In Planning | **0%** | 🟡 *Option D: Data Integrity* |
+| **Auth / OAuth / AI Glue** | Google OAuth 2.0, WebAuthn Passkeys, Gemini AI Streaming | Node.js Express Gateway | N/A (Keep JS Glue) | Managed via battle-tested npm SDKs | **Exempt (Keep JS)** | 🟢 **Production Permanent** |
 
 ---
 
@@ -141,36 +144,88 @@ Run the backend tests or test against an active development slot (`macos-server-
 
 ---
 
-## 5. Next Steps & Where to Continue (For Next AI or Developer Session)
+### [Entry 004] — Dual-VM Blue/Green Verification & Hybrid Rust Architecture Strategy (2026-10-03)
+* **Goal**: Establish the comprehensive long-term architecture strategy: **Hybrid Rust Core + JavaScript Glue & Frontend**, while maintaining zero downtime across both production VMs (`my-mac` and `cos`).
+* **Architectural Findings & Resource Baseline**:
+  - Validated live production resource consumption on both Oracle Cloud 1GB VMs: Node.js container runs at only **~35 MB – 40 MB RAM** idle and **~140 MB – 180 MB under heavy multi-user load** (capped at 512 MB).
+  - Evaluated full Rust rewrite vs. Hybrid approach: Total rewrite of all 65,000 LOC would stall feature velocity for months with negligible RAM impact.
+  - Formally adopted the **Strangler Fig Hybrid Model**:
+    - **Frontend (100% JavaScript)**: Retain fluid MacOS animations, responsive window managers, and fast UI iteration.
+    - **Backend Glue (Node.js/Express)**: Fast iteration for Google OAuth 2.0, WebAuthn passkey challenges, and Gemini AI streaming.
+    - **Ironclad Backend Core (Rust `shared/suite_core`)**: All financial accounting, batch stock depletion, asset crunching, and database audit sequencing.
+* **Parity Test Suite Status**:
+  - `cargo test --manifest-path shared/suite_core/Cargo.toml`: **10/10 Parity Tests Passing (100%)** with zero compiler warnings.
+  - Active in production: Invoicing, Reverse GST, FIFO Statement reconciliations, Executive KPIs, Batch Expiry, and Sales Orders.
 
-> 📍 **RESUME POINT**: When starting the next migration session, begin directly with **Phase 3: Inventory Batch Depletion Engine**.
+---
 
-### Immediate Priority Task: Batch Stock Depletion (FEFO)
-* **Target File to Create**: `shared/suite_core/src/inventory/depletion.rs` (and register in `src/inventory/mod.rs` & `src/lib.rs`).
-* **Source JavaScript Logic**: Located in:
-  - `backend/departments/product-list/engine/handlers.js` (stock verification & batch reservations).
-  - `backend/departments/billing/engine/handlers.js` (deducting batch stock upon invoice creation).
-* **Exact Requirements**:
-  1. **Input**:
-     - `requested_qty`: number (or units/strips)
-     - `batches`: List of available inventory batches for the product: `[{ id, batch_no, expiry_date, current_stock, mrp, rate }]`
-  2. **Algorithm**:
-     - Sort batches by **FEFO (First Expired, First Out)**. Earliest expiring batch is consumed first.
-     - If expiry dates match, fallback to FIFO (earliest creation/batch id).
-     - Calculate quantity deducted per batch.
-  3. **Output**:
-     - `allocated`: `[{ batch_id, batch_no, qty_deducted, remaining_in_batch }]`
-     - `unfulfilled_qty`: `0` if full stock was available, or `> 0` if stock was insufficient.
-     - `is_fully_allocated`: boolean.
-* **Test Fixture to Add**: Add `test_fefo_batch_stock_depletion` to `tests/parity_tests.rs` with:
-  - 3 batches with staggered expiry dates (e.g. `2026-11`, `2027-01`, `2027-06`).
-  - Request quantity spanning across 2 batches.
-  - Assert that batch `2026-11` is exhausted first, and the remainder is deducted from `2027-01`.
+## 5. Migration Starting Points: Where to Start & Current Progress %
 
-### Secondary Follow-up Task: Replace Python `execSync` PDF Spawner
-* **Source Location**: `backend/departments/billing/engine/handlers.js:79` (`generateInvoicePDF`).
-* **Problem**: Spawns `execSync(python invoice-generator.py)` which blocks the Node.js event loop during every invoice download.
-* **Solution**: Offload PDF rendering to a non-blocking asynchronous worker or compile a native Rust renderer (`printpdf` / headless template).
+To continue progressive migration towards an ironclad backend without breaking running services, choose from the following **4 prioritized starting options**:
+
+```
+                                    RUST MIGRATION STARTING POINTS
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [Option A] INVENTORY STOCK DEPLETION (FEFO/FIFO)         │ Progress: 0%  │ Impact: ⭐⭐⭐⭐⭐ (Financial Safety) │
+│ • Prevents race-condition overselling and stock debt     │ Est: 1-2 Days │ Effort: Medium                      │
+├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
+│ [Option B] WALLPAPER & ASSET PROCESSING (Zero-GC)        │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (RAM Protection)    │
+│ • Prevents memory spikes on 1GB VMs during 4K uploads    │ Est: 2 Days   │ Effort: Medium                      │
+├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
+│ [Option C] NATIVE INVOICE PDF STREAMER                   │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (Event-Loop Relief) │
+│ • Replaces blocking Python execSync subprocess           │ Est: 2-3 Days │ Effort: Medium                      │
+├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
+│ [Option D] STRICT SEQUENCING & AUDIT INTEGRITY           │ Progress: 0%  │ Impact: ⭐⭐⭐ (Compliance/Anti-Gap)│
+│ • Enforces zero gaps in bill numbering and WAL checksums │ Est: 1 Day    │ Effort: Low                         │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Option A: Inventory Batch Stock Depletion (FEFO/FIFO) — **(Recommended First Step)**
+* **Current Progress**: **0%** (Queued in `suite_core`)
+* **Why start here**: It directly pairs with the already-completed Invoicing and Ledger engines. Eliminates race conditions and negative inventory bugs at compile time.
+* **Source JavaScript**:
+  - [`backend/departments/product-list/engine/handlers.js`](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/departments/product-list/engine/handlers.js)
+  - [`backend/departments/billing/engine/handlers.js`](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/departments/billing/engine/handlers.js)
+* **Implementation Plan**:
+  1. Create `shared/suite_core/src/inventory/depletion.rs`.
+  2. Implement FEFO (First Expired, First Out) sorting and multi-batch quantity subtraction algorithm.
+  3. Add `test_fefo_batch_stock_depletion` to `tests/parity_tests.rs`.
+  4. Expose in `shared/suite_core/src/ffi/wasm.rs` and connect to `frontend/shared/suite_core_bridge.js`.
+
+---
+
+### Option B: Wallpaper & Image Processing Engine (Zero-GC Memory Guard)
+* **Current Progress**: **0%** (Concept/Design)
+* **Why start here**: Highest single risk factor for server memory exhaustion. Node.js loading uncompressed 4K wallpaper buffers into V8 heap can push container memory close to the 512 MB limit.
+* **Source JavaScript**:
+  - [`backend/departments/wallpaper-content/engine/handlers.js`](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/departments/wallpaper-content/engine/handlers.js)
+* **Implementation Plan**:
+  1. Use Rust `image` and `ravif` crates to process thumbnails and WebP conversions using fixed ~10 MB buffers.
+  2. Compile as an internal CLI or `napi-rs` module called directly from the route.
+
+---
+
+### Option C: Native Invoice PDF Streamer (Replace Python `execSync`)
+* **Current Progress**: **0%** (Identified in Entry 002)
+* **Why start here**: Currently, every invoice PDF generation executes a synchronous child process (`execSync("python invoice-generator.py")`), freezing the Node.js event loop for 400ms–1200ms.
+* **Source JavaScript**:
+  - `backend/departments/billing/engine/handlers.js:79` (`generateInvoicePDF`)
+* **Implementation Plan**:
+  1. Create `documents/pdf` using Rust's `printpdf` or lightweight HTML-to-PDF template streamer.
+  2. Stream generated PDF bytes asynchronously with zero blocking of the API server.
+
+---
+
+### Option D: Ledger Sequencing & Cryptographic Anti-Tamper Audit
+* **Current Progress**: **0%** (In Planning)
+* **Why start here**: Ensures legal invoice numbering continuity (e.g. `INV-2026-0001`, `INV-2026-0002`) with zero missing sequence numbers even under concurrent multi-device billing.
+* **Source JavaScript**:
+  - `backend/departments/billing/engine/handlers.js:2488–2615`
+* **Implementation Plan**:
+  1. Create `shared/suite_core/src/finance/ledger/sequencing.rs`.
+  2. Verify sequence numbers and compute SHA-256 rolling integrity hashes over ledger rows.
 
 ---
 
