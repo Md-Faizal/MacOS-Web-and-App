@@ -520,6 +520,52 @@ pub unsafe extern "C" fn suite_fuzzy_match_score(ptr: *const u8, len: usize) -> 
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn suite_evaluate_video_playback(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::storage::wallpaper::VideoPlaybackMetrics>(slice) {
+        Ok(metrics) => {
+            let eval = crate::storage::wallpaper::evaluate_video_playback(&metrics);
+            package_response(&eval)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                health_status: String,
+                recommended_action: String,
+                error: String,
+            }
+            package_response(&ErrResp {
+                health_status: "error".to_string(),
+                recommended_action: "none".to_string(),
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct TransitionCurveRequest {
+    progress: f64,
+}
+
+#[derive(Serialize)]
+struct TransitionCurveResponse {
+    curve_factor: f64,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_calculate_transition_curve(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<TransitionCurveRequest>(slice) {
+        Ok(req) => {
+            let factor = crate::storage::wallpaper::calculate_smooth_fade_curve(req.progress);
+            package_response(&TransitionCurveResponse { curve_factor: factor })
+        }
+        Err(_) => package_response(&TransitionCurveResponse { curve_factor: 1.0 }),
+    }
+}
+
 
 
 

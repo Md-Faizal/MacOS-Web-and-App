@@ -247,12 +247,47 @@ class WallpaperEngine {
       source.type = src.endsWith('.webm') ? 'video/webm' : 'video/mp4';
       video.appendChild(source);
 
+      let retryCount = 0;
+      const maxRetries = 8;
+      let recoveryTimer = null;
+
+      const triggerAutoRecovery = (reason) => {
+        if (document.hidden) return; // Respect OS power saving
+        retryCount++;
+        console.warn(`[WallpaperEngine] ⚠️ Video playback ${reason}. Auto-recovering in background (attempt ${retryCount}/${maxRetries})...`);
+
+        clearTimeout(recoveryTimer);
+        recoveryTimer = setTimeout(() => {
+          if (document.hidden) return;
+          video.play().catch(err => {
+            if (retryCount <= maxRetries) {
+              console.warn('[WallpaperEngine] ⚠️ Play attempt rejected, reloading video stream...', err.name || err.message);
+              video.load();
+              video.play().catch(() => {});
+            }
+          });
+        }, 300);
+      };
+
+      // Native HTML5 media event listeners for stall/pause detection
+      video.addEventListener('stalled', () => triggerAutoRecovery('stalled'));
+      video.addEventListener('waiting', () => triggerAutoRecovery('buffering/waiting'));
+      video.addEventListener('pause', () => {
+        if (!document.hidden && this.activeVideo === video) {
+          triggerAutoRecovery('paused unexpectedly');
+        }
+      });
+      video.addEventListener('error', (e) => {
+        triggerAutoRecovery(`error (code: ${video.error?.code || 'unknown'})`);
+      });
+
       let resolved = false;
       const done = () => {
         if (!resolved) {
           resolved = true;
           video.play().catch(() => {});
           this.activeVideo = video;
+          this._startRustWatchdog(video);
           resolve();
         }
       };
@@ -265,7 +300,76 @@ class WallpaperEngine {
     });
   }
 
+  /**
+   * Pure Rust Video Playback Watchdog
+   * Queries suite_core.wasm every 1.5s to evaluate buffer headroom & frame cadence
+   */
+  _startRustWatchdog(video) {
+    if (this._watchdogInterval) clearInterval(this._watchdogInterval);
+    let stallCount = 0;
+    let lastTime = 0;
+    let stalledSince = 0;
+
+    this._watchdogInterval = setInterval(() => {
+      if (document.hidden || !video || this.activeVideo !== video) return;
+
+      const currentTime = video.currentTime;
+      const isProgressing = Math.abs(currentTime - lastTime) > 0.05;
+
+      if (isProgressing) {
+        lastTime = currentTime;
+        stalledSince = 0;
+      } else if (!video.paused && video.readyState >= 2) {
+        if (stalledSince === 0) stalledSince = Date.now();
+      }
+
+      const elapsedStalled = stalledSince > 0 ? (Date.now() - stalledSince) : 0;
+      let bufferedEnd = 0;
+      try {
+        if (video.buffered && video.buffered.length > 0) {
+          bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        }
+      } catch (_) {}
+
+      const metrics = {
+        current_time: currentTime,
+        buffered_end: bufferedEnd,
+        duration: video.duration || 0,
+        playback_rate: video.playbackRate || 1.0,
+        is_paused: video.paused,
+        is_muted: video.muted,
+        stall_count: stallCount,
+        ready_state: video.readyState,
+        network_state: video.networkState,
+        elapsed_stalled_ms: elapsedStalled
+      };
+
+      const evalResult = window.SuiteCoreBridge?.evaluateVideoPlayback
+        ? window.SuiteCoreBridge.evaluateVideoPlayback(metrics)
+        : null;
+
+      if (evalResult && evalResult.should_recover) {
+        stallCount++;
+        console.warn(`[WallpaperEngine] 🦀 [Rust Engine] Video state: ${evalResult.health_status}. Executing action: ${evalResult.recommended_action}`);
+
+        if (evalResult.recommended_action === 'resume') {
+          video.play().catch(() => {});
+        } else if (evalResult.recommended_action === 'reload_source') {
+          video.load();
+          video.play().catch(() => {});
+        } else if (evalResult.recommended_action === 'soft_seek') {
+          video.currentTime += 0.05;
+          video.play().catch(() => {});
+        }
+      }
+    }, 1500);
+  }
+
   _cleanupLayer(layer) {
+    if (this._watchdogInterval) {
+      clearInterval(this._watchdogInterval);
+      this._watchdogInterval = null;
+    }
     const video = layer.querySelector('video');
     if (video) {
       video.pause();
@@ -295,7 +399,7 @@ class WallpaperEngine {
   }
 
   _setupPowerSaving() {
-    // Automatically pause video wallpapers when tab is in background
+    // Automatically pause video wallpapers when tab is in background, resume cleanly when active
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         if (this.activeVideo && !this.activeVideo.paused) {
@@ -303,7 +407,12 @@ class WallpaperEngine {
         }
       } else {
         if (this.activeVideo && this.activeVideo.paused) {
-          this.activeVideo.play().catch(() => {});
+          console.warn('[WallpaperEngine] ☀️ Screen/Tab active, resuming video playback...');
+          this.activeVideo.play().catch(err => {
+            console.warn('[WallpaperEngine] ⚠️ Video resume rejected, reloading source...', err.name || err.message);
+            this.activeVideo.load();
+            this.activeVideo.play().catch(() => {});
+          });
         }
       }
     });

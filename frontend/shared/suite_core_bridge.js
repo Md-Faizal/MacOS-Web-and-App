@@ -435,6 +435,53 @@ class SuiteCoreBridge {
     }
     throw new Error('[SuiteCoreBridge] suite_fuzzy_match_score WASM call failed');
   }
+
+  /**
+   * Pure Rust Video Playback Watchdog (Buffer headroom, stall recovery, stream starvation)
+   * Returns { health_status, recommended_action, buffer_headroom_secs, should_recover, recovery_delay_ms, transition_fade_factor }
+   */
+  static evaluateVideoPlayback(metrics = {}) {
+    if (!this.isWasmLoaded()) {
+      // Graceful fallback if WASM is still loading
+      const isPaused = Boolean(metrics.is_paused);
+      return {
+        health_status: isPaused ? 'paused_unintentional' : 'optimal',
+        recommended_action: isPaused ? 'resume' : 'none',
+        buffer_headroom_secs: 1.0,
+        should_recover: isPaused,
+        recovery_delay_ms: 200,
+        transition_fade_factor: 1.0
+      };
+    }
+
+    const payload = {
+      current_time: Number(metrics.current_time || 0),
+      buffered_end: Number(metrics.buffered_end || 0),
+      duration: Number(metrics.duration || 0),
+      playback_rate: Number(metrics.playback_rate || 1.0),
+      is_paused: Boolean(metrics.is_paused),
+      is_muted: Boolean(metrics.is_muted),
+      stall_count: Number(metrics.stall_count || 0),
+      ready_state: Number(metrics.ready_state || 0),
+      network_state: Number(metrics.network_state || 0),
+      elapsed_stalled_ms: Number(metrics.elapsed_stalled_ms || 0)
+    };
+
+    return this.callWasmJson('suite_evaluate_video_playback', payload);
+  }
+
+  /**
+   * Pure Rust Hermite/Bezier S-Curve easing for ultra-smooth 60fps wallpaper crossfade
+   * Returns number (0.0 - 1.0)
+   */
+  static calculateTransitionCurve(progress = 0) {
+    if (!this.isWasmLoaded()) {
+      const p = Math.max(0, Math.min(1, progress));
+      return (p * p) * (3 - 2 * p);
+    }
+    const res = this.callWasmJson('suite_calculate_transition_curve', { progress: Number(progress) });
+    return res?.curve_factor !== undefined ? res.curve_factor : 1.0;
+  }
 }
 
 

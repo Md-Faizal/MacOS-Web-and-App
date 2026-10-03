@@ -98,3 +98,159 @@ pub fn scan_wallpaper_asset(data: &[u8]) -> WallpaperAssetScanResult {
         recommended_category: category,
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pure Rust Video Playback Watchdog & Smooth Transition Cadence Engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoPlaybackMetrics {
+    pub current_time: f64,
+    pub buffered_end: f64,
+    pub duration: f64,
+    pub playback_rate: f64,
+    pub is_paused: bool,
+    pub is_muted: bool,
+    pub stall_count: u32,
+    pub ready_state: u32,       // 0: HAVE_NOTHING, 1: HAVE_METADATA, 2: HAVE_CURRENT_DATA, 3: HAVE_FUTURE_DATA, 4: HAVE_ENOUGH_DATA
+    pub network_state: u32,     // 0: EMPTY, 1: IDLE, 2: LOADING, 3: NO_SOURCE
+    pub elapsed_stalled_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackWatchdogEvaluation {
+    pub health_status: String,        // "optimal", "buffering", "starving", "stalled", "frozen"
+    pub recommended_action: String,   // "none", "resume", "buffer_wait", "soft_seek", "reload_source"
+    pub buffer_headroom_secs: f64,
+    pub should_recover: bool,
+    pub recovery_delay_ms: u64,
+    pub transition_fade_factor: f64,
+}
+
+/// Evaluates real-time HTML5 video playback health and dictates micro-recovery tactics
+pub fn evaluate_video_playback(metrics: &VideoPlaybackMetrics) -> PlaybackWatchdogEvaluation {
+    let headroom = if metrics.buffered_end > metrics.current_time {
+        metrics.buffered_end - metrics.current_time
+    } else {
+        0.0
+    };
+
+    // Case 1: Video was paused unintentionally when tab is active and visible
+    if metrics.is_paused && metrics.ready_state >= 2 {
+        return PlaybackWatchdogEvaluation {
+            health_status: "paused_unintentional".to_string(),
+            recommended_action: "resume".to_string(),
+            buffer_headroom_secs: headroom,
+            should_recover: true,
+            recovery_delay_ms: 150,
+            transition_fade_factor: 1.0,
+        };
+    }
+
+    // Case 2: Fatal or prolonged stall (> 4.5 seconds with no buffer progress)
+    if metrics.elapsed_stalled_ms > 4500 || metrics.network_state == 3 {
+        return PlaybackWatchdogEvaluation {
+            health_status: "frozen".to_string(),
+            recommended_action: "reload_source".to_string(),
+            buffer_headroom_secs: headroom,
+            should_recover: true,
+            recovery_delay_ms: 500,
+            transition_fade_factor: 0.0,
+        };
+    }
+
+    // Case 3: Buffer starvation (headroom < 0.25s while running)
+    if headroom < 0.25 && metrics.ready_state < 3 {
+        return PlaybackWatchdogEvaluation {
+            health_status: "starving".to_string(),
+            recommended_action: "buffer_wait".to_string(),
+            buffer_headroom_secs: headroom,
+            should_recover: true,
+            recovery_delay_ms: 400,
+            transition_fade_factor: 0.8,
+        };
+    }
+
+    // Case 4: Stalled transiently (ready state < 2 or stall count registered)
+    if metrics.ready_state < 2 || metrics.elapsed_stalled_ms > 0 {
+        return PlaybackWatchdogEvaluation {
+            health_status: "stalled".to_string(),
+            recommended_action: if metrics.stall_count > 3 { "soft_seek".to_string() } else { "resume".to_string() },
+            buffer_headroom_secs: headroom,
+            should_recover: true,
+            recovery_delay_ms: 300,
+            transition_fade_factor: 0.9,
+        };
+    }
+
+    // Case 5: Optimal 60fps playback
+    PlaybackWatchdogEvaluation {
+        health_status: "optimal".to_string(),
+        recommended_action: "none".to_string(),
+        buffer_headroom_secs: headroom,
+        should_recover: false,
+        recovery_delay_ms: 0,
+        transition_fade_factor: 1.0,
+    }
+}
+
+/// Smooth cubic bezier ease-in-out interpolation for wallpaper cross-dissolve (Zero-GC)
+pub fn calculate_smooth_fade_curve(progress: f64) -> f64 {
+    let p = progress.clamp(0.0, 1.0);
+    // Smooth Hermite S-curve: 3p^2 - 2p^3
+    (p * p) * (3.0 - (2.0 * p))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_evaluate_video_playback_optimal() {
+        let metrics = VideoPlaybackMetrics {
+            current_time: 5.0,
+            buffered_end: 15.0,
+            duration: 30.0,
+            playback_rate: 1.0,
+            is_paused: false,
+            is_muted: true,
+            stall_count: 0,
+            ready_state: 4,
+            network_state: 1,
+            elapsed_stalled_ms: 0,
+        };
+        let eval = evaluate_video_playback(&metrics);
+        assert_eq!(eval.health_status, "optimal");
+        assert_eq!(eval.recommended_action, "none");
+        assert!(!eval.should_recover);
+        assert_eq!(eval.buffer_headroom_secs, 10.0);
+    }
+
+    #[test]
+    fn test_evaluate_video_playback_paused_recovery() {
+        let metrics = VideoPlaybackMetrics {
+            current_time: 5.0,
+            buffered_end: 15.0,
+            duration: 30.0,
+            playback_rate: 1.0,
+            is_paused: true,
+            is_muted: true,
+            stall_count: 1,
+            ready_state: 4,
+            network_state: 1,
+            elapsed_stalled_ms: 0,
+        };
+        let eval = evaluate_video_playback(&metrics);
+        assert_eq!(eval.health_status, "paused_unintentional");
+        assert_eq!(eval.recommended_action, "resume");
+        assert!(eval.should_recover);
+    }
+
+    #[test]
+    fn test_smooth_fade_curve() {
+        assert_eq!(calculate_smooth_fade_curve(0.0), 0.0);
+        assert_eq!(calculate_smooth_fade_curve(0.5), 0.5);
+        assert_eq!(calculate_smooth_fade_curve(1.0), 1.0);
+    }
+}
+

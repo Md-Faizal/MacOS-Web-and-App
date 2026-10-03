@@ -247,16 +247,24 @@
           performSessionCheck();
         }, 30000);
 
-        // Immediate check on return from AFK / tab switch / screen wake
+        // Graceful delayed check on return from AFK / tab switch / screen wake
+        // Allows OS network stack and Wi-Fi adapter to stabilize before hitting endpoint
+        let wakeDebounceTimer = null;
+        const triggerDelayedWakeCheck = () => {
+          lastUserActivity = Date.now();
+          clearTimeout(wakeDebounceTimer);
+          wakeDebounceTimer = setTimeout(() => {
+            if (!document.hidden && navigator.onLine) {
+              performSessionCheck();
+            }
+          }, 2500);
+        };
+
         document.addEventListener('visibilitychange', () => {
-          if (!document.hidden) {
-            lastUserActivity = Date.now();
-            performSessionCheck();
-          }
+          if (!document.hidden) triggerDelayedWakeCheck();
         });
         window.addEventListener('focus', () => {
-          lastUserActivity = Date.now();
-          performSessionCheck();
+          triggerDelayedWakeCheck();
         });
       } catch (err) {
         console.error('Session verification error:', err);
