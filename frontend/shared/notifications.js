@@ -75,23 +75,45 @@
     }
 
     autoRequestNativePermission() {
-      if (typeof window !== 'undefined' && 'Notification' in window && window.Notification) {
-        if (window.Notification.permission === 'default' && !this.nativePermissionRequested) {
-          // Listen for first user gesture to request notification permission non-intrusively
-          const onRequestGesture = () => {
-            if (window.Notification && window.Notification.permission === 'default') {
-              window.Notification.requestPermission().then(permission => {
+      if (typeof window === 'undefined' || !('Notification' in window) || !window.Notification) return;
+
+      const triggerPermissionPrompt = () => {
+        if (window.Notification && window.Notification.permission === 'default') {
+          try {
+            const req = window.Notification.requestPermission();
+            if (req && typeof req.then === 'function') {
+              req.then(permission => {
                 log.debug('Device Notification permission result:', permission);
-              }).catch(() => {});
+                if (permission === 'granted') {
+                  this.dispatchNativeNotification('Notifications Active', 'Native device notifications are now enabled.', { app: 'System' });
+                }
+              }).catch(err => {
+                log.debug('Notification permission request suppressed:', err);
+              });
             }
-            window.removeEventListener('click', onRequestGesture);
-            window.removeEventListener('keydown', onRequestGesture);
-          };
-          window.addEventListener('click', onRequestGesture, { once: true });
-          window.addEventListener('keydown', onRequestGesture, { once: true });
-          this.nativePermissionRequested = true;
+          } catch (e) {
+            log.debug('Direct Notification.requestPermission call failed:', e);
+          }
         }
+      };
+
+      // 1. Immediately request after short delay on startup
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(triggerPermissionPrompt, 300));
+      } else {
+        setTimeout(triggerPermissionPrompt, 300);
       }
+
+      // 2. Also register on first user interaction in case the browser enforces user-gesture restriction for permission prompts
+      const onFirstInteraction = () => {
+        triggerPermissionPrompt();
+        window.removeEventListener('click', onFirstInteraction);
+        window.removeEventListener('pointerdown', onFirstInteraction);
+        window.removeEventListener('keydown', onFirstInteraction);
+      };
+      window.addEventListener('click', onFirstInteraction, { once: true });
+      window.addEventListener('pointerdown', onFirstInteraction, { once: true });
+      window.addEventListener('keydown', onFirstInteraction, { once: true });
     }
 
     requestNativePermission() {
@@ -186,7 +208,7 @@
     }
 
     /**
-     * Dispatch Native Device OS notification if browser tab is backgrounded
+     * Dispatch Native Device OS notification to system notification center
      */
     dispatchNativeNotification(title, message, options = {}) {
       if (typeof window === 'undefined' || !('Notification' in window) || !window.Notification) return;
@@ -194,13 +216,20 @@
 
       try {
         const appKey = (options.app || 'system').toLowerCase();
-        const icon = options.icon || this.appIcons[appKey] || this.appIcons['default'];
+        let icon = options.icon || this.appIcons[appKey] || this.appIcons['default'];
+
+        // Resolve absolute URL for OS notification daemon (Windows/macOS/Linux)
+        if (icon && typeof window !== 'undefined' && window.location) {
+          try {
+            icon = new URL(icon, window.location.origin).href;
+          } catch (_) {}
+        }
 
         const nativeNotif = new window.Notification(title, {
           body: message,
           icon: icon,
-          badge: this.appIcons['default'],
-          tag: options.tag || `macos-${Date.now()}`,
+          badge: icon,
+          tag: options.tag || `macos-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           silent: !this.isSoundEnabled()
         });
 
@@ -244,10 +273,17 @@
         this.playChime(type);
       }
 
-      // 2. Dispatch native OS notification if document is backgrounded or explicitly forced
-      const isDocumentHidden = typeof document !== 'undefined' && (document.hidden || !document.hasFocus());
-      if (isDocumentHidden || options.forceNative) {
-        this.dispatchNativeNotification(title, message, { ...options, app: appName, icon: iconUrl });
+      // 2. Dispatch native device OS notification
+      if (options.native !== false && typeof window !== 'undefined' && 'Notification' in window && window.Notification) {
+        if (window.Notification.permission === 'granted') {
+          this.dispatchNativeNotification(title, message, { ...options, app: appName, icon: iconUrl });
+        } else if (window.Notification.permission === 'default') {
+          this.requestNativePermission().then(perm => {
+            if (perm === 'granted') {
+              this.dispatchNativeNotification(title, message, { ...options, app: appName, icon: iconUrl });
+            }
+          }).catch(() => {});
+        }
       }
 
       // 3. Render Glassmorphic On-Screen Toast Card

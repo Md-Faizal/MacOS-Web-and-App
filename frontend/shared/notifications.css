@@ -1,6 +1,7 @@
 /**
  * MacOS Uniform Glassmorphic Notifications Engine
  * Styling for on-screen notification stack matching native macOS Sonoma / Sequoia design
+ * Optimized for Light and Dark modes with maximum legibility and mobile responsiveness.
  */
 
 #macos-notification-center {
@@ -11,7 +12,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 340px;
+  width: 360px;
   max-width: calc(100vw - 32px);
   pointer-events: none;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -26,40 +27,191 @@
   box-sizing: border-box;
   backdrop-filter: blur(28px) saturate(190%);
   -webkit-backdrop-filter: blur(28px) saturate(190%);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, margin 0.3s ease;
-  transform: translateX(380px);
+  transform: translateX(400px);
   opacity: 0;
   cursor: pointer;
   user-select: none;
   overflow: hidden;
 }
 
-/* Light Theme */
-:root,
+/* ==========================================================================
+   THEME STYLES - LIGHT THEME (Default)
+   ========================================================================== */
+.macos-notification-toast,
+:root .macos-notification-toast,
 html[data-theme="light"] .macos-notification-toast,
-html[data-macos-theme="light"] .macos-notification-toast {
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  color: #1d1d1f;
+html[data-macos-theme="light"] .macos-notification-toast,
+body[data-theme="light"] .macos-notification-toast {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  color: #111827 !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Dark Theme */
+.macos-notification-toast .toast-app-title,
+html[data-theme="light"] .macos-notification-toast .toast-app-title,
+body[data-theme="light"] .macos-notification-toast .toast-app-title {
+  color: #374151 !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+.macos-notification-toast .toast-time,
+html[data-theme="light"] .macos-notification-toast .toast-time,
+body[data-theme="light"] .macos-notification-toast .toast-time {
+  color: #6b7280 !important;
+  opacity: 0.9 !important;
+  font-weight: 500 !important;
+}
+
+.macos-notification-toast .toast-title,
+html[data-theme="light"] .macos-notification-toast .toast-title,
+body[data-theme="light"] .macos-notification-toast .toast-title {
+  color: #111827 !important;
+  font-weight: 700 !important;
+  font-size: 13.5px !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.1px;
+}
+
+.macos-notification-toast .toast-message,
+html[data-theme="light"] .macos-notification-toast .toast-message,
+body[data-theme="light"] .macos-notification-toast .toast-message {
+  color: #374151 !important;
+  font-weight: 500 !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+  word-break: break-word;
+}
+
+.macos-notification-toast .toast-close-btn,
+html[data-theme="light"] .macos-notification-toast .toast-close-btn,
+body[data-theme="light"] .macos-notification-toast .toast-close-btn {
+  background: rgba(0, 0, 0, 0.07) !important;
+  color: #374151 !important;
+  opacity: 0.7 !important;
+}
+
+.macos-notification-toast .toast-close-btn:hover,
+html[data-theme="light"] .macos-notification-toast .toast-close-btn:hover,
+body[data-theme="light"] .macos-notification-toast .toast-close-btn:hover {
+  background: rgba(0, 0, 0, 0.14) !important;
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+/* ==========================================================================
+   THEME STYLES - DARK THEME
+   ========================================================================== */
 html[data-theme="dark"] .macos-notification-toast,
-html[data-macos-theme="dark"] .macos-notification-toast {
-  background: rgba(30, 30, 32, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #f5f5f7;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 2px 10px rgba(0, 0, 0, 0.25);
+html[data-macos-theme="dark"] .macos-notification-toast,
+body[data-theme="dark"] .macos-notification-toast,
+body.dark-theme .macos-notification-toast,
+body.dark-mode .macos-notification-toast {
+  background: rgba(28, 30, 34, 0.94) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #f9fafb !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
 }
 
+html[data-theme="dark"] .macos-notification-toast .toast-app-title,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-app-title,
+body[data-theme="dark"] .macos-notification-toast .toast-app-title,
+body.dark-theme .macos-notification-toast .toast-app-title,
+body.dark-mode .macos-notification-toast .toast-app-title {
+  color: #d1d5db !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="dark"] .macos-notification-toast .toast-time,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-time,
+body[data-theme="dark"] .macos-notification-toast .toast-time,
+body.dark-theme .macos-notification-toast .toast-time,
+body.dark-mode .macos-notification-toast .toast-time {
+  color: #9ca3af !important;
+  opacity: 0.9 !important;
+  font-weight: 500 !important;
+}
+
+html[data-theme="dark"] .macos-notification-toast .toast-title,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-title,
+body[data-theme="dark"] .macos-notification-toast .toast-title,
+body.dark-theme .macos-notification-toast .toast-title,
+body.dark-mode .macos-notification-toast .toast-title {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 13.5px !important;
+  line-height: 1.35 !important;
+}
+
+html[data-theme="dark"] .macos-notification-toast .toast-message,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-message,
+body[data-theme="dark"] .macos-notification-toast .toast-message,
+body.dark-theme .macos-notification-toast .toast-message,
+body.dark-mode .macos-notification-toast .toast-message {
+  color: #e5e7eb !important;
+  font-weight: 500 !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+}
+
+html[data-theme="dark"] .macos-notification-toast .toast-close-btn,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-close-btn,
+body[data-theme="dark"] .macos-notification-toast .toast-close-btn,
+body.dark-theme .macos-notification-toast .toast-close-btn,
+body.dark-mode .macos-notification-toast .toast-close-btn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #f3f4f6 !important;
+  opacity: 0.8 !important;
+}
+
+html[data-theme="dark"] .macos-notification-toast .toast-close-btn:hover,
+html[data-macos-theme="dark"] .macos-notification-toast .toast-close-btn:hover,
+body[data-theme="dark"] .macos-notification-toast .toast-close-btn:hover,
+body.dark-theme .macos-notification-toast .toast-close-btn:hover,
+body.dark-mode .macos-notification-toast .toast-close-btn:hover {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast {
+    background: rgba(28, 30, 34, 0.94) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    color: #f9fafb !important;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  }
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast .toast-app-title {
+    color: #d1d5db !important;
+  }
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast .toast-time {
+    color: #9ca3af !important;
+  }
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast .toast-title {
+    color: #ffffff !important;
+  }
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast .toast-message {
+    color: #e5e7eb !important;
+  }
+  :root:not([data-theme="light"]):not([data-macos-theme="light"]) .macos-notification-toast .toast-close-btn {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #f3f4f6 !important;
+  }
+}
+
+/* ==========================================================================
+   ANIMATIONS & ENTRY/EXIT
+   ========================================================================== */
 .macos-notification-toast.toast-entering {
   transform: translateX(0);
   opacity: 1;
 }
 
 .macos-notification-toast.toast-exiting {
-  transform: translateX(380px) scale(0.96);
+  transform: translateX(400px) scale(0.96);
   opacity: 0;
 }
 
@@ -82,10 +234,9 @@ html[data-macos-theme="dark"] .macos-notification-toast {
 
 .macos-notification-toast .toast-app-title {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  opacity: 0.65;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -94,22 +245,18 @@ html[data-macos-theme="dark"] .macos-notification-toast {
 .macos-notification-toast .toast-time {
   margin-left: auto;
   font-size: 11px;
-  opacity: 0.45;
   font-weight: 500;
 }
 
 .macos-notification-toast .toast-close-btn {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: rgba(120, 120, 128, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
-  color: inherit;
-  opacity: 0.55;
   cursor: pointer;
   border: none;
   padding: 0;
@@ -119,8 +266,6 @@ html[data-macos-theme="dark"] .macos-notification-toast {
 }
 
 .macos-notification-toast .toast-close-btn:hover {
-  opacity: 1;
-  background: rgba(120, 120, 128, 0.3);
   transform: scale(1.1);
 }
 
@@ -132,46 +277,32 @@ html[data-macos-theme="dark"] .macos-notification-toast {
   padding-left: 28px;
 }
 
-.macos-notification-toast .toast-title {
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.35;
-  letter-spacing: -0.1px;
-}
-
-.macos-notification-toast .toast-message {
-  font-size: 12px;
-  line-height: 1.4;
-  opacity: 0.85;
-  word-break: break-word;
-}
-
 /* Variant Indicator Badges */
 .macos-notification-toast::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 14px;
-  bottom: 14px;
-  width: 3.5px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
   border-radius: 0 4px 4px 0;
 }
 
-.macos-notification-toast.toast-type-success::before { background: #34c759; }
-.macos-notification-toast.toast-type-error::before { background: #ff3b30; }
-.macos-notification-toast.toast-type-warning::before { background: #ff9500; }
-.macos-notification-toast.toast-type-info::before { background: #0071e3; }
-.macos-notification-toast.toast-type-critical::before { background: #af52de; }
+.macos-notification-toast.toast-type-success::before { background: #10b981; }
+.macos-notification-toast.toast-type-error::before { background: #ef4444; }
+.macos-notification-toast.toast-type-warning::before { background: #f59e0b; }
+.macos-notification-toast.toast-type-info::before { background: #2563eb; }
+.macos-notification-toast.toast-type-critical::before { background: #a855f7; }
 
 /* Subtle auto-dismiss progress bar at bottom */
 .macos-notification-toast .toast-progress-bar {
   position: absolute;
   bottom: 0;
   left: 0;
-  height: 2px;
+  height: 2.5px;
   width: 100%;
   background: currentColor;
-  opacity: 0.15;
+  opacity: 0.2;
   transform-origin: left center;
   transition: transform linear;
 }
@@ -191,7 +322,7 @@ html[data-macos-theme="dark"] .macos-notification-toast {
 .macos-notification-toast .toast-action-btn {
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 6px;
   border: 1px solid rgba(120, 120, 128, 0.24);
   background: rgba(120, 120, 128, 0.12);
@@ -205,20 +336,59 @@ html[data-macos-theme="dark"] .macos-notification-toast {
 }
 
 .macos-notification-toast .toast-action-btn.primary {
-  background: #0071e3;
-  color: #ffffff;
-  border-color: #0071e3;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
 }
 
 .macos-notification-toast .toast-action-btn.primary:hover {
-  background: #0077ed;
+  background: #1d4ed8 !important;
 }
 
-@media (max-width: 480px) {
+/* ==========================================================================
+   RESPONSIVE DESIGN FOR MOBILE & SMALL SCREEN SIZES
+   ========================================================================== */
+@media (max-width: 640px) {
   #macos-notification-center {
-    top: 16px;
-    right: 8px;
-    left: 8px;
+    top: 12px;
+    right: 10px;
+    left: 10px;
     width: auto;
+    max-width: none;
+    gap: 8px;
+  }
+
+  .macos-notification-toast {
+    padding: 12px 14px;
+    border-radius: 12px;
+    transform: translateY(-60px);
+  }
+
+  .macos-notification-toast.toast-entering {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  .macos-notification-toast.toast-exiting {
+    transform: translateY(-60px) scale(0.96);
+    opacity: 0;
+  }
+
+  .macos-notification-toast .toast-body {
+    padding-left: 26px;
+  }
+
+  .macos-notification-toast .toast-title {
+    font-size: 13px !important;
+  }
+
+  .macos-notification-toast .toast-message {
+    font-size: 12px !important;
+  }
+
+  .macos-notification-toast .toast-close-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
   }
 }

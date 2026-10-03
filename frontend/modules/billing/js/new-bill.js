@@ -55,6 +55,23 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class BillEditor {
+    showNotification(message, type = 'info') {
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'New Bill',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'New Bill' });
+    }
+  }
+
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.currentBillProducts = [];
@@ -1182,7 +1199,7 @@ class BillEditor {
         }
       }
     } else {
-      alert('Please select a variant');
+      this.showNotification('Please select a variant', 'warning');
     }
   }
 
@@ -1801,7 +1818,7 @@ class BillEditor {
 
     const customerName = document.getElementById('customerName')?.value.trim();
     if (!customerName) {
-      alert('Please ensure customer name is set.');
+      this.showNotification('Please ensure customer name is set.', 'warning');
       return;
     }
 
@@ -1920,7 +1937,7 @@ class BillEditor {
       
     } catch (err) {
       log.error('Import Error:', err);
-      alert('Failed to import order items. Please check the logs.');
+      this.showNotification('Failed to import order items', 'error');
     } finally {
       loadingOverlay.remove();
     }
@@ -1933,7 +1950,7 @@ class BillEditor {
     if (schemeValue === 'custom') {
       scheme = itemData ? itemData.scheme : document.getElementById('customSchemeValue').value;
       if (!scheme && !itemData) {
-        alert('Please enter custom scheme value (e.g., 3+1)');
+        this.showNotification('Please enter custom scheme value (e.g., 3+1)', 'warning');
         return;
       }
     }
@@ -1975,7 +1992,7 @@ class BillEditor {
 
     // Validate product
     if (!product.name || product.qty === 0 || product.mrp === 0) {
-      alert('Please fill in Product Name, Quantity, and MRP');
+      this.showNotification('Please fill in Product Name, Quantity, and MRP', 'warning');
       return;
     }
 
@@ -2391,7 +2408,7 @@ class BillEditor {
       }
 
       log.warn('⚠️ No variants found for product:', product.name);
-      alert('This product has no variants available');
+      this.showNotification('This product has no variants available', 'warning');
     } catch (error) {
       log.error('Error opening variant selector:', error);
     }
@@ -2544,7 +2561,7 @@ class BillEditor {
         }
       }
     } else {
-      alert('Please select a variant');
+      this.showNotification('Please select a variant', 'warning');
     }
   }
 
@@ -2994,7 +3011,7 @@ class BillEditor {
   checkAndHandleBatchUpdate(product, newBatchNo) {
     // Check if batch already exists via API
     if (!this.apiEnabled) {
-      alert('Batch management requires API connection');
+      this.showNotification('Batch management requires API connection', 'warning');
       return;
     }
 
@@ -3094,13 +3111,13 @@ class BillEditor {
 
   async makeBill() {
     if (this.currentBillProducts.length === 0) {
-      alert('Please add at least one product to the bill');
+      this.showNotification('Please add at least one product to the bill', 'warning');
       return;
     }
 
     const customerName = document.getElementById('customerName').value;
     if (!customerName) {
-      alert('Please enter customer name');
+      this.showNotification('Please enter customer name', 'warning');
       return;
     }
 
@@ -3140,7 +3157,7 @@ class BillEditor {
       // UPDATE MODE - Update existing bill
       const billIndex = this.billingData.bills.findIndex(b => b.id === this.editingBillId || b.bill_id === this.editingBillId);
       if (billIndex === -1) {
-        alert('Error: Bill not found');
+        this.showNotification('Bill not found', 'error');
         return;
       }
 
@@ -3191,7 +3208,7 @@ class BillEditor {
             } catch (_) {}
           }
 
-          alert(`✓ Bill Updated Successfully!\nReference No: ${this.billingData.bills[billIndex].reference_no || 'N/A'}`);
+          this.showNotification('✓ Bill Updated Successfully!', 'success');
 
           // Reload data from API
           if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
@@ -3204,12 +3221,12 @@ class BillEditor {
           }
         } else {
           // API is disabled
-          alert('Error: Bill updates require API connection');
+          this.showNotification('Bill updates require API connection', 'error');
           throw new Error('API is disabled');
         }
       } catch (error) {
         // Bill update failed
-        alert(`✗ Bill Update Failed: ${error.message}`);
+        this.showNotification(`Bill Update Failed: ${error.message}`, 'error');
         log.error('Bill update error:', error);
       }
 
@@ -3259,7 +3276,7 @@ class BillEditor {
 
           const billReference = result.reference_no || result.invoice_no || 'N/A';
           const billId = result.id;
-          alert(`✓ Bill Created Successfully!\nReference: ${billReference}\nBill ID: ${billId}`);
+          this.showNotification(`✓ Bill Created: ${billReference}`, 'success');
 
           // Store result in memory with all API fields
           const storedBill = {
@@ -3292,7 +3309,7 @@ class BillEditor {
           }
         } else {
           // API is disabled - cannot create bill
-          alert('Error: Bill creation requires API connection');
+          this.showNotification('Bill creation requires API connection', 'error');
           throw new Error('API is disabled');
         }
 
@@ -3300,7 +3317,7 @@ class BillEditor {
         this.switchView('existing'); // Show the existing bills view
       } catch (error) {
         // API failed - bill creation failed
-        alert(`✗ Bill Creation Failed: ${error.message}`);
+        this.showNotification(`Bill Creation Failed: ${error.message}`, 'error');
         log.error('Bill creation error:', error);
       }
     }
@@ -3401,7 +3418,7 @@ class BillEditor {
 
   async updateProductDatabase(product, field, newValue) {
     if (!this.apiEnabled) {
-      alert('Product database updates require API connection');
+      this.showNotification('Product database updates require API connection', 'warning');
       return;
     }
 
@@ -3479,19 +3496,19 @@ class BillEditor {
           await this.api.updateVariant(variantId, {
             pack_size_value: newValue
           });
-          alert(`✓ Pack size updated in database to ${newValue}`);
+          this.showNotification(`✓ Pack size updated to ${newValue}`, 'success');
         }
       } else if (field === 'batch') {
         if (batchId) {
           await this.api.updateBatch(batchId, {
             batch_no: newValue
           });
-          alert(`✓ Batch number updated in database to ${newValue}`);
+          this.showNotification(`✓ Batch number updated to ${newValue}`, 'success');
         }
       }
     } catch (error) {
       log.error('❌ Failed to update product database:', error);
-      alert(`Failed to update database: ${error.message}`);
+      this.showNotification(`Failed to update database: ${error.message}`, 'error');
     }
   }
 
@@ -3554,7 +3571,7 @@ class BillEditor {
         const batch_no = document.getElementById('repairBatchNo').value.trim();
 
         if (!pack_value || !batch_no) {
-          alert('Pack Value and Batch Number are required');
+          this.showNotification('Pack Value and Batch Number are required', 'warning');
           return;
         }
 
@@ -3580,7 +3597,7 @@ class BillEditor {
       const variantId = product.variant_id || (this.currentProduct?.variant_id);
       
       if (!batch || !variantId) {
-        alert('Cannot update MRP: Batch info or Variant ID missing');
+        this.showNotification('Cannot update MRP: Batch info or Variant ID missing', 'error');
         return;
       }
 
@@ -3605,10 +3622,10 @@ class BillEditor {
 
       const result = await response.json();
       log.debug('✅ MRP updated in database:', result);
-      alert(`✓ MRP updated in database for batch ${batch}`);
+      this.showNotification(`✓ MRP updated for batch ${batch}`, 'success');
     } catch (error) {
       log.error('❌ Failed to update MRP in database:', error);
-      alert(`Failed to update MRP in database: ${error.message}`);
+      this.showNotification(`Failed to update MRP: ${error.message}`, 'error');
     }
   }
 }

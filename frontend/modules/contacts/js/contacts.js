@@ -171,7 +171,7 @@ class ContactsApp extends AppWindow {
       if (this.selectedContactId) {
         this.openEditContactModal();
       } else {
-        alert('Please select a contact to edit');
+        this.showNotification('Please select a contact to edit', 'warning');
       }
     });
 
@@ -515,7 +515,7 @@ class ContactsApp extends AppWindow {
                
                document.getElementById('copyLinkBtn').onclick = () => {
                  navigator.clipboard.writeText(url).then(() => {
-                   alert('Ledger link copied to clipboard!');
+                   this.showNotification('Ledger link copied to clipboard!', 'success');
                    if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
                  });
                };
@@ -559,7 +559,7 @@ class ContactsApp extends AppWindow {
               const cleanPhone = contact.phone.replace(/\D/g, '');
               window.open(`https://wa.me/${cleanPhone.startsWith('91') ? cleanPhone : '91' + cleanPhone}`, '_blank');
             } else {
-              alert('No phone number available for WhatsApp');
+              this.showNotification('No phone number available for WhatsApp', 'warning');
             }
             break;
           case 'print-slip':
@@ -683,7 +683,7 @@ class ContactsApp extends AppWindow {
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Please allow popups to print the shipping slip.');
+      this.showNotification('Please allow popups to print the shipping slip.', 'warning');
       return;
     }
 
@@ -1159,7 +1159,7 @@ class ContactsApp extends AppWindow {
     const name = formData.get('name').trim();
 
     if (!name) {
-      alert('Contact name is required');
+      this.showNotification('Contact name is required', 'warning');
       return;
     }
     
@@ -1203,7 +1203,7 @@ class ContactsApp extends AppWindow {
           log.error('Update error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
-          alert(`Error updating contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
+          this.showNotification(`Error updating contact: ${error.message}`, 'error');
         });
     } else {
       // Create new contact via API
@@ -1227,7 +1227,7 @@ class ContactsApp extends AppWindow {
           log.error('Create error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
-          alert(`Error creating contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
+          this.showNotification(`Error creating contact: ${error.message}`, 'error');
         });
     }
   }
@@ -1263,7 +1263,7 @@ class ContactsApp extends AppWindow {
           log.error('Delete error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
-          alert(`Error deleting contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
+          this.showNotification(`Error deleting contact: ${error.message}`, 'error');
         });
     }
   }
@@ -1352,15 +1352,15 @@ class ContactsApp extends AppWindow {
             throw new Error(updateData.error || 'Failed to update access');
           }
           closeModal();
-          alert(`Worker access updated for ${contactName}.`);
+          this.showNotification(`Worker access updated for ${contactName}.`, 'success');
         } catch (err) {
-          alert('Error saving worker access: ' + err.message);
+          this.showNotification('Error saving worker access: ' + err.message, 'error');
           saveBtn.disabled = false;
           saveBtn.textContent = 'Save Access';
         }
       });
     } catch (err) {
-      alert('Error fetching worker list: ' + err.message);
+      this.showNotification('Error fetching worker list: ' + err.message, 'error');
     }
   }
 

@@ -322,7 +322,7 @@ class OrdersView {
           </div>`;
         }
         individualOrdersHtml += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
-        individualOrdersHtml += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => alert('Items copied to clipboard!')).catch(() => alert('Failed to copy'))" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
+        individualOrdersHtml += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
         individualOrdersHtml += `</div>`;
         individualOrdersHtml += `</div></div>`;
       });
@@ -351,7 +351,7 @@ class OrdersView {
       }
       content += `</div>`;
       content += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
-      content += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => alert('Items copied to clipboard!')).catch(() => alert('Failed to copy'))" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
+      content += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
       content += `<button onclick="document.getElementById('orderModal').remove(); void 0;" style="padding: 8px 16px; background: #ffffff; color: #000000; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">CLOSE</button>`;
       content += `</div>`;
       content += `</div>`;
@@ -447,7 +447,7 @@ class OrdersView {
             <div style="font-size: 11px; color: #333333; font-family: 'Courier New', monospace;">${order.order_notes}</div>
           </div>\n        ` : ''}
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => alert('Items copied to clipboard!')).catch(() => alert('Failed to copy'))" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>
+          <button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>
         </div>
       </div>
     `;
@@ -2069,7 +2069,7 @@ class OrdersView {
           return `${idx + 1}.${item.product_name.trim()}${v ? ' ' + v : ''}--${item.qty || item.quantity || 0}`;
         });
         const formattedItems = ['PRODUCT NAME--QTY', ...contentLines].join('\n');
-        navigator.clipboard.writeText(formattedItems).then(() => alert('Items copied to clipboard!')).catch(() => alert('Failed to copy'));
+        navigator.clipboard.writeText(formattedItems).then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null);
       };
       footer.appendChild(copyBtn);
     }

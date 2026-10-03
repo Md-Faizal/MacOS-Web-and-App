@@ -35,6 +35,12 @@
   <!-- Uniform On-Screen Glass & Native Device Notifications Engine -->
   <link rel="stylesheet" href="/shared/notifications.css">
   <script src="/shared/notifications.js"></script>
+  <script>
+    // Proactively request native device notification permission if not yet decided
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  </script>
 
   <script>
     // Industrial Standard Session Termination: Clear session on backend AND frontend when landing on login page

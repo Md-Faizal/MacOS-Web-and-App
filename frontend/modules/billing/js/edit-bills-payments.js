@@ -13,6 +13,23 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class EditBillsPayments {
+    showNotification(message, type = 'info') {
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Edit Bills',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Edit Bills' });
+    }
+  }
+
   constructor(billingApp) {
     this.billingApp = billingApp;
     this._viewContainer = null;
@@ -627,7 +644,7 @@ class EditBillsPayments {
         }
       }
     } else {
-      alert('Please select a variant');
+      this.showNotification('Please select a variant', 'warning');
     }
   }
 
@@ -1078,7 +1095,7 @@ class EditBillsPayments {
       .then(response => response.json())
       .then(bill => {
         if (!bill) {
-          alert('Bill not found');
+          this.showNotification('Bill not found', 'error');
           return;
         }
 
@@ -1124,7 +1141,7 @@ class EditBillsPayments {
       })
       .catch(error => {
         log.error('Error fetching bill:', error);
-        alert('Error loading bill details');
+        this.showNotification('Error loading bill details', 'error');
       });
   }
 
@@ -1138,7 +1155,7 @@ class EditBillsPayments {
     const billNotes = document.getElementById('editBillNotes')?.value;
 
     if (!this.currentBillId) {
-      alert('Error: No bill selected');
+      this.showNotification('No bill selected', 'warning');
       return;
     }
 
@@ -1168,13 +1185,13 @@ class EditBillsPayments {
     })
       .then(response => response.json())
       .then(result => {
-        alert('✓ Bill updated successfully');
+        this.showNotification('✓ Bill updated successfully', 'success');
         this.closeEditBillModal();
         this.searchAndDisplayBills();
       })
       .catch(error => {
         log.error('Error saving bill:', error);
-        alert('Error saving bill: ' + error.message);
+        this.showNotification('Error saving bill: ' + error.message, 'error');
       });
   }
 
@@ -1481,7 +1498,7 @@ class EditBillsPayments {
             
             if (!Array.isArray(payments) || payments.length === 0) {
               log.warn('❌ Payment not found in API');
-              alert('Payment not found');
+              this.showNotification('Payment not found', 'error');
               return;
             }
             
@@ -1510,7 +1527,7 @@ class EditBillsPayments {
             
             if (!Array.isArray(payments) || payments.length === 0) {
               log.warn('❌ Credit note not found in API');
-              alert('Credit note not found');
+              this.showNotification('Credit note not found', 'error');
               return;
             }
             
@@ -2385,7 +2402,7 @@ class EditBillsPayments {
         }
       }
     } else {
-      alert('Please select a variant');
+      this.showNotification('Please select a variant', 'warning');
     }
   }
 
@@ -2651,7 +2668,7 @@ class EditBillsPayments {
       const result = await response.json();
       
       if (result.success || result.invoice_id) {
-        alert('✓ Bill Updated Successfully!');
+        this.showNotification('✓ Bill Updated Successfully!', 'success');
         this.clearEditBillForm();
         this.billingApp.switchView('edit');
       } else {
@@ -2690,7 +2707,7 @@ class EditBillsPayments {
       const payment = payments[0];
 
       if (!payment) {
-        alert('Payment not found');
+        this.showNotification('Payment not found', 'error');
         return;
       }
 
@@ -2805,7 +2822,7 @@ class EditBillsPayments {
         // Validate required fields
         const amount = parseFloat(document.getElementById('editAmount').value);
         if (!amount || amount <= 0) {
-          alert('Please enter a valid amount');
+          this.showNotification('Please enter a valid amount', 'warning');
           return;
         }
 
@@ -2828,7 +2845,7 @@ class EditBillsPayments {
         // Validate required fields
         const creditAmount = parseFloat(document.getElementById('editCreditAmount').value);
         if (!creditAmount || creditAmount <= 0) {
-          alert('Please enter a valid credit amount');
+          this.showNotification('Please enter a valid credit amount', 'warning');
           return;
         }
 
@@ -2888,7 +2905,7 @@ class EditBillsPayments {
       const result = await response.json();
       log.debug('✓ Update successful:', result);
 
-      alert('✓ Transaction updated successfully');
+      this.showNotification('✓ Transaction updated successfully', 'success');
 
       // Reload data from API
       if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
@@ -2900,7 +2917,7 @@ class EditBillsPayments {
 
     } catch (error) {
       log.error('❌ Error saving payment edit:', error);
-      alert('Error updating transaction: ' + error.message);
+      this.showNotification('Error updating transaction: ' + error.message, 'error');
     }
   }
 
@@ -2938,7 +2955,7 @@ class EditBillsPayments {
 
     } catch (error) {
       log.error('❌ Error deleting payment:', error);
-      alert('Error deleting transaction: ' + error.message);
+      this.showNotification('Error deleting transaction: ' + error.message, 'error');
     }
   }
 

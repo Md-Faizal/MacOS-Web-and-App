@@ -613,7 +613,7 @@ class PaymentCreditNote {
     const paymentAmount = document.getElementById('paymentAmount');
     
     if (!customerSelect.value) {
-      alert('❌ Please select a customer first');
+      this.showAlert('Please select a customer first', 'warning');
       return;
     }
 
@@ -629,7 +629,7 @@ class PaymentCreditNote {
       }
     } catch (error) {
       log.error('Error fetching full due amount:', error);
-      alert('❌ Error fetching customer balance');
+      this.showAlert('Error fetching customer balance', 'error');
     }
   }
 
@@ -1069,33 +1069,20 @@ class PaymentCreditNote {
    * Show alert notifications
    */
   showAlert(message, type = 'info') {
-    // Create alert element
-    const alert = document.createElement('div');
-    alert.className = `notification notification-${type}`;
-    alert.textContent = message;
-    alert.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 12px 16px;
-      background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6'};
-      color: white;
-      border-radius: 4px;
-      z-index: 9999;
-      animation: slideIn 0.3s ease;
-      font-size: 12px;
-      font-weight: 600;
-      max-width: 400px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    `;
-
-    document.body.appendChild(alert);
-
-    // Auto remove after 3 seconds
-    setTimeout(() => {
-      alert.style.animation = 'slideOut 0.3s ease';
-      setTimeout(() => alert.remove(), 300);
-    }, 3000);
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Payment & Credit',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Payment & Credit' });
+    }
   }
 
   /**
@@ -1395,7 +1382,7 @@ class PaymentCreditNote {
    */
   async savePaymentEdit() {
     if (!this.currentEditPaymentId) {
-      alert('Error: No payment selected for editing');
+      this.showAlert('No payment selected for editing', 'error');
       return;
     }
 
@@ -1408,7 +1395,7 @@ class PaymentCreditNote {
       if (paymentType === 'PAYMENT') {
         const amount = parseFloat(document.getElementById('editAmount').value);
         if (!amount || amount <= 0) {
-          alert('Please enter a valid amount');
+          this.showAlert('Please enter a valid amount', 'warning');
           return;
         }
 
@@ -1422,7 +1409,7 @@ class PaymentCreditNote {
       } else if (paymentType === 'CREDIT_NOTE') {
         const creditAmount = parseFloat(document.getElementById('editCreditAmount').value);
         if (!creditAmount || creditAmount <= 0) {
-          alert('Please enter a valid credit amount');
+          this.showAlert('Please enter a valid credit amount', 'warning');
           return;
         }
 
@@ -1453,7 +1440,7 @@ class PaymentCreditNote {
       document.getElementById('editPaymentModal').classList.add('hidden');
       
       // Show success message
-      alert('Payment updated successfully');
+      this.showAlert('Payment updated successfully', 'success');
       
       // Reload transactions
       this.loadTransactionHistory();
@@ -1470,7 +1457,7 @@ class PaymentCreditNote {
 
     } catch (error) {
       log.error('Error saving payment edit:', error);
-      alert('Error updating payment: ' + error.message);
+      this.showAlert('Error updating payment: ' + error.message, 'error');
     }
   }
 
@@ -1510,7 +1497,7 @@ class PaymentCreditNote {
 
     } catch (error) {
       log.error('Error deleting payment:', error);
-      alert('Error deleting transaction: ' + error.message);
+      this.showAlert('Error deleting transaction: ' + error.message, 'error');
     }
   }
 

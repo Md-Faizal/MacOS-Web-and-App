@@ -6,6 +6,23 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class LedgerView {
+    showNotification(message, type = 'info') {
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Ledger',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Ledger' });
+    }
+  }
+
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.viewContainer = billingApp.viewContainer;
@@ -943,7 +960,7 @@ class LedgerView {
                
                document.getElementById('copyLinkBtn').onclick = () => {
                  navigator.clipboard.writeText(url).then(() => {
-                   alert('Ledger link copied to clipboard!');
+                   this.showNotification('Ledger link copied to clipboard!', 'success');
                    if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
                  });
                };
@@ -964,7 +981,7 @@ class LedgerView {
                  document.addEventListener('click', closeFn);
                }, 100);
              } else {
-               alert('Customer ID not found. Please wait for sync.');
+               this.showNotification('Customer ID not found. Please wait for sync.', 'warning');
              }
           };
           customerHeader.appendChild(shareBtn);
@@ -2745,7 +2762,7 @@ class LedgerView {
       const loadingEl = document.querySelector('[id^="pdf-export-loading-"]');
       if (loadingEl) loadingEl.remove();
       log.error('Export Error:', error);
-      alert(`Export failed: ${error.message}`);
+      this.showNotification(`Export failed: ${error.message}`, 'error');
     }
   }
 
@@ -2782,7 +2799,7 @@ class LedgerView {
       }
     } catch (error) {
       log.error('Opening Balance PDF Print Error:', error);
-      alert(`Print failed: ${error.message}`);
+      this.showNotification(`Print failed: ${error.message}`, 'error');
     }
   }
 
@@ -2805,7 +2822,7 @@ class LedgerView {
 
       const newValue = parseFloat(newBalance);
       if (isNaN(newValue)) {
-        alert('Invalid amount entered');
+        this.showNotification('Invalid amount entered', 'warning');
         return;
       }
 
@@ -2821,12 +2838,12 @@ class LedgerView {
         throw new Error(error.error || 'Failed to update opening balance');
       }
 
-      alert(`Opening balance updated to ₹${newValue.toFixed(2)}`);
+      this.showNotification(`Opening balance updated to ₹${newValue.toFixed(2)}`, 'success');
       
       // Refresh ledger view
       this.loadDualLedgerView();
     } catch (error) {
-      alert(`Error: ${error.message}`);
+      this.showNotification(`Error: ${error.message}`, 'error');
     }
   }
 

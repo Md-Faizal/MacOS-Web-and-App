@@ -72,7 +72,7 @@ class NotificationSystem {
         animation: toast-out 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
       }
 
-      .toast-header {
+      #notification-container .toast-header {
         display: flex;
         align-items: flex-start;
         gap: 12px;
@@ -97,14 +97,14 @@ class NotificationSystem {
         padding-right: 20px;
       }
 
-      .toast-title {
+      #notification-container .toast-title {
         font-weight: 700;
         font-size: 14px;
         margin-bottom: 2px;
         color: #fff;
       }
 
-      .toast-message {
+      #notification-container .toast-message {
         font-size: 13px;
         color: rgba(255, 255, 255, 0.7);
         line-height: 1.4;
@@ -128,7 +128,7 @@ class NotificationSystem {
         box-shadow: 0 0 10px rgba(255, 107, 0, 0.3);
       }
 
-      .toast-close {
+      #notification-container .toast-close {
         position: absolute;
         top: 0;
         right: -5px;
@@ -145,7 +145,7 @@ class NotificationSystem {
         border-radius: 50%;
       }
 
-      .notification-toast:hover .toast-close {
+      .notification-toast:hover #notification-container .toast-close {
         opacity: 1;
       }
 
@@ -176,6 +176,18 @@ class NotificationSystem {
   }
 
   show(title, message, options = {}) {
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      const type = options.type || 'info';
+      const duration = typeof options.duration === 'number' ? options.duration : 4000;
+      return window.MacOSNotificationManager.notify({
+        app: 'System',
+        title: title,
+        message: message,
+        type: type,
+        duration: duration,
+        actions: options.actions || null
+      });
+    }
     const { type = 'info', duration = 4000, progress = null, system = false } = options;
     const id = `toast-${++this.counter}`;
     

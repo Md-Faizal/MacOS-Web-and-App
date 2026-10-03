@@ -454,7 +454,7 @@ class NotesApp extends AppWindow {
       if (this.currentNoteId) {
         this.titleInput.focus();
       } else {
-        alert('Please select a note to edit');
+        this.showNotification('Please select a note to edit', 'warning');
       }
     });
 
