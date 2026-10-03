@@ -181,7 +181,8 @@ jobs:
           fi
           chmod 600 ~/.ssh/deploy_key_vm2
 
-          VM2_USER="${SSH_USER_VM2:-$SSH_USER}"
+          SSH_HOST_VM2="${SSH_HOST_VM2:-129.154.32.125}"
+          VM2_USER="${SSH_USER_VM2:-ubuntu}"
           TARGET_DIR="/home/ubuntu/MacOS-Production"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 

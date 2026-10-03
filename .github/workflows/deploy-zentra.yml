@@ -129,7 +129,8 @@ jobs:
           fi
           chmod 600 ~/.ssh/deploy_key_vm2
 
-          VM2_USER="${SSH_USER_VM2:-$SSH_USER}"
+          SSH_HOST_VM2="${SSH_HOST_VM2:-129.154.32.125}"
+          VM2_USER="${SSH_USER_VM2:-ubuntu}"
 
           cat <<SSHEOF > ~/.ssh/config
           Host production
