@@ -259,8 +259,8 @@ export class DesktopManager {
     const currentCols = Math.max(viewportCols, this.benchmarkCols, maxIconCol);
     const currentRows = Math.max(viewportRows, this.benchmarkRows, maxIconRow);
 
-    // Diagnostic Logging
-    if (window.__DEBUG_DESKTOP__ || true) {
+    // Diagnostic Logging (Gated for performance in hot resize loops)
+    if (window.__DEBUG_DESKTOP__ || (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Desktop'))) {
       console.log('📐 Grid Size Calculation:', {
         viewport: `${viewportCols}x${viewportRows}`,
         benchmark: `${this.benchmarkCols}x${this.benchmarkRows}`,

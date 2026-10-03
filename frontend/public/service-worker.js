@@ -18,6 +18,14 @@ const ASSET_CACHE = 'asset-cache-v4';
 const IMAGE_CACHE = 'image-cache-v4';
 const VIDEO_CACHE = 'video-cache-v3';  // Incremented for new logic
 
+// Enterprise Telemetry Gating for Service Worker
+let DEBUG_SW = false;
+const swLog = {
+  log: (...args) => { if (DEBUG_SW) console.log('[SW]', ...args); },
+  warn: (...args) => console.warn('[SW]', ...args),
+  error: (...args) => console.error('[SW]', ...args)
+};
+
 // Assets to cache on install - Updated for modular system
 const URLS_TO_CACHE = [
   '/',
@@ -30,14 +38,14 @@ const URLS_TO_CACHE = [
  * Install event - cache critical assets
  */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Install event triggered');
+  swLog.log('Install event triggered');
   
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => {
-      console.log('[SW] Caching critical assets...');
+      swLog.log('Caching critical assets...');
       return cache.addAll(URLS_TO_CACHE).then(
-        () => console.log('[SW] Critical assets cached'),
-        (err) => console.warn('[SW] Some assets failed to cache:', err)
+        () => swLog.log('Critical assets cached'),
+        (err) => swLog.warn('Some assets failed to cache:', err)
       );
     })
   );
@@ -49,11 +57,11 @@ self.addEventListener('install', (event) => {
  * Activate event - update cache version, clean old caches
  */
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activate event triggered');
+  swLog.log('Activate event triggered');
   
   event.waitUntil(
     caches.keys().then((cacheNames) => {
-      console.log('[SW] Cleaning old caches:', cacheNames);
+      swLog.log('Cleaning old caches:', cacheNames);
       
       return Promise.all(
         cacheNames.map((cacheName) => {
@@ -65,7 +73,7 @@ self.addEventListener('activate', (event) => {
             cacheName !== IMAGE_CACHE &&
             cacheName !== VIDEO_CACHE
           ) {
-            console.log('[SW] Deleting old cache:', cacheName);
+            swLog.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -113,18 +121,18 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(API_CACHE).then((cache) => {
         return cache.match(request).then((response) => {
-          console.log(`[SW] API Request (${url.pathname}):`, response ? 'CACHE HIT' : 'CACHE MISS');
+          swLog.log(`API Request (${url.pathname}):`, response ? 'CACHE HIT' : 'CACHE MISS');
           
           // Return cached response immediately
           const fetchPromise = fetch(request).then((networkResponse) => {
             // Update cache in background
             if (networkResponse && networkResponse.status === 200) {
               cache.put(request, networkResponse.clone());
-              console.log(`[SW] API cache updated: ${url.pathname}`);
+              swLog.log(`API cache updated: ${url.pathname}`);
             }
             return networkResponse;
           }).catch((err) => {
-            console.warn('[SW] Fetch failed:', url.pathname, err);
+            swLog.warn('Fetch failed:', url.pathname, err);
             return response || new Response(JSON.stringify({ error: 'Network unavailable' }), {
               status: 503,
               headers: { 'Content-Type': 'application/json' }
@@ -149,21 +157,21 @@ self.addEventListener('fetch', (event) => {
       caches.open(IMAGE_CACHE).then((cache) => {
         return cache.match(request).then((response) => {
           if (response) {
-            console.log(`[SW] Image (${url.pathname}): CACHE HIT`);
+            swLog.log(`Image (${url.pathname}): CACHE HIT`);
             return response;
           }
 
-          console.log(`[SW] Image (${url.pathname}): CACHE MISS, fetching...`);
+          swLog.log(`Image (${url.pathname}): CACHE MISS, fetching...`);
           
           return fetch(request).then((networkResponse) => {
             // Cache successful responses
             if (networkResponse && networkResponse.status === 200) {
               cache.put(request, networkResponse.clone());
-              console.log(`[SW] Image cached: ${url.pathname}`);
+              swLog.log(`Image cached: ${url.pathname}`);
             }
             return networkResponse;
           }).catch((err) => {
-            console.warn('[SW] Image fetch failed:', url.pathname, err);
+            swLog.warn('Image fetch failed:', url.pathname, err);
             // Return offline placeholder if available
             return new Response(
               '<svg><text>Offline</text></svg>',
@@ -194,7 +202,7 @@ self.addEventListener('fetch', (event) => {
           if (response && response.status === 200) {
             return caches.open(ASSET_CACHE).then((cache) => {
               cache.put(request, response.clone());
-              console.log(`[SW] Asset cached: ${url.pathname}`);
+              swLog.log(`Asset cached: ${url.pathname}`);
               return response;
             });
           }
@@ -202,10 +210,10 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => {
           // Fallback to cache on network error
-          console.log(`[SW] Asset fetch failed (${url.pathname}), using cache`);
+          swLog.log(`Asset fetch failed (${url.pathname}), using cache`);
           return caches.match(request).then((response) => {
             if (response) {
-              console.log(`[SW] Asset found in cache: ${url.pathname}`);
+              swLog.log(`Asset found in cache: ${url.pathname}`);
               return response;
             }
             
@@ -251,7 +259,7 @@ self.addEventListener('fetch', (event) => {
  * Background Sync - sync wallpaper preferences when coming back online
  */
 self.addEventListener('sync', (event) => {
-  console.log('[SW] Sync event:', event.tag);
+  swLog.log('Sync event:', event.tag);
   
   if (event.tag === 'sync-wallpaper-prefs') {
     event.waitUntil(
@@ -275,11 +283,11 @@ self.addEventListener('sync', (event) => {
                 body: JSON.stringify(wallpaper)
               })
                 .then(res => {
-                  console.log('[SW] Wallpaper preferences synced');
+                  swLog.log('Wallpaper preferences synced');
                   resolve();
                 })
                 .catch(err => {
-                  console.error('[SW] Sync failed:', err);
+                  swLog.error('Sync failed:', err);
                   resolve();  // Resolve to mark as attempted
                 });
             } else {
@@ -297,7 +305,12 @@ self.addEventListener('sync', (event) => {
  * Message handling - receive messages from pages
  */
 self.addEventListener('message', (event) => {
-  console.log('[SW] Message received:', event.data);
+  if (event.data?.type === 'MACOS_SET_DEBUG') {
+    DEBUG_SW = Boolean(event.data.enabled);
+    return;
+  }
+
+  swLog.log('Message received:', event.data);
   
   if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -306,7 +319,7 @@ self.addEventListener('message', (event) => {
   if (event.data.type === 'CLEAR_CACHE') {
     caches.keys().then(names =>
       Promise.all(names.map(name => {
-        console.log('[SW] Clearing cache:', name);
+        swLog.log('Clearing cache:', name);
         return caches.delete(name);
       }))
     );
@@ -332,7 +345,7 @@ self.addEventListener('message', (event) => {
           )
         )
       ).then(() => {
-        console.log('[SW] Total cache size:', Math.round(totalSize / 1024 / 1024) + 'MB');
+        swLog.log('Total cache size:', Math.round(totalSize / 1024 / 1024) + 'MB');
         event.ports[0].postMessage({
           type: 'CACHE_SIZE',
           size: totalSize
@@ -343,4 +356,4 @@ self.addEventListener('message', (event) => {
 });
 
 // Log service worker activation
-console.log('[SW] Service Worker script loaded');
+swLog.log('Service Worker script loaded');

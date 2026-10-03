@@ -1213,7 +1213,9 @@ function initializeDock() {
 
   // Setup drag and drop listeners
   function setupAppDragListeners(appElement, isRecent) {
-    console.log('Attaching drag listeners to:', appElement.id);
+    if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('AppBar')) {
+      console.log('Attaching drag listeners to:', appElement.id);
+    }
     
     appElement.addEventListener('dragstart', (e) => {
       console.log('↓ Dragstart fired on:', appElement.id, 'target:', e.target);

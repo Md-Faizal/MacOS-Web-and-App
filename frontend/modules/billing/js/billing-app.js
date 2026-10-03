@@ -426,9 +426,9 @@ export class BillingApp extends AppWindow {
   }
 
   setupBillingUI() {
-    console.log('[SETUP] setupBillingUI called - checking for dependencies...');
-    console.log('[SETUP]   BillEditor type:', typeof BillEditor);
-    console.log('[SETUP]   EditBillsPayments type:', typeof EditBillsPayments);
+    if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Billing')) {
+      console.log('[SETUP] setupBillingUI called - checking for dependencies...');
+    }
     
     if (typeof BillEditor === 'undefined') {
       const error = 'BillEditor class not found. Ensure new-bill.js is loaded.';
@@ -1405,7 +1405,9 @@ export class BillingApp extends AppWindow {
     if (inputViews.includes(this.currentView)) return;
 
     try {
-      console.log('🔄 Page active/focused. Ensuring billing data is up to date...');
+      if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Billing')) {
+        console.log('🔄 Page active/focused. Ensuring billing data is up to date...');
+      }
       await this.loadBillingDataFromAPI();
       
       // Re-render the active view with fresh data

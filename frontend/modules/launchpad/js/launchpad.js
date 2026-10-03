@@ -1,4 +1,4 @@
-﻿// Launchpad App Class
+// Launchpad App Class
 console.log('[LaunchpadApp] ===== MODULE START =====');
 console.log('[LaunchpadApp] AppWindow available?', typeof AppWindow);
 console.log('[LaunchpadApp] document available?', typeof document);
@@ -224,7 +224,9 @@ try {
       // Drag and drop for draggable apps
       if (item.classList.contains('draggable-app')) {
         const appId = item.getAttribute('data-app-id');
-        console.log(`Launchpad: Attaching drag listeners to item ${index}:`, appId);
+        if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Launchpad')) {
+          console.log(`Launchpad: Attaching drag listeners to item ${index}:`, appId);
+        }
         item.addEventListener('dragstart', (e) => this.handleDragStart(e));
         item.addEventListener('dragend', (e) => this.handleDragEnd(e));
         // Touch support: allow touch-drag from launchpad to desktop

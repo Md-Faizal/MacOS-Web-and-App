@@ -496,10 +496,12 @@ class LedgerView {
       window.currentLedgerView = this;
       window.currentLedgerData = ledgerData;
       
-      // DEBUG: Log the data we received
-      console.log('Ledger Data loaded:', ledgerData);
-      if (ledgerData.length > 0) {
-        console.log('First customer:', ledgerData[0], 'total_bills:', ledgerData[0].total_bills, 'total_payments:', ledgerData[0].total_payments);
+      // Diagnostic logging (gated for performance)
+      if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Ledger')) {
+        console.log('Ledger Data loaded:', ledgerData);
+        if (ledgerData.length > 0) {
+          console.log('First customer:', ledgerData[0], 'total_bills:', ledgerData[0].total_bills, 'total_payments:', ledgerData[0].total_payments);
+        }
       }
       
       // Update header stats with totals - FILTER OUT EXCLUDED CUSTOMERS (except for workers)
@@ -509,7 +511,9 @@ class LedgerView {
       const totalPayments = statsCustomers.reduce((sum, c) => sum + (c.total_payments || 0), 0);
       const totalDue = statsCustomers.reduce((sum, c) => sum + (c.amountDue || 0), 0);
       
-      console.log('[Ledger Header] Calculated totals - Bills:', totalBills, 'Payments:', totalPayments, 'Due:', totalDue, 'Stats Customers:', statsCustomers.length);
+      if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Ledger')) {
+        console.log('[Ledger Header] Calculated totals - Bills:', totalBills, 'Payments:', totalPayments, 'Due:', totalDue, 'Stats Customers:', statsCustomers.length);
+      }
       
       const totalBillsSpan = document.getElementById('ledgerTotalBills');
       const totalPaymentsSpan = document.getElementById('ledgerTotalPayments');
