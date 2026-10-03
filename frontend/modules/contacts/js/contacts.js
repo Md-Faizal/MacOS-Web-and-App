@@ -38,8 +38,8 @@ class ContactsApp extends AppWindow {
         log.debug('Reactive trigger from CoreDataBus for contacts');
         this.loadContactsFromAPI();
       });
-      this._dataBusLedgerUnsub = window.CoreDataBus.subscribe('billing:ledger', () => {
-        log.debug('Reactive trigger from CoreDataBus for billing ledger (updating customer balance)');
+      this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        log.debug('Reactive trigger from CoreDataBus for billing (updating customer balance/sales):', data?.domain, data?.action);
         this.loadContactsFromAPI();
       });
     }
@@ -215,6 +215,7 @@ class ContactsApp extends AppWindow {
   }
 
   renderContactsList(searchQuery = '') {
+    const prevScroll = this.contactsList ? this.contactsList.scrollTop : 0;
     this.contactsList.innerHTML = '';
 
     let filteredContacts = this.contacts;
@@ -289,6 +290,10 @@ class ContactsApp extends AppWindow {
         this.contactsList.appendChild(item);
       });
     });
+
+    if (this.contactsList) {
+      this.contactsList.scrollTop = prevScroll;
+    }
   }
 
   selectContact(contactId) {
@@ -870,6 +875,12 @@ class ContactsApp extends AppWindow {
         }));
         log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);
         this.renderContactsList();
+        if (this.selectedContactId) {
+          const stillExists = this.contacts.some(c => c.id === this.selectedContactId);
+          if (stillExists) {
+            this.renderContactCard();
+          }
+        }
         return this.contacts;
       })
       .catch(error => {

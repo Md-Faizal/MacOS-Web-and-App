@@ -75,7 +75,10 @@ class BillEditor {
 
   // Proxy properties to billingApp for convenience
   get viewContainer() {
-    return this.billingApp.viewContainer;
+    return this._viewContainer || (this.billingApp?.getOrCreateSubviewPanel ? this.billingApp.getOrCreateSubviewPanel('create') : this.billingApp.viewContainer);
+  }
+  set viewContainer(val) {
+    this._viewContainer = val;
   }
 
   get billingData() {

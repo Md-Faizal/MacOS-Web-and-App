@@ -811,9 +811,45 @@ class PaymentCreditNote {
 
       log.debug(`✓ Consolidated payment of ₹${amount.toFixed(2)} saved successfully`, result);
 
-      // Reload billing data from API
+      // Invalidate API read cache immediately
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
+      // Optimistic local store update for 0ms instantaneous UI feedback
+      const createdPayment = {
+        id: result.payment_id || result.id || Date.now(),
+        transaction_id: specificInvoiceId,
+        invoice_id: specificInvoiceId,
+        customer_id: customerId,
+        customer_name: customerName,
+        amount: amount,
+        payment_medium: method || 'cash',
+        reference_number: result.reference_number || reference || 'PMT',
+        payment_date: date || this.formatDateForInput(new Date()),
+        type: 'PAYMENT',
+        notes: notes || null,
+        created_at: new Date().toISOString()
+      };
+      if (this.billingApp?.billingData) {
+        if (!this.billingApp.billingData.payments) this.billingApp.billingData.payments = [];
+        this.billingApp.billingData.payments.unshift(createdPayment);
+      }
+
+      // Publish to CoreDataBus (intra-window and cross-tab reactive sync)
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'created', createdPayment);
+        window.CoreDataBus.publish('billing:ledger', 'updated', {
+          customer_id: customerId,
+          customer_name: customerName,
+          amount: amount,
+          current_due: result.current_due
+        });
+      }
+
+      // Background canonical reload with forceRefresh
       if (this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI();
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
       this.showAlert(`✓ Payment of ₹${amount.toFixed(2)} recorded successfully`, 'success');
@@ -1002,9 +1038,20 @@ class PaymentCreditNote {
         log.debug(`✓ Credit note of ₹${creditAmount.toFixed(2)} saved for invoice ${invoiceId}`, result);
       }
 
-      // Reload billing data from API
+      // Invalidate API read cache immediately
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
+      // Publish to CoreDataBus
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:creditnote', 'created', { customer_name: customerName, amount: totalSaved });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, amount: totalSaved });
+      }
+
+      // Background canonical reload with forceRefresh
       if (this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI();
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
       this.showAlert(`✓ Credit note of ₹${totalSaved.toFixed(2)} issued and applied to ${billsAffected.length} bill(s)`, 'success');
@@ -1411,9 +1458,14 @@ class PaymentCreditNote {
       // Reload transactions
       this.loadTransactionHistory();
       
-      // Update billing data if available
-      if (this.billingApp && this.billingApp.loadBillingData) {
-        await this.billingApp.loadBillingData();
+      // Invalidate API cache & publish update
+      if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'updated', { id: paymentId });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+      }
+      if (this.billingApp?.loadBillingDataFromAPI) {
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
     } catch (error) {
@@ -1444,9 +1496,14 @@ class PaymentCreditNote {
       // Reload transactions
       this.loadTransactionHistory();
       
-      // Update billing data if available
-      if (this.billingApp && this.billingApp.loadBillingData) {
-        await this.billingApp.loadBillingData();
+      // Invalidate API cache & publish update
+      if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'updated', { id: paymentId });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+      }
+      if (this.billingApp?.loadBillingDataFromAPI) {
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
     } catch (error) {

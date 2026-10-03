@@ -171,10 +171,29 @@ According to GitHub repository analysis, the active multi-platform codebase dist
    - Pure Rust state fingerprinting and HTTP 304 validation (`/api/billing/sync/fingerprint`).
    - Multi-cast broadcasting helper `dataBus.broadcast(domain, action, payload)` integrated into invoice (`createBill`, `updateBill`, `deleteBill`) and payment (`createPayment`, `createCreditNote`) handlers.
 4. **Core 4 Integration & Zero-Delay Reactivity**:
-   - **Billing Ledger (`ledger.js`)**: Eliminated the 8-second blind polling loop. Replaced with instant reactive subscription to `billing:` domain events via `CoreDataBus` (`billing:invoice:created`, `billing:payment:created`, `billing:ledger:updated`), with an ultra-slow 60-second background heartbeat fallback.
-   - **New Bill (`new-bill.js`)**: On invoice creation and updates, dispatches `billing:invoice` and `billing:ledger` events to `CoreDataBus`, instantly updating Ledger balances across all tabs.
-   - **Product List (`product-list.js`)**: Subscribes to `inventory:` and `billing:invoice` to instantly refresh product and batch inventories when sales occur. Publishes `inventory:product` events on product and batch mutations.
-   - **Contacts (`contacts.js`)**: Subscribes to `contacts:` and `billing:ledger` events to keep customer profiles and live ledger balances updated in real time. Publishes `contacts:customer` events on contact mutations.
+   - **Billing Ledger (`ledger.js`)**: Eliminated the 8-second blind polling loop. Replaced with instant reactive subscription to `billing:` domain events via `CoreDataBus` (`billing:invoice:created`, `billing:payment:created`, `billing:ledger:updated`), with an ultra-slow 60-second background heartbeat fallback. Unblocked active view guards so background ledger recalculation and totals update dynamically in-place when payments occur.
+   - **Payment & Credit Note View (`payment-credit-note.js`)**:
+     - Upgraded `recordPayment()` with **0ms optimistic local store updates** (immediately prepends payment to local cache and updates customer outstanding balances).
+     - Fixed mutation cache bypass: explicitly calls `this.billingApp.api.invalidateCache('/billing')` on all payment creates, edits, credit notes, and deletes.
+     - Dispatches `CoreDataBus.publish('billing:payment', ...)` and `CoreDataBus.publish('billing:ledger', 'updated', ...)` for instant multi-window synchronization.
+   - **Elimination of Container Wiping & Keep-Alive Persistent Subviews (Industrial Standard Across Apps)**:
+     - **Root Cause Identified**: Previous apps relied on `this.viewContainer.innerHTML = ''` destroying and recreating views on every tab change (`switchView`), causing visual flashes, scroll resetting, losing draft form inputs, and requiring "soft refreshes".
+     - **Architectural Solution**: Implemented **Keep-Alive View Panels** (`_subviewPanels = new Map()`). Each view is mounted into its own persistent subview container (`<div class="subview-panel">`) and toggled via CSS (`display: none` / `flex`). Switching tabs is now **0ms instantaneous**, zero network latency, zero DOM destruction, zero flickering, and preserves all scroll positions and draft input states.
+     - **Billing App (`billing-app.js`)**: Applied persistent subview layer across `ledger`, `existing`, `payment-credit`, and `reports`. Added centralized `CoreDataBus` subscription listening to `billing:`, `contacts:`, and `inventory:` events to keep background views fresh without user intervention.
+     - **Product List App (`product-list.js`)**:
+       - Applied persistent subview layer across `all`, `create`, `edit`, `categories`, and `inventory`.
+       - Non-disruptive background updates: `loadProducts()` updates the product list without kicking the user off their active tab or clearing draft new product forms.
+       - Variant and batch API mutations invalidate `/products` cache and broadcast `inventory:variant` and `inventory:batch`.
+       - Category create/rename/delete operations invalidate `/categories` cache and broadcast `inventory:category`.
+     - **Contacts App (`contacts.js`)**:
+       - In-place Contact Card updating: when customer metrics change via background billing events, `renderContactCard()` updates the open contact card in-place.
+       - Preserved scroll position in `renderContactsList()`: eliminated list jump-to-top on every background sync or search debounce.
+       - Full bidirectional synchronization with `billing:` domain events for live sales and ledger balances.
+     - **Analytics App (`analytics.js`)**:
+       - Persistent subview panels across `dashboard`, `sales`, `comparative`, `orders`, `aging`, `products`, and `customer-profile`.
+       - Eliminates redundant "Computing executive KPIs..." re-fetching and DOM wiping when navigating between BI reports.
+     - **Notes App (`notes.js`)**:
+       - Preserved scroll position in `renderNotesList()`, eliminating scroll jumping during typing, delta syncs, and SSE broadcasts.
    - **Dual-Entry Head Injection**: `<script src="/shared/core-databus.js"></script>` loaded immediately in `frontend/home.html` and `frontend/index.html`.
 
 ---

@@ -51,16 +51,15 @@ class LedgerView {
 
   async syncWithServer(isManual = false) {
     try {
-      // Guard: Don't sync if this is not the active visible view in the registry
-      if (this.billingApp.currentViewInstance !== this) {
-        this.stopPolling();
+      // Guard: Ensure ledger container exists in DOM before updating
+      if (!this.viewContainer || !document.getElementById('ledgerTotalDue')) {
         return;
       }
       
       // 1. Refresh global billing data (bills, payments, ...)
       // We MUST await this before getLedgerData because it joins with these arrays
       if (this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI();
+        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: isManual });
       }
       
       // 2. Aggregate fresh data for Ledger
@@ -1916,7 +1915,7 @@ class LedgerView {
 
       // Fetch customers with current_due (deduplicated & cached via BillingAPI)
       const result = this.billingApp?.api?.getLedgerCustomers 
-        ? await this.billingApp.api.getLedgerCustomers() 
+        ? await this.billingApp.api.getLedgerCustomers({ forceRefresh: true }) 
         : await (await fetch('/api/billing/ledger/customers')).json();
       let ledgerCustomers = result.data || [];
 

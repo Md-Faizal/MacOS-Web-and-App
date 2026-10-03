@@ -366,6 +366,45 @@ export class BillingApp extends AppWindow {
       }
     });
 
+    // Centralized CoreDataBus Reactive Integration for Instant Zero-Refresh Multi-Tab Synchronization
+    if (typeof window !== 'undefined' && window.CoreDataBus) {
+      window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        log.debug('[BillingApp] Central DataBus update received:', data?.domain, data?.action);
+        // 1. Invalidate read cache immediately
+        this.api.invalidateCache('/billing');
+        // 2. Refresh ledger view in-place if mounted in DOM
+        const ledger = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
+        if (ledger && typeof ledger.syncWithServer === 'function') {
+          ledger.syncWithServer(false);
+        }
+        // 3. Refresh payment view in-place if mounted in DOM
+        const payment = this._subviewInstances?.get('payment-credit');
+        if (payment && typeof payment.loadRecentTransactions === 'function') {
+          payment.loadRecentTransactions();
+          payment.updateStatsDisplay?.();
+        }
+        // 4. Silently update root store in background
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+      });
+
+      // Cross-App Reactivity: listen to Contacts mutations
+      window.CoreDataBus.subscribeDomain('contacts:', (data) => {
+        log.debug('[BillingApp] Contact update received from DataBus:', data?.domain, data?.action);
+        this.api.invalidateCache('/billing/ledger/customers');
+        this.api.invalidateCache('/customers');
+        this.api.invalidateCache('/contacts');
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+      });
+
+      // Cross-App Reactivity: listen to Inventory mutations
+      window.CoreDataBus.subscribeDomain('inventory:', (data) => {
+        log.debug('[BillingApp] Inventory update received from DataBus:', data?.domain, data?.action);
+        this.api.invalidateCache('/products');
+        this.api.invalidateCache('/categories');
+        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+      });
+    }
+
     this.checkBackendConnection();
   }
 
@@ -1381,23 +1420,42 @@ export class BillingApp extends AppWindow {
     });
   }
 
+  getOrCreateSubviewPanel(viewName) {
+    if (!this._subviewPanels) {
+      this._subviewPanels = new Map();
+    }
+    const safeName = (viewName === 'existing') ? 'ledger' : viewName;
+    let panel = this._subviewPanels.get(safeName);
+    if (!panel || !this.viewContainer.contains(panel)) {
+      panel = document.createElement('div');
+      panel.className = 'billing-subview-panel';
+      panel.dataset.subview = safeName;
+      panel.style.cssText = 'width: 100%; height: 100%; display: none; flex-direction: column; overflow: hidden;';
+      this.viewContainer.appendChild(panel);
+      this._subviewPanels.set(safeName, panel);
+    }
+    return panel;
+  }
+
   switchView(viewName, params = null) {
+    if (!this._subviewInstances) {
+      this._subviewInstances = new Map();
+    }
+
     // Stop polling for the previous view if it exists
     if (this.currentViewInstance && typeof this.currentViewInstance.stopPolling === 'function') {
       this.currentViewInstance.stopPolling();
     }
 
-    this.currentView = viewName;
+    const safeName = (viewName === 'existing') ? 'ledger' : viewName;
+    this.currentView = safeName;
     
-    // Clear search when switching away from ledger, or if search is manually cleared
+    // Clear search when switching away from ledger
     if (this.searchInput) {
-      // If switching to a non-ledger page, clear search
-      if (viewName !== 'ledger' && viewName !== 'existing' && this.searchInput.value) {
+      if (safeName !== 'ledger' && this.searchInput.value) {
         this.searchInput.value = '';
         this.clearGlobalSearch();
-      }
-      // If search box is empty and we're on ledger, ensure items are visible
-      else if (this.searchInput.value === '') {
+      } else if (this.searchInput.value === '') {
         this.clearGlobalSearch();
       }
     }
@@ -1405,76 +1463,108 @@ export class BillingApp extends AppWindow {
     // Update active menu item
     this.menuItems.forEach(item => {
       item.classList.remove('active');
-      if (item.dataset.view === viewName) {
+      if (item.dataset.view === viewName || item.dataset.view === safeName) {
         item.classList.add('active');
       }
     });
 
-    // Render view
-    this.renderView(viewName, params);
-  }
-
-  renderView(viewName, params = null) {
-    let viewInstance = null;
-
-    switch(viewName) {
-      case 'orders':
-        viewInstance = new OrdersView(this);
-        if (params) viewInstance.params = params;
-        viewInstance.render();
-        break;
-      case 'create':
-        if (params && params.customerName) {
-          this.billEditor.renderCreateBillView({ customer_name: params.customerName });
-        } else {
-          this.billEditor.renderCreateBillView();
-        }
-        break;
-      case 'ledger':
-      case 'existing':  // Keep for backward compatibility
-        viewInstance = new LedgerView(this);
-        if (params) viewInstance.params = params;
-        viewInstance.render();
-        break;
-      case 'ledger-detail':
-        this.renderLedgerDetailView();
-        break;
-      case 'edit':
-        this.editBillsPayments.renderEditBillListView();
-        break;
-      case 'payment-credit':
-        this.renderPaymentCreditNoteView(params);
-        break;
-      case 'history':
-        this.renderHistoryView();
-        break;
-      case 'dashboard':
-      default:
-        this.renderDashboard();
+    // Toggle subview panels: hide all, display active panel (Zero DOM destruction)
+    const targetPanel = this.getOrCreateSubviewPanel(safeName);
+    if (this._subviewPanels) {
+      for (const [name, p] of this._subviewPanels.entries()) {
+        p.style.display = (name === safeName) ? 'flex' : 'none';
+      }
     }
 
-    // Store current view instance and start polling if it supports it
+    // Check if view instance is already mounted in DOM
+    let viewInstance = this._subviewInstances.get(safeName);
+
+    if (!viewInstance || targetPanel.children.length === 0) {
+      // First-time mount: instantiate and render into dedicated persistent panel
+      switch(safeName) {
+        case 'orders':
+          viewInstance = new OrdersView(this);
+          viewInstance.viewContainer = targetPanel;
+          if (params) viewInstance.params = params;
+          viewInstance.render();
+          break;
+        case 'create':
+          viewInstance = this.billEditor;
+          viewInstance.viewContainer = targetPanel;
+          if (params && params.customerName) {
+            this.billEditor.renderCreateBillView({ customer_name: params.customerName });
+          } else {
+            this.billEditor.renderCreateBillView();
+          }
+          break;
+        case 'ledger':
+          viewInstance = new LedgerView(this);
+          viewInstance.viewContainer = targetPanel;
+          if (params) viewInstance.params = params;
+          viewInstance.render();
+          break;
+        case 'ledger-detail':
+          this.renderLedgerDetailView();
+          break;
+        case 'edit':
+          viewInstance = this.editBillsPayments;
+          viewInstance.viewContainer = targetPanel;
+          this.editBillsPayments.renderEditBillListView();
+          break;
+        case 'payment-credit':
+          viewInstance = new PaymentCreditNote(this);
+          viewInstance.viewContainer = targetPanel;
+          viewInstance.render(params).catch(err => log.error('Error rendering payment/credit note view:', err));
+          break;
+        case 'history':
+          viewInstance = new HistoryView(this);
+          viewInstance.viewContainer = targetPanel;
+          viewInstance.render();
+          break;
+        case 'dashboard':
+        default:
+          viewInstance = new BillingDashboard(this);
+          viewInstance.viewContainer = targetPanel;
+          viewInstance.render();
+          break;
+      }
+      if (viewInstance) {
+        this._subviewInstances.set(safeName, viewInstance);
+      }
+    } else {
+      // Instant 0ms activation: View is already mounted in DOM (No redraw, no soft refresh!)
+      if (safeName === 'ledger') {
+        if (params) viewInstance.params = params;
+        viewInstance.syncWithServer(false);
+      } else if (safeName === 'payment-credit') {
+        viewInstance.loadRecentTransactions();
+        viewInstance.updateStatsDisplay?.();
+      } else if (safeName === 'create' && params && params.customerName) {
+        this.billEditor.renderCreateBillView({ customer_name: params.customerName });
+      }
+    }
+
+    // Store current view instance and start reactive polling/events if supported
     this.currentViewInstance = viewInstance;
     if (viewInstance && typeof viewInstance.startPolling === 'function') {
       viewInstance.startPolling();
     }
   }
 
+  renderView(viewName, params = null) {
+    this.switchView(viewName, params);
+  }
+
   renderDashboard() {
-    const dashboard = new BillingDashboard(this);
-    dashboard.render();
+    this.switchView('dashboard');
   }
 
   renderPaymentCreditNoteView(params = null) {
-    // Use the new PaymentCreditNote module
-    const paymentCreditNote = new PaymentCreditNote(this);
-    paymentCreditNote.render(params).catch(err => log.error('Error rendering payment/credit note view:', err));
+    this.switchView('payment-credit', params);
   }
 
   renderHistoryView() {
-    // Use the new HistoryView module
-    const history = new HistoryView(this);
-    history.render();
+    this.switchView('history');
   }
 
   async ensureDataUpToDate(force = false) {

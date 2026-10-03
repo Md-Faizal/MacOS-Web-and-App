@@ -4,6 +4,32 @@
  */
 
 class AnalyticsApp extends AppWindow {
+  get viewContainer() {
+    return this.activePanel || this.rootViewContainer;
+  }
+  set viewContainer(val) {
+    this.rootViewContainer = val;
+  }
+
+  getOrCreateSubviewPanel(viewName) {
+    if (!this._subviewPanels) this._subviewPanels = new Map();
+    let panel = this._subviewPanels.get(viewName);
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = `analytics-subview-panel analytics-subview-${viewName}`;
+      panel.style.width = '100%';
+      panel.style.height = '100%';
+      panel.style.display = 'none';
+      panel.style.flexDirection = 'column';
+      panel.style.overflow = 'auto';
+      if (this.rootViewContainer) {
+        this.rootViewContainer.appendChild(panel);
+      }
+      this._subviewPanels.set(viewName, panel);
+    }
+    return panel;
+  }
+
   constructor(containerId, callbacks = {}, params = null) {
     const width = window.innerWidth;
     let config = { appId: 'analytics', appName: 'Analytics', containerId: containerId, callbacks: callbacks };
@@ -52,6 +78,20 @@ class AnalyticsApp extends AppWindow {
     }
 
     window.currentAnalyticsApp = this;
+
+    if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', () => {
+        log.debug('[AnalyticsApp] Billing event received, refreshing customer insights');
+        this.refreshCustomerList().catch(() => {});
+        if (this._subviewPanels) {
+          this._subviewPanels.forEach((panel, name) => {
+            if (name !== this.currentView) {
+              delete panel.dataset.rendered;
+            }
+          });
+        }
+      });
+    }
   }
 
   handleDeepLink(params) {
@@ -92,7 +132,9 @@ class AnalyticsApp extends AppWindow {
 
     this.sidebar = contentArea.querySelector('.analytics-sidebar');
     this.sidebarList = contentArea.querySelector('.analytics-customer-list');
-    this.viewContainer = contentArea.querySelector('.analytics-view-container');
+    this.rootViewContainer = contentArea.querySelector('.analytics-view-container');
+    this._subviewPanels = new Map();
+    this.activePanel = null;
   }
 
   setupHeaderControls() {
@@ -240,35 +282,56 @@ class AnalyticsApp extends AppWindow {
       });
     }
 
-    switch(view) {
-      case 'dashboard':
-        if (!this.dashboardView) this.dashboardView = new AnalyticsDashboard(this);
-        await this.dashboardView.render();
-        break;
-      case 'customer-profile':
-        if (!this.profileView) this.profileView = new CustomerProfileView(this);
-        await this.profileView.render(id);
-        break;
-      case 'sales':
-        if (!this.salesView) this.salesView = new SalesReportsView(this);
-        await this.salesView.render();
-        break;
-      case 'comparative':
-        if (!this.compView) this.compView = new ComparativeAnalyticsView(this);
-        await this.compView.render();
-        break;
-      case 'orders':
-        if (!this.orderView) this.orderView = new OrderAnalyticsView(this);
-        await this.orderView.render();
-        break;
-      case 'aging':
-        if (!this.agingView) this.agingView = new CustomerAgingView(this);
-        await this.agingView.render();
-        break;
-      case 'products':
-        if (!this.productsView) this.productsView = new ProductMetricsView(this);
-        await this.productsView.render();
-        break;
+    const targetPanel = this.getOrCreateSubviewPanel(view);
+    if (this._subviewPanels) {
+      this._subviewPanels.forEach((panel, name) => {
+        panel.style.display = (name === view) ? 'flex' : 'none';
+      });
+    }
+    this.activePanel = targetPanel;
+
+    const needsRender = !targetPanel.dataset.rendered || (view === 'customer-profile' && targetPanel.dataset.customerId !== String(id));
+
+    if (needsRender) {
+      switch(view) {
+        case 'dashboard':
+          if (!this.dashboardView) this.dashboardView = new AnalyticsDashboard(this);
+          this.dashboardView.viewContainer = targetPanel;
+          await this.dashboardView.render();
+          break;
+        case 'customer-profile':
+          if (!this.profileView) this.profileView = new CustomerProfileView(this);
+          this.profileView.viewContainer = targetPanel;
+          targetPanel.dataset.customerId = String(id);
+          await this.profileView.render(id);
+          break;
+        case 'sales':
+          if (!this.salesView) this.salesView = new SalesReportsView(this);
+          this.salesView.viewContainer = targetPanel;
+          await this.salesView.render();
+          break;
+        case 'comparative':
+          if (!this.compView) this.compView = new ComparativeAnalyticsView(this);
+          this.compView.viewContainer = targetPanel;
+          await this.compView.render();
+          break;
+        case 'orders':
+          if (!this.orderView) this.orderView = new OrderAnalyticsView(this);
+          this.orderView.viewContainer = targetPanel;
+          await this.orderView.render();
+          break;
+        case 'aging':
+          if (!this.agingView) this.agingView = new CustomerAgingView(this);
+          this.agingView.viewContainer = targetPanel;
+          await this.agingView.render();
+          break;
+        case 'products':
+          if (!this.productsView) this.productsView = new ProductMetricsView(this);
+          this.productsView.viewContainer = targetPanel;
+          await this.productsView.render();
+          break;
+      }
+      targetPanel.dataset.rendered = 'true';
     }
   }
 

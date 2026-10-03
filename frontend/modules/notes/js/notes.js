@@ -1423,6 +1423,7 @@ class NotesApp extends AppWindow {
   }
 
   renderNotesList(query = '') {
+    const prevScroll = this.notesList ? this.notesList.scrollTop : 0;
     this.notesList.innerHTML = '';
     
     const filteredNotes = query
@@ -1445,6 +1446,10 @@ class NotesApp extends AppWindow {
       
       this.notesList.appendChild(item);
     });
+
+    if (this.notesList) {
+      this.notesList.scrollTop = prevScroll;
+    }
   }
 
   renderImages() {

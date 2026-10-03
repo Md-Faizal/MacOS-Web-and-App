@@ -15,7 +15,7 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
 class EditBillsPayments {
   constructor(billingApp) {
     this.billingApp = billingApp;
-    this.viewContainer = billingApp.viewContainer;
+    this._viewContainer = null;
     this.api = billingApp.api;
     this.apiEnabled = billingApp.apiEnabled;
     this.currentBillId = null;
@@ -28,6 +28,13 @@ class EditBillsPayments {
     this.isSelectingVariant = false;  // Flag to prevent variant modal re-open glitch
     this.isVariantModalOpen = false;  // Flag to check if variant modal is currently visible
     this.autoFillDebounceTimer = null;  // Debounce timer for autoFillProductDetails
+  }
+
+  get viewContainer() {
+    return this._viewContainer || (this.billingApp?.getOrCreateSubviewPanel ? this.billingApp.getOrCreateSubviewPanel('edit') : this.billingApp.viewContainer);
+  }
+  set viewContainer(val) {
+    this._viewContainer = val;
   }
 
   /**

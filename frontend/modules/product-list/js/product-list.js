@@ -293,6 +293,32 @@ if (document.head) document.head.appendChild(style);
  */
 
 export class ProductListApp extends AppWindow {
+  get viewContainer() {
+    return this.activePanel || this.rootViewContainer;
+  }
+  set viewContainer(val) {
+    this.rootViewContainer = val;
+  }
+
+  getOrCreateSubviewPanel(viewName) {
+    if (!this._subviewPanels) this._subviewPanels = new Map();
+    let panel = this._subviewPanels.get(viewName);
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = `product-subview-panel product-subview-${viewName}`;
+      panel.style.width = '100%';
+      panel.style.height = '100%';
+      panel.style.display = 'none';
+      panel.style.flexDirection = 'column';
+      panel.style.overflow = 'auto';
+      if (this.rootViewContainer) {
+        this.rootViewContainer.appendChild(panel);
+      }
+      this._subviewPanels.set(viewName, panel);
+    }
+    return panel;
+  }
+
   constructor(containerId, callbacks = {}) {
     const width = window.innerWidth;
     let config = { appId: 'product-list', appName: 'Product List', containerId: containerId, callbacks: callbacks };
@@ -381,7 +407,22 @@ export class ProductListApp extends AppWindow {
       const normalizedProducts = this.normalizeApiCollection(products, []);
       log.debug('✅ Products loaded from API:', normalizedProducts.length, 'products');
       this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
-      this.renderProductsView();
+      
+      // Update 'all' subview panel in-place without disrupting active tab
+      const allPanel = this.getOrCreateSubviewPanel('all');
+      const prevActive = this.activePanel;
+      this.activePanel = allPanel;
+      this.renderAllProducts();
+      allPanel.dataset.rendered = 'true';
+      this.activePanel = prevActive;
+
+      // If inventory panel exists and was rendered, update it in background
+      const invPanel = this._subviewPanels?.get('inventory');
+      if (invPanel && invPanel.dataset.rendered) {
+        this.activePanel = invPanel;
+        this.renderInventoryView();
+        this.activePanel = prevActive;
+      }
     } catch (error) {
       log.error('Error loading products from API:', error);
       this.notifications.show('Failed to load products from API', 'error', 3000);
@@ -500,7 +541,9 @@ export class ProductListApp extends AppWindow {
     this.sidebar = contentArea.querySelector('.product-sidebar');
     this.mainView = contentArea.querySelector('.product-main');
     this.header = contentArea.querySelector('.product-header');
-    this.viewContainer = contentArea.querySelector('.product-view-container');
+    this.rootViewContainer = contentArea.querySelector('.product-view-container');
+    this._subviewPanels = new Map();
+    this.activePanel = null;
     this.headerTitle = contentArea.querySelector('.product-header-title');
     this.headerSubtitle = contentArea.querySelector('.product-header-subtitle');
     this.menuItems = contentArea.querySelectorAll('.product-menu-item');
@@ -1091,9 +1134,23 @@ export class ProductListApp extends AppWindow {
       }
     });
 
-    // Update header and render view
+    // Update header
     this.updateHeader(viewName);
-    this.renderView(viewName);
+
+    // Toggle subview panel without destroying DOM
+    const targetPanel = this.getOrCreateSubviewPanel(viewName);
+    if (this._subviewPanels) {
+      this._subviewPanels.forEach((panel, name) => {
+        panel.style.display = (name === viewName) ? 'flex' : 'none';
+      });
+    }
+    this.activePanel = targetPanel;
+
+    // Render if not yet rendered, or if edit view (dynamic)
+    if (!targetPanel.dataset.rendered || viewName === 'edit') {
+      this.renderView(viewName);
+      targetPanel.dataset.rendered = 'true';
+    }
   }
 
   updateHeader(viewName) {
@@ -1338,6 +1395,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Creating variant for product ${productId}:`, variantData);
       const result = await this.api.createVariant(productId, variantData);
       log.debug(`✓ Variant created with ID ${result.id}`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:variant', 'created', { productId, variantId: result.id });
+      }
       return result;
     } catch (error) {
       log.error('Error creating variant in API:', error);
@@ -1354,6 +1415,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Updating variant ${variantId}:`, variantData);
       await this.api.updateVariant(variantId, variantData);
       log.debug(`✓ Variant ${variantId} updated in API`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:variant', 'updated', { variantId });
+      }
       return true;
     } catch (error) {
       log.error('Error updating variant in API:', error);
@@ -1369,6 +1434,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Deleting variant ${variantId} from API`);
       await this.api.deleteVariant(variantId);
       log.debug(`✓ Variant ${variantId} deleted from API`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:variant', 'deleted', { variantId });
+      }
       return true;
     } catch (error) {
       log.error('Error deleting variant from API:', error);
@@ -1395,6 +1464,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Creating batch for variant ${variantId}:`, batchData);
       const result = await this.api.createBatch(variantId, batchData);
       log.debug(`✓ Batch created with ID ${result.id}`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:batch', 'created', { variantId, batchId: result.id });
+      }
       return result;
     } catch (error) {
       log.error('Error creating batch in API:', error);
@@ -1411,6 +1484,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Updating batch ${batchId}:`, batchData);
       await this.api.updateBatch(batchId, batchData);
       log.debug(`✓ Batch ${batchId} updated in API`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:batch', 'updated', { batchId });
+      }
       return true;
     } catch (error) {
       log.error('Error updating batch in API:', error);
@@ -1426,6 +1503,10 @@ export class ProductListApp extends AppWindow {
       log.debug(`Deleting batch ${batchId} from API`);
       await this.api.deleteBatch(batchId);
       log.debug(`✓ Batch ${batchId} deleted from API`);
+      this.api.invalidateCache('/products');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('inventory:batch', 'deleted', { batchId });
+      }
       return true;
     } catch (error) {
       log.error('Error deleting batch from API:', error);
@@ -1980,6 +2061,11 @@ export class ProductListApp extends AppWindow {
         // Only push to local list and navigate on success
         this.products.push(product);
         this.notifications.show('Product saved successfully!', 'success', 2000);
+        const createPanel = this._subviewPanels?.get('create');
+        if (createPanel) {
+          delete createPanel.dataset.rendered;
+          createPanel.innerHTML = '';
+        }
         this.switchView('all');
       } else {
         // saveProductToAPI already shows the specific error notification
@@ -2835,6 +2921,10 @@ export class ProductListApp extends AppWindow {
         this.categories.push({ id: result.id, name: catName, created_at: new Date() });
         input.value = '';
         this.notifications.show(`Category "${catName}" added!`, 'success', 2000);
+        this.api.invalidateCache('/categories');
+        if (typeof window !== 'undefined' && window.CoreDataBus) {
+          window.CoreDataBus.publish('inventory:category', 'created', { id: result.id, name: catName });
+        }
         this.renderCategoriesView();
       } catch (err) {
         log.error('Failed to create category:', err.message);
@@ -2897,6 +2987,10 @@ export class ProductListApp extends AppWindow {
           categoryObj.name = newName.trim();
           
           this.notifications.show(`Category renamed to "${newName.trim()}"!`, 'success', 2000);
+          this.api.invalidateCache('/categories');
+          if (typeof window !== 'undefined' && window.CoreDataBus) {
+            window.CoreDataBus.publish('inventory:category', 'updated', { id: categoryObj.id, name: newName.trim() });
+          }
           this.renderCategoriesView();
         } catch (err) {
           log.error('Failed to rename category:', err.message);
@@ -2935,6 +3029,10 @@ export class ProductListApp extends AppWindow {
           await this.api.deleteCategory(categoryObj.id);
           this.categories = this.categories.filter(c => (c.name || c) !== cat);
           this.notifications.show(`Category "${cat}" deleted successfully!`, 'success', 2000);
+          this.api.invalidateCache('/categories');
+          if (typeof window !== 'undefined' && window.CoreDataBus) {
+            window.CoreDataBus.publish('inventory:category', 'deleted', { id: categoryObj.id, name: cat });
+          }
           this.renderCategoriesView();
         } catch (err) {
           log.error('Failed to delete category:', err.message);
