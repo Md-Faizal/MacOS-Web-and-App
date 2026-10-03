@@ -272,15 +272,15 @@ jobs:
             ./ production:"$TARGET_DIR/"
 
           echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment on VM 1..."
-          ssh production bash -s <<'REMOTE'
-          set -e
-          cd /home/ubuntu/MacOS-Production
-          chmod +x deploy/ubuntu/deploy-docker.sh
-          ./deploy/ubuntu/deploy-docker.sh
-          echo "======================================================"
-          echo "🎉 Primary VM 1 — Deployment Complete!"
-          echo "======================================================"
-          REMOTE
+          ssh production "
+            set -e
+            cd $TARGET_DIR
+            chmod +x deploy/ubuntu/deploy-docker.sh
+            ./deploy/ubuntu/deploy-docker.sh
+            echo '======================================================'
+            echo '🎉 Primary VM 1 — Deployment Complete!'
+            echo '======================================================'
+          "
 
           # ──────────────────────────────────────────────────────────
           # 🚀 DEPLOY TO SECONDARY VM 2 (cos) [Optional / Auto]
@@ -333,15 +333,15 @@ jobs:
               ./ vm2:"$TARGET_DIR/"
 
             echo "🔄 Step 3: Fast Zero-Downtime Blue-Green Docker deployment on VM 2..."
-            ssh vm2 bash -s <<'REMOTE_VM2'
-            set -e
-            cd /home/ubuntu/MacOS-Production
-            chmod +x deploy/ubuntu/deploy-docker.sh
-            ./deploy/ubuntu/deploy-docker.sh
-            echo "======================================================"
-            echo "🎉 Secondary VM 2 — Deployment Complete!"
-            echo "======================================================"
-            REMOTE_VM2
+            ssh vm2 "
+              set -e
+              cd $TARGET_DIR
+              chmod +x deploy/ubuntu/deploy-docker.sh
+              ./deploy/ubuntu/deploy-docker.sh
+              echo '======================================================'
+              echo '🎉 Secondary VM 2 — Deployment Complete!'
+              echo '======================================================'
+            "
 
             echo "Verifying VM 2 health..."
             ssh vm2 "curl -f -s -m 5 http://127.0.0.1:3001/api/health >/dev/null || curl -f -s -m 5 http://127.0.0.1:3004/api/health >/dev/null" && echo "✅ VM 2 is live and healthy!"
