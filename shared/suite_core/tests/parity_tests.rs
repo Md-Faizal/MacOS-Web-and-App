@@ -692,6 +692,120 @@ fn test_wallpaper_asset_scan_and_fit() {
     assert!(!scan.checksum_sha256.is_empty());
 }
 
+#[test]
+fn test_pharmaceutical_fuzzy_search_and_typo_tolerance() {
+    use suite_core::catalog::search::{
+        search_catalog, SearchCatalogItem, SearchOptions,
+    };
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    let catalog = vec![
+        SearchCatalogItem {
+            id: json!(101),
+            name: "Paracetamol 500mg Tablets".to_string(),
+            odia_name: Some("ପାରାସିଟାମଲ".to_string()),
+            category_name: Some("Analgesic / Antipyretic".to_string()),
+            classification: Some("Fever & Pain".to_string()),
+            pack_size: Some("10x10 TAB".to_string()),
+            mrp: Some(25.0),
+            units_sold: Some(5000.0),
+            extra: HashMap::new(),
+        },
+        SearchCatalogItem {
+            id: json!(102),
+            name: "Dolo 650 MG Tablet".to_string(),
+            odia_name: None,
+            category_name: Some("Analgesic".to_string()),
+            classification: Some("Antipyretic".to_string()),
+            pack_size: Some("15 TAB".to_string()),
+            mrp: Some(34.0),
+            units_sold: Some(8500.0),
+            extra: HashMap::new(),
+        },
+        SearchCatalogItem {
+            id: json!(103),
+            name: "Amoxicillin Trihydrate 500mg".to_string(),
+            odia_name: None,
+            category_name: Some("Antibiotic".to_string()),
+            classification: Some("Penicillin".to_string()),
+            pack_size: Some("10 CAP".to_string()),
+            mrp: Some(88.0),
+            units_sold: Some(2100.0),
+            extra: HashMap::new(),
+        },
+        SearchCatalogItem {
+            id: json!(104),
+            name: "Cetirizine 10mg Tablets".to_string(),
+            odia_name: None,
+            category_name: Some("Antiallergic".to_string()),
+            classification: Some("Antihistamine".to_string()),
+            pack_size: Some("10 TAB".to_string()),
+            mrp: Some(19.5),
+            units_sold: Some(4200.0),
+            extra: HashMap::new(),
+        },
+        SearchCatalogItem {
+            id: json!(105),
+            name: "PAN-D Gastro-Resistant Capsule".to_string(),
+            odia_name: None,
+            category_name: Some("Antacid".to_string()),
+            classification: Some("Pantoprazole + Domperidone".to_string()),
+            pack_size: Some("15 CAP".to_string()),
+            mrp: Some(210.0),
+            units_sold: Some(9200.0),
+            extra: HashMap::new(),
+        },
+        SearchCatalogItem {
+            id: json!(106),
+            name: "Augmentin 625 Duo Tablet".to_string(),
+            odia_name: None,
+            category_name: Some("Antibiotic".to_string()),
+            classification: Some("Amoxycillin and Potassium Clavulanate".to_string()),
+            pack_size: Some("10 TAB".to_string()),
+            mrp: Some(204.0),
+            units_sold: Some(7100.0),
+            extra: HashMap::new(),
+        },
+    ];
+
+    let opts = SearchOptions::default();
+
+    // 1. Missing vowel typo: "paracetmol"
+    let r1 = search_catalog("paracetmol", &catalog, &opts);
+    assert!(!r1.is_empty(), "Should find Paracetamol with omitted vowel");
+    assert_eq!(r1[0].item.name, "Paracetamol 500mg Tablets");
+
+    // 2. Vowel substitution typo: "paracitamol"
+    let r2 = search_catalog("paracitamol", &catalog, &opts);
+    assert!(!r2.is_empty(), "Should find Paracetamol with vowel substitution");
+    assert_eq!(r2[0].item.name, "Paracetamol 500mg Tablets");
+
+    // 3. Multi-token inverted order: "650 dolo"
+    let r3 = search_catalog("650 dolo", &catalog, &opts);
+    assert!(!r3.is_empty(), "Should match 650 dolo in inverted order");
+    assert_eq!(r3[0].item.name, "Dolo 650 MG Tablet");
+
+    // 4. Missing space and hyphen: "pand"
+    let r4 = search_catalog("pand", &catalog, &opts);
+    assert!(!r4.is_empty(), "Should match pand to PAN-D");
+    assert_eq!(r4[0].item.name, "PAN-D Gastro-Resistant Capsule");
+
+    // 5. Acronym: "pcm"
+    let r5 = search_catalog("pcm", &catalog, &opts);
+    assert!(!r5.is_empty(), "Acronym PCM should match Paracetamol");
+    assert_eq!(r5[0].item.name, "Paracetamol 500mg Tablets");
+
+    // 6. Generic/classification search: "amoxycillin"
+    let r6 = search_catalog("amoxycillin", &catalog, &opts);
+    assert!(!r6.is_empty(), "Classification amoxycillin should match Augmentin or Amoxicillin");
+
+    // 7. Typo in Cetirizine: "cetrizine"
+    let r7 = search_catalog("cetrizine", &catalog, &opts);
+    assert!(!r7.is_empty(), "Should match cetrizine to Cetirizine");
+    assert_eq!(r7[0].item.name, "Cetirizine 10mg Tablets");
+}
+
 
 
 

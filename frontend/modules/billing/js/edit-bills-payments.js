@@ -464,7 +464,19 @@ class EditBillsPayments {
         const products = this.normalizeProducts(result);
         
         if (Array.isArray(products) && products.length > 0) {
-          const product = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
+          // Check exact match first, then Rust WASM top fuzzy match, or top returned product
+          let product = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
+          if (!product && typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+            try {
+              const fuzzyRanked = window.SuiteCoreBridge.searchCatalog(trimmed, products, { limit: 1, min_score: 25.0 });
+              if (fuzzyRanked && fuzzyRanked.length > 0) {
+                product = fuzzyRanked[0];
+              }
+            } catch (_) {}
+          }
+          if (!product) {
+            product = products[0];
+          }
           if (product) {
             console.log('✅ Auto-filled product details from API:', product);
             return product;

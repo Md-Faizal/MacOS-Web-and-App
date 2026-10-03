@@ -384,6 +384,57 @@ class SuiteCoreBridge {
     if (res && res.target_width !== undefined) return res;
     throw new Error('[SuiteCoreBridge] suite_calculate_fit_dimensions WASM call failed');
   }
+
+  /**
+   * Search and rank catalog products using Rust WebAssembly fuzzy matching engine.
+   * Typo-tolerant (Damerau-Levenshtein + multi-token bag + abbreviation matching).
+   *
+   * @param {string} query - User search query (e.g. "paracetmol", "650 dolo", "pand")
+   * @param {Array} catalog - Array of product objects
+   * @param {Object} options - { min_score: 20.0, limit: 50, raw_results: false }
+   * @returns {Array} Sorted matching products or raw match objects
+   */
+  static searchCatalog(query, catalog = [], options = {}) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for searchCatalog');
+    }
+
+    const payload = {
+      query: (query || '').toString(),
+      catalog: Array.isArray(catalog) ? catalog : [],
+      options: {
+        min_score: options.min_score !== undefined ? options.min_score : 20.0,
+        limit: options.limit !== undefined ? options.limit : 50
+      }
+    };
+
+    const res = this.callWasmJson('suite_search_catalog', payload);
+    if (res && res.success && Array.isArray(res.results)) {
+      if (options.raw_results) {
+        return res.results;
+      }
+      return res.results.map(r => r.item);
+    }
+    throw new Error(`[SuiteCoreBridge] suite_search_catalog WASM call failed: ${res ? res.error : 'Unknown'}`);
+  }
+
+  /**
+   * Calculate fuzzy match score between query string and target string in pure Rust.
+   * Returns { score: number (0-100), is_exact: boolean }
+   */
+  static fuzzyMatchScore(query, target) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for fuzzyMatchScore');
+    }
+    const res = this.callWasmJson('suite_fuzzy_match_score', {
+      query: (query || '').toString(),
+      target: (target || '').toString()
+    });
+    if (res && typeof res.score === 'number') {
+      return res;
+    }
+    throw new Error('[SuiteCoreBridge] suite_fuzzy_match_score WASM call failed');
+  }
 }
 
 

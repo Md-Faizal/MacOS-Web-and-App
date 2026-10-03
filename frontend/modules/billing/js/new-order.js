@@ -2550,19 +2550,41 @@ class OrdersView {
     const container = document.getElementById('searchResults');
     if (!container) return;
 
-    const searchTerm = document.getElementById('productSearch')?.value.toLowerCase() || '';
+    const rawInput = document.getElementById('productSearch')?.value || '';
+    const searchTerm = rawInput.toLowerCase().trim();
     
     // If no search term, show all products
     // If search term exists, sort matching products first, then non-matching
     let displayProducts = this.products;
+    let matchedIdSet = new Set();
     
     if (searchTerm) {
-      const matching = this.products.filter(p => 
-        p.name.toLowerCase().includes(searchTerm)
-      );
-      const nonMatching = this.products.filter(p => 
-        !p.name.toLowerCase().includes(searchTerm)
-      );
+      let matching = [];
+      let nonMatching = [];
+
+      // Fast-Path: Rust WebAssembly typo-tolerant fuzzy search
+      if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+        try {
+          matching = window.SuiteCoreBridge.searchCatalog(rawInput, this.products, {
+            min_score: 25.0,
+            limit: this.products.length
+          });
+          matchedIdSet = new Set(matching.map(m => String(m.id)));
+          nonMatching = this.products.filter(p => !matchedIdSet.has(String(p.id)));
+        } catch (err) {
+          console.warn('[NewOrder] WASM fuzzy search fallback:', err);
+        }
+      }
+
+      if (!matching.length) {
+        matching = this.products.filter(p => 
+          p.name.toLowerCase().includes(searchTerm)
+        );
+        matchedIdSet = new Set(matching.map(m => String(m.id)));
+        nonMatching = this.products.filter(p => 
+          !p.name.toLowerCase().includes(searchTerm)
+        );
+      }
       displayProducts = [...matching, ...nonMatching];
     }
 
@@ -2572,7 +2594,7 @@ class OrdersView {
     }
 
     container.innerHTML = displayProducts.map(p => {
-      const isMatching = !searchTerm || p.name.toLowerCase().includes(searchTerm);
+      const isMatching = !searchTerm || matchedIdSet.has(String(p.id)) || p.name.toLowerCase().includes(searchTerm);
       const highlightStyle = isMatching && searchTerm ? 'background-color:#fff3cd; font-weight:600;' : '';
       return `
         <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; cursor:pointer; ${highlightStyle}" class="search-product" data-product-id="${p.id}">

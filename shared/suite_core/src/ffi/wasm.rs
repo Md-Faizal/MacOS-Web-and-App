@@ -1,4 +1,5 @@
 use crate::analytics::aging::{calculate_customer_aging, calculate_receivables_aging, UnpaidBillItem};
+use crate::catalog::search::{search_catalog, match_query_against_target, SearchCatalogItem, SearchOptions, SearchResultItem};
 use crate::finance::invoicing::bill::calculate_bill;
 use crate::finance::invoicing::item::LineItemInput;
 use crate::finance::ledger::statement::generate_customer_statement;
@@ -438,6 +439,82 @@ pub unsafe extern "C" fn suite_calculate_fit_dimensions(ptr: *const u8, len: usi
             package_response(&ErrResp {
                 success: false,
                 error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SearchCatalogRequest {
+    query: String,
+    catalog: Vec<SearchCatalogItem>,
+    #[serde(default)]
+    options: Option<SearchOptions>,
+}
+
+#[derive(Serialize)]
+struct SearchCatalogResponse {
+    success: bool,
+    query: String,
+    total_matches: usize,
+    results: Vec<SearchResultItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_search_catalog(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<SearchCatalogRequest>(slice) {
+        Ok(req) => {
+            let options = req.options.unwrap_or_default();
+            let matches = search_catalog(&req.query, &req.catalog, &options);
+            let resp = SearchCatalogResponse {
+                success: true,
+                query: req.query,
+                total_matches: matches.len(),
+                results: matches,
+                error: None,
+            };
+            package_response(&resp)
+        }
+        Err(e) => {
+            let resp = SearchCatalogResponse {
+                success: false,
+                query: String::new(),
+                total_matches: 0,
+                results: Vec::new(),
+                error: Some(e.to_string()),
+            };
+            package_response(&resp)
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct FuzzyScoreRequest {
+    query: String,
+    target: String,
+}
+
+#[derive(Serialize)]
+struct FuzzyScoreResponse {
+    score: f64,
+    is_exact: bool,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_fuzzy_match_score(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<FuzzyScoreRequest>(slice) {
+        Ok(req) => {
+            let (score, is_exact) = match_query_against_target(&req.query, &req.target);
+            package_response(&FuzzyScoreResponse { score, is_exact })
+        }
+        Err(_) => {
+            package_response(&FuzzyScoreResponse {
+                score: 0.0,
+                is_exact: false,
             })
         }
     }

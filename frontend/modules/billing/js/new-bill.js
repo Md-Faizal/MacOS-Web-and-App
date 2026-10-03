@@ -68,6 +68,7 @@ class BillEditor {
     this.orderCheckDebounceTimer = null; // Debounce timer for checkCustomerOrders
     this.selectedIndex = -1; // Index for dropdown keyboard navigation
     this.isDropdownOpen = false; // Track dropdown state
+    this.cachedProducts = []; // Local cache for instant Rust WASM fuzzy product search
   }
 
   // Proxy properties to billingApp for convenience
@@ -659,6 +660,18 @@ class BillEditor {
       return;
     }
 
+    // Instant Client-Side Rust WASM Fuzzy Search (<0.2ms)
+    if (this.cachedProducts && this.cachedProducts.length > 0 && typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+      try {
+        const instantMatches = window.SuiteCoreBridge.searchCatalog(trimmedQuery, this.cachedProducts, { limit: 25, min_score: 25.0 });
+        if (instantMatches && instantMatches.length > 0) {
+          this.renderSearchDropdown(instantMatches);
+        }
+      } catch (err) {
+        console.warn('[NewBill] WASM instant search fallback:', err);
+      }
+    }
+
     this.autoFillDebounceTimer = setTimeout(async () => {
       try {
         const response = await fetch(`/api/products?search=${encodeURIComponent(trimmedQuery)}`);
@@ -666,11 +679,27 @@ class BillEditor {
           const result = await response.json();
           const products = this.normalizeProducts(result);
           this.renderSearchDropdown(products);
+
+          // Populate cache in background if empty
+          if (!this.cachedProducts || this.cachedProducts.length === 0) {
+            this.preloadProductsCatalog();
+          }
         }
       } catch (error) {
         console.error('Error fetching real-time products:', error);
       }
-    }, 250);
+    }, 200);
+  }
+
+  async preloadProductsCatalog() {
+    if (this.cachedProducts && this.cachedProducts.length > 0) return;
+    try {
+      const response = await fetch('/api/products');
+      if (response.ok) {
+        const result = await response.json();
+        this.cachedProducts = this.normalizeProducts(result);
+      }
+    } catch (_) {}
   }
 
   calculateProductPriceRange(product) {

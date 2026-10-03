@@ -827,14 +827,32 @@ export class ProductListApp extends AppWindow {
       return this.products;
     }
 
-    const q = this.searchQuery.toLowerCase().trim();
+    const q = this.searchQuery.trim();
+    if (!q) return this.products;
+
+    // Fast-Path: Rust WebAssembly typo-tolerant fuzzy search (<0.5ms)
+    if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+      try {
+        const fuzzyResults = window.SuiteCoreBridge.searchCatalog(q, this.products, {
+          min_score: 25.0,
+          limit: this.products.length
+        });
+        if (Array.isArray(fuzzyResults) && fuzzyResults.length > 0) {
+          return fuzzyResults;
+        }
+      } catch (err) {
+        console.warn('[ProductList] WASM fuzzy search fallback:', err);
+      }
+    }
+
+    const qLower = q.toLowerCase();
     return this.products.filter(product => {
       const name = (product.name || '').toLowerCase();
       const odiaName = (product.odia_name || '').toLowerCase();
       const category = (product.category_name || product.category || '').toLowerCase();
       const classification = (product.classification || '').toLowerCase();
       
-      if (name.includes(q) || odiaName.includes(q) || category.includes(q) || classification.includes(q)) {
+      if (name.includes(qLower) || odiaName.includes(qLower) || category.includes(qLower) || classification.includes(qLower)) {
         return true;
       }
 

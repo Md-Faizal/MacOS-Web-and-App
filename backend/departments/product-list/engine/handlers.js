@@ -1,6 +1,14 @@
+const path = require('path');
 const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../shared/api/product-list-contract');
 const productListDepartment = require('../service');
+
+let SuiteCoreBridge = null;
+try {
+  SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
+} catch (e) {
+  console.warn('[ProductSearch] Failed to load SuiteCoreBridge in product handlers:', e.message);
+}
 
 function naturalSortBatches(batches) {
   if (!Array.isArray(batches)) return [];
@@ -26,28 +34,53 @@ module.exports = function(db) {
 
         const rawSearch = req.query.search;
         const searchQuery = typeof rawSearch === 'string' ? rawSearch.trim() : null;
-        let stmt;
         let products;
 
         if (searchQuery) {
-          // Search by product name, odia name, or category name (case-insensitive)
-          stmt = db.prepare(`
-            SELECT p.*, c.name as category_name,
-                   COALESCE(u_creator.role, 'owner') as created_by_role,
-                   COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
-                   u_editor.role as last_edited_by_role,
-                   COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
-            LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
-            WHERE LOWER(p.name) LIKE LOWER(?)
-               OR LOWER(COALESCE(p.odia_name, '')) LIKE LOWER(?)
-               OR LOWER(COALESCE(c.name, '')) LIKE LOWER(?)
-            ORDER BY p.created_at DESC
-          `);
-          const term = `%${searchQuery}%`;
-          products = stmt.all(term, term, term);
+          let wasmMatched = false;
+          // Fast-Path: Rust WebAssembly high-precision typo-tolerant search
+          if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded()) {
+            try {
+              const allStmt = db.prepare(`
+                SELECT p.*, c.name as category_name,
+                       COALESCE(u_creator.role, 'owner') as created_by_role,
+                       COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                       u_editor.role as last_edited_by_role,
+                       COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+                LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
+                ORDER BY p.created_at DESC
+              `);
+              const allProducts = allStmt.all();
+              products = SuiteCoreBridge.searchCatalog(searchQuery, allProducts, { limit: 50, min_score: 25.0 });
+              wasmMatched = true;
+            } catch (wErr) {
+              console.warn('[ProductSearch] WASM search failed, falling back to SQL LIKE:', wErr.message);
+            }
+          }
+
+          if (!wasmMatched) {
+            // Fallback: SQL LIKE
+            const stmt = db.prepare(`
+              SELECT p.*, c.name as category_name,
+                     COALESCE(u_creator.role, 'owner') as created_by_role,
+                     COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,
+                     u_editor.role as last_edited_by_role,
+                     COALESCE(u_editor.full_name, u_editor.username, u_editor.google_name) as last_edited_by_name
+              FROM products p
+              LEFT JOIN categories c ON p.category_id = c.id
+              LEFT JOIN users u_creator ON p.created_by_user_id = u_creator.id
+              LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
+              WHERE LOWER(p.name) LIKE LOWER(?)
+                 OR LOWER(COALESCE(p.odia_name, '')) LIKE LOWER(?)
+                 OR LOWER(COALESCE(c.name, '')) LIKE LOWER(?)
+              ORDER BY p.created_at DESC
+            `);
+            const term = `%${searchQuery}%`;
+            products = stmt.all(term, term, term);
+          }
         } else {
           // Get all products
           stmt = db.prepare(`

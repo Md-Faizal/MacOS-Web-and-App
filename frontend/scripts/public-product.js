@@ -675,7 +675,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // FUZZY SEARCH ALGORITHM WITH TYPO TOLERANCE & HIGHLIGHTING
     // ========================================================
     function performFuzzySearch(query, catalog) {
-        const q = query.toLowerCase().trim();
+        const q = (query || '').trim();
+        if (!q) return catalog;
+
+        // Fast-Path: Rust WebAssembly high-precision typo-tolerant fuzzy search (<0.5ms)
+        if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+            try {
+                const wasmResults = window.SuiteCoreBridge.searchCatalog(q, catalog, { min_score: 25.0, limit: 100 });
+                if (Array.isArray(wasmResults) && wasmResults.length > 0) {
+                    return wasmResults;
+                }
+            } catch (err) {
+                console.warn('[PublicProduct] WASM fuzzy search fallback:', err);
+            }
+        }
+
+        const qLower = q.toLowerCase();
         const scored = [];
 
         catalog.forEach(item => {
