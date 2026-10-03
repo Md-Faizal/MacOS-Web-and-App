@@ -164,11 +164,36 @@ class WallpaperStorageManager {
       darkRelPath = `/storage/wallpapers/custom/${safeId}/${darkFilename}`;
     }
 
+    let imageScan = null;
+    if (!isVideo && fs.existsSync(primaryPath)) {
+      try {
+        const SuiteCoreBridge = require('../../../../frontend/shared/suite_core_bridge');
+        if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded()) {
+          imageScan = SuiteCoreBridge.scanWallpaper(fs.readFileSync(primaryPath));
+        }
+      } catch (err) {
+        console.warn('[StorageManager] Rust wallpaper scan fallback:', err.message);
+      }
+    }
+
     // Generate WebP thumbnail
     if (!isVideo) {
       try {
+        let targetW = 480;
+        let targetH = 270;
+        if (imageScan && imageScan.width && imageScan.height) {
+          try {
+            const SuiteCoreBridge = require('../../../../frontend/shared/suite_core_bridge');
+            const fit = SuiteCoreBridge.calculateFitDimensions(imageScan.width, imageScan.height, 480, 270, 'cover');
+            if (fit && fit.target_width && fit.target_height) {
+              targetW = fit.target_width;
+              targetH = fit.target_height;
+            }
+          } catch (_) {}
+        }
+
         await sharp(primaryPath)
-          .resize(480, 270, { fit: 'cover' })
+          .resize(targetW, targetH, { fit: 'cover' })
           .webp({ quality: 85 })
           .toFile(thumbPath);
       } catch (e) {
@@ -194,8 +219,8 @@ class WallpaperStorageManager {
       id: safeId,
       name: title || primaryFile.originalname.replace(/\.[^/.]+$/, ''),
       description: isShared ? 'Shared community wallpaper' : 'Personal desktop wallpaper',
-      category: category || 'custom',
-      tags: ['custom', category],
+      category: category || (imageScan?.recommended_category || 'custom'),
+      tags: ['custom', category || 'custom'],
       type: isVideo ? 'video' : 'static',
       source: 'custom',
       path: `/storage/wallpapers/custom/${safeId}/${primaryFilename}`,
@@ -203,11 +228,16 @@ class WallpaperStorageManager {
       hasDarkVariant: Boolean(darkRelPath),
       thumbnail: fs.existsSync(thumbPath) ? `/storage/wallpapers/custom/${safeId}/thumbnail.webp` : `/storage/wallpapers/custom/${safeId}/${primaryFilename}`,
       author: author || 'You',
-      resolution: isVideo ? 'Video Dynamic' : 'High Resolution',
+      resolution: isVideo ? 'Video Dynamic' : (imageScan?.resolution_label || 'High Resolution'),
+      aspectRatio: imageScan?.aspect_ratio || null,
+      width: imageScan?.width || null,
+      height: imageScan?.height || null,
+      checksumSha256: imageScan?.checksum_sha256 || null,
       isCustom: true,
       isShared: Boolean(isShared),
       created_at: new Date().toISOString()
     };
+
 
     fs.writeFileSync(path.join(destDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
     this.cachedManifest = null; // Invalidate cache

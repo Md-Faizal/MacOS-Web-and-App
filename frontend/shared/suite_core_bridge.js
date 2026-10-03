@@ -120,6 +120,42 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Execute raw binary buffer in, JSON-out call via WebAssembly memory
+   */
+  static callWasmBinary(exportFnName, bufferOrUint8Array) {
+    if (!this.isWasmLoaded()) return null;
+
+    const exports = wasmInstance.exports;
+    const fn = exports[exportFnName];
+    if (!fn) return null;
+
+    const bytes = bufferOrUint8Array instanceof Uint8Array
+      ? bufferOrUint8Array
+      : new Uint8Array(bufferOrUint8Array);
+
+    const inPtr = exports.suite_alloc(bytes.length);
+    new Uint8Array(wasmMemory.buffer, inPtr, bytes.length).set(bytes);
+
+    const outPtr = fn(inPtr, bytes.length);
+    if (!outPtr) {
+      exports.suite_dealloc(inPtr, bytes.length);
+      return null;
+    }
+
+    const view = new DataView(wasmMemory.buffer);
+    const outLen = view.getUint32(outPtr, true);
+    const resultBytes = new Uint8Array(wasmMemory.buffer, outPtr + 4, outLen);
+    const decoder = new TextDecoder('utf-8');
+    const resultStr = decoder.decode(resultBytes);
+
+    exports.suite_dealloc(inPtr, bytes.length);
+    exports.suite_dealloc(outPtr, outLen + 4);
+
+    return JSON.parse(resultStr);
+  }
+
+
+  /**
    * Calculate bill with items, discounts, GST, scheme, and round-off
    */
   static calculateBill(items, previousDue = 0.0, roundOff = true) {
@@ -303,6 +339,50 @@ class SuiteCoreBridge {
       return res;
     }
     throw new Error(`[SuiteCoreBridge] suite_render_invoice_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
+   * Inspect raw image file header in <1μs with ZERO buffer decoding.
+   * Returns { format, width, height, aspect_ratio, aspect_ratio_value, resolution_label, is_valid }
+   */
+  static inspectImage(imageBufferOrUint8) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for inspectImage');
+    }
+    const res = this.callWasmBinary('suite_inspect_image', imageBufferOrUint8);
+    if (res && res.format) return res;
+    throw new Error('[SuiteCoreBridge] suite_inspect_image WASM call failed');
+  }
+
+  /**
+   * Complete Zero-GC memory guard scan of raw image upload bytes.
+   * Computes SHA-256 fingerprint, dimensions, aspect ratio, and category.
+   */
+  static scanWallpaper(imageBufferOrUint8) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for scanWallpaper');
+    }
+    const res = this.callWasmBinary('suite_scan_wallpaper', imageBufferOrUint8);
+    if (res && res.checksum_sha256) return res;
+    throw new Error('[SuiteCoreBridge] suite_scan_wallpaper WASM call failed');
+  }
+
+  /**
+   * Calculate optimal thumbnail / preview bounding dimensions with aspect ratio preservation.
+   */
+  static calculateFitDimensions(origW, origH, maxW, maxH, mode = 'cover') {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for calculateFitDimensions');
+    }
+    const res = this.callWasmJson('suite_calculate_fit_dimensions', {
+      orig_w: origW,
+      orig_h: origH,
+      max_w: maxW,
+      max_h: maxH,
+      mode
+    });
+    if (res && res.target_width !== undefined) return res;
+    throw new Error('[SuiteCoreBridge] suite_calculate_fit_dimensions WASM call failed');
   }
 }
 

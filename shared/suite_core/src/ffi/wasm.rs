@@ -382,5 +382,67 @@ pub unsafe extern "C" fn suite_render_invoice_pdf(ptr: *const u8, len: usize) ->
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn suite_inspect_image(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    let meta = crate::storage::dimensions::inspect_image_metadata(slice);
+    package_response(&meta)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_scan_wallpaper(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    let res = crate::storage::wallpaper::scan_wallpaper_asset(slice);
+    package_response(&res)
+}
+
+#[derive(Deserialize)]
+struct FitDimensionsRequest {
+    orig_w: u32,
+    orig_h: u32,
+    max_w: u32,
+    max_h: u32,
+    #[serde(default = "default_cover")]
+    mode: String,
+}
+
+fn default_cover() -> String {
+    "cover".to_string()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_calculate_fit_dimensions(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<FitDimensionsRequest>(slice) {
+        Ok(req) => {
+            let mode = if req.mode.to_lowercase() == "contain" {
+                crate::storage::wallpaper::FitMode::Contain
+            } else {
+                crate::storage::wallpaper::FitMode::Cover
+            };
+            let res = crate::storage::wallpaper::calculate_fit_dimensions(
+                req.orig_w,
+                req.orig_h,
+                req.max_w,
+                req.max_h,
+                mode,
+            );
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+
 
 

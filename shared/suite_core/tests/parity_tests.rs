@@ -596,5 +596,102 @@ fn test_native_invoice_pdf_generation() {
     assert!(pdf_str.contains("Rs. One Thousand Four Hundred and Ninety Only"));
 }
 
+#[test]
+fn test_image_header_and_dimensions() {
+    use suite_core::storage::dimensions::{inspect_image_metadata, parse_image_dimensions, ImageFormat};
+
+    // 1. Mock 4K PNG Header (3840 x 2160)
+    let png_header = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+        0x00, 0x00, 0x00, 0x0D,                         // IHDR chunk length = 13
+        b'I', b'H', b'D', b'R',                         // "IHDR"
+        0x00, 0x00, 0x0F, 0x00,                         // Width = 3840 (0x0F00)
+        0x00, 0x00, 0x08, 0x70,                         // Height = 2160 (0x0870)
+        0x08, 0x06, 0x00, 0x00, 0x00,                   // Bit depth, color type, etc.
+    ];
+    let (fmt, w, h) = parse_image_dimensions(&png_header).expect("Should parse PNG dimensions");
+    assert_eq!(fmt, ImageFormat::Png);
+    assert_eq!(w, 3840);
+    assert_eq!(h, 2160);
+
+    let meta = inspect_image_metadata(&png_header);
+    assert_eq!(meta.format, "png");
+    assert_eq!(meta.width, 3840);
+    assert_eq!(meta.height, 2160);
+    assert_eq!(meta.aspect_ratio, "16:9");
+    assert_eq!(meta.resolution_label, "4K Ultra HD");
+    assert!(meta.is_valid);
+
+    // 2. Mock 1080p JPEG Header (1920 x 1080)
+    let jpeg_header = vec![
+        0xFF, 0xD8, 0xFF, 0xE0, // SOI + APP0 marker
+        0x00, 0x10,             // APP0 length = 16
+        b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00,
+        0xFF, 0xC0,             // SOF0 marker
+        0x00, 0x11,             // Length = 17
+        0x08,                   // Precision = 8
+        0x04, 0x38,             // Height = 1080 (0x0438)
+        0x07, 0x80,             // Width = 1920 (0x0780)
+        0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+    ];
+    let (j_fmt, j_w, j_h) = parse_image_dimensions(&jpeg_header).expect("Should parse JPEG dimensions");
+    assert_eq!(j_fmt, ImageFormat::Jpeg);
+    assert_eq!(j_w, 1920);
+    assert_eq!(j_h, 1080);
+
+    let j_meta = inspect_image_metadata(&jpeg_header);
+    assert_eq!(j_meta.format, "jpeg");
+    assert_eq!(j_meta.resolution_label, "1080p Full HD");
+    assert_eq!(j_meta.aspect_ratio, "16:9");
+
+    // 3. Mock GIF Header (800 x 600)
+    let gif_header = vec![
+        b'G', b'I', b'F', b'8', b'9', b'a',
+        0x20, 0x03, // Width = 800 (0x0320)
+        0x58, 0x02, // Height = 600 (0x0258)
+        0x70, 0x00, 0x00,
+    ];
+    let (g_fmt, g_w, g_h) = parse_image_dimensions(&gif_header).expect("Should parse GIF dimensions");
+    assert_eq!(g_fmt, ImageFormat::Gif);
+    assert_eq!(g_w, 800);
+    assert_eq!(g_h, 600);
+    let g_meta = inspect_image_metadata(&gif_header);
+    assert_eq!(g_meta.aspect_ratio, "4:3");
+}
+
+#[test]
+fn test_wallpaper_asset_scan_and_fit() {
+    use suite_core::storage::wallpaper::{
+        calculate_fit_dimensions, scan_wallpaper_asset, FitMode,
+    };
+
+    // Test thumbnail cover fit: 3840x2160 -> fit inside 480x270
+    let fit_cover = calculate_fit_dimensions(3840, 2160, 480, 270, FitMode::Cover);
+    assert_eq!(fit_cover.target_width, 480);
+    assert_eq!(fit_cover.target_height, 270);
+
+    // Test non-standard ratio: 3840x2400 (16:10) -> fit inside 480x270 (Cover)
+    let fit_cover_16_10 = calculate_fit_dimensions(3840, 2400, 480, 270, FitMode::Cover);
+    assert!(fit_cover_16_10.target_width >= 480);
+    assert!(fit_cover_16_10.target_height >= 270);
+
+    // Test full wallpaper scan on mock 4K PNG
+    let png_4k = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D,
+        b'I', b'H', b'D', b'R',
+        0x00, 0x00, 0x0F, 0x00, // 3840
+        0x00, 0x00, 0x08, 0x70, // 2160
+        0x08, 0x06, 0x00, 0x00, 0x00,
+    ];
+    let scan = scan_wallpaper_asset(&png_4k);
+    assert!(scan.is_valid);
+    assert!(scan.is_4k_or_higher);
+    assert_eq!(scan.resolution_label, "4K Ultra HD");
+    assert_eq!(scan.recommended_category, "ultra-hd");
+    assert!(!scan.checksum_sha256.is_empty());
+}
+
+
 
 
