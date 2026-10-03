@@ -143,6 +143,10 @@ jobs:
             HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             ServerAliveInterval 30
             ServerAliveCountMax 3
+          SSHEOF
+
+          if [ -n "$SSH_HOST_VM2" ]; then
+            cat <<SSHEOF >> ~/.ssh/config
 
           Host vm2
             HostName $SSH_HOST_VM2
@@ -156,6 +160,7 @@ jobs:
             ServerAliveInterval 30
             ServerAliveCountMax 3
           SSHEOF
+          fi
           chmod 600 ~/.ssh/config
 
       - name: 📦 Rsync Zentra dist to VM
