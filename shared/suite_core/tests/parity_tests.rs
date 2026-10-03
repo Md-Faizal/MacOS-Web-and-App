@@ -289,3 +289,112 @@ fn test_fast_path_c_abi() {
     assert_eq!(out[5], 16.20); // cgst
     assert_eq!(out[6], 212.40);// final
 }
+
+#[test]
+fn test_fefo_batch_stock_depletion() {
+    use suite_core::inventory::depletion::{
+        deplete_inventory_batches, BatchStockItem, DepletionOptions, DepletionStrategy,
+    };
+
+    let batches = vec![
+        BatchStockItem {
+            batch_id: Some("b_1".to_string()),
+            batch_no: "BATCH-2027-06".to_string(),
+            expiry_date: Some("2027-06-30".to_string()),
+            current_stock: 50.0,
+            mrp: Some(120.0),
+            rate: Some(100.0),
+            created_at: Some(1),
+        },
+        BatchStockItem {
+            batch_id: Some("b_2".to_string()),
+            batch_no: "BATCH-2026-11".to_string(),
+            expiry_date: Some("2026-11-30".to_string()),
+            current_stock: 10.0,
+            mrp: Some(120.0),
+            rate: Some(100.0),
+            created_at: Some(2),
+        },
+        BatchStockItem {
+            batch_id: Some("b_3".to_string()),
+            batch_no: "BATCH-2027-01".to_string(),
+            expiry_date: Some("2027-01-31".to_string()),
+            current_stock: 20.0,
+            mrp: Some(120.0),
+            rate: Some(100.0),
+            created_at: Some(3),
+        },
+    ];
+
+    let options = DepletionOptions {
+        strategy: DepletionStrategy::FEFO,
+        allow_expired: false,
+        current_date_days: Some(20454), // ~2026
+    };
+
+    // Request 25 units: should consume all 10 of BATCH-2026-11, and 15 of BATCH-2027-01
+    let result = deplete_inventory_batches(25.0, &batches, &options);
+
+    assert!(result.success);
+    assert!(result.is_fully_allocated);
+    assert_eq!(result.allocated_qty, 25.0);
+    assert_eq!(result.unfulfilled_qty, 0.0);
+    assert_eq!(result.allocations.len(), 2);
+
+    // First allocation must be the earliest expiring batch (2026-11)
+    assert_eq!(result.allocations[0].batch_no, "BATCH-2026-11");
+    assert_eq!(result.allocations[0].qty_deducted, 10.0);
+    assert_eq!(result.allocations[0].remaining_in_batch, 0.0);
+
+    // Second allocation from 2027-01
+    assert_eq!(result.allocations[1].batch_no, "BATCH-2027-01");
+    assert_eq!(result.allocations[1].qty_deducted, 15.0);
+    assert_eq!(result.allocations[1].remaining_in_batch, 5.0);
+}
+
+#[test]
+fn test_fefo_insufficient_stock_and_expired_handling() {
+    use suite_core::inventory::depletion::{
+        deplete_inventory_batches, BatchStockItem, DepletionOptions, DepletionStrategy,
+    };
+
+    let batches = vec![
+        // Expired batch in 2024
+        BatchStockItem {
+            batch_id: Some("b_old".to_string()),
+            batch_no: "EXPIRED-2024".to_string(),
+            expiry_date: Some("2024-12-31".to_string()),
+            current_stock: 100.0,
+            mrp: Some(50.0),
+            rate: Some(40.0),
+            created_at: Some(1),
+        },
+        // Fresh batch in 2027
+        BatchStockItem {
+            batch_id: Some("b_good".to_string()),
+            batch_no: "FRESH-2027".to_string(),
+            expiry_date: Some("2027-12-31".to_string()),
+            current_stock: 15.0,
+            mrp: Some(60.0),
+            rate: Some(50.0),
+            created_at: Some(2),
+        },
+    ];
+
+    let options = DepletionOptions {
+        strategy: DepletionStrategy::FEFO,
+        allow_expired: false,
+        current_date_days: Some(20454), // ~2026
+    };
+
+    // Request 20 units: expired batch must be ignored! Only 15 units available
+    let result = deplete_inventory_batches(20.0, &batches, &options);
+
+    assert!(result.success);
+    assert!(!result.is_fully_allocated);
+    assert_eq!(result.allocated_qty, 15.0);
+    assert_eq!(result.unfulfilled_qty, 5.0);
+    assert_eq!(result.allocations.len(), 1);
+    assert_eq!(result.allocations[0].batch_no, "FRESH-2027");
+}
+

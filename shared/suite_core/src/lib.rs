@@ -4,6 +4,7 @@ pub mod analytics;
 pub mod catalog;
 pub mod ffi;
 pub mod finance;
+pub mod inventory;
 pub mod sales;
 pub mod types;
 
@@ -13,5 +14,7 @@ pub use analytics::kpi::*;
 pub use catalog::expiry::*;
 pub use finance::invoicing::*;
 pub use finance::ledger::*;
+pub use inventory::*;
 pub use sales::orders::*;
 pub use types::*;
+

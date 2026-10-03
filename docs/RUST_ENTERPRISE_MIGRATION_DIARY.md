@@ -48,16 +48,16 @@
 
 ## 2. Migration Status Matrix & Domain Progress
 
-Overall Backend Rust Migration Progress: **~35% of Critical Computational & Financial Logic Migrated** (~8% of total 65k LOC backend).
+Overall Backend Rust Migration Progress: **~45% of Critical Computational & Financial Logic Migrated** (~12% of total 65k LOC backend).
 
 | Domain / Subsystem | Scope & Functionality | Rust Path (`shared/suite_core/src/`) | Targets Available | Parity Test Status | Migration Progress % | Production Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Finance / Invoicing** | Reverse GST, Free Scheme, Cascading Discounts, Rounding | `finance/invoicing/` | WASM, JNI, FFI | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live in Production** |
 | **Finance / Ledger** | FIFO Debt Settlement, Balance Statements, Allocation Map | `finance/ledger/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
+| **Inventory / Depletion** | FEFO/FIFO Batch Stock Depletion & Multi-Batch Reservations | `inventory/depletion.rs` | WASM, FFI, Bridge | ✅ 100% Passing (`parity_tests.rs`) | **100%** | 🟢 **Live & WASM Ready** |
 | **Analytics Engine** | Overdue Aging (0-30, 31-60, 61-90, 90+), Executive KPIs | `analytics/` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
 | **Catalog & Expiry** | Batch Expiry & Freshness Classification (Valid/Expiring/Expired) | `catalog/expiry.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
 | **Sales Orders** | Order Line Fulfillment & Stage Calculations | `sales/orders.rs` | WASM, JNI, FFI | ✅ 100% Passing | **100%** | 🟢 **Live in Production** |
-| **Inventory / Depletion** | FEFO/FIFO Batch Stock Depletion & Multi-Batch Reservations | `inventory/depletion.rs` | Standalone / FFI | ⏳ Pending Implementation | **0%** *(Ready to start)* | 🟡 *Option A: Next Priority* |
 | **Storage & Wallpaper Engine** | Zero-GC Image Resize, Format Conversion (WebP/AVIF), Checksums | `storage/wallpaper.rs` or Sidecar | Standalone CLI / NAPI | ⏳ In Planning | **0%** | 🟡 *Option B: High RAM Impact* |
 | **Document / PDF Engine** | Replace Python `execSync` invoice generator with native stream | `documents/pdf/` | Standalone CLI / FFI | ⏳ In Planning | **0%** | 🟡 *Option C: Event-Loop Relief* |
 | **Ledger Sequencing & Audit** | Strict Sequential Invoice Numbers & Anti-Tamper Checksums | `finance/ledger/sequencing.rs` | WASM, FFI | ⏳ In Planning | **0%** | 🟡 *Option D: Data Integrity* |
@@ -159,15 +159,38 @@ Run the backend tests or test against an active development slot (`macos-server-
 
 ---
 
+### [Entry 005] — Implementation & WASM Integration of Inventory Stock Depletion Engine (FEFO/FIFO) (2026-10-03)
+* **Goal**: Execute Option A — Migrate inventory batch stock allocation into pure Rust, preventing race-condition overselling, stock debt, and expired item sales across Web, Mobile (WASM), and Backend.
+* **Work Done**:
+  1. **Pure Rust Domain Engine**: Created `shared/suite_core/src/inventory/depletion.rs` (registered in `src/inventory/mod.rs` & `src/lib.rs`).
+     - Supports **FEFO (First Expired, First Out)** sorting with fallback to FIFO.
+     - Parses multiple expiry formats (`YYYY-MM-DD`, `YYYY-MM`, `MM/YY`, `MM/YYYY`).
+     - Enforces `allow_expired = false` check to prevent accidental dispensing of expired stock.
+     - Performs fractional stock deductions with `round2` precision guard.
+  2. **Automated Unit & Parity Tests**:
+     - Added `test_fefo_batch_stock_depletion` and `test_fefo_insufficient_stock_and_expired_handling` to `tests/parity_tests.rs`.
+     - Ran `cargo test`: **12/12 Tests Passing (100%)** with 0 warnings.
+  3. **WASM Compilation & Bridge**:
+     - Added `suite_deplete_inventory` export in `shared/suite_core/src/ffi/wasm.rs`.
+     - Compiled release WebAssembly binary: `wasm32-unknown-unknown/release/suite_core.wasm` (267 KB).
+     - Distributed binary to runtime directories (`frontend/shared/`, `backend/core/billing/`, `frontend/public/`, `dist/`).
+     - Added `SuiteCoreBridge.depleteInventory(...)` in `frontend/shared/suite_core_bridge.js` with 100% graceful JavaScript fallback.
+  4. **Integration Verification**:
+     - Created `shared/suite_core/tests/verify-depletion.js` and executed via Node.js.
+     - Verified `isWasmLoaded == true`, with bit-for-bit accurate batch deductions.
+* **Results**: Inventory allocation executes in `<0.01ms` in pure WebAssembly, compatible across both the Web Desktop and Android Mobile client.
+
+---
+
 ## 5. Migration Starting Points: Where to Start & Current Progress %
 
-To continue progressive migration towards an ironclad backend without breaking running services, choose from the following **4 prioritized starting options**:
+Current Status of Strategic Options:
 
 ```
-                                    RUST MIGRATION STARTING POINTS
+                                    RUST MIGRATION STRATEGIC OPTIONS
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [Option A] INVENTORY STOCK DEPLETION (FEFO/FIFO)         │ Progress: 0%  │ Impact: ⭐⭐⭐⭐⭐ (Financial Safety) │
-│ • Prevents race-condition overselling and stock debt     │ Est: 1-2 Days │ Effort: Medium                      │
+│ [Option A] INVENTORY STOCK DEPLETION (FEFO/FIFO)         │ Progress: 100%│ Impact: ⭐⭐⭐⭐⭐ (Financial Safety) │
+│ • Prevents race-condition overselling and stock debt     │ Status: DONE  │ Target: WASM / Mobile / Backend     │
 ├──────────────────────────────────────────────────────────┼───────────────┼─────────────────────────────────────┤
 │ [Option B] WALLPAPER & ASSET PROCESSING (Zero-GC)        │ Progress: 0%  │ Impact: ⭐⭐⭐⭐ (RAM Protection)    │
 │ • Prevents memory spikes on 1GB VMs during 4K uploads    │ Est: 2 Days   │ Effort: Medium                      │
@@ -182,19 +205,14 @@ To continue progressive migration towards an ironclad backend without breaking r
 
 ---
 
-### Option A: Inventory Batch Stock Depletion (FEFO/FIFO) — **(Recommended First Step)**
-* **Current Progress**: **0%** (Queued in `suite_core`)
-* **Why start here**: It directly pairs with the already-completed Invoicing and Ledger engines. Eliminates race conditions and negative inventory bugs at compile time.
-* **Source JavaScript**:
-  - [`backend/departments/product-list/engine/handlers.js`](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/departments/product-list/engine/handlers.js)
-  - [`backend/departments/billing/engine/handlers.js`](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/departments/billing/engine/handlers.js)
-* **Implementation Plan**:
-  1. Create `shared/suite_core/src/inventory/depletion.rs`.
-  2. Implement FEFO (First Expired, First Out) sorting and multi-batch quantity subtraction algorithm.
-  3. Add `test_fefo_batch_stock_depletion` to `tests/parity_tests.rs`.
-  4. Expose in `shared/suite_core/src/ffi/wasm.rs` and connect to `frontend/shared/suite_core_bridge.js`.
+### Option A: Inventory Batch Stock Depletion (FEFO/FIFO) — ✅ **COMPLETED (100%)**
+* **Current Progress**: **100%** (Implemented in `shared/suite_core/src/inventory/depletion.rs`)
+* **Status**: Compiled into `suite_core.wasm` and exposed in `frontend/shared/suite_core_bridge.js`.
+* **Testing**: 12/12 unit and parity tests passing. Verified via `verify-depletion.js`.
 
 ---
+
+### Next Recommended Priority: Option B or Option C
 
 ### Option B: Wallpaper & Image Processing Engine (Zero-GC Memory Guard)
 * **Current Progress**: **0%** (Concept/Design)

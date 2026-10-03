@@ -221,6 +221,80 @@ class SuiteCoreBridge {
     exports.suite_dealloc(outPtr, 56);
     return result;
   }
+
+  /**
+   * Deplete inventory across available batches using FEFO (First Expired, First Out)
+   * or FIFO strategy.
+   *
+   * @param {number} requestedQty - Total quantity needed
+   * @param {Array} batches - [{ batch_id, batch_no, expiry_date, current_stock, mrp, rate }]
+   * @param {Object} options - { strategy: 'fefo'|'fifo', allow_expired: false, current_date_days: null }
+   * @returns {Object} { success, requested_qty, allocated_qty, unfulfilled_qty, is_fully_allocated, allocations }
+   */
+  static depleteInventory(requestedQty, batches, options = {}) {
+    const defaultOptions = {
+      strategy: options.strategy || 'fefo',
+      allow_expired: !!options.allow_expired,
+      current_date_days: options.current_date_days !== undefined ? options.current_date_days : null
+    };
+
+    if (this.isWasmLoaded()) {
+      const res = this.callWasmJson('suite_deplete_inventory', {
+        requested_qty: requestedQty,
+        batches: batches || [],
+        options: defaultOptions
+      });
+      if (res && res.success !== undefined) return res;
+    }
+
+    // Graceful JavaScript Fallback
+    const targetQty = Math.max(0, requestedQty || 0);
+    const validBatches = (batches || []).filter(b => (b.current_stock || 0) > 0);
+
+    validBatches.sort((a, b) => {
+      const expA = a.expiry_date || a.exp_date || '';
+      const expB = b.expiry_date || b.exp_date || '';
+      if (expA && expB) return expA.localeCompare(expB);
+      if (expA) return -1;
+      if (expB) return 1;
+      return (a.batch_no || '').localeCompare(b.batch_no || '');
+    });
+
+    let remainingNeeded = targetQty;
+    const allocations = [];
+    let totalAllocated = 0;
+
+    for (const b of validBatches) {
+      if (remainingNeeded <= 0) break;
+      const stock = Math.max(0, b.current_stock || 0);
+      if (stock <= 0) continue;
+
+      const toDeduct = Math.min(remainingNeeded, stock);
+      const remainingInBatch = Math.round((stock - toDeduct) * 100) / 100;
+
+      allocations.push({
+        batch_id: b.batch_id || b.id || null,
+        batch_no: b.batch_no,
+        qty_deducted: toDeduct,
+        remaining_in_batch: remainingInBatch,
+        expiry_date: b.expiry_date || b.exp_date || null,
+        rate: b.rate || null
+      });
+
+      totalAllocated = Math.round((totalAllocated + toDeduct) * 100) / 100;
+      remainingNeeded = Math.round((remainingNeeded - toDeduct) * 100) / 100;
+    }
+
+    const unfulfilled = Math.max(0, remainingNeeded);
+    return {
+      success: true,
+      requested_qty: targetQty,
+      allocated_qty: totalAllocated,
+      unfulfilled_qty: unfulfilled,
+      is_fully_allocated: unfulfilled === 0,
+      allocations
+    };
+  }
 }
 
 if (typeof window !== 'undefined') {

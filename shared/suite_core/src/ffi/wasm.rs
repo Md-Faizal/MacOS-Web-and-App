@@ -225,3 +225,38 @@ pub unsafe extern "C" fn suite_calculate_summary(ptr: *const u8, len: usize) -> 
         }
     }
 }
+
+#[derive(Deserialize)]
+struct DepleteInventoryRequest {
+    requested_qty: f64,
+    batches: Vec<crate::inventory::depletion::BatchStockItem>,
+    #[serde(default)]
+    options: crate::inventory::depletion::DepletionOptions,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_deplete_inventory(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<DepleteInventoryRequest>(slice) {
+        Ok(req) => {
+            let res = crate::inventory::depletion::deplete_inventory_batches(
+                req.requested_qty,
+                &req.batches,
+                &req.options,
+            );
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
