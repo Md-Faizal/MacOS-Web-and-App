@@ -18,36 +18,106 @@ export class BillingAPI {
     this.baseURL = baseURL;
     // Use a default API key for development
     this.apiKey = 'test-api-key-1234';
+    this._inFlightRequests = new Map();
+    this._cache = new Map();
+    this.DEFAULT_CACHE_TTL = 15000; // 15 seconds TTL for reads
+  }
+
+  /**
+   * Invalidate cached GET responses matching an optional pattern.
+   * If pattern is omitted, all cached responses are cleared.
+   */
+  invalidateCache(pattern = null) {
+    if (!pattern) {
+      this._cache.clear();
+      return;
+    }
+    for (const key of this._cache.keys()) {
+      if (key.includes(pattern)) {
+        this._cache.delete(key);
+      }
+    }
   }
 
   async request(endpoint, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
     const url = `${this.baseURL}${endpoint}`;
+
+    // For non-GET requests (mutations: POST, PUT, DELETE, PATCH):
+    if (method !== 'GET') {
+      // Invalidate relevant caches on mutation
+      if (endpoint.includes('/billing')) this.invalidateCache('/billing');
+      if (endpoint.includes('/products')) this.invalidateCache('/products');
+      if (endpoint.includes('/contacts')) this.invalidateCache('/contacts');
+      if (endpoint.includes('/orders')) this.invalidateCache('/orders');
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey,
+        ...options.headers
+      };
+
+      try {
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+        return await response.json();
+      } catch (error) {
+        log.error(`API Request Failed (${endpoint}):`, error);
+        throw error;
+      }
+    }
+
+    // For GET requests:
+    const ttl = typeof options.ttlMs === 'number' ? options.ttlMs : this.DEFAULT_CACHE_TTL;
+    const forceRefresh = options.forceRefresh === true;
+    const cacheKey = url;
+
+    // 1. Return fresh cached response if valid and not forcing refresh
+    if (!forceRefresh && this._cache.has(cacheKey)) {
+      const entry = this._cache.get(cacheKey);
+      if (Date.now() - entry.timestamp < ttl) {
+        return entry.data;
+      }
+    }
+
+    // 2. In-flight request deduplication:
+    // If an identical GET request is already pending, share the same Promise!
+    if (this._inFlightRequests.has(cacheKey)) {
+      return this._inFlightRequests.get(cacheKey);
+    }
+
     const headers = {
       'Content-Type': 'application/json',
       'X-API-Key': this.apiKey,
       ...options.headers
     };
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers
-      });
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    const fetchPromise = (async () => {
+      try {
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        this._cache.set(cacheKey, { data, timestamp: Date.now() });
+        return data;
+      } catch (error) {
+        log.error(`API Request Failed (${endpoint}):`, error);
+        throw error;
+      } finally {
+        this._inFlightRequests.delete(cacheKey);
       }
+    })();
 
-      return await response.json();
-    } catch (error) {
-      log.error(`API Request Failed (${endpoint}):`, error);
-      throw error;
-    }
+    this._inFlightRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
   // Products
-  async getProducts() {
-    return this.request('/products');
+  async getProducts(options = {}) {
+    return this.request('/products', options);
   }
 
   async createProduct(product) {
@@ -75,8 +145,16 @@ export class BillingAPI {
   }
 
   // Bills (Transactions)
-  async getBills() {
-    return this.request('/billing');
+  async getOrders(options = {}) {
+    return this.request('/billing/orders', options);
+  }
+
+  async getLedgerCustomers(options = {}) {
+    return this.request('/billing/ledger/customers', options);
+  }
+
+  async getBills(options = {}) {
+    return this.request('/billing', options);
   }
 
   async createBill(bill) {
@@ -104,8 +182,8 @@ export class BillingAPI {
   }
 
   // Payments
-  async getPayments() {
-    return this.request('/billing/invoices/payments');
+  async getPayments(options = {}) {
+    return this.request('/billing/invoices/payments', options);
   }
 
   async getTotalCollected() {
@@ -130,8 +208,8 @@ export class BillingAPI {
   }
 
   // Credit Notes
-  async getCreditNotes() {
-    return this.request('/billing/creditnotes');
+  async getCreditNotes(options = {}) {
+    return this.request('/billing/creditnotes', options);
   }
 
   async createCreditNote(creditNote) {
@@ -142,8 +220,8 @@ export class BillingAPI {
   }
 
   // Contacts
-  async getContacts() {
-    return this.request('/contacts');
+  async getContacts(options = {}) {
+    return this.request('/contacts', options);
   }
 
   // Categories
@@ -1399,18 +1477,25 @@ export class BillingApp extends AppWindow {
     history.render();
   }
 
-  async ensureDataUpToDate() {
+  async ensureDataUpToDate(force = false) {
     if (!this.apiEnabled) return;
     
     // Don't auto-refresh if user is inside views that have active text inputs/forms
     const inputViews = ['create', 'edit', 'payment-credit'];
     if (inputViews.includes(this.currentView)) return;
 
+    // Cooldown Gate: Minimum 60-second TTL before re-fetching on window focus
+    const now = Date.now();
+    const COOLDOWN_MS = 60_000;
+    if (!force && this._lastFocusFetchTime && (now - this._lastFocusFetchTime < COOLDOWN_MS)) {
+      log.debug(`Focus refresh skipped: within ${Math.round((COOLDOWN_MS - (now - this._lastFocusFetchTime)) / 1000)}s cooldown`);
+      return;
+    }
+    this._lastFocusFetchTime = now;
+
     try {
-      if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Billing')) {
-        log.debug('🔄 Page active/focused. Ensuring billing data is up to date...');
-      }
-      await this.loadBillingDataFromAPI();
+      log.debug('🔄 Page active/focused. Ensuring billing data is up to date...');
+      await this.loadBillingDataFromAPI({ forceRefresh: force });
       
       // Re-render the active view with fresh data
       if (this.currentViewInstance && typeof this.currentViewInstance.render === 'function') {
@@ -1432,176 +1517,177 @@ export class BillingApp extends AppWindow {
     };
   }
 
-  async loadBillingDataFromAPI() {
+  async loadBillingDataFromAPI(options = {}) {
     if (!this.apiEnabled) throw new Error('API not enabled');
 
-    const normalizeCollection = (payload, fallback = []) => {
-      if (Array.isArray(payload)) return payload;
-      if (!payload) return fallback;
-      if (Array.isArray(payload.items)) return payload.items;
-      if (Array.isArray(payload.data)) return payload.data;
-      if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
-      if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
-      if (Array.isArray(payload.contacts)) return payload.contacts;
-      if (Array.isArray(payload.transactions)) return payload.transactions;
-      if (Array.isArray(payload.payments)) return payload.payments;
-      return fallback;
-    };
+    // Deduplicate in-flight call to loadBillingDataFromAPI itself!
+    if (this._loadBillingDataPromise) {
+      return this._loadBillingDataPromise;
+    }
 
-    try {
-      // Fetch bills with error handling
-      let billsResponse = [];
-      try {
-        const resp = await this.api.getBills();
-        billsResponse = resp;
-      } catch (billsErr) {
-        log.error('Error fetching bills:', billsErr.message);
-      }
-
-      // Fetch payments with error handling
-      let paymentsResponse = [];
-      try {
-        const resp = await this.api.getPayments();
-        paymentsResponse = resp;
-      } catch (paymentsErr) {
-        log.warn('Warning: Error fetching payments:', paymentsErr.message);
-        paymentsResponse = { data: [], success: false };
-      }
-
-      // Fetch contacts with error handling
-      let contactsResponse = [];
-      try {
-        const resp = await this.api.getContacts();
-        contactsResponse = resp;
-      } catch (contactsErr) {
-        log.warn('Warning: Error fetching contacts:', contactsErr.message);
-        contactsResponse = { data: [], success: false };
-      }
-
-      // Fetch orders with error handling
-      let ordersResponse = [];
-      try {
-        const resp = await fetch('/api/billing/orders');
-        if (resp.ok) {
-          const data = await resp.json();
-          ordersResponse = normalizeCollection(data, []);
-        }
-      } catch (ordersErr) {
-        log.warn('Warning: Error fetching orders:', ordersErr.message);
-        ordersResponse = [];
-      }
-
-      // Fetch products with error handling
-      let productsResponse = [];
-      try {
-        const resp = await this.api.getProducts();
-        productsResponse = normalizeCollection(resp, []);
-      } catch (prodErr) {
-        log.warn('Warning: Error fetching products for billing search:', prodErr.message);
-        productsResponse = [];
-      }
-
-      const bills = normalizeCollection(billsResponse, []);
-      const payments = normalizeCollection(paymentsResponse, []);
-      const contacts = normalizeCollection(contactsResponse, []);
-
-      // normalize to billingData structure expected by ledger
-      this.billingData = {
-        bills: bills.map(b => ({
-          id: b.id,
-          reference_no: b.reference_no,  // Use reference_no from API
-          invoice_no: b.invoice_no,
-          customer_id: b.customer_id,
-          customer_name: b.customer_name || 'Unknown',
-          bill_date: b.invoice_date || b.created_at,
-          invoice_date: b.invoice_date || b.created_at,
-          created_at: b.created_at,
-          created_by_role: b.created_by_role,
-          created_by_name: b.created_by_name,
-          last_edited_by_role: b.last_edited_by_role,
-          last_edited_by_name: b.last_edited_by_name,
-
-          total: b.grand_total || b.total || 0,
-          subtotal: b.subtotal || 0,
-          total_discount: b.total_discount || 0,
-          total_gst: b.total_gst || 0,
-          discount: b.discount || 0,
-          tax: b.tax || 0,
-          status: b.status || 'pending',
-          notes: b.notes,
-          items: b.items || []
-        })),
-        payments: payments.map(p => ({
-          id: p.id,
-          payment_id: p.id,
-          invoice_id: p.invoice_id,
-          bill_id: p.invoice_id,
-          customer_id: p.customer_id,
-          amount: p.amount,
-          type: p.type,
-          method: p.payment_medium,
-          payment_medium: p.payment_medium,
-          reason: p.reason,
-          credit_amount: p.credit_amount,
-          reference_number: p.reference_number,
-          payment_date: p.payment_date,
-          notes: p.notes,
-          attachment_data: p.attachment_data,
-          created_at: p.created_at,
-          created_by_role: p.created_by_role,
-          created_by_name: p.created_by_name,
-          last_edited_by_role: p.last_edited_by_role,
-          last_edited_by_name: p.last_edited_by_name,
-          customer_name: p.customer_name || 'Unknown'
-        })),
-        orders: ordersResponse.map(o => {
-          // Always use customer_id to look up customer name from contacts
-          let customerName = 'Unknown';
-          if (o.customer_id && contacts.length > 0) {
-            const contact = contacts.find(c => c.id === o.customer_id);
-            customerName = contact ? contact.name : 'Unknown';
-          }
-          return {
-            id: o.id,
-            order_number: o.order_number,
-            customer_id: o.customer_id,
-            customer_name: customerName,
-            status: o.current_stage || o.status || 'pending',
-            current_stage: o.current_stage || 'stage1',
-            bill_reference: o.bill_reference || '',
-            total_amount: o.total_amount || 0,
-            order_date: o.order_date || o.created_at,
-            delivery_date: o.delivery_date || '',
-            created_at: o.created_at,
-            created_by_role: o.created_by_role,
-            created_by_name: o.created_by_name,
-            last_edited_by_role: o.last_edited_by_role,
-            last_edited_by_name: o.last_edited_by_name,
-            reference_number: o.reference_number,
-            items: o.items || []
-          };
-        }),
-        contacts: contacts.map(c => ({
-          id: c.id,
-          name: c.name,
-          opening_balance: c.opening_balance || 0,
-          exclude_from_stats: c.exclude_from_stats || 0,
-          created_by_role: c.created_by_role,
-          created_by_name: c.created_by_name,
-          last_edited_by_role: c.last_edited_by_role,
-          last_edited_by_name: c.last_edited_by_name
-        })),
-        products: productsResponse,
-        history: [],
-        settings: {}
+    this._loadBillingDataPromise = (async () => {
+      const normalizeCollection = (payload, fallback = []) => {
+        if (Array.isArray(payload)) return payload;
+        if (!payload) return fallback;
+        if (Array.isArray(payload.items)) return payload.items;
+        if (Array.isArray(payload.data)) return payload.data;
+        if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+        if (payload.data && Array.isArray(payload.data.data)) return payload.data.data;
+        if (Array.isArray(payload.contacts)) return payload.contacts;
+        if (Array.isArray(payload.transactions)) return payload.transactions;
+        if (Array.isArray(payload.payments)) return payload.payments;
+        return fallback;
       };
 
-      this.saveBillingData();
-      return this.billingData;
-    } catch (err) {
-      log.error('Failed to load billing data from API:', err.message);
-      throw err;
-    }
+      try {
+        const force = options.forceRefresh === true;
+
+        // Fetch bills with error handling
+        let billsResponse = [];
+        try {
+          billsResponse = await this.api.getBills({ forceRefresh: force });
+        } catch (billsErr) {
+          log.error('Error fetching bills:', billsErr.message);
+        }
+
+        // Fetch payments with error handling
+        let paymentsResponse = [];
+        try {
+          paymentsResponse = await this.api.getPayments({ forceRefresh: force });
+        } catch (paymentsErr) {
+          log.warn('Warning: Error fetching payments:', paymentsErr.message);
+          paymentsResponse = { data: [], success: false };
+        }
+
+        // Fetch contacts with error handling
+        let contactsResponse = [];
+        try {
+          contactsResponse = await this.api.getContacts({ forceRefresh: force });
+        } catch (contactsErr) {
+          log.warn('Warning: Error fetching contacts:', contactsErr.message);
+          contactsResponse = { data: [], success: false };
+        }
+
+        // Fetch orders with error handling
+        let ordersResponse = [];
+        try {
+          const resp = await this.api.getOrders({ forceRefresh: force });
+          ordersResponse = normalizeCollection(resp, []);
+        } catch (ordersErr) {
+          log.warn('Warning: Error fetching orders:', ordersErr.message);
+          ordersResponse = [];
+        }
+
+        // Fetch products with error handling
+        let productsResponse = [];
+        try {
+          const resp = await this.api.getProducts({ forceRefresh: force });
+          productsResponse = normalizeCollection(resp, []);
+        } catch (prodErr) {
+          log.warn('Warning: Error fetching products for billing search:', prodErr.message);
+          productsResponse = [];
+        }
+
+        const bills = normalizeCollection(billsResponse, []);
+        const payments = normalizeCollection(paymentsResponse, []);
+        const contacts = normalizeCollection(contactsResponse, []);
+
+        // normalize to billingData structure expected by ledger
+        this.billingData = {
+          bills: bills.map(b => ({
+            id: b.id,
+            reference_no: b.reference_no,
+            invoice_no: b.invoice_no,
+            customer_id: b.customer_id,
+            customer_name: b.customer_name || 'Unknown',
+            bill_date: b.invoice_date || b.created_at,
+            invoice_date: b.invoice_date || b.created_at,
+            created_at: b.created_at,
+            created_by_role: b.created_by_role,
+            created_by_name: b.created_by_name,
+            last_edited_by_role: b.last_edited_by_role,
+            last_edited_by_name: b.last_edited_by_name,
+            total: b.grand_total || b.total || 0,
+            subtotal: b.subtotal || 0,
+            total_discount: b.total_discount || 0,
+            total_gst: b.total_gst || 0,
+            discount: b.discount || 0,
+            tax: b.tax || 0,
+            status: b.status || 'pending',
+            notes: b.notes,
+            items: b.items || []
+          })),
+          payments: payments.map(p => ({
+            id: p.id,
+            payment_id: p.id,
+            invoice_id: p.invoice_id,
+            bill_id: p.invoice_id,
+            customer_id: p.customer_id,
+            amount: p.amount,
+            type: p.type,
+            method: p.payment_medium,
+            payment_medium: p.payment_medium,
+            reason: p.reason,
+            credit_amount: p.credit_amount,
+            reference_number: p.reference_number,
+            payment_date: p.payment_date,
+            notes: p.notes,
+            attachment_data: p.attachment_data,
+            created_at: p.created_at,
+            created_by_role: p.created_by_role,
+            created_by_name: p.created_by_name,
+            last_edited_by_role: p.last_edited_by_role,
+            last_edited_by_name: p.last_edited_by_name,
+            customer_name: p.customer_name || 'Unknown'
+          })),
+          orders: ordersResponse.map(o => {
+            let customerName = 'Unknown';
+            if (o.customer_id && contacts.length > 0) {
+              const contact = contacts.find(c => c.id === o.customer_id);
+              customerName = contact ? contact.name : 'Unknown';
+            }
+            return {
+              id: o.id,
+              order_number: o.order_number,
+              customer_id: o.customer_id,
+              customer_name: customerName,
+              status: o.current_stage || o.status || 'pending',
+              current_stage: o.current_stage || 'stage1',
+              bill_reference: o.bill_reference || '',
+              total_amount: o.total_amount || 0,
+              order_date: o.order_date || o.created_at,
+              delivery_date: o.delivery_date || '',
+              notes: o.notes || '',
+              items: o.items || []
+            };
+          }),
+          contacts: contacts.map(c => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || '',
+            email: c.email || '',
+            address: c.address || '',
+            gstin: c.gstin || '',
+            opening_balance: c.opening_balance || 0,
+            exclude_from_stats: c.exclude_from_stats || 0,
+            created_at: c.created_at
+          })),
+          products: productsResponse,
+          history: [],
+          settings: {}
+        };
+
+        this.saveBillingData();
+        return this.billingData;
+      } catch (err) {
+        log.error('Failed to load billing data from API:', err.message);
+        throw err;
+      } finally {
+        this._loadBillingDataPromise = null;
+      }
+    })();
+
+    return this._loadBillingDataPromise;
   }
 
   saveBillingData() {

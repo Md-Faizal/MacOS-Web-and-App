@@ -317,6 +317,17 @@ export class ProductListApp extends AppWindow {
     this.notifications = new NotificationManager();
     this.setupProductUI();
     this.checkBackendConnection();
+
+    if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._dataBusInventoryUnsub = window.CoreDataBus.subscribeDomain('inventory:', () => {
+        log.debug('Reactive trigger from CoreDataBus for inventory update');
+        if (this.apiEnabled) this.loadProducts();
+      });
+      this._dataBusBillingUnsub = window.CoreDataBus.subscribe('billing:invoice', () => {
+        log.debug('Reactive trigger from CoreDataBus for bill creation (refreshing product stock)');
+        if (this.apiEnabled) this.loadProducts();
+      });
+    }
   }
 
   normalizeApiCollection(payload, fallback = []) {
@@ -1263,6 +1274,7 @@ export class ProductListApp extends AppWindow {
         // Update existing product
         log.debug(`Updating product ${product.id}:`, productData);
         await this.api.updateProduct(product.id, productData);
+        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'updated', { id: product.id });
         log.debug(`✓ Product ${product.id} updated in API`);
         this.notifications.show('Product updated successfully!', 'success', 2000);
       } else {
@@ -1270,6 +1282,7 @@ export class ProductListApp extends AppWindow {
         log.debug('Creating new product:', productData);
         const result = await this.api.createProduct(productData);
         product.id = result.id;
+        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'created', { id: result.id });
         log.debug(`✓ Product created in API with ID ${result.id}`);
         this.notifications.show('Product created successfully!', 'success', 2000);
       }
@@ -1287,6 +1300,7 @@ export class ProductListApp extends AppWindow {
     try {
       log.debug(`Deleting product ${productId} from API`);
       await this.api.deleteProduct(productId);
+      if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'deleted', { id: productId });
       log.debug(`✓ Product ${productId} deleted from API`);
       this.notifications.show('Product deleted', 'info', 2000);
       return true;

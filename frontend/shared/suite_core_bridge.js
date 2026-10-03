@@ -482,6 +482,50 @@ class SuiteCoreBridge {
     const res = this.callWasmJson('suite_calculate_transition_curve', { progress: Number(progress) });
     return res?.curve_factor !== undefined ? res.curve_factor : 1.0;
   }
+
+  /**
+   * Pure Rust State Fingerprinting & ETag generation
+   * Returns { domain, etag, count, max_id, max_updated_at, checksum, computed_at }
+   */
+  static computeFingerprint(payload = {}) {
+    const domain = (payload?.domain || 'general').toString();
+    const count = Number.isFinite(Number(payload?.count)) ? Number(payload.count) : 0;
+    const max_id = Number.isFinite(Number(payload?.max_id)) ? Number(payload.max_id) : 0;
+    const max_updated_at = Number.isFinite(Number(payload?.max_updated_at)) ? Number(payload.max_updated_at) : 0;
+    const checksum = Number.isFinite(Number(payload?.checksum)) ? Number(payload.checksum) : 0;
+    const json_payload = payload?.json_payload ? String(payload.json_payload) : undefined;
+
+    if (!this.isWasmLoaded()) {
+      return {
+        domain,
+        etag: `"W/${domain}-${count}-${max_id}-${max_updated_at}"`,
+        count,
+        max_id,
+        max_updated_at,
+        checksum,
+        computed_at: Date.now()
+      };
+    }
+
+    const res = this.callWasmJson('suite_compute_fingerprint', {
+      domain,
+      count,
+      max_id,
+      max_updated_at,
+      checksum,
+      json_payload
+    });
+
+    return res || {
+      domain,
+      etag: `"W/${domain}-${count}-${max_id}-${max_updated_at}"`,
+      count,
+      max_id,
+      max_updated_at,
+      checksum,
+      computed_at: Date.now()
+    };
+  }
 }
 
 

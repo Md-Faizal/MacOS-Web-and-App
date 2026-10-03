@@ -8,6 +8,7 @@ pub mod finance;
 pub mod inventory;
 pub mod sales;
 pub mod storage;
+pub mod sync;
 pub mod types;
 
 // Re-exports for convenient top-level access
@@ -20,6 +21,7 @@ pub use finance::ledger::*;
 pub use inventory::*;
 pub use sales::orders::*;
 pub use storage::*;
+pub use sync::*;
 pub use types::*;
 
 

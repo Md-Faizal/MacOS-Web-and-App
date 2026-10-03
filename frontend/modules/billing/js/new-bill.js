@@ -3181,6 +3181,13 @@ class BillEditor {
           // Update in memory
           this.billingData.bills[billIndex] = updatedBill;
 
+          if (window.CoreDataBus) {
+            try {
+              window.CoreDataBus.publish('billing:invoice', 'updated', updatedBill);
+              window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
+            } catch (_) {}
+          }
+
           alert(`✓ Bill Updated Successfully!\nReference No: ${this.billingData.bills[billIndex].reference_no || 'N/A'}`);
 
           // Reload data from API
@@ -3263,6 +3270,13 @@ class BillEditor {
             items_count: result.items_count
           };
           this.billingData.bills.push(storedBill);
+
+          if (window.CoreDataBus) {
+            try {
+              window.CoreDataBus.publish('billing:invoice', 'created', storedBill);
+              window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, customer_id: result.customer_id });
+            } catch (_) {}
+          }
 
           // Reload billing data from API to ensure ledger/edit views have the latest
           if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {

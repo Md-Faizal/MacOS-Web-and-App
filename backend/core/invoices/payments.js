@@ -1,4 +1,5 @@
 const createActivityLogger = require('../audit/activity-logger');
+const dataBus = require('../sync/data-bus');
 
 /**
  * Payment Handlers
@@ -231,6 +232,16 @@ module.exports = function(db) {
           metadata: { amount, customer_id, invoice_id, payment_medium }
         });
 
+        try {
+          dataBus.broadcast('billing:payment', 'created', {
+            id: payment_id,
+            reference_number: finalReferenceNumber,
+            customer_id,
+            amount
+          });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
+
         res.status(201).json({
           success: true,
           payment_id,
@@ -326,6 +337,16 @@ module.exports = function(db) {
           resourceName: finalReferenceNumber,
           metadata: { credit_amount: amount, customer_id, invoice_id, reason }
         });
+
+        try {
+          dataBus.broadcast('billing:creditnote', 'created', {
+            id: payment_id,
+            reference_number: finalReferenceNumber,
+            customer_id,
+            amount
+          });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.status(201).json({
           success: true,

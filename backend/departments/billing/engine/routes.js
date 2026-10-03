@@ -30,6 +30,8 @@ module.exports = function(router, handlers) {
   router.post('/public/export-invoice-pdf', handlers.exportInvoicePDF); // POST /api/billing/public/export-invoice-pdf - Public export PDF
 
   // ============= BILLS/INVOICES =============
+  router.get('/events', handlers.subscribeSSE); // GET /api/billing/events - Real-time SSE event stream
+  router.get('/sync/fingerprint', handlers.getFingerprint); // GET /api/billing/sync/fingerprint - Rust State Fingerprint & ETag
   router.post('/calculate', handlers.calculateBill); // POST /api/billing/calculate - Authoritative calculation engine
   router.post('/orders/:id/convert-to-invoice', handlers.convertOrderToInvoice); // POST /api/billing/orders/:id/convert-to-invoice - Server order fulfillment
   router.post('/', handlers.createBill);           // POST /api/billing - Create bill

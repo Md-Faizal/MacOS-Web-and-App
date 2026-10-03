@@ -566,6 +566,52 @@ pub unsafe extern "C" fn suite_calculate_transition_curve(ptr: *const u8, len: u
     }
 }
 
+#[derive(Deserialize)]
+struct FingerprintRequest {
+    domain: String,
+    #[serde(default)]
+    count: u64,
+    #[serde(default)]
+    max_id: u64,
+    #[serde(default)]
+    max_updated_at: i64,
+    #[serde(default)]
+    checksum: u64,
+    #[serde(default)]
+    json_payload: Option<String>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_compute_fingerprint(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<FingerprintRequest>(slice) {
+        Ok(req) => {
+            let res = if let Some(ref json) = req.json_payload {
+                crate::sync::compute_json_etag(&req.domain, json)
+            } else {
+                crate::sync::compute_collection_fingerprint(
+                    &req.domain,
+                    req.count,
+                    req.max_id,
+                    req.max_updated_at,
+                    req.checksum,
+                )
+            };
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                error: String,
+            }
+            package_response(&ErrResp {
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+
 
 
 

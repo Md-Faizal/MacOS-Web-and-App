@@ -2,6 +2,7 @@ const BillCalculator = require('../../../../frontend/shared/bill-calculator');
 const calculator = require('../../../core/billing/calculator');
 const billingDepartment = require('../service');
 const { getOrCreateCustomerLedgerToken, generateLedgerToken } = require('../../../core/billing/ledger-token');
+const dataBus = require('../../../core/sync/data-bus');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -410,6 +411,15 @@ module.exports = function(db) {
   }
 
   return {
+    // ============= REAL-TIME DATA BUS & STATE FINGERPRINT =============
+    subscribeSSE: (req, res) => {
+      dataBus.handleSSEConnection(req, res, db);
+    },
+
+    getFingerprint: (req, res) => {
+      dataBus.handleFingerprintRequest(req, res, db);
+    },
+
     // ============= SERVER-AUTHORITATIVE CALCULATION =============
 
     // Authoritative bill calculation endpoint for Web and Mobile clients
@@ -661,6 +671,19 @@ module.exports = function(db) {
           const cust = db.prepare('SELECT name FROM contacts WHERE id = ?').get(finalCustomerId);
           return cust?.name || customer_name || 'Customer';
         })();
+
+        try {
+          dataBus.broadcast('billing:invoice', 'created', {
+            id: invoiceId,
+            invoice_no: finalInvoiceNo,
+            customer_id: finalCustomerId,
+            customer_name: customerName,
+            grand_total: calculatedGrandTotal
+          });
+          dataBus.broadcast('billing:ledger', 'updated', {
+            customer_id: finalCustomerId
+          });
+        } catch (_) {}
 
         res.status(201).json({
           success: true,
@@ -1060,6 +1083,11 @@ module.exports = function(db) {
             }
           }
 
+          try {
+            dataBus.broadcast('billing:invoice', 'updated', { id, customer_id: customerId, grand_total: calculatedGrandTotal });
+            dataBus.broadcast('billing:ledger', 'updated', { customer_id: customerId });
+          } catch (_) {}
+
           return res.json({
             success: true,
             message: 'Invoice updated and recalculations verified',
@@ -1089,6 +1117,11 @@ module.exports = function(db) {
             editorId,
             id
           );
+
+          try {
+            dataBus.broadcast('billing:invoice', 'updated', { id, customer_id: customerId });
+            dataBus.broadcast('billing:ledger', 'updated', { customer_id: customerId });
+          } catch (_) {}
 
           return res.json({
             success: true,
@@ -1151,6 +1184,11 @@ module.exports = function(db) {
           WHERE customer_id = ?
         `);
         updateLedgerStmt.run(current_due, customer_id);
+
+        try {
+          dataBus.broadcast('billing:invoice', 'deleted', { id: invoice.id, customer_id });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.json({
           success: true,

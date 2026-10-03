@@ -32,6 +32,17 @@ class ContactsApp extends AppWindow {
     this.editingContactId = null;
     this.setupContactsUI();
     this.loadContactsFromAPI();
+
+    if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._dataBusContactsUnsub = window.CoreDataBus.subscribeDomain('contacts:', () => {
+        log.debug('Reactive trigger from CoreDataBus for contacts');
+        this.loadContactsFromAPI();
+      });
+      this._dataBusLedgerUnsub = window.CoreDataBus.subscribe('billing:ledger', () => {
+        log.debug('Reactive trigger from CoreDataBus for billing ledger (updating customer balance)');
+        this.loadContactsFromAPI();
+      });
+    }
   }
 
   setupContactsUI() {
@@ -1173,6 +1184,7 @@ class ContactsApp extends AppWindow {
         })
         .then(() => {
           log.debug('Contact updated successfully');
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'updated', { id: this.editingContactId });
           this.loadContactsFromAPI();
           closeModal();
         })
@@ -1196,6 +1208,7 @@ class ContactsApp extends AppWindow {
         })
         .then(() => {
           log.debug('Contact created successfully');
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'created', {});
           this.loadContactsFromAPI();
           closeModal();
         })
@@ -1225,6 +1238,7 @@ class ContactsApp extends AppWindow {
         })
         .then(() => {
           log.debug('Contact deleted successfully');
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'deleted', { id: contactId });
           this.loadContactsFromAPI();
           this.selectedContactId = null;
           this.cardContainer.innerHTML = `

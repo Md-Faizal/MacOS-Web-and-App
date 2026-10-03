@@ -15,9 +15,9 @@
 │ #  │ Pillar / Problem Focus                                   │ Status       │ Target Phase           │
 ├────┼──────────────────────────────────────────────────────────┼──────────────┼────────────────────────┤
 │ 01 │ Console Log Spam Suppression & Production Gating         │ 🟢 COMPLETED │ Phase 1: Cleanliness   │
-│ 02 │ Background API Throttling & Deduplication Caching        │ 🟡 NEXT UP    │ Phase 2: Performance   │
-│ 03 │ Reactive Cross-App UI Synchronization (Zero-Refresh)     │ ⚪ PENDING    │ Phase 3: Reactivity    │
-│ 04 │ Uniform On-Screen Glass & Native Device Notifications    │ ⚪ PENDING    │ Phase 4: Notifications │
+│ 02 │ Background API Throttling & Deduplication Caching        │ 🟢 COMPLETED │ Phase 2: Performance   │
+│ 03 │ Reactive Cross-App UI Synchronization (Zero-Refresh)     │ 🟢 COMPLETED │ Phase 3: Reactivity    │
+│ 04 │ Uniform On-Screen Glass & Native Device Notifications    │ 🟡 NEXT UP    │ Phase 4: Notifications │
 │ 05 │ Billion-Dollar Grade API & Architectural Documentation   │ ⚪ PENDING    │ Phase 5: Documentation │
 │ 06 │ AI Camera OCR & Prescription Auto-Matching (Lazy DB)     │ ⚪ PENDING    │ Phase 6: AI Vision     │
 │ 07 │ Pure Rust Vector PDF Engine for Product List Catalog     │ ⚪ PENDING    │ Phase 7: Rust PDF V2   │
@@ -115,28 +115,67 @@ According to GitHub repository analysis, the active multi-platform codebase dist
    * Silenced startup loop listener attachments in `app-bar.js` and `launchpad.js`.
    * Gated raw customer data dumps in `ledger.js` and dependency checks in `home.html`.
 
----
-
-### ⚪ PILLAR 02: Background API Throttling & Deduplication Caching
-
-* **Problem**: In `frontend/modules/billing/js/billing-app.js` (lines 1400–1420), `ensureDataUpToDate()` triggers every time the user clicks or focuses the browser window, firing 6 parallel requests (`/api/billing`, `/api/billing/invoices/payments`, `/api/contacts`, `/api/billing/orders`, `/api/products`, `/api/billing/ledger/customers`).
-* **Solution**:
-  1. **Cooldown Gate**: Minimum 60-second TTL before re-fetching on window focus (`lastFetchTime + 60_000`).
-  2. **In-Flight Request Deduplication**: If `/api/products` is already in flight, subsequent calls share the existing Promise rather than making a second HTTP round-trip.
-  3. **Stale-While-Revalidate**: Serve local cache immediately; re-validate quietly in the background without UI flicker.
+5. **Complete Per-App & Per-Module Source-Level Refactor (31 Files)**:
+   * Refactored all raw `console.log` statements directly in source files across all Core 4 apps (Desktop, Billing Suite [NewBill, EditBills, Ledger, Payments, Orders, History], Notes, Launchpad, Contacts, ProductList, Settings, Wallpaper, Screensaver, Dock).
+   * Each module now uses its own scoped domain logger (`MacOSLogger.createScope('...')`), keeping the production console completely quiet while preserving microsecond breadcrumbs in the flight recorder.
+   * Tahoe Portrait 4K 60fps H.264 FastStart transcoded, Rust video watchdog operational, and commands master cheat sheet persisted in `commands.txt`.
 
 ---
 
-### ⚪ PILLAR 03: Reactive Cross-App UI Synchronization (Zero-Refresh)
+### 🟢 PILLAR 02: Background API Throttling & Deduplication Caching (COMPLETED)
 
-* **Problem**: If user creates an invoice in Billing, or updates product stock in Product List, other views (Ledger, Analytics, Orders) do not update until the user manually refreshes the page.
-* **Solution**:
-  1. Implement `window.CoreDataBus` using native `BroadcastChannel` and `EventTarget`.
-  2. Emit granular events on data mutations:
-     - `core:bill-created` $\rightarrow$ Ledger updates balance, Analytics increments revenue, Product List adjusts batch stock.
-     - `core:stock-changed` $\rightarrow$ New Bill & New Order dropdowns refresh stock instantly.
-     - `core:contact-updated` $\rightarrow$ Billing customer selectors and ledger accounts sync in real time.
-  3. All Core 4 apps subscribe on mount and execute reactive partial DOM re-renders in `<5ms`.
+#### Audit & Problem Definition:
+* In `frontend/modules/billing/js/billing-app.js`, `ensureDataUpToDate()` was hooked into both `window.focus` and `document.visibilitychange` without debouncing or throttling.
+* Whenever the user switched browser tabs or clicked in and out of the window, both events triggered back-to-back, firing bursts of 6 parallel requests (`/api/billing`, `/api/billing/invoices/payments`, `/api/contacts`, `/api/billing/orders`, `/api/products`, `/api/billing/ledger/customers`) without any in-flight request deduplication or read caching.
+
+#### Architecture Implemented:
+1. **In-Flight Request Deduplication Engine (`BillingAPI._inFlightRequests`)**:
+   - Maintains an active Map of pending GET promises keyed by URL.
+   - When multiple components or views (e.g. Ledger, Dashboard, search dropdown) request the same endpoint concurrently, only 1 network fetch is dispatched; all callers share the identical Promise.
+   - Verified via unit test: 10 concurrent requests to `/billing` collapse into 1 single network fetch.
+2. **Smart TTL Caching & SWR (`BillingAPI._cache`)**:
+   - In-memory 15-second configurable cache (`DEFAULT_CACHE_TTL = 15000`) for all read endpoints.
+   - Immediate cache hits prevent DOM flicker and eliminate redundant round-trips.
+   - Supports explicit `{ forceRefresh: true }` when fresh data is strictly required.
+3. **Automatic Cache Invalidation on Mutation**:
+   - Any state-altering request (`POST`, `PUT`, `DELETE`, `PATCH`) automatically purges related cache entries (`/billing`, `/products`, `/contacts`, `/orders`) so subsequent reads always receive fresh server state.
+4. **60-Second Cooldown Gate & 300ms Event Debounce**:
+   - `ensureDataUpToDate()` now enforces a minimum 60-second cooldown (`COOLDOWN_MS = 60_000`) before background focus refresh is permitted.
+   - Window `focus` and `visibilitychange` listeners are collapsed via a 300ms debounce timer to prevent double-firing.
+5. **Deduplicated Global Data Fetching (`BillingApp._loadBillingDataPromise`)**:
+   - `loadBillingDataFromAPI()` guards itself with an internal in-flight promise, ensuring that multiple caller views (e.g. Ledger interval sync and tab focus) share a single execution.
+6. **Ledger Integration**:
+   - Updated `ledger.js` to route `/api/billing/ledger/customers` through `BillingAPI.getLedgerCustomers()` rather than un-cached raw `fetch()`.
+
+---
+
+### 🟢 PILLAR 03: Reactive Cross-App UI Synchronization - Zero Refresh (COMPLETED)
+
+#### Audit & Problem Definition:
+* Previously, when a user created an invoice in Billing, or updated batch product stock in Product List, other open apps and views (Ledger, Analytics, Product List, Contacts) remained stale unless the user manually refreshed the browser.
+* In `ledger.js`, an active `setInterval` blindly polled the server every 8 seconds (`startPolling(8000)`), causing redundant un-cached network fetches and UI jitter.
+
+#### Architecture Implemented:
+1. **Pure Rust WASM State Fingerprinting & ETag Generator (`shared/suite_core/src/sync/fingerprint.rs`)**:
+   - High-speed FNV-1a 64-bit hashing algorithm executing in WebAssembly.
+   - Calculates deterministic collection fingerprints: `compute_collection_fingerprint(domain, count, max_id, max_updated_at, checksum)` $\rightarrow$ `"W/f-<hex_count>-<hash>"`.
+   - Exposes WASM export `suite_compute_fingerprint` to both Node.js server and browser frontend via `suite_core_bridge.js`.
+   - Verified with unit and parity test suites (31 tests passing).
+2. **Unified Real-Time `CoreDataBus` Engine (`frontend/shared/core-databus.js`)**:
+   - **Cross-Tab Synchronization**: Native `BroadcastChannel('macos_core_databus')` with tab echo suppression (`tab_id`).
+   - **Intra-Window Reactivity**: High-performance in-memory `EventTarget` for zero-allocation cross-component events.
+   - **Multi-Device Server Stream**: Auto-reconnecting Server-Sent Events (SSE) client connected to `/api/billing/events`.
+   - **State Fingerprint Invalidation**: `checkFingerprint(domain, currentEtag)` queries server with `If-None-Match`, getting instant `304 Not Modified` or cache invalidation payload.
+3. **Backend Real-Time SSE & State Sync Service (`backend/core/sync/data-bus.js`)**:
+   - SSE connection manager with 25-second heartbeat pings (`/api/billing/events`).
+   - Pure Rust state fingerprinting and HTTP 304 validation (`/api/billing/sync/fingerprint`).
+   - Multi-cast broadcasting helper `dataBus.broadcast(domain, action, payload)` integrated into invoice (`createBill`, `updateBill`, `deleteBill`) and payment (`createPayment`, `createCreditNote`) handlers.
+4. **Core 4 Integration & Zero-Delay Reactivity**:
+   - **Billing Ledger (`ledger.js`)**: Eliminated the 8-second blind polling loop. Replaced with instant reactive subscription to `billing:` domain events via `CoreDataBus` (`billing:invoice:created`, `billing:payment:created`, `billing:ledger:updated`), with an ultra-slow 60-second background heartbeat fallback.
+   - **New Bill (`new-bill.js`)**: On invoice creation and updates, dispatches `billing:invoice` and `billing:ledger` events to `CoreDataBus`, instantly updating Ledger balances across all tabs.
+   - **Product List (`product-list.js`)**: Subscribes to `inventory:` and `billing:invoice` to instantly refresh product and batch inventories when sales occur. Publishes `inventory:product` events on product and batch mutations.
+   - **Contacts (`contacts.js`)**: Subscribes to `contacts:` and `billing:ledger` events to keep customer profiles and live ledger balances updated in real time. Publishes `contacts:customer` events on contact mutations.
+   - **Dual-Entry Head Injection**: `<script src="/shared/core-databus.js"></script>` loaded immediately in `frontend/home.html` and `frontend/index.html`.
 
 ---
 
@@ -181,7 +220,9 @@ According to GitHub repository analysis, the active multi-platform codebase dist
 
 ## 4. Continuity Instructions for the Next Step
 
-> **Status & Next Focus**:
-> 1. **Pillar 01 (Console Log Spam Suppression & Production Gating)** is **🟢 COMPLETED**.
-> 2. **Pillar 02 (Background API Throttling & Deduplication Caching)** is **🟡 NEXT UP**.
-> 3. Objective for Pillar 02: In `frontend/modules/billing/js/billing-app.js`, prevent redundant parallel network round-trips on window focus by adding a 60-second cooldown gate and in-flight request deduplication across `/api/billing`, `/api/billing/invoices/payments`, `/api/contacts`, `/api/billing/orders`, `/api/products`, and `/api/billing/ledger/customers`.
+> **Status & Current Focus**:
+> 1. **Pillar 01 (Console Log Spam Suppression & Production Gating)** is **🟢 COMPLETED** (Full production gating, ring buffer flight recorder, and complete source-level refactor across all 31 modules).
+> 2. **Pillar 02 (Background API Throttling & Deduplication Caching)** is **🟢 COMPLETED** (In-flight request deduplication, smart TTL read caching, automatic mutation cache invalidation, and 60-second focus cooldown gate).
+> 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], and ironclad zero-refresh synchronization across Billing, Ledger, Product List, and Contacts).
+> 4. **Pillar 04 (Uniform On-Screen Glass & Native Device Notifications)** is **🟡 NEXT UP**.
+> 5. Objective for Pillar 04: Build a centralized `MacOSNotificationManager` with a glassmorphic toast stack, audio chimes, and native OS notifications for backgrounded browser windows.

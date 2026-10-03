@@ -27,8 +27,14 @@ class LedgerView {
     return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
   }
 
-  startPolling(interval = 8000) {
+  startPolling(interval = 60000) {
     this.stopPolling();
+    if (window.CoreDataBus && !this._dataBusUnsub) {
+      this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        log.debug('Reactive trigger received from CoreDataBus:', data?.domain, data?.action);
+        this.syncWithServer(false);
+      });
+    }
     this.pollingInterval = setInterval(() => this.syncWithServer(), interval);
   }
 
@@ -36,6 +42,10 @@ class LedgerView {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
+    }
+    if (this._dataBusUnsub) {
+      try { this._dataBusUnsub(); } catch (_) {}
+      this._dataBusUnsub = null;
     }
   }
 
@@ -1904,10 +1914,10 @@ class LedgerView {
       const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
       const accessibleNames = scoped && isWorker ? new Set(scoped.contacts.map(c => c.name).filter(Boolean)) : null;
 
-      // Fetch customers with current_due from new ledger endpoint
-      const response = await fetch('/api/billing/ledger/customers');
-      if (!response.ok) throw new Error(`Failed to fetch ledger customers: ${response.statusText}`);
-      const result = await response.json();
+      // Fetch customers with current_due (deduplicated & cached via BillingAPI)
+      const result = this.billingApp?.api?.getLedgerCustomers 
+        ? await this.billingApp.api.getLedgerCustomers() 
+        : await (await fetch('/api/billing/ledger/customers')).json();
       let ledgerCustomers = result.data || [];
 
       // Filter ledger customers for workers
