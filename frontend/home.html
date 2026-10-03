@@ -1005,7 +1005,8 @@
   <!-- Shared Scripts -->
   <script type="module" src="/scripts/app-bar/modules/window-geometry-contract.js"></script>
   <script type="module" src="/scripts/mission-control/modules/mission-control.js"></script>
-  <script type="module" src="scripts/shared/media-manager.js"></script>
+  <!-- Pure Rust Core WASM Engine & Bridge -->
+  <script type="module" src="/shared/suite_core_bridge.js"></script>
   <!-- Unified Wallpaper Engine -->
   <script type="module" src="/shared/wallpaper-engine.js"></script>
   <!-- macOS Screensaver Engine -->
@@ -1033,7 +1034,6 @@
   <!-- Billing App -->
   <!-- LedgerFileUtils must be a plain (non-module) script so window.LedgerFileUtils is available synchronously to all billing modules -->
   <script src="/modules/billing/js/ledger-file-utils.js"></script>
-  <script type="module" src="/shared/suite_core_bridge.js"></script>
   <script type="module" src="/shared/bill-calculator.js"></script>
   <script type="module" src="/modules/billing/js/new-bill.js"></script>
   <script type="module" src="/modules/billing/js/edit-bills-payments.js"></script>

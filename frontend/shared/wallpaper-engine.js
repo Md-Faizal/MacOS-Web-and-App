@@ -244,7 +244,10 @@ class WallpaperEngine {
 
       const source = document.createElement('source');
       source.src = src;
-      source.type = src.endsWith('.webm') ? 'video/webm' : 'video/mp4';
+      let mimeType = 'video/mp4';
+      if (src.endsWith('.webm')) mimeType = 'video/webm';
+      else if (src.endsWith('.mov')) mimeType = 'video/quicktime';
+      source.type = mimeType;
       video.appendChild(source);
 
       let retryCount = 0;
@@ -309,17 +312,19 @@ class WallpaperEngine {
     let stallCount = 0;
     let lastTime = 0;
     let stalledSince = 0;
+    let lastDroppedWarning = 0;
 
     this._watchdogInterval = setInterval(() => {
       if (document.hidden || !video || this.activeVideo !== video) return;
 
       const currentTime = video.currentTime;
-      const isProgressing = Math.abs(currentTime - lastTime) > 0.05;
+      const isProgressing = Math.abs(currentTime - lastTime) > 0.04;
 
       if (isProgressing) {
         lastTime = currentTime;
         stalledSince = 0;
-      } else if (!video.paused && video.readyState >= 2) {
+      } else if (!video.paused) {
+        // Stalled: video element says playing but currentTime is frozen
         if (stalledSince === 0) stalledSince = Date.now();
       }
 
@@ -328,6 +333,22 @@ class WallpaperEngine {
       try {
         if (video.buffered && video.buffered.length > 0) {
           bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        }
+      } catch (_) {}
+
+      // Measure hardware decoder frame drops via getVideoPlaybackQuality
+      try {
+        if (typeof video.getVideoPlaybackQuality === 'function') {
+          const q = video.getVideoPlaybackQuality();
+          const total = q.totalVideoFrames || 0;
+          const dropped = q.droppedVideoFrames || 0;
+          if (total > 30) {
+            const dropRate = dropped / total;
+            if (dropRate > 0.25 && Date.now() - lastDroppedWarning > 8000) {
+              lastDroppedWarning = Date.now();
+              console.warn(`[WallpaperEngine] ⚠️ High video frame drops detected (${Math.round(dropRate * 100)}% dropped). Hardware decoder struggling with high framerate / 10-bit stream.`);
+            }
+          }
         }
       } catch (_) {}
 
@@ -361,6 +382,14 @@ class WallpaperEngine {
           video.currentTime += 0.05;
           video.play().catch(() => {});
         }
+      } else if (!evalResult && elapsedStalled > 1200) {
+        // Fallback watchdog if WASM bridge is still initializing
+        stallCount++;
+        console.warn(`[WallpaperEngine] ⚠️ Video playback frozen without advancing (${Math.round(elapsedStalled / 1000)}s). Auto-resuming...`);
+        video.play().catch(() => {
+          video.load();
+          video.play().catch(() => {});
+        });
       }
     }, 1500);
   }
