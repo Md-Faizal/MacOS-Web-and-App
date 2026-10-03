@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:NewBill') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * BillEditor Class
  * Handles NEW bill/invoice creation only
@@ -166,7 +168,7 @@ class BillEditor {
       this.editingBillId = billDataToEdit.id || billDataToEdit.bill_id;
       this.billDataToEdit = billDataToEdit;
       this.currentBillProducts = JSON.parse(JSON.stringify(billDataToEdit.products || []));
-      console.log('📋 Edit mode - Bill data received:', {
+      log.debug('📋 Edit mode - Bill data received:', {
         id: this.editingBillId,
         customer: billDataToEdit.customer_name,
         productsCount: this.currentBillProducts.length,
@@ -416,13 +418,13 @@ class BillEditor {
       
       if (customerNameInput) {
         customerNameInput.value = customerNameValue;
-        console.log('✅ Customer name set in edit mode:', {
+        log.debug('✅ Customer name set in edit mode:', {
           customerName: customerNameValue,
           inputElement: customerNameInput.id,
           displayValue: customerNameInput.value
         });
       } else {
-        console.warn('⚠️ customerName input element not found');
+        log.warn('⚠️ customerName input element not found');
       }
     } else {
       // Creating new: use current date/time
@@ -437,7 +439,7 @@ class BillEditor {
           const customerNameInput = document.getElementById('customerName');
           if (customerNameInput) {
             customerNameInput.value = billDataToEdit.customer_name;
-            console.log('✅ Customer name pre-filled from params:', billDataToEdit.customer_name);
+            log.debug('✅ Customer name pre-filled from params:', billDataToEdit.customer_name);
           }
         }, 100);
       }
@@ -452,8 +454,8 @@ class BillEditor {
 
     // In edit mode, log the customer name for debugging
     if (isEditMode && billDataToEdit) {
-      console.log('📦 Edit mode initialized - customer:', billDataToEdit.customer_name);
-      console.log('📦 Edit mode - products count:', this.currentBillProducts.length);
+      log.debug('📦 Edit mode initialized - customer:', billDataToEdit.customer_name);
+      log.debug('📦 Edit mode - products count:', this.currentBillProducts.length);
     }
 
     // Store reference to this module for global access (for modals, etc)
@@ -466,12 +468,12 @@ class BillEditor {
     setTimeout(() => {
       if (isEditMode && this.currentBillProducts.length > 0) {
         // Edit mode with existing products
-        console.log('📝 Rendering existing products for edit mode:', this.currentBillProducts.length);
+        log.debug('📝 Rendering existing products for edit mode:', this.currentBillProducts.length);
         this.renderProductList();
         this.updateBillSummary();
       } else if (!isEditMode) {
         // New bill mode - show empty products message
-        console.log('📝 Showing empty products message for new bill mode');
+        log.debug('📝 Showing empty products message for new bill mode');
         this.renderProductList();
       }
     }, 300);
@@ -554,7 +556,7 @@ class BillEditor {
           }
         }
       } catch (error) {
-        console.error('Error loading contacts:', error);
+        log.error('Error loading contacts:', error);
       }
     }
   }
@@ -668,7 +670,7 @@ class BillEditor {
           this.renderSearchDropdown(instantMatches);
         }
       } catch (err) {
-        console.warn('[NewBill] WASM instant search fallback:', err);
+        log.warn('[NewBill] WASM instant search fallback:', err);
       }
     }
 
@@ -686,7 +688,7 @@ class BillEditor {
           }
         }
       } catch (error) {
-        console.error('Error fetching real-time products:', error);
+        log.error('Error fetching real-time products:', error);
       }
     }, 200);
   }
@@ -865,7 +867,7 @@ class BillEditor {
     this.updateFormGoldIndicator(null);
     
     this.currentProduct = null;
-    console.log('🧹 Product details cleared');
+    log.debug('🧹 Product details cleared');
   }
 
   updateFormGoldIndicator(product) {
@@ -906,10 +908,10 @@ class BillEditor {
 
     if (variantCount > 1 || hasMultipleBatchesInSingleVariant) {
       if (this.isSelectingVariant) {
-        console.log(' Greenland skipping modal re-open');
+        log.debug(' Greenland skipping modal re-open');
         return;
       }
-      console.log('📦 Multiple options detected, showing selector modal:', {
+      log.debug('📦 Multiple options detected, showing selector modal:', {
         name: product.name,
         variantCount: variantCount,
         singleVariantBatches: hasMultipleBatchesInSingleVariant ? product.variants[0].batches.length : 0
@@ -962,7 +964,7 @@ class BillEditor {
         if (packMatch[2]) {
           // Normalize the parsed pack type
           const packTypeNormalized = normalizePackType(packMatch[2]);
-          console.log('🔍 Setting pack type from parsed pack:', {
+          log.debug('🔍 Setting pack type from parsed pack:', {
             original: packMatch[2],
             normalized: packTypeNormalized
           });
@@ -980,7 +982,7 @@ class BillEditor {
     }
     
     // Log the final pack type value
-    console.log('✅ Pack type set to:', packUnitSelect.value, 'Available options:', Array.from(packUnitSelect.options).map(o => o.value));
+    log.debug('✅ Pack type set to:', packUnitSelect.value, 'Available options:', Array.from(packUnitSelect.options).map(o => o.value));
 
     if (product.batch_no) {
       document.getElementById('productBatch').value = product.batch_no;
@@ -1013,7 +1015,7 @@ class BillEditor {
   showVariantSelector(variants, productName = '') {
     // Don't show if modal is already open
     if (this.isVariantModalOpen) {
-      console.log('🚫 Variant modal already open, skipping duplicate creation');
+      log.debug('🚫 Variant modal already open, skipping duplicate creation');
       return;
     }
 
@@ -1053,7 +1055,7 @@ class BillEditor {
       };
     });
 
-    console.log('📦 Normalized variants:', normalizedVariants.slice(0, 1));
+    log.debug('📦 Normalized variants:', normalizedVariants.slice(0, 1));
 
     const modalHtml = `
       <div id="variantSelectorModal" class="variant-modal-overlay">
@@ -1158,7 +1160,7 @@ class BillEditor {
             this.currentProduct.pack_size_value = selectedVariant.pack_size_value;
             this.currentProduct.pack_size_type = selectedVariant.pack_size_type;
 
-            console.log('✅ Updated master reference (currentProduct) for selected batch:', {
+            log.debug('✅ Updated master reference (currentProduct) for selected batch:', {
               batch_no: this.currentProduct.batch_no,
               mrp: this.currentProduct.mrp,
               variant_id: selectedVariant.id
@@ -1328,7 +1330,7 @@ class BillEditor {
         }
       }
     } catch (error) {
-      console.error('Error loading preferences from API:', error);
+      log.error('Error loading preferences from API:', error);
     }
 
     // If API call fails or returns no data, use defaults
@@ -1396,7 +1398,7 @@ class BillEditor {
           }
         }
       } catch (error) {
-        console.error('Error checking customer orders:', error);
+        log.error('Error checking customer orders:', error);
         container.style.display = 'none';
       }
     }, 500);
@@ -1800,7 +1802,7 @@ class BillEditor {
       return;
     }
 
-    console.log(`📦 Importing ${order.items?.length || 0} items from order #${order.order_number || order.id}`);
+    log.debug(`📦 Importing ${order.items?.length || 0} items from order #${order.order_number || order.id}`);
 
     // Show loading state if many items
     const loadingOverlay = document.createElement('div');
@@ -1820,7 +1822,7 @@ class BillEditor {
           
           // Bug 1 Fix: Skip unreceived products
           if (rec < 1) {
-            console.log(`🚫 Skipping unreceived product: ${item.product_name || 'Unknown'}`);
+            log.debug(`🚫 Skipping unreceived product: ${item.product_name || 'Unknown'}`);
             continue;
           }
 
@@ -1832,18 +1834,18 @@ class BillEditor {
           try {
             const pName = (item.product_name || '').trim();
             const url = `/api/billing/preference/${encodeURIComponent(customerName)}/${encodeURIComponent(pName)}`;
-            console.log(`🔍 Checking preference for: ${pName} at ${url}`);
+            log.debug(`🔍 Checking preference for: ${pName} at ${url}`);
             
             const prefRes = await fetch(url);
             if (prefRes.ok) {
               const prefData = await prefRes.json();
-              console.log(`📦 Preference result for ${pName}:`, prefData);
+              log.debug(`📦 Preference result for ${pName}:`, prefData);
               preference = prefData.data;
             } else {
-              console.warn(`⚠️ Preference API failed for ${pName}: ${prefRes.status}`);
+              log.warn(`⚠️ Preference API failed for ${pName}: ${prefRes.status}`);
             }
           } catch (prefErr) {
-            console.warn(`Could not load preference for ${item.product_name}:`, prefErr);
+            log.warn(`Could not load preference for ${item.product_name}:`, prefErr);
           }
 
           // If preference is missing (null or empty data), show modal to ask user
@@ -1851,7 +1853,7 @@ class BillEditor {
           const hasPref = preference && Object.keys(preference).length > 0;
           
           if (!hasPref) {
-            console.log(`❓ No preference found for ${item.product_name}, opening fallback modal...`);
+            log.debug(`❓ No preference found for ${item.product_name}, opening fallback modal...`);
             // Hide loading overlay while modal is open
             if (loadingOverlay) loadingOverlay.style.display = 'none';
             
@@ -1880,7 +1882,7 @@ class BillEditor {
               }
             }
           } catch (err) {
-            console.warn(`Could not fetch metadata for ${pName}:`, err);
+            log.warn(`Could not fetch metadata for ${pName}:`, err);
           }
 
           const itemData = {
@@ -1914,7 +1916,7 @@ class BillEditor {
       document.querySelector('.bill-items-table')?.scrollIntoView({ behavior: 'smooth' });
       
     } catch (err) {
-      console.error('Import Error:', err);
+      log.error('Import Error:', err);
       alert('Failed to import order items. Please check the logs.');
     } finally {
       loadingOverlay.remove();
@@ -1996,7 +1998,7 @@ class BillEditor {
       }
 
       if (changes.length > 0) {
-        console.log('🔍 Change detection triggered for:', changes);
+        log.debug('🔍 Change detection triggered for:', changes);
         // For multiple changes, we'll ask for the first one that matters most (MRP > Pack > Batch)
         const priorityField = changes[0]; 
         const oldValue = priorityField === 'mrp' ? masterProduct.mrp : 
@@ -2017,7 +2019,7 @@ class BillEditor {
       }
     }
 
-    console.log('📝 DUPLICATE CHECK - New Product Object:', {
+    log.debug('📝 DUPLICATE CHECK - New Product Object:', {
       name: product.name,
       variant_id: product.variant_id,
       batch: product.batch,
@@ -2025,7 +2027,7 @@ class BillEditor {
       product_id: product.product_id
     });
 
-    console.log('📝 DUPLICATE CHECK - Existing Products in Bill:', 
+    log.debug('📝 DUPLICATE CHECK - Existing Products in Bill:', 
       this.currentBillProducts.map((p, idx) => ({
         idx,
         name: p.name,
@@ -2037,8 +2039,8 @@ class BillEditor {
     );
 
     // Check if product with same name, variant, and batch already exists
-    console.log('📦 [DUPLICATE CHECK START] Total products in bill:', this.currentBillProducts.length);
-    console.log('📦 [NEW PRODUCT TO ADD]:', JSON.stringify({ name: product.name, batch: product.batch, variant: product.variant_id }, null, 2));
+    log.debug('📦 [DUPLICATE CHECK START] Total products in bill:', this.currentBillProducts.length);
+    log.debug('📦 [NEW PRODUCT TO ADD]:', JSON.stringify({ name: product.name, batch: product.batch, variant: product.variant_id }, null, 2));
 
     const existingProductIndex = this.currentBillProducts.findIndex((p, idx) => {
       // Super-aggressive normalization: remove all non-alphanumeric characters for "fuzzy" match
@@ -2059,7 +2061,7 @@ class BillEditor {
       
       const isMatch = nameMatch && variantMatch && batchMatch;
       
-      console.log(`   └─ Aggressive Match with #${idx+1}:`, {
+      log.debug(`   └─ Aggressive Match with #${idx+1}:`, {
         matches: { name: nameMatch, batch: batchMatch, variant: variantMatch },
         FINAL_MATCH: isMatch,
         strings: { A: `${nameA}|${batchA}`, B: `${nameB}|${batchB}` }
@@ -2090,7 +2092,7 @@ class BillEditor {
   }
 
   showDuplicateProductModal(newProduct, existingProductIndex) {
-    console.log('📱 Showing duplicate product modal for:', {
+    log.debug('📱 Showing duplicate product modal for:', {
       newProduct: newProduct.name,
       existingIndex: existingProductIndex,
       existingProduct: this.currentBillProducts[existingProductIndex]?.name
@@ -2197,11 +2199,11 @@ class BillEditor {
     const listTable = document.getElementById('productListTable');
     const countBadge = document.getElementById('productCountBadge');
 
-    console.log('🎯 renderProductList called with', this.currentBillProducts.length, 'products');
+    log.debug('🎯 renderProductList called with', this.currentBillProducts.length, 'products');
 
     // Ensure DOM elements exist before proceeding
     if (!listTable) {
-      console.error('❌ Product list table element not found in DOM');
+      log.error('❌ Product list table element not found in DOM');
       return;
     }
 
@@ -2355,11 +2357,11 @@ class BillEditor {
       const product = this.currentBillProducts.find(p => p.id === productId);
 
       if (!product) {
-        console.error('❌ Product not found in bill:', { productId });
+        log.error('❌ Product not found in bill:', { productId });
         return;
       }
 
-      console.log('📦 Opening variant selector from product card:', { 
+      log.debug('📦 Opening variant selector from product card:', { 
         name: product.name || product.product_name,
         variants: product.variants?.length || 0
       });
@@ -2385,10 +2387,10 @@ class BillEditor {
         }
       }
 
-      console.warn('⚠️ No variants found for product:', product.name);
+      log.warn('⚠️ No variants found for product:', product.name);
       alert('This product has no variants available');
     } catch (error) {
-      console.error('Error opening variant selector:', error);
+      log.error('Error opening variant selector:', error);
     }
   }
 
@@ -2524,7 +2526,7 @@ class BillEditor {
             product.mrp = batch.mrp || product.mrp;
           }
 
-          console.log('✅ Variant selected from card:', { productId: product.id, pack: product.pack, variant_id: product.variant_id });
+          log.debug('✅ Variant selected from card:', { productId: product.id, pack: product.pack, variant_id: product.variant_id });
 
           const modal = document.getElementById('variantSelectorModal');
           if (modal) modal.remove();
@@ -2592,12 +2594,12 @@ class BillEditor {
       }
     });
 
-    console.log('✅ Product list listeners reset');
+    log.debug('✅ Product list listeners reset');
   }
 
   editProductField(field) {
     if (!field) {
-      console.error('❌ editProductField called with null/invalid field');
+      log.error('❌ editProductField called with null/invalid field');
       return;
     }
 
@@ -2607,7 +2609,7 @@ class BillEditor {
     const product = this.currentBillProducts.find(p => p.id === productId);
 
     if (!product) {
-      console.error('❌ Product not found:', { productId, fieldName });
+      log.error('❌ Product not found:', { productId, fieldName });
       return;
     }
 
@@ -2617,7 +2619,7 @@ class BillEditor {
       return;
     }
 
-    console.log('✏️ Editing field:', { fieldName, productId, currentValue: product[fieldName] });
+    log.debug('✏️ Editing field:', { fieldName, productId, currentValue: product[fieldName] });
 
     const currentValue = product[fieldName];
     const input = document.createElement('input');
@@ -2629,7 +2631,7 @@ class BillEditor {
 
     const valueDiv = field.querySelector('.product-detail-value');
     if (!valueDiv) {
-      console.error('❌ Value div not found in field');
+      log.error('❌ Value div not found in field');
       return;
     }
 
@@ -2673,7 +2675,7 @@ class BillEditor {
       // Recalculate based on what was edited
       this.recalculateProductFields(product, fieldName);
 
-      console.log('✅ Field saved:', { fieldName, newValue, productId });
+      log.debug('✅ Field saved:', { fieldName, newValue, productId });
 
       this.renderProductList();
       this.updateBillSummary();
@@ -2752,7 +2754,7 @@ class BillEditor {
       // Update customer item memory too
       const customerName = document.getElementById('customerName')?.value?.trim();
       if (customerName) {
-        console.log('💾 Updating customer item memory for scheme change:', { productName: product.name, customerName, newScheme });
+        log.debug('💾 Updating customer item memory for scheme change:', { productName: product.name, customerName, newScheme });
         this.saveProductMemory(product.name, customerName, product.disc1, product.disc2, newScheme, product.gstTotal, product.gst_reverse);
       }
 
@@ -2812,7 +2814,7 @@ class BillEditor {
     });
 
     if (duplicateIndex !== -1) {
-      console.log('⚠️ Conflict detected after edit:', {
+      log.debug('⚠️ Conflict detected after edit:', {
         editedProduct: editedProduct.name,
         duplicateProduct: this.currentBillProducts[duplicateIndex].name
       });
@@ -2871,7 +2873,7 @@ class BillEditor {
 
     cancelBtn.addEventListener('click', () => {
       closeModal();
-      console.log('↩️ Conflict resolution cancelled - keeping both products');
+      log.debug('↩️ Conflict resolution cancelled - keeping both products');
     });
 
     removeBtn1.addEventListener('click', () => {
@@ -2880,7 +2882,7 @@ class BillEditor {
       closeModal();
       this.renderProductList();
       this.updateBillSummary();
-      console.log('🗑️ Product #1 removed, kept Product #2');
+      log.debug('🗑️ Product #1 removed, kept Product #2');
     });
 
     removeBtn2.addEventListener('click', () => {
@@ -2889,7 +2891,7 @@ class BillEditor {
       closeModal();
       this.renderProductList();
       this.updateBillSummary();
-      console.log('🗑️ Product #2 removed, kept Product #1');
+      log.debug('🗑️ Product #2 removed, kept Product #1');
     });
 
     mergeBtn.addEventListener('click', () => {
@@ -2899,7 +2901,7 @@ class BillEditor {
       closeModal();
       this.renderProductList();
       this.updateBillSummary();
-      console.log('✅ Products merged, Qty:', totalQty);
+      log.debug('✅ Products merged, Qty:', totalQty);
     });
 
     overlay.addEventListener('click', (e) => {
@@ -2927,7 +2929,7 @@ class BillEditor {
     // Toggle the GST Reverse flag
     product.gst_reverse = !product.gst_reverse;
     
-    console.log(`🔀 GST Reverse toggled for product ${productId}: ${product.gst_reverse}`);
+    log.debug(`🔀 GST Reverse toggled for product ${productId}: ${product.gst_reverse}`);
 
     // Re-render and recalculate
     setTimeout(() => {
@@ -3018,7 +3020,7 @@ class BillEditor {
   }
 
   updateBillSummary() {
-    console.log('📊 updateBillSummary called with', this.currentBillProducts.length, 'products');
+    log.debug('📊 updateBillSummary called with', this.currentBillProducts.length, 'products');
     
     // Always recalculate using BillCalculator to ensure accuracy
     // This is more reliable than using stored amounts which might be incorrect
@@ -3037,7 +3039,7 @@ class BillEditor {
         gst_reverse: product.gst_reverse || false
       });
 
-      console.log(`  Product ${idx}: name=${product.name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
+      log.debug(`  Product ${idx}: name=${product.name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
 
       return lineCalc;
     });
@@ -3045,7 +3047,7 @@ class BillEditor {
     // Calculate bill summary using BillCalculator
     const summary = BillCalculator.calculateBillSummary(lineItems);
 
-    console.log(`📊 Summary Results:`, {
+    log.debug(`📊 Summary Results:`, {
       total_amount: summary.total_amount.toFixed(2),
       total_discount: summary.total_discount.toFixed(2),
       subtotal: summary.subtotal.toFixed(2),
@@ -3185,9 +3187,9 @@ class BillEditor {
           if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
             try {
               await this.billingApp.loadBillingDataFromAPI();
-              console.log('✅ Reloaded billing data from API after updating bill');
+              log.debug('✅ Reloaded billing data from API after updating bill');
             } catch (e) {
-              console.warn('⚠ Failed to reload billing data:', e.message);
+              log.warn('⚠ Failed to reload billing data:', e.message);
             }
           }
         } else {
@@ -3198,7 +3200,7 @@ class BillEditor {
       } catch (error) {
         // Bill update failed
         alert(`✗ Bill Update Failed: ${error.message}`);
-        console.error('Bill update error:', error);
+        log.error('Bill update error:', error);
       }
 
       // Clear editing state
@@ -3228,7 +3230,7 @@ class BillEditor {
 
 
       try {
-        console.log('📝 Creating bill with products:', {
+        log.debug('📝 Creating bill with products:', {
           customerName,
           productCount: formattedProducts.length,
           products: formattedProducts.map(p => ({
@@ -3266,9 +3268,9 @@ class BillEditor {
           if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
             try {
               await this.billingApp.loadBillingDataFromAPI();
-              console.log('✅ Reloaded billing data from API after creating bill');
+              log.debug('✅ Reloaded billing data from API after creating bill');
             } catch (e) {
-              console.warn('⚠ Failed to reload billing data:', e.message);
+              log.warn('⚠ Failed to reload billing data:', e.message);
             }
           }
         } else {
@@ -3282,7 +3284,7 @@ class BillEditor {
       } catch (error) {
         // API failed - bill creation failed
         alert(`✗ Bill Creation Failed: ${error.message}`);
-        console.error('Bill creation error:', error);
+        log.error('Bill creation error:', error);
       }
     }
   }
@@ -3387,7 +3389,7 @@ class BillEditor {
     }
 
     try {
-      console.log(`🔄 Updating product master: ${field} -> ${newValue}`, product);
+      log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
       
       // Get IDs
       let variantId = product.variant_id || (this.currentProduct?.variant_id);
@@ -3397,17 +3399,17 @@ class BillEditor {
 
       // Check if we need to REPAIR the product metadata first
       if (!variantId || !batchNo) {
-        console.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
+        log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
         const repairData = await this.showRepairProductMetadataModal(product);
         
         if (!repairData) {
-          console.log('❌ Repair cancelled by user.');
+          log.debug('❌ Repair cancelled by user.');
           return;
         }
 
         // CREATE missing metadata via API
         if (!variantId) {
-          console.log('🆕 Creating new variant...');
+          log.debug('🆕 Creating new variant...');
           const varRes = await fetch('/api/products/variants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3420,11 +3422,11 @@ class BillEditor {
           if (!varRes.ok) throw new Error('Failed to create variant');
           const varData = await varRes.json();
           variantId = varData.id;
-          console.log('✅ Variant created:', variantId);
+          log.debug('✅ Variant created:', variantId);
         }
 
         if (!batchId || !batchNo) {
-          console.log('🆕 Creating new batch...');
+          log.debug('🆕 Creating new batch...');
           const batRes = await fetch('/api/products/batches', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3438,7 +3440,7 @@ class BillEditor {
           const batData = await batRes.json();
           batchId = batData.id;
           batchNo = repairData.batch_no;
-          console.log('✅ Batch created:', batchId);
+          log.debug('✅ Batch created:', batchId);
         }
 
         // Update local object and currentProduct for subsequent use
@@ -3471,7 +3473,7 @@ class BillEditor {
         }
       }
     } catch (error) {
-      console.error('❌ Failed to update product database:', error);
+      log.error('❌ Failed to update product database:', error);
       alert(`Failed to update database: ${error.message}`);
     }
   }
@@ -3585,10 +3587,10 @@ class BillEditor {
       }
 
       const result = await response.json();
-      console.log('✅ MRP updated in database:', result);
+      log.debug('✅ MRP updated in database:', result);
       alert(`✓ MRP updated in database for batch ${batch}`);
     } catch (error) {
-      console.error('❌ Failed to update MRP in database:', error);
+      log.error('❌ Failed to update MRP in database:', error);
       alert(`Failed to update MRP in database: ${error.message}`);
     }
   }

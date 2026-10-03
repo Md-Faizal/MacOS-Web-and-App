@@ -1,10 +1,12 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Launchpad') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 // Launchpad App Class
-console.log('[LaunchpadApp] ===== MODULE START =====');
-console.log('[LaunchpadApp] AppWindow available?', typeof AppWindow);
-console.log('[LaunchpadApp] document available?', typeof document);
+log.debug('[LaunchpadApp] ===== MODULE START =====');
+log.debug('[LaunchpadApp] AppWindow available?', typeof AppWindow);
+log.debug('[LaunchpadApp] document available?', typeof document);
 
 try {
-  console.log('[LaunchpadApp] Module loading...');
+  log.debug('[LaunchpadApp] Module loading...');
 
   class LaunchpadApp {
     constructor(containerId, options = {}) {
@@ -211,7 +213,7 @@ try {
     const appItems = document.querySelectorAll('.app-item');
     const availableApps = window.availableAppsForLaunchpad || [];
     
-    console.log('Launchpad: Setting up event listeners for', appItems.length, 'items');
+    log.debug('Launchpad: Setting up event listeners for', appItems.length, 'items');
     
     appItems.forEach((item, index) => {
       item.addEventListener('click', (e) => this.handleAppClick(e));
@@ -225,7 +227,7 @@ try {
       if (item.classList.contains('draggable-app')) {
         const appId = item.getAttribute('data-app-id');
         if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Launchpad')) {
-          console.log(`Launchpad: Attaching drag listeners to item ${index}:`, appId);
+          log.debug(`Launchpad: Attaching drag listeners to item ${index}:`, appId);
         }
         item.addEventListener('dragstart', (e) => this.handleDragStart(e));
         item.addEventListener('dragend', (e) => this.handleDragEnd(e));
@@ -274,7 +276,7 @@ try {
                 if (window.desktopManager && appObj) {
                   const dragPayload = { source: 'launchpad', appId: appId, appName: appObj.name };
                   const syntheticEvent = { clientX: last.clientX, clientY: last.clientY };
-                  try { window.desktopManager.processDroppedApp(dragPayload, syntheticEvent); } catch (err) { console.error('desktopManager.processDroppedApp error', err); }
+                  try { window.desktopManager.processDroppedApp(dragPayload, syntheticEvent); } catch (err) { log.error('desktopManager.processDroppedApp error', err); }
                 }
               }
             }
@@ -291,11 +293,11 @@ try {
     const app = window.availableAppsForLaunchpad?.find(a => a.id === appId);
     
     if (!app) {
-      console.warn('Launchpad: App not found for ID:', appId);
+      log.warn('Launchpad: App not found for ID:', appId);
       return;
     }
     
-    console.log('✓ Launchpad drag start:', app.name);
+    log.debug('✓ Launchpad drag start:', app.name);
     
     // Set drag data with app info
     event.dataTransfer.effectAllowed = 'copyMove';
@@ -305,8 +307,8 @@ try {
       appName: app.name
     });
     event.dataTransfer.setData('text/plain', dragPayload);
-    console.log('✓ Launchpad setting drag data:', dragPayload);
-    console.log('✓ effectAllowed:', event.dataTransfer.effectAllowed);
+    log.debug('✓ Launchpad setting drag data:', dragPayload);
+    log.debug('✓ effectAllowed:', event.dataTransfer.effectAllowed);
     
     // Create a custom drag image
     const dragImage = document.createElement('div');
@@ -364,29 +366,29 @@ try {
     try {
       const appItem = event.currentTarget;
       if (!appItem) {
-        console.error('App item not found in click event');
+        log.error('App item not found in click event');
         return;
       }
 
       const appId = appItem.getAttribute('data-app-id');
       if (!appId || typeof appId !== 'string') {
-        console.error('Invalid appId:', appId);
+        log.error('Invalid appId:', appId);
         return;
       }
 
       const app = window.availableAppsForLaunchpad?.find(a => a.id === appId);
       if (!app) {
-        console.warn(`App not found in availableAppsForLaunchpad:`, appId);
+        log.warn(`App not found in availableAppsForLaunchpad:`, appId);
         return;
       }
 
       // Validate app action exists
       if (typeof app.action !== 'function') {
-        console.error(`App ${appId} missing action method`);
+        log.error(`App ${appId} missing action method`);
         return;
       }
 
-      console.log(`Launching app: ${app.name}`);
+      log.debug(`Launching app: ${app.name}`);
       
       // Add ripple effect (gracefully handle if not available)
       if (typeof this.createRipple === 'function') {
@@ -398,7 +400,7 @@ try {
       if (selectionContext?.enabled && typeof selectionContext.callback === 'function') {
         // Validate selection context has required properties
         if (!selectionContext.mode || !selectionContext.target) {
-          console.warn('Selection context missing required properties:', selectionContext);
+          log.warn('Selection context missing required properties:', selectionContext);
           // Fall back to normal launch
           app.action();
           return;
@@ -408,7 +410,7 @@ try {
         try {
           app.action();
         } catch (launchError) {
-          console.error(`Error launching app ${appId}:`, launchError);
+          log.error(`Error launching app ${appId}:`, launchError);
           return;
         }
         
@@ -420,17 +422,17 @@ try {
                 typeof window.launchpadSelectionContext.callback === 'function') {
               window.launchpadSelectionContext.callback(appId);
             } else {
-              console.warn('Selection context callback lost or invalid');
+              log.warn('Selection context callback lost or invalid');
             }
             
             // Close the Launchpad after selection
             if (this.appWindow && typeof this.appWindow.minimize === 'function') {
               this.appWindow.minimize();
             } else {
-              console.warn('Launchpad appWindow not available or missing minimize method');
+              log.warn('Launchpad appWindow not available or missing minimize method');
             }
           } catch (callbackError) {
-            console.error('Error in selection callback:', callbackError);
+            log.error('Error in selection callback:', callbackError);
           } finally {
             // Reset selection context (defensive cleanup)
             try {
@@ -441,7 +443,7 @@ try {
                 launchpadWindow.style.zIndex = '';
               }
             } catch (e) {
-              console.warn('Could not reset selection context:', e);
+              log.warn('Could not reset selection context:', e);
             }
           }
         }, 600);
@@ -453,11 +455,11 @@ try {
         try {
           app.action();
         } catch (launchError) {
-          console.error(`Error launching app ${appId}:`, launchError);
+          log.error(`Error launching app ${appId}:`, launchError);
         }
       }
     } catch (error) {
-      console.error('Unexpected error in handleAppClick:', error);
+      log.error('Unexpected error in handleAppClick:', error);
     }
   }
 
@@ -472,10 +474,10 @@ try {
       'calculator': () => this.findAndLaunchApp('calculator', 'Calculator'),
       'settings': () => this.findAndLaunchApp('settings', 'SettingsApp'),
       'products': () => this.launchProductManager(),
-      'search': () => console.log('Search feature coming soon'),
-      'about': () => console.log('About info'),
-      'help': () => console.log('Help system'),
-      'feedback': () => console.log('Feedback form')
+      'search': () => log.debug('Search feature coming soon'),
+      'about': () => log.debug('About info'),
+      'help': () => log.debug('Help system'),
+      'feedback': () => log.debug('Feedback form')
     };
 
     if (appMap[action]) {
@@ -496,7 +498,7 @@ try {
       resizable: true,
       appId: 'product-manager',
       onClose: () => {
-        console.log('Product Manager closed');
+        log.debug('Product Manager closed');
       }
     });
 
@@ -519,7 +521,7 @@ try {
           contentArea.appendChild(script);
         }
       })
-      .catch(error => console.error('Error loading Product Manager:', error));
+      .catch(error => log.error('Error loading Product Manager:', error));
   }
 
   findAndLaunchApp(appId, className) {
@@ -531,7 +533,7 @@ try {
       app.action();
     } else {
       // Fallback: log which app was requested
-      console.log(`Attempting to launch: ${appId}`);
+      log.debug(`Attempting to launch: ${appId}`);
     }
   }
 
@@ -560,7 +562,7 @@ try {
 
   handleShowMore(event) {
     const link = event.target;
-    console.log(`${link.textContent} clicked`);
+    log.debug(`${link.textContent} clicked`);
     link.style.opacity = '0.7';
     setTimeout(() => {
       link.style.opacity = '1';
@@ -601,7 +603,7 @@ try {
 
 // Store global reference
 window.currentLaunchpadApp = null;
-console.log('[LaunchpadApp] Creating style element...');
+log.debug('[LaunchpadApp] Creating style element...');
 
 // Add ripple animation styles
 const style = document.createElement('style');
@@ -614,19 +616,19 @@ style.textContent = `
   }
 `;
 document.head.appendChild(style);
-console.log('[LaunchpadApp] Style appended to head');
+log.debug('[LaunchpadApp] Style appended to head');
 
 // Ensure global availability
 try {
   window.LaunchpadApp = LaunchpadApp;
-  console.log('[LaunchpadApp] ===== MODULE LOAD SUCCESS =====');
-  console.log('[LaunchpadApp] Exported to window.LaunchpadApp');
+  log.debug('[LaunchpadApp] ===== MODULE LOAD SUCCESS =====');
+  log.debug('[LaunchpadApp] Exported to window.LaunchpadApp');
 } catch (e) {
-  console.error('[LaunchpadApp] FAILED TO EXPORT:', e);
+  log.error('[LaunchpadApp] FAILED TO EXPORT:', e);
 }
 
 } catch (moduleError) {
-  console.error('[LaunchpadApp] ===== MODULE LOAD FAILED =====');
-  console.error('[LaunchpadApp] Error:', moduleError);
-  console.error('[LaunchpadApp] Stack:', moduleError.stack);
+  log.error('[LaunchpadApp] ===== MODULE LOAD FAILED =====');
+  log.error('[LaunchpadApp] Error:', moduleError);
+  log.error('[LaunchpadApp] Stack:', moduleError.stack);
 }

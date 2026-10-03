@@ -421,7 +421,7 @@ export class NetworkTrafficComponent {
           });
           const data = await res.json();
           if (data.success) {
-            console.log(`[Cluster] Routed to ${data.currentVm}`);
+            console.debug(`[Cluster] Routed to ${data.currentVm}`);
           }
         } catch (_) {}
         setTimeout(() => {
@@ -449,7 +449,7 @@ export class NetworkTrafficComponent {
           });
           const data = await res.json();
           if (data.success) {
-            console.log(`[Cluster] Cutover to ${data.targetSlot}`);
+            console.debug(`[Cluster] Cutover to ${data.targetSlot}`);
           }
         } catch (err) {
           console.warn('[Cluster] Switch notice:', err);

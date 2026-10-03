@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:History') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * HistoryView - Premium Transaction Timeline
  * Enhanced transaction history with stats, filtering, and modern UI
@@ -89,7 +91,7 @@ class HistoryView {
 
   async loadHistoryData() {
     try {
-      console.log('Loading history data...');
+      log.debug('Loading history data...');
       
       const isWorker = this.isWorkerUser();
       const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
@@ -114,8 +116,8 @@ class HistoryView {
         ? paymentsDataRaw.filter(p => accessibleNames.has(p.customer_name))
         : paymentsDataRaw;
 
-      console.log('✓ Bills fetched:', billsData.length);
-      console.log('✓ Payments fetched:', paymentsData.length);
+      log.debug('✓ Bills fetched:', billsData.length);
+      log.debug('✓ Payments fetched:', paymentsData.length);
 
       // Separate payments and credit notes
       const payments = paymentsData.filter(p => p.type === 'PAYMENT' || !p.type);
@@ -140,14 +142,14 @@ class HistoryView {
         }))
       ];
 
-      console.log(`✓ Total transactions: ${this.allTransactions.length} (${billsData.length} bills, ${payments.length} payments, ${creditNotes.length} credits)`);
+      log.debug(`✓ Total transactions: ${this.allTransactions.length} (${billsData.length} bills, ${payments.length} payments, ${creditNotes.length} credits)`);
 
       await this.updateStats();
       this.setupEventListeners();
       this.renderTransactions();
 
     } catch (error) {
-      console.error('Error loading history:', error);
+      log.error('Error loading history:', error);
       const loadingMsg = document.getElementById('historyLoadingMsg');
       if (loadingMsg) {
         loadingMsg.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">⚠ Error loading transactions: ${error.message}</div>`;
@@ -170,13 +172,13 @@ class HistoryView {
       let bills = normalizeCollection(response);
       
       if (!Array.isArray(bills)) {
-        console.warn('Unexpected bills response format:', response);
+        log.warn('Unexpected bills response format:', response);
         return [];
       }
 
       return bills;
     } catch (error) {
-      console.error('Error fetching bills:', error);
+      log.error('Error fetching bills:', error);
       return [];
     }
   }
@@ -196,13 +198,13 @@ class HistoryView {
       let payments = normalizeCollection(response);
       
       if (!Array.isArray(payments)) {
-        console.warn('Unexpected payments response format:', response);
+        log.warn('Unexpected payments response format:', response);
         return [];
       }
 
       return payments;
     } catch (error) {
-      console.error('Error fetching payments:', error);
+      log.error('Error fetching payments:', error);
       return [];
     }
   }
@@ -235,7 +237,7 @@ class HistoryView {
         });
       }
     } catch (error) {
-      console.warn('Error fetching contacts for history stats:', error);
+      log.warn('Error fetching contacts for history stats:', error);
     }
 
     // 2. Filter transactions by excluded customers for admin stats calculation
@@ -423,7 +425,7 @@ class HistoryView {
         }
       }
     } catch (error) {
-      console.error('Error fetching opening balance:', error);
+      log.error('Error fetching opening balance:', error);
     }
   }
 

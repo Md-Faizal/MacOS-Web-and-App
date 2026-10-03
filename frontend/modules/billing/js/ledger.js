@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Ledger') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * LedgerView - Manages billing ledger functionality
  * Handles customer records, bills, payments, and financial tracking
@@ -57,7 +59,7 @@ class LedgerView {
       // 3. Sync to UI
       this.syncLedger(ledgerData, isManual);
     } catch (e) {
-      console.warn('Ledger sync failed:', e);
+      log.warn('Ledger sync failed:', e);
     }
   }
 
@@ -204,7 +206,7 @@ class LedgerView {
     // Added 50ms delay to ensure elements are fully painted before querying
     setTimeout(() => {
       if (newBillIds.size > 0 || updatedBillIds.size > 0 || newPaymentIds.size > 0 || updatedPaymentIds.size > 0) {
-        console.log(`[Ledger Sync] Animating: Bills(New:${newBillIds.size}, Upd:${updatedBillIds.size}), Pmts(New:${newPaymentIds.size}, Upd:${updatedPaymentIds.size})`);
+        log.debug(`[Ledger Sync] Animating: Bills(New:${newBillIds.size}, Upd:${updatedBillIds.size}), Pmts(New:${newPaymentIds.size}, Upd:${updatedPaymentIds.size})`);
       }
       this.applyLedgerSyncAnimations({
         newBillIds, updatedBillIds, newPaymentIds, updatedPaymentIds
@@ -385,7 +387,7 @@ class LedgerView {
 
     // Check for deep link parameters
     if (this.params && (this.params.customerId || this.params.customerName)) {
-      console.log(`🔗 LedgerView: Handling deep link for ${this.params.customerName || this.params.customerId}`);
+      log.debug(`🔗 LedgerView: Handling deep link for ${this.params.customerName || this.params.customerId}`);
       
       setTimeout(() => {
         // Find customer in ledgerData
@@ -485,10 +487,10 @@ class LedgerView {
       // 1. Fire-and-forget management tasks (Recalculate & Activity status)
       // These are important but shouldn't block the initial render - the polling will pick up the changes
       fetch('/api/billing/invoices/ledger/recalculate', { method: 'POST' })
-        .catch(e => console.warn('Background recalculate failed:', e));
+        .catch(e => log.warn('Background recalculate failed:', e));
         
       fetch('/api/contacts/activity/update-all', { method: 'POST' })
-        .catch(e => console.warn('Background activity update failed:', e));
+        .catch(e => log.warn('Background activity update failed:', e));
 
       // 2. Immediate Data Load
       const ledgerData = await this.getLedgerData();
@@ -498,9 +500,9 @@ class LedgerView {
       
       // Diagnostic logging (gated for performance)
       if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Ledger')) {
-        console.log('Ledger Data loaded:', ledgerData);
+        log.debug('Ledger Data loaded:', ledgerData);
         if (ledgerData.length > 0) {
-          console.log('First customer:', ledgerData[0], 'total_bills:', ledgerData[0].total_bills, 'total_payments:', ledgerData[0].total_payments);
+          log.debug('First customer:', ledgerData[0], 'total_bills:', ledgerData[0].total_bills, 'total_payments:', ledgerData[0].total_payments);
         }
       }
       
@@ -512,7 +514,7 @@ class LedgerView {
       const totalDue = statsCustomers.reduce((sum, c) => sum + (c.amountDue || 0), 0);
       
       if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Ledger')) {
-        console.log('[Ledger Header] Calculated totals - Bills:', totalBills, 'Payments:', totalPayments, 'Due:', totalDue, 'Stats Customers:', statsCustomers.length);
+        log.debug('[Ledger Header] Calculated totals - Bills:', totalBills, 'Payments:', totalPayments, 'Due:', totalDue, 'Stats Customers:', statsCustomers.length);
       }
       
       const totalBillsSpan = document.getElementById('ledgerTotalBills');
@@ -534,7 +536,7 @@ class LedgerView {
         this.setupViewToggleButtons(ledgerData);
       }
     } catch (e) {
-      console.error('Error loading ledger:', e);
+      log.error('Error loading ledger:', e);
       document.getElementById('ledgerSidebarList').innerHTML = `<div style="padding: 16px; color: #ef4444;">Error: ${e.message}</div>`;
     }
   }
@@ -1355,7 +1357,7 @@ class LedgerView {
         }
       }
     } catch (error) {
-      console.error('Error fetching unified opening balance:', error);
+      log.error('Error fetching unified opening balance:', error);
     }
   }
 
@@ -1399,7 +1401,7 @@ class LedgerView {
         }
       }
     } catch (error) {
-      console.error('Error fetching opening balance:', error);
+      log.error('Error fetching opening balance:', error);
     }
   }
 
@@ -1814,7 +1816,7 @@ class LedgerView {
       const year = dateParts[2];
       const isoDate = `${year}-${month}-${day}`;
 
-      console.log(`Updating Bill ${billId} date to ${isoDate}`);
+      log.debug(`Updating Bill ${billId} date to ${isoDate}`);
       
       const response = await fetch(`/api/billing/${billId}`, {
         method: 'PUT',
@@ -1837,7 +1839,7 @@ class LedgerView {
       }
       
     } catch (error) {
-      console.error(error);
+      log.error(error);
       if (record) record.classList.remove('transitioning');
       window.currentBillingApp.showNotification(`✕ Error: ${error.message}`, 'error');
     }
@@ -1867,7 +1869,7 @@ class LedgerView {
       const year = dateParts[2];
       const isoDate = `${year}-${month}-${day}`;
 
-      console.log(`Updating Payment ${paymentId} date to ${isoDate}`);
+      log.debug(`Updating Payment ${paymentId} date to ${isoDate}`);
       
       const response = await fetch(`/api/billing/payments/${paymentId}`, {
         method: 'PUT',
@@ -1890,7 +1892,7 @@ class LedgerView {
       }
       
     } catch (error) {
-      console.error(error);
+      log.error(error);
       if (record) record.classList.remove('transitioning');
       window.currentBillingApp.showNotification(`✕ Error: ${error.message}`, 'error');
     }
@@ -2004,7 +2006,7 @@ class LedgerView {
 
       return Object.values(mergedData).sort((a, b) => a.customerName.localeCompare(b.customerName));
     } catch (error) {
-      console.error('Error fetching ledger data:', error);
+      log.error('Error fetching ledger data:', error);
       // Fallback to local calculation if API fails
       return this.getLedgerDataLocal();
     }
@@ -2633,7 +2635,7 @@ class LedgerView {
       const loadingEl = document.querySelector('[id^="document-loading-"]');
       if (loadingEl) loadingEl.remove();
 
-      console.error('Document View Error:', error);
+      log.error('Document View Error:', error);
       const errorId = 'document-view-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
@@ -2733,7 +2735,7 @@ class LedgerView {
     } catch (error) {
       const loadingEl = document.querySelector('[id^="pdf-export-loading-"]');
       if (loadingEl) loadingEl.remove();
-      console.error('Export Error:', error);
+      log.error('Export Error:', error);
       alert(`Export failed: ${error.message}`);
     }
   }
@@ -2770,7 +2772,7 @@ class LedgerView {
         throw new Error('Print window blocked - please allow popups');
       }
     } catch (error) {
-      console.error('Opening Balance PDF Print Error:', error);
+      log.error('Opening Balance PDF Print Error:', error);
       alert(`Print failed: ${error.message}`);
     }
   }

@@ -92,10 +92,10 @@ class LogoContextMenu {
         window.location.reload();
         break;
       case 'settings':
-        console.log('Settings clicked');
+        // settings clicked
         break;
       case 'about':
-        console.log('About clicked');
+        // about clicked
         break;
     }
   }

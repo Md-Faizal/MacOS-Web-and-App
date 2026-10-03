@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:EditBills') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * EditBillsPayments Module
  * Handles editing existing bills and managing payment records
@@ -126,7 +128,7 @@ class EditBillsPayments {
       }
       return [];
     } catch (e) {
-      console.error('Error fetching customers in EditBillsPayments:', e);
+      log.error('Error fetching customers in EditBillsPayments:', e);
       return [];
     }
   }
@@ -143,7 +145,7 @@ class EditBillsPayments {
       }
       return [];
     } catch (e) {
-      console.error('Error fetching products in EditBillsPayments:', e);
+      log.error('Error fetching products in EditBillsPayments:', e);
       return [];
     }
   }
@@ -154,7 +156,7 @@ class EditBillsPayments {
    */
   async enrichBillDataWithAPIMetadata(billData) {
     try {
-      console.log('🔄 Enriching bill data with API metadata...');
+      log.debug('🔄 Enriching bill data with API metadata...');
 
       // Fetch all customers and products once
       const [customers, products] = await Promise.all([
@@ -164,20 +166,20 @@ class EditBillsPayments {
 
       // Lookup customer by ID and get full details from contacts table
       if (billData.customer_id) {
-        console.log('🔍 Looking up customer ID:', billData.customer_id);
+        log.debug('🔍 Looking up customer ID:', billData.customer_id);
         const customer = customers.find(c => c.id === billData.customer_id);
         if (customer) {
           billData.customer_name = customer.name || customer.customer_name || customer.first_name || '';
-          console.log('✅ Customer found in contacts:', {
+          log.debug('✅ Customer found in contacts:', {
             id: billData.customer_id,
             name: billData.customer_name,
             phone: customer.phone
           });
         } else {
-          console.warn('⚠️ Customer ID not found in contacts table:', billData.customer_id);
+          log.warn('⚠️ Customer ID not found in contacts table:', billData.customer_id);
         }
       } else {
-        console.log('⚠️ No customer_id in bill data, using existing customer_name:', billData.customer_name);
+        log.debug('⚠️ No customer_id in bill data, using existing customer_name:', billData.customer_name);
       }
 
       // If we have products for this invoice, enrich each with full product details
@@ -212,7 +214,7 @@ class EditBillsPayments {
         });
       }
 
-      console.log('✅ Bill data enriched with metadata:', {
+      log.debug('✅ Bill data enriched with metadata:', {
         customersAvailable: customers.length,
         productsAvailable: products.length,
         enrichedProducts: billData.products.length,
@@ -222,7 +224,7 @@ class EditBillsPayments {
 
       return billData;
     } catch (error) {
-      console.error('Error enriching bill data:', error);
+      log.error('Error enriching bill data:', error);
       // Return enriched data anyway - don't fail
       return billData;
     }
@@ -237,7 +239,7 @@ class EditBillsPayments {
     let billData = apiResponse.data || apiResponse;
     
     if (!billData) {
-      console.warn('⚠️ Bill data is empty');
+      log.warn('⚠️ Bill data is empty');
       return null;
     }
 
@@ -250,7 +252,7 @@ class EditBillsPayments {
     // Normalize customer name field - try multiple variants
     billData.customer_name = billData.customer_name || billData.customer || billData.customerName || '';
     
-    console.log('📋 API Response customer fields:', {
+    log.debug('📋 API Response customer fields:', {
       raw_customer_id: apiResponse.customer_id,
       raw_customerId: apiResponse.customerId,
       raw_customer_name: apiResponse.customer_name,
@@ -320,7 +322,7 @@ class EditBillsPayments {
       gst_reverse: item.gst_reverse || false
     }));
 
-    console.log('✅ Bill data normalized successfully:', {
+    log.debug('✅ Bill data normalized successfully:', {
       id: billData.id,
       customer: billData.customer_name,
       billDate: billData.bill_date,
@@ -365,12 +367,12 @@ class EditBillsPayments {
             customSchemeContainer.style.display = memory.scheme === 'custom' ? 'flex' : 'none';
           }
 
-          console.log('✅ Loaded customer preferences from API:', memory);
+          log.debug('✅ Loaded customer preferences from API:', memory);
           return;
         }
       }
     } catch (error) {
-      console.error('Error loading customer preferences:', error);
+      log.error('Error loading customer preferences:', error);
     }
 
     // If no preferences found, set defaults
@@ -409,7 +411,7 @@ class EditBillsPayments {
         }
       }
     } catch (error) {
-      console.error('Error loading customers list:', error);
+      log.error('Error loading customers list:', error);
     }
     return [];
   }
@@ -443,7 +445,7 @@ class EditBillsPayments {
         }
       }
     } catch (error) {
-      console.error('Error loading products list:', error);
+      log.error('Error loading products list:', error);
     }
     return [];
   }
@@ -478,13 +480,13 @@ class EditBillsPayments {
             product = products[0];
           }
           if (product) {
-            console.log('✅ Auto-filled product details from API:', product);
+            log.debug('✅ Auto-filled product details from API:', product);
             return product;
           }
         }
       }
     } catch (error) {
-      console.error('Error auto-filling product details:', error);
+      log.error('Error auto-filling product details:', error);
     }
     return null;
   }
@@ -492,7 +494,7 @@ class EditBillsPayments {
   showVariantSelector(variants, productName = '') {
     // Don't show if modal is already open
     if (this.isVariantModalOpen) {
-      console.log('🚫 Variant modal already open, skipping duplicate creation');
+      log.debug('🚫 Variant modal already open, skipping duplicate creation');
       return;
     }
 
@@ -971,7 +973,7 @@ class EditBillsPayments {
         });
       })
       .catch(error => {
-        console.error('Error fetching bills:', error);
+        log.error('Error fetching bills:', error);
         document.getElementById('billsList').innerHTML = '<p style="color: #999; text-align: center; padding: 32px;">Error loading bills</p>';
       });
   }
@@ -1055,7 +1057,7 @@ class EditBillsPayments {
         }).join('');
       })
       .catch(error => {
-        console.error('Error fetching payments:', error);
+        log.error('Error fetching payments:', error);
         document.getElementById('paymentsList').innerHTML = '<p style="color: #999; text-align: center; padding: 32px;">Error loading payments</p>';
       });
   }
@@ -1114,7 +1116,7 @@ class EditBillsPayments {
         document.getElementById('editBillModal').style.display = 'flex';
       })
       .catch(error => {
-        console.error('Error fetching bill:', error);
+        log.error('Error fetching bill:', error);
         alert('Error loading bill details');
       });
   }
@@ -1164,7 +1166,7 @@ class EditBillsPayments {
         this.searchAndDisplayBills();
       })
       .catch(error => {
-        console.error('Error saving bill:', error);
+        log.error('Error saving bill:', error);
         alert('Error saving bill: ' + error.message);
       });
   }
@@ -1191,12 +1193,12 @@ class EditBillsPayments {
       .then(([billsData, paymentsData]) => {
         // Handle API errors
         if (billsData.error) {
-          console.error('Error fetching invoices:', billsData.error);
+          log.error('Error fetching invoices:', billsData.error);
           this.viewContainer.innerHTML = `<div style="padding: 20px; color: red;">Error loading invoices: ${billsData.error}</div>`;
           return;
         }
         if (paymentsData.error) {
-          console.error('Error fetching payments:', paymentsData.error);
+          log.error('Error fetching payments:', paymentsData.error);
           this.viewContainer.innerHTML = `<div style="padding: 20px; color: red;">Error loading payments: ${paymentsData.error}</div>`;
           return;
         }
@@ -1358,7 +1360,7 @@ class EditBillsPayments {
             if (itemElement) {
               const itemId = itemElement.getAttribute('data-item-id');
               const itemType = itemElement.getAttribute('data-item-type');
-              console.log('📌 Item clicked via delegation:', {itemId, itemType});
+              log.debug('📌 Item clicked via delegation:', {itemId, itemType});
               this.handleEditItemSelection(itemId, itemType);
             }
           });
@@ -1368,7 +1370,7 @@ class EditBillsPayments {
         document.getElementById('backToLedgerBtn')?.addEventListener('click', () => this.billingApp.switchView('ledger'));
       })
       .catch(error => {
-        console.error('Error fetching data:', error);
+        log.error('Error fetching data:', error);
         this.viewContainer.innerHTML = '<p style="color: #999; text-align: center; padding: 32px;">Error loading data</p>';
       });
   }
@@ -1416,12 +1418,12 @@ class EditBillsPayments {
    * Handle selection of bill/payment/credit note from list
    */
   handleEditItemSelection(itemId, itemType) {
-    console.log('🔧 handleEditItemSelection called:', {itemId, itemType});
+    log.debug('🔧 handleEditItemSelection called:', {itemId, itemType});
     
     if (itemType === 'bill') {
       // Convert itemId to number for comparison
       const itemIdNum = parseInt(itemId, 10);
-      console.log('📝 Fetching full bill details for ID:', itemIdNum);
+      log.debug('📝 Fetching full bill details for ID:', itemIdNum);
       
       // Fetch the full bill details from API in the same way as new bill page
       if (this.billingApp.billEditor) {
@@ -1441,7 +1443,7 @@ class EditBillsPayments {
             // Makes edit page identical to new bill page
             billData = await this.enrichBillDataWithAPIMetadata(billData);
 
-            console.log('📋 Passing fully enriched bill data to BillEditor:', {
+            log.debug('📋 Passing fully enriched bill data to BillEditor:', {
               id: billData.id,
               customer: billData.customer_name,
               products: billData.products.length
@@ -1452,69 +1454,69 @@ class EditBillsPayments {
             this.billingApp.billEditor.renderCreateBillView(billData);
           })
           .catch(error => {
-            console.error('❌ Error fetching bill details:', error);
+            log.error('❌ Error fetching bill details:', error);
             alert('Error loading bill details: ' + error.message);
           });
       } else {
-        console.warn('⚠️ BillEditor not available');
+        log.warn('⚠️ BillEditor not available');
         alert('Error: BillEditor module not loaded');
       }
     } else if (itemType === 'payment') {
       try {
-        console.log('🎯 Fetching payment ID from API:', itemId);
+        log.debug('🎯 Fetching payment ID from API:', itemId);
         
         // Fetch payment directly from API
         const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${itemId}`;
         fetch(apiUrl)
           .then(response => response.json())
           .then(payments => {
-            console.log('✅ Payments from API:', payments);
+            log.debug('✅ Payments from API:', payments);
             
             if (!Array.isArray(payments) || payments.length === 0) {
-              console.warn('❌ Payment not found in API');
+              log.warn('❌ Payment not found in API');
               alert('Payment not found');
               return;
             }
             
             const payment = payments[0];
-            console.log('📝 Rendering edit view for payment:', payment.id);
+            log.debug('📝 Rendering edit view for payment:', payment.id);
             this.renderEditPaymentView(payment);
           })
           .catch(error => {
-            console.error('❌ ERROR fetching payment from API:', error);
+            log.error('❌ ERROR fetching payment from API:', error);
             alert('Error loading payment: ' + error.message);
           });
       } catch (error) {
-        console.error('❌ ERROR in payment handling:', error);
+        log.error('❌ ERROR in payment handling:', error);
         alert('Error handling payment: ' + error.message);
       }
     } else if (itemType === 'credit-note') {
       try {
-        console.log('🎯 Fetching credit note ID from API:', itemId);
+        log.debug('🎯 Fetching credit note ID from API:', itemId);
         
         // Fetch credit note directly from API
         const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${itemId}`;
         fetch(apiUrl)
           .then(response => response.json())
           .then(payments => {
-            console.log('✅ Credit notes from API:', payments);
+            log.debug('✅ Credit notes from API:', payments);
             
             if (!Array.isArray(payments) || payments.length === 0) {
-              console.warn('❌ Credit note not found in API');
+              log.warn('❌ Credit note not found in API');
               alert('Credit note not found');
               return;
             }
             
             const creditNote = payments[0];
-            console.log('📝 Rendering edit view for credit note:', creditNote.id);
+            log.debug('📝 Rendering edit view for credit note:', creditNote.id);
             this.renderEditCreditNoteView(creditNote);
           })
           .catch(error => {
-            console.error('❌ ERROR fetching credit note from API:', error);
+            log.error('❌ ERROR fetching credit note from API:', error);
             alert('Error loading credit note: ' + error.message);
           });
       } catch (error) {
-        console.error('❌ ERROR in credit note handling:', error);
+        log.error('❌ ERROR in credit note handling:', error);
         alert('Error handling credit note: ' + error.message);
       }
     }
@@ -1545,15 +1547,15 @@ class EditBillsPayments {
         // Open BillEditor in edit mode with the enriched bill data
         // BillEditor will handle all rendering and initialization identical to new bill page
         if (this.billingApp.billEditor) {
-          console.log('📖 Opening BillEditor with fully enriched data for bill:', billData.id);
+          log.debug('📖 Opening BillEditor with fully enriched data for bill:', billData.id);
           this.billingApp.billEditor.renderCreateBillView(billData);
         } else {
-          console.error('BillEditor not available');
+          log.error('BillEditor not available');
           alert('Error: BillEditor module not loaded');
         }
       })
       .catch(error => {
-        console.error('Error fetching bill:', error);
+        log.error('Error fetching bill:', error);
         alert('Error loading bill: ' + error.message);
       });
   }
@@ -1563,7 +1565,7 @@ class EditBillsPayments {
    */
   renderEditPaymentView(paymentData) {
     try {
-      console.log('🚀 renderEditPaymentView called with:', paymentData);
+      log.debug('🚀 renderEditPaymentView called with:', paymentData);
       
       // Track the payment being edited
       this.currentEditPaymentId = paymentData.payment_id || paymentData.id;
@@ -1660,9 +1662,9 @@ class EditBillsPayments {
         }
       });
       
-      console.log('✅ Edit payment form fully rendered and listeners attached');
+      log.debug('✅ Edit payment form fully rendered and listeners attached');
     } catch (error) {
-      console.error('❌ ERROR in renderEditPaymentView:', error);
+      log.error('❌ ERROR in renderEditPaymentView:', error);
       alert('Error rendering payment form: ' + error.message);
     }
   }
@@ -1849,7 +1851,7 @@ class EditBillsPayments {
           // Clear existing so we use the new one
           if (existingCreditAttachment) existingCreditAttachment.value = '';
         } catch (err) {
-          console.error('Error compressing image:', err);
+          log.error('Error compressing image:', err);
           alert('❌ Failed to process image');
           e.target.value = '';
         }
@@ -1946,7 +1948,7 @@ class EditBillsPayments {
           }
         }
       })
-      .catch(e => console.error('Error loading product memory from API:', e));
+      .catch(e => log.error('Error loading product memory from API:', e));
   }
 
   async addEditProductToBill() {
@@ -2018,7 +2020,7 @@ class EditBillsPayments {
       }
 
       if (changes.length > 0) {
-        console.log('🔍 Change detection triggered for:', changes);
+        log.debug('🔍 Change detection triggered for:', changes);
         const priorityField = changes[0]; 
         const oldValue = priorityField === 'mrp' ? masterProduct.mrp : 
                         (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
@@ -2187,11 +2189,11 @@ class EditBillsPayments {
       const product = this.editBillProducts.find(p => p.id === productId);
 
       if (!product) {
-        console.error('❌ Product not found in bill:', { productId });
+        log.error('❌ Product not found in bill:', { productId });
         return;
       }
 
-      console.log('📦 Opening variant selector from product card (edit mode):', { 
+      log.debug('📦 Opening variant selector from product card (edit mode):', { 
         name: product.name || product.product_name,
         variants: product.variants?.length || 0
       });
@@ -2218,10 +2220,10 @@ class EditBillsPayments {
         }
       }
 
-      console.warn('⚠️ No variants found for product:', product.name);
+      log.warn('⚠️ No variants found for product:', product.name);
       alert('This product has no variants available');
     } catch (error) {
-      console.error('Error opening variant selector:', error);
+      log.error('Error opening variant selector:', error);
     }
   }
 
@@ -2365,7 +2367,7 @@ class EditBillsPayments {
             product.mrp = batch.mrp || product.mrp;
           }
 
-          console.log('✅ Variant selected from card (edit mode):', { productId: product.id, pack: product.pack });
+          log.debug('✅ Variant selected from card (edit mode):', { productId: product.id, pack: product.pack });
 
           const modal = document.getElementById('variantSelectorModal');
           if (modal) modal.remove();
@@ -2604,7 +2606,7 @@ class EditBillsPayments {
           free: parseInt(product.free || 0)
         };
         
-        console.log(`📤 Item ${idx} SENDING to API:`, {
+        log.debug(`📤 Item ${idx} SENDING to API:`, {
           id: item.id,
           qty: item.quantity,
           rate: item.rate,
@@ -2619,7 +2621,7 @@ class EditBillsPayments {
       });
 
       // Debug: Log what's being sent
-      console.log('📤 SENDING TO UPDATE INVOICE:', {
+      log.debug('📤 SENDING TO UPDATE INVOICE:', {
         invoiceId: this.currentBillId,
         itemCount: items.length,
         firstItem: items.length > 0 ? {
@@ -2649,7 +2651,7 @@ class EditBillsPayments {
         alert('Failed to update bill: ' + (result.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error('Error updating bill:', error);
+      log.error('Error updating bill:', error);
       alert('Failed to update bill: ' + error.message);
     }
   }
@@ -2773,7 +2775,7 @@ class EditBillsPayments {
       modal.classList.remove('hidden');
 
     } catch (error) {
-      console.error('Error opening edit modal:', error);
+      log.error('Error opening edit modal:', error);
       alert('Error loading payment details: ' + error.message);
     }
   }
@@ -2859,7 +2861,7 @@ class EditBillsPayments {
         }
       }
 
-      console.log('📤 Sending update payload:', payload);
+      log.debug('📤 Sending update payload:', payload);
 
       // Send update to API
       const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
@@ -2877,7 +2879,7 @@ class EditBillsPayments {
       }
 
       const result = await response.json();
-      console.log('✓ Update successful:', result);
+      log.debug('✓ Update successful:', result);
 
       alert('✓ Transaction updated successfully');
 
@@ -2890,7 +2892,7 @@ class EditBillsPayments {
       this.renderEditBillListView();
 
     } catch (error) {
-      console.error('❌ Error saving payment edit:', error);
+      log.error('❌ Error saving payment edit:', error);
       alert('Error updating transaction: ' + error.message);
     }
   }
@@ -2914,7 +2916,7 @@ class EditBillsPayments {
         throw new Error(error.error || 'Failed to delete payment');
       }
 
-      console.log('✓ Delete successful');
+      log.debug('✓ Delete successful');
       alert('✓ Transaction deleted successfully');
 
       // Reload data from API
@@ -2926,7 +2928,7 @@ class EditBillsPayments {
       this.renderEditBillListView();
 
     } catch (error) {
-      console.error('❌ Error deleting payment:', error);
+      log.error('❌ Error deleting payment:', error);
       alert('Error deleting transaction: ' + error.message);
     }
   }
@@ -3028,7 +3030,7 @@ class EditBillsPayments {
     }
 
     try {
-      console.log(`🔄 Updating product master: ${field} -> ${newValue}`, product);
+      log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
       
       // Get IDs
       let variantId = product.variant_id || (this.currentEditProduct?.variant_id);
@@ -3038,17 +3040,17 @@ class EditBillsPayments {
 
       // Check if we need to REPAIR the product metadata first
       if (!variantId || !batchNo) {
-        console.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
+        log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
         const repairData = await this.showRepairProductMetadataModal(product);
         
         if (!repairData) {
-          console.log('❌ Repair cancelled by user.');
+          log.debug('❌ Repair cancelled by user.');
           return;
         }
 
         // CREATE missing metadata via API
         if (!variantId) {
-          console.log('🆕 Creating new variant...');
+          log.debug('🆕 Creating new variant...');
           const varRes = await fetch('/api/products/variants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3061,11 +3063,11 @@ class EditBillsPayments {
           if (!varRes.ok) throw new Error('Failed to create variant');
           const varData = await varRes.json();
           variantId = varData.id;
-          console.log('✅ Variant created:', variantId);
+          log.debug('✅ Variant created:', variantId);
         }
 
         if (!batchId || !batchNo) {
-          console.log('🆕 Creating new batch...');
+          log.debug('🆕 Creating new batch...');
           const batRes = await fetch('/api/products/batches', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3079,7 +3081,7 @@ class EditBillsPayments {
           const batData = await batRes.json();
           batchId = batData.id;
           batchNo = repairData.batch_no;
-          console.log('✅ Batch created:', batchId);
+          log.debug('✅ Batch created:', batchId);
         }
 
         // Update local object and currentEditProduct for subsequent use
@@ -3112,7 +3114,7 @@ class EditBillsPayments {
         }
       }
     } catch (error) {
-      console.error('❌ Failed to update product database:', error);
+      log.error('❌ Failed to update product database:', error);
       alert(`Failed to update database: ${error.message}`);
     }
   }
@@ -3224,10 +3226,10 @@ class EditBillsPayments {
       }
 
       const result = await response.json();
-      console.log('✅ MRP updated in database:', result);
+      log.debug('✅ MRP updated in database:', result);
       alert(`✓ MRP updated in database for batch ${batchNo}`);
     } catch (error) {
-      console.error('❌ Failed to update MRP in database:', error);
+      log.error('❌ Failed to update MRP in database:', error);
       alert(`Failed to update MRP in database: ${error.message}`);
     }
   }

@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Weather') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 // ========================================
 // STANDARDIZED WEATHER COMPONENT SCRIPT
 // ======================================== 
@@ -39,7 +41,7 @@ class WeatherDisplay {
         }
       }
     } catch (error) {
-      console.log('Cache read error:', error);
+      log.debug('Cache read error:', error);
     }
     return null;
   }
@@ -53,7 +55,7 @@ class WeatherDisplay {
       };
       localStorage.setItem(getScopedStorageKey('weatherLocationCache'), JSON.stringify(cacheData));
     } catch (error) {
-      console.log('Cache write error:', error);
+      log.debug('Cache write error:', error);
     }
   }
 
@@ -70,7 +72,7 @@ class WeatherDisplay {
         }
       }
     } catch (error) {
-      console.log('Cache read error:', error);
+      log.debug('Cache read error:', error);
     }
     return null;
   }
@@ -84,7 +86,7 @@ class WeatherDisplay {
       };
       localStorage.setItem(getScopedStorageKey('weatherDataCache'), JSON.stringify(cacheData));
     } catch (error) {
-      console.log('Cache write error:', error);
+      log.debug('Cache write error:', error);
     }
   }
 
@@ -222,7 +224,7 @@ class WeatherDisplay {
         }
       })
       .catch(error => {
-        console.log('Weather fetch error:', error);
+        log.debug('Weather fetch error:', error);
         this.updateDisplay('☁️', '--');
       });
   }

@@ -62,8 +62,8 @@ class SuiteCoreBridge {
             const { instance } = await WebAssembly.instantiate(bytes, {});
             wasmInstance = instance;
             wasmMemory = instance.exports.memory;
-            if (typeof console !== 'undefined' && console.log) {
-              console.log(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
+            if (typeof console !== 'undefined' && console.debug) {
+              console.debug(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
             }
             return true;
           }

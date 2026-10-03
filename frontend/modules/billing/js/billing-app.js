@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Core') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * BillingApp - A billing application built with AppWindow
  * Extends the standardized AppWindow for billing functionality
@@ -38,7 +40,7 @@ export class BillingAPI {
 
       return await response.json();
     } catch (error) {
-      console.error(`API Request Failed (${endpoint}):`, error);
+      log.error(`API Request Failed (${endpoint}):`, error);
       throw error;
     }
   }
@@ -374,17 +376,17 @@ export class BillingApp extends AppWindow {
       const health = await this.api.health();
       if (health.status === 'healthy') {
         this.apiEnabled = true;
-        console.log('✅ Backend connected successfully');
+        log.debug('✅ Backend connected successfully');
         // Load billing data from API when backend is available
         try {
           await this.loadBillingDataFromAPI();
-          console.log('✅ Billing data loaded from API');
+          log.debug('✅ Billing data loaded from API');
         } catch (e) {
-          console.warn('⚠ Failed to load billing data from API:', e.message);
+          log.warn('⚠ Failed to load billing data from API:', e.message);
         }
       }
     } catch (error) {
-      console.error('❌ Backend unavailable, cannot continue:', error.message);
+      log.error('❌ Backend unavailable, cannot continue:', error.message);
       this.apiEnabled = false;
       alert('Error: Billing system requires backend API connection. Please ensure the server is running.');
       return;
@@ -420,53 +422,53 @@ export class BillingApp extends AppWindow {
   refreshCurrentView() {
     // Re-render the current view with the newly loaded data
     if (this.currentView) {
-      console.log(`🔄 Refreshing view: ${this.currentView}`);
+      log.debug(`🔄 Refreshing view: ${this.currentView}`);
       this.renderView(this.currentView);
     }
   }
 
   setupBillingUI() {
     if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Billing')) {
-      console.log('[SETUP] setupBillingUI called - checking for dependencies...');
+      log.debug('[SETUP] setupBillingUI called - checking for dependencies...');
     }
     
     if (typeof BillEditor === 'undefined') {
       const error = 'BillEditor class not found. Ensure new-bill.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof EditBillsPayments === 'undefined') {
       const error = 'EditBillsPayments class not found. Ensure edit-bills-payments.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof OrdersView === 'undefined') {
       const error = 'OrdersView class not found. Ensure new-order.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof LedgerView === 'undefined') {
       const error = 'LedgerView class not found. Ensure ledger.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof BillingDashboard === 'undefined') {
       const error = 'BillingDashboard class not found. Ensure dashboard.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof PaymentCreditNote === 'undefined') {
       const error = 'PaymentCreditNote class not found. Ensure payment-credit-note.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
     if (typeof HistoryView === 'undefined') {
       const error = 'HistoryView class not found. Ensure history.js is loaded.';
-      console.error('[SETUP] ERROR: ' + error);
+      log.error('[SETUP] ERROR: ' + error);
       throw new Error(error);
     }
 
-    console.log('[SETUP] All dependencies found - proceeding with setup');
+    log.debug('[SETUP] All dependencies found - proceeding with setup');
 
     // Inject billing-specific styles
     this.injectBillingStyles();
@@ -716,7 +718,7 @@ export class BillingApp extends AppWindow {
                   : (Array.isArray(prods?.data) ? prods.data : [])));
           }
         } catch (e) {
-          console.warn('Could not fetch products on demand for search:', e.message);
+          log.warn('Could not fetch products on demand for search:', e.message);
         }
       }
 
@@ -731,7 +733,7 @@ export class BillingApp extends AppWindow {
         this.searchDropdown.style.display = 'block';
       }
     } catch (error) {
-      console.error('Global search dropdown error:', error);
+      log.error('Global search dropdown error:', error);
       if (this.searchDropdown) {
         this.searchDropdown.innerHTML = `<div style="padding: 12px 16px; color: #d9534f; text-align: center;">Search error</div>`;
         this.searchDropdown.style.display = 'block';
@@ -742,7 +744,7 @@ export class BillingApp extends AppWindow {
   populateSearchDropdown(results) {
     try {
       if (!this.searchDropdown) {
-        console.warn('Search dropdown not initialized');
+        log.warn('Search dropdown not initialized');
         return;
       }
 
@@ -834,7 +836,7 @@ export class BillingApp extends AppWindow {
 
       this.searchDropdown.style.display = 'block';
     } catch (error) {
-      console.error('Populate dropdown error:', error);
+      log.error('Populate dropdown error:', error);
     }
   }
 
@@ -909,7 +911,7 @@ export class BillingApp extends AppWindow {
 
       return item;
     } catch (error) {
-      console.error('Create dropdown item error:', error);
+      log.error('Create dropdown item error:', error);
       return null;
     }
   }
@@ -964,7 +966,7 @@ export class BillingApp extends AppWindow {
         this.navigateToItem(result, type);
       }, 1500);
     } catch (error) {
-      console.error('Handle dropdown click error:', error);
+      log.error('Handle dropdown click error:', error);
     }
   }
 
@@ -1017,7 +1019,7 @@ export class BillingApp extends AppWindow {
       // Scroll and highlight
       this.highlightElement(targetElement);
     } catch (error) {
-      console.error('Navigate to item error:', error);
+      log.error('Navigate to item error:', error);
     }
   }
 
@@ -1051,7 +1053,7 @@ export class BillingApp extends AppWindow {
         // Keep polling
         setTimeout(poll, interval);
       } else {
-        console.warn('Could not find element after polling for', (maxAttempts * interval / 1000).toFixed(1), 'seconds');
+        log.warn('Could not find element after polling for', (maxAttempts * interval / 1000).toFixed(1), 'seconds');
       }
     };
 
@@ -1067,7 +1069,7 @@ export class BillingApp extends AppWindow {
         element.style.backgroundColor = '';
       }, 5000);
     } catch (error) {
-      console.error('Highlight element error:', error);
+      log.error('Highlight element error:', error);
     }
   }
 
@@ -1167,7 +1169,7 @@ export class BillingApp extends AppWindow {
         });
       }
     } catch (error) {
-      console.warn('Global search error:', error);
+      log.warn('Global search error:', error);
     }
 
     return results;
@@ -1234,7 +1236,7 @@ export class BillingApp extends AppWindow {
         }
       }
     } catch (error) {
-      console.warn('Ledger search filter error:', error);
+      log.warn('Ledger search filter error:', error);
     }
   }
 
@@ -1253,7 +1255,7 @@ export class BillingApp extends AppWindow {
         noResults.style.display = 'block';
       }
     } catch (error) {
-      console.warn('Show no results error:', error);
+      log.warn('Show no results error:', error);
     }
   }
 
@@ -1286,7 +1288,7 @@ export class BillingApp extends AppWindow {
         noResults.style.display = 'none';
       }
     } catch (error) {
-      console.warn('Clear global search error:', error);
+      log.warn('Clear global search error:', error);
     }
   }
 
@@ -1388,7 +1390,7 @@ export class BillingApp extends AppWindow {
   renderPaymentCreditNoteView(params = null) {
     // Use the new PaymentCreditNote module
     const paymentCreditNote = new PaymentCreditNote(this);
-    paymentCreditNote.render(params).catch(err => console.error('Error rendering payment/credit note view:', err));
+    paymentCreditNote.render(params).catch(err => log.error('Error rendering payment/credit note view:', err));
   }
 
   renderHistoryView() {
@@ -1406,7 +1408,7 @@ export class BillingApp extends AppWindow {
 
     try {
       if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Billing')) {
-        console.log('🔄 Page active/focused. Ensuring billing data is up to date...');
+        log.debug('🔄 Page active/focused. Ensuring billing data is up to date...');
       }
       await this.loadBillingDataFromAPI();
       
@@ -1417,7 +1419,7 @@ export class BillingApp extends AppWindow {
         this.renderDashboard();
       }
     } catch (e) {
-      console.warn('Background updater check failed:', e);
+      log.warn('Background updater check failed:', e);
     }
   }
 
@@ -1453,7 +1455,7 @@ export class BillingApp extends AppWindow {
         const resp = await this.api.getBills();
         billsResponse = resp;
       } catch (billsErr) {
-        console.error('Error fetching bills:', billsErr.message);
+        log.error('Error fetching bills:', billsErr.message);
       }
 
       // Fetch payments with error handling
@@ -1462,7 +1464,7 @@ export class BillingApp extends AppWindow {
         const resp = await this.api.getPayments();
         paymentsResponse = resp;
       } catch (paymentsErr) {
-        console.warn('Warning: Error fetching payments:', paymentsErr.message);
+        log.warn('Warning: Error fetching payments:', paymentsErr.message);
         paymentsResponse = { data: [], success: false };
       }
 
@@ -1472,7 +1474,7 @@ export class BillingApp extends AppWindow {
         const resp = await this.api.getContacts();
         contactsResponse = resp;
       } catch (contactsErr) {
-        console.warn('Warning: Error fetching contacts:', contactsErr.message);
+        log.warn('Warning: Error fetching contacts:', contactsErr.message);
         contactsResponse = { data: [], success: false };
       }
 
@@ -1485,7 +1487,7 @@ export class BillingApp extends AppWindow {
           ordersResponse = normalizeCollection(data, []);
         }
       } catch (ordersErr) {
-        console.warn('Warning: Error fetching orders:', ordersErr.message);
+        log.warn('Warning: Error fetching orders:', ordersErr.message);
         ordersResponse = [];
       }
 
@@ -1495,7 +1497,7 @@ export class BillingApp extends AppWindow {
         const resp = await this.api.getProducts();
         productsResponse = normalizeCollection(resp, []);
       } catch (prodErr) {
-        console.warn('Warning: Error fetching products for billing search:', prodErr.message);
+        log.warn('Warning: Error fetching products for billing search:', prodErr.message);
         productsResponse = [];
       }
 
@@ -1597,7 +1599,7 @@ export class BillingApp extends AppWindow {
       this.saveBillingData();
       return this.billingData;
     } catch (err) {
-      console.error('Failed to load billing data from API:', err.message);
+      log.error('Failed to load billing data from API:', err.message);
       throw err;
     }
   }
@@ -1614,7 +1616,7 @@ export class BillingApp extends AppWindow {
     const confirmed = confirm('Are you sure you want to delete this bill? This action cannot be undone.');
     if (!confirmed) return;
 
-    console.log('Deleting bill:', billId);
+    log.debug('Deleting bill:', billId);
 
     try {
       // Delete bill via API using fetch
@@ -1628,7 +1630,7 @@ export class BillingApp extends AppWindow {
         throw new Error(data.error || `Failed to delete: ${response.statusText}`);
       }
 
-      console.log(`✓ Bill ${data.deleted?.invoice_no || billId} deleted successfully`);
+      log.debug(`✓ Bill ${data.deleted?.invoice_no || billId} deleted successfully`);
       
       // Show success with invoice details
       const msg = data.deleted?.invoice_no 
@@ -1647,7 +1649,7 @@ export class BillingApp extends AppWindow {
         this.switchView(viewToRefresh);
       }
     } catch (error) {
-      console.error('Error deleting bill:', error);
+      log.error('Error deleting bill:', error);
       alert(`✗ Error: ${error.message}`);
     }
   }
@@ -1659,7 +1661,7 @@ export class BillingApp extends AppWindow {
     const confirmed = confirm('Are you sure you want to delete this payment? This action cannot be undone.');
     if (!confirmed) return;
 
-    console.log('Deleting payment:', paymentId);
+    log.debug('Deleting payment:', paymentId);
 
     try {
       // Delete payment via API using fetch
@@ -1673,7 +1675,7 @@ export class BillingApp extends AppWindow {
         throw new Error(data.error || `Failed to delete: ${response.statusText}`);
       }
 
-      console.log(`✓ Payment deleted successfully`);
+      log.debug(`✓ Payment deleted successfully`);
       alert('✓ Payment deleted successfully');
 
       // Reload billing data from API
@@ -1687,7 +1689,7 @@ export class BillingApp extends AppWindow {
         this.switchView(viewToRefresh);
       }
     } catch (error) {
-      console.error('Error deleting payment:', error);
+      log.error('Error deleting payment:', error);
       alert(`✗ Error: ${error.message}`);
     }
   }
@@ -1731,7 +1733,7 @@ export class BillingApp extends AppWindow {
         this.switchView('dashboard');
         break;
       default:
-        console.warn('Unknown action:', action);
+        log.warn('Unknown action:', action);
     }
   }
 
@@ -2089,7 +2091,7 @@ export class BillingApp extends AppWindow {
       const loadingEl = document.querySelector('[id^="pdf-export-loading-"]');
       if (loadingEl) loadingEl.remove();
 
-      console.error('PDF Export Error:', error);
+      log.error('PDF Export Error:', error);
       const errorId = 'pdf-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
@@ -2130,7 +2132,7 @@ export class BillingApp extends AppWindow {
       }
 
     } catch (error) {
-      console.error('PDF Print Error:', error);
+      log.error('PDF Print Error:', error);
       const errorId = 'pdf-print-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
@@ -2336,7 +2338,7 @@ export class BillingApp extends AppWindow {
       const loadingEl = document.querySelector('[id^="pdf-preview-loading-"]');
       if (loadingEl) loadingEl.remove();
 
-      console.error('PDF Preview Error:', error);
+      log.error('PDF Preview Error:', error);
       const errorId = 'pdf-preview-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
@@ -2359,7 +2361,7 @@ export class BillingApp extends AppWindow {
         this.editBillsPayments.editBill(billId);
       }
     } catch (error) {
-      console.error('Error editing bill:', error);
+      log.error('Error editing bill:', error);
       alert('Failed to load bill for editing: ' + error.message);
     }
   }
@@ -2393,7 +2395,7 @@ export class BillingApp extends AppWindow {
         this.editBillsPayments.renderEditPaymentView(paymentData);
       }, 100);
     } catch (error) {
-      console.error('Error editing payment:', error);
+      log.error('Error editing payment:', error);
       alert('Failed to load payment for editing: ' + error.message);
     }
   }
@@ -2463,7 +2465,7 @@ export class BillingApp extends AppWindow {
       const loadingEl = document.querySelector('[id^="pdf-export-loading-"]');
       if (loadingEl) loadingEl.remove();
 
-      console.error('Payment PDF Export Error:', error);
+      log.error('Payment PDF Export Error:', error);
       const errorId = 'pdf-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
@@ -2655,7 +2657,7 @@ export class BillingApp extends AppWindow {
       const loadingEl = document.querySelector('[id^="pdf-preview-loading-"]');
       if (loadingEl) loadingEl.remove();
 
-      console.error('Payment PDF Preview Error:', error);
+      log.error('Payment PDF Preview Error:', error);
       const errorId = 'pdf-preview-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;

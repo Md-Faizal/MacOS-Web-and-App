@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('ProductList') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 import { BillingAPI } from '/modules/billing/js/billing-app.js';
 import { QRGenerator } from '/modules/product-list/js/qr-generator.js';
 
@@ -334,22 +336,22 @@ export class ProductListApp extends AppWindow {
       // Try to load products to check if API is available
       const products = await this.api.getProducts();
       const normalizedProducts = this.normalizeApiCollection(products, []);
-      console.log('Products response:', products, 'Type:', typeof products, 'Is Array:', Array.isArray(products), 'Normalized Length:', normalizedProducts.length);
+      log.debug('Products response:', products, 'Type:', typeof products, 'Is Array:', Array.isArray(products), 'Normalized Length:', normalizedProducts.length);
       
       if (Array.isArray(normalizedProducts)) {
         this.apiEnabled = true;
-        console.log('✅ Backend connected for Products - ' + normalizedProducts.length + ' products available');
+        log.debug('✅ Backend connected for Products - ' + normalizedProducts.length + ' products available');
         // Load products and categories after confirming backend is available
         await this.loadProducts();
         await this.loadCategoriesFromAPI();
       } else {
-        console.warn('⚠️ Products response is not a valid array:', products);
+        log.warn('⚠️ Products response is not a valid array:', products);
         this.apiEnabled = false;
         this.notifications.show('⚠️ Backend returned invalid data - API required', 'warning', 4000);
         this.renderProductsView();
       }
     } catch (error) {
-      console.error('❌ Backend unavailable for Products:', error.message);
+      log.error('❌ Backend unavailable for Products:', error.message);
       this.apiEnabled = false;
       this.notifications.show('⚠️ Backend not available - API required', 'warning', 4000);
       // API is required - show empty state
@@ -359,18 +361,18 @@ export class ProductListApp extends AppWindow {
 
   async loadProducts() {
     if (!this.apiEnabled) {
-      console.error('API not available - cannot load products');
+      log.error('API not available - cannot load products');
       return;
     }
     
     try {
       const products = await this.api.getProducts();
       const normalizedProducts = this.normalizeApiCollection(products, []);
-      console.log('✅ Products loaded from API:', normalizedProducts.length, 'products');
+      log.debug('✅ Products loaded from API:', normalizedProducts.length, 'products');
       this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
       this.renderProductsView();
     } catch (error) {
-      console.error('Error loading products from API:', error);
+      log.error('Error loading products from API:', error);
       this.notifications.show('Failed to load products from API', 'error', 3000);
     }
   }
@@ -647,7 +649,7 @@ export class ProductListApp extends AppWindow {
             this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
           }
         } catch (e) {
-          console.warn('Could not fetch products on demand:', e.message);
+          log.warn('Could not fetch products on demand:', e.message);
         }
       }
 
@@ -659,7 +661,7 @@ export class ProductListApp extends AppWindow {
         this.searchDropdown.style.display = 'block';
       }
     } catch (error) {
-      console.error('Product search dropdown error:', error);
+      log.error('Product search dropdown error:', error);
       if (this.searchDropdown) {
         this.searchDropdown.innerHTML = `<div style="padding: 12px 16px; color: #d9534f; text-align: center;">Search error</div>`;
         this.searchDropdown.style.display = 'block';
@@ -841,7 +843,7 @@ export class ProductListApp extends AppWindow {
           return fuzzyResults;
         }
       } catch (err) {
-        console.warn('[ProductList] WASM fuzzy search fallback:', err);
+        log.warn('[ProductList] WASM fuzzy search fallback:', err);
       }
     }
 
@@ -1249,7 +1251,7 @@ export class ProductListApp extends AppWindow {
     // Validate product before saving
     const validation = this.validateProduct(product);
     if (!validation.valid) {
-      console.warn('Product validation failed:', validation.invalidVariants);
+      log.warn('Product validation failed:', validation.invalidVariants);
       const shouldProceed = await this.showValidationWarningModal(product, validation);
       if (!shouldProceed) return false;
     }
@@ -1259,21 +1261,21 @@ export class ProductListApp extends AppWindow {
       
       if (product.id && product.id > 0) {
         // Update existing product
-        console.log(`Updating product ${product.id}:`, productData);
+        log.debug(`Updating product ${product.id}:`, productData);
         await this.api.updateProduct(product.id, productData);
-        console.log(`✓ Product ${product.id} updated in API`);
+        log.debug(`✓ Product ${product.id} updated in API`);
         this.notifications.show('Product updated successfully!', 'success', 2000);
       } else {
         // Create new product
-        console.log('Creating new product:', productData);
+        log.debug('Creating new product:', productData);
         const result = await this.api.createProduct(productData);
         product.id = result.id;
-        console.log(`✓ Product created in API with ID ${result.id}`);
+        log.debug(`✓ Product created in API with ID ${result.id}`);
         this.notifications.show('Product created successfully!', 'success', 2000);
       }
       return true;
     } catch (error) {
-      console.error('Error saving product to API:', error);
+      log.error('Error saving product to API:', error);
       this.notifications.show(`Failed to save product: ${error.message}`, 'error', 3000);
       return false;
     }
@@ -1283,13 +1285,13 @@ export class ProductListApp extends AppWindow {
     if (!this.apiEnabled || !productId) return false;
     
     try {
-      console.log(`Deleting product ${productId} from API`);
+      log.debug(`Deleting product ${productId} from API`);
       await this.api.deleteProduct(productId);
-      console.log(`✓ Product ${productId} deleted from API`);
+      log.debug(`✓ Product ${productId} deleted from API`);
       this.notifications.show('Product deleted', 'info', 2000);
       return true;
     } catch (error) {
-      console.error('Error deleting product from API:', error);
+      log.error('Error deleting product from API:', error);
       this.notifications.show(`Failed to delete product: ${error.message}`, 'error', 3000);
       return false;
     }
@@ -1319,13 +1321,13 @@ export class ProductListApp extends AppWindow {
     
     try {
       const variantData = this.formatVariantForAPI(variant);
-      console.log(`Creating variant for product ${productId}:`, variantData);
+      log.debug(`Creating variant for product ${productId}:`, variantData);
       const result = await this.api.createVariant(productId, variantData);
-      console.log(`✓ Variant created with ID ${result.id}`);
+      log.debug(`✓ Variant created with ID ${result.id}`);
       return result;
     } catch (error) {
-      console.error('Error creating variant in API:', error);
-      console.warn('Variant saved locally, API sync failed');
+      log.error('Error creating variant in API:', error);
+      log.warn('Variant saved locally, API sync failed');
       return null;
     }
   }
@@ -1335,13 +1337,13 @@ export class ProductListApp extends AppWindow {
     
     try {
       const variantData = this.formatVariantForAPI(variant);
-      console.log(`Updating variant ${variantId}:`, variantData);
+      log.debug(`Updating variant ${variantId}:`, variantData);
       await this.api.updateVariant(variantId, variantData);
-      console.log(`✓ Variant ${variantId} updated in API`);
+      log.debug(`✓ Variant ${variantId} updated in API`);
       return true;
     } catch (error) {
-      console.error('Error updating variant in API:', error);
-      console.warn('Variant updated locally, API sync failed');
+      log.error('Error updating variant in API:', error);
+      log.warn('Variant updated locally, API sync failed');
       return false;
     }
   }
@@ -1350,13 +1352,13 @@ export class ProductListApp extends AppWindow {
     if (!this.apiEnabled || !variantId) return false;
     
     try {
-      console.log(`Deleting variant ${variantId} from API`);
+      log.debug(`Deleting variant ${variantId} from API`);
       await this.api.deleteVariant(variantId);
-      console.log(`✓ Variant ${variantId} deleted from API`);
+      log.debug(`✓ Variant ${variantId} deleted from API`);
       return true;
     } catch (error) {
-      console.error('Error deleting variant from API:', error);
-      console.warn('Variant deleted locally, API sync failed');
+      log.error('Error deleting variant from API:', error);
+      log.warn('Variant deleted locally, API sync failed');
       return false;
     }
   }
@@ -1376,13 +1378,13 @@ export class ProductListApp extends AppWindow {
     
     try {
       const batchData = this.formatBatchForAPI(batch);
-      console.log(`Creating batch for variant ${variantId}:`, batchData);
+      log.debug(`Creating batch for variant ${variantId}:`, batchData);
       const result = await this.api.createBatch(variantId, batchData);
-      console.log(`✓ Batch created with ID ${result.id}`);
+      log.debug(`✓ Batch created with ID ${result.id}`);
       return result;
     } catch (error) {
-      console.error('Error creating batch in API:', error);
-      console.warn('Batch saved locally, API sync failed');
+      log.error('Error creating batch in API:', error);
+      log.warn('Batch saved locally, API sync failed');
       return null;
     }
   }
@@ -1392,13 +1394,13 @@ export class ProductListApp extends AppWindow {
     
     try {
       const batchData = this.formatBatchForAPI(batch);
-      console.log(`Updating batch ${batchId}:`, batchData);
+      log.debug(`Updating batch ${batchId}:`, batchData);
       await this.api.updateBatch(batchId, batchData);
-      console.log(`✓ Batch ${batchId} updated in API`);
+      log.debug(`✓ Batch ${batchId} updated in API`);
       return true;
     } catch (error) {
-      console.error('Error updating batch in API:', error);
-      console.warn('Batch updated locally, API sync failed');
+      log.error('Error updating batch in API:', error);
+      log.warn('Batch updated locally, API sync failed');
       return false;
     }
   }
@@ -1407,13 +1409,13 @@ export class ProductListApp extends AppWindow {
     if (!this.apiEnabled || !batchId) return false;
     
     try {
-      console.log(`Deleting batch ${batchId} from API`);
+      log.debug(`Deleting batch ${batchId} from API`);
       await this.api.deleteBatch(batchId);
-      console.log(`✓ Batch ${batchId} deleted from API`);
+      log.debug(`✓ Batch ${batchId} deleted from API`);
       return true;
     } catch (error) {
-      console.error('Error deleting batch from API:', error);
-      console.warn('Batch deleted locally, API sync failed');
+      log.error('Error deleting batch from API:', error);
+      log.warn('Batch deleted locally, API sync failed');
       return false;
     }
   }
@@ -1422,24 +1424,24 @@ export class ProductListApp extends AppWindow {
 
   async loadCategoriesFromAPI() {
     if (!this.apiEnabled) {
-      console.error('API not available - cannot load categories');
+      log.error('API not available - cannot load categories');
       return;
     }
     
     try {
       const categories = await this.api.getCategories();
       const normalizedCategories = this.normalizeApiCollection(categories, []);
-      console.log('Categories response:', categories, 'Type:', typeof categories, 'Is Array:', Array.isArray(categories), 'Normalized Length:', normalizedCategories.length);
+      log.debug('Categories response:', categories, 'Type:', typeof categories, 'Is Array:', Array.isArray(categories), 'Normalized Length:', normalizedCategories.length);
       
       if (Array.isArray(normalizedCategories)) {
         this.categories = normalizedCategories; // Store full category objects with id and name
-        console.log('✅ Categories loaded from API:', this.categories.length, 'categories');
+        log.debug('✅ Categories loaded from API:', this.categories.length, 'categories');
       } else {
-        console.warn('⚠️ Categories response is not a valid array:', categories);
+        log.warn('⚠️ Categories response is not a valid array:', categories);
         this.categories = [];
       }
     } catch (error) {
-      console.error('Error loading categories from API:', error.message);
+      log.error('Error loading categories from API:', error.message);
       this.notifications.show('Failed to load categories from API', 'error', 3000);
       this.categories = [];
     }
@@ -1967,7 +1969,7 @@ export class ProductListApp extends AppWindow {
         this.switchView('all');
       } else {
         // saveProductToAPI already shows the specific error notification
-        console.error('Failed to save product to server');
+        log.error('Failed to save product to server');
       }
     });
 
@@ -2821,7 +2823,7 @@ export class ProductListApp extends AppWindow {
         this.notifications.show(`Category "${catName}" added!`, 'success', 2000);
         this.renderCategoriesView();
       } catch (err) {
-        console.error('Failed to create category:', err.message);
+        log.error('Failed to create category:', err.message);
         this.notifications.show(`Failed to add category: ${err.message}`, 'error', 2500);
       }
     });
@@ -2883,7 +2885,7 @@ export class ProductListApp extends AppWindow {
           this.notifications.show(`Category renamed to "${newName.trim()}"!`, 'success', 2000);
           this.renderCategoriesView();
         } catch (err) {
-          console.error('Failed to rename category:', err.message);
+          log.error('Failed to rename category:', err.message);
           this.notifications.show(`Failed to rename category: ${err.message}`, 'error', 2500);
         }
       });
@@ -2921,7 +2923,7 @@ export class ProductListApp extends AppWindow {
           this.notifications.show(`Category "${cat}" deleted successfully!`, 'success', 2000);
           this.renderCategoriesView();
         } catch (err) {
-          console.error('Failed to delete category:', err.message);
+          log.error('Failed to delete category:', err.message);
           this.notifications.show(`Failed to delete category: ${err.message}`, 'error', 2500);
         }
       });
@@ -3295,7 +3297,7 @@ export class ProductListApp extends AppWindow {
         });
       }
     } catch (err) {
-      console.warn('[Catalog Export] Backend PDF generation failed:', err);
+      log.warn('[Catalog Export] Backend PDF generation failed:', err);
       
       if (userChoice === 'download') {
         // DO NOT call window.print() on download failure! Show clean error message in modal.

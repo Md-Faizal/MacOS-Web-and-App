@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Desktop:ContextMenu') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 // ========================================
 // CONTEXT MENU ACTIONS - Separate module
 // ========================================
@@ -96,12 +98,12 @@ if (typeof window !== 'undefined') {
  */
 class NewFolderAction {
   execute() {
-    console.log('📁 New Folder action triggered');
+    log.debug('📁 New Folder action triggered');
     const folderName = prompt('Enter folder name:', 'New Folder');
     
     if (folderName) {
       this.showNotification(`Created folder: ${folderName}`);
-      console.log('✓ Folder created:', folderName);
+      log.debug('✓ Folder created:', folderName);
     }
   }
 
@@ -146,7 +148,7 @@ class NewFolderAction {
  */
 class GetInfoAction {
   execute() {
-    console.log('ℹ Get Info action triggered');
+    log.debug('ℹ Get Info action triggered');
     this.showInfoDialog();
   }
 
@@ -224,7 +226,7 @@ class GetInfoAction {
  */
 class ChangeWallpaperAction {
   execute() {
-    console.log('🖼 Change Wallpaper action triggered');
+    log.debug('🖼 Change Wallpaper action triggered');
     this.openSettingsWallpaperSection();
   }
 
@@ -278,7 +280,7 @@ class EditWidgetsAction {
  */
 class UseStacksAction {
   execute() {
-    console.log('📚 Use Stacks action triggered');
+    log.debug('📚 Use Stacks action triggered');
     this.toggleStacks();
   }
 
@@ -318,7 +320,7 @@ class UseStacksAction {
  */
 class SortByAction {
   execute() {
-    console.log('↕ Sort By action triggered');
+    log.debug('↕ Sort By action triggered');
     this.showSortDialog();
   }
 
@@ -381,7 +383,7 @@ class SortByAction {
  */
 class ShowViewOptionsAction {
   execute() {
-    console.log('⚙ Show View Options action triggered');
+    log.debug('⚙ Show View Options action triggered');
     this.showViewOptions();
   }
 

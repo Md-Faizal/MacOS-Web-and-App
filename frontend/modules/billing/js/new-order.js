@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /* 3-Stage Order Management System
    
    WORKFLOW:
@@ -594,7 +596,7 @@ class OrdersView {
       
       this.syncOrders(newOrders, isManual);
     } catch (e) {
-      console.warn('Sync failed:', e);
+      log.warn('Sync failed:', e);
     }
   }
 
@@ -889,7 +891,7 @@ class OrdersView {
         const customerId = this.params.customerId;
         const customerName = this.params.customerName || 'Customer';
         
-        console.log(`🔗 OrdersView: Handling deep link for ${customerName} (${customerId})`);
+        log.debug(`🔗 OrdersView: Handling deep link for ${customerName} (${customerId})`);
         
         setTimeout(() => {
             // Find customer to get the correct name if it was missing
@@ -1185,9 +1187,9 @@ class OrdersView {
       }
       
       this.rerenderOrderCards();
-      console.log('✓ Orders data refreshed');
+      log.debug('✓ Orders data refreshed');
     } catch (error) {
-      console.error('Error refreshing orders:', error);
+      log.error('Error refreshing orders:', error);
     }
   }
 
@@ -1215,7 +1217,7 @@ class OrdersView {
       const prodData = productsRes.ok ? await productsRes.json() : [];
       this.products = normalizeCollection(prodData);
     } catch (error) {
-      console.error('Error loading data:', error);
+      log.error('Error loading data:', error);
       this.showNotification('Failed to load customers and products', 'error');
     }
   }
@@ -1255,7 +1257,7 @@ class OrdersView {
         this.orders = orders;
       }
     } catch (error) {
-      console.error('Error loading orders:', error);
+      log.error('Error loading orders:', error);
       this.showNotification('Failed to load orders', 'error');
       this.orders = [];
     }
@@ -1432,7 +1434,7 @@ class OrdersView {
         // Filter orders for this customer
         const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
         
-        console.log('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
+        log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
         
         // Render with fetched orders
         this.renderCustomerOrdersList(customerId, customerName, customerOrders);
@@ -1440,7 +1442,7 @@ class OrdersView {
         throw new Error('Failed to fetch orders');
       }
     } catch (error) {
-      console.error('Error fetching customer orders:', error);
+      log.error('Error fetching customer orders:', error);
       // Fallback to in-memory orders
       const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
       this.renderCustomerOrdersList(customerId, customerName, customerOrders);
@@ -1724,7 +1726,7 @@ class OrdersView {
         }
       }
     } catch (error) {
-      console.error('Error fetching next order number:', error);
+      log.error('Error fetching next order number:', error);
       // Fallback: Generate locally if API fails, though backend will also generate it on save
       const tempOrder = { id: orderId, order_date: orderDate.toISOString() };
       orderNumber = this.generateOrderNumber(tempOrder, orderDate);
@@ -1805,7 +1807,7 @@ class OrdersView {
         this.showNotification('Failed to load order', 'error');
       }
     } catch (error) {
-      console.error('Error fetching order:', error);
+      log.error('Error fetching order:', error);
       this.showNotification('Error loading order', 'error');
     }
   }
@@ -1847,7 +1849,7 @@ class OrdersView {
         this.showNotification('Failed to load order', 'error');
       }
     } catch (error) {
-      console.error('Error fetching order:', error);
+      log.error('Error fetching order:', error);
       this.showNotification('Error loading order', 'error');
     }
   }
@@ -2277,7 +2279,7 @@ class OrdersView {
             this.showNotification(`Extracted label text: ${data.product_name}`, 'info');
             if (searchInput) searchInput.value = data.product_name;
           }
-        }).catch(err => console.log('Scan error', err));
+        }).catch(err => log.debug('Scan error', err));
     });
 
     const notesArea = document.getElementById('orderNotes');
@@ -2572,7 +2574,7 @@ class OrdersView {
           matchedIdSet = new Set(matching.map(m => String(m.id)));
           nonMatching = this.products.filter(p => !matchedIdSet.has(String(p.id)));
         } catch (err) {
-          console.warn('[NewOrder] WASM fuzzy search fallback:', err);
+          log.warn('[NewOrder] WASM fuzzy search fallback:', err);
         }
       }
 
@@ -2681,7 +2683,7 @@ class OrdersView {
         });
       });
     }).catch(err => {
-      console.error('Error loading recommendations:', err);
+      log.error('Error loading recommendations:', err);
       const container = document.getElementById('recommendations');
       if (container) container.innerHTML = '<div style="color:#c00; font-size:11px;">Error loading</div>';
     });
@@ -2901,7 +2903,7 @@ class OrdersView {
           } else {
             this.showNotification(`Item '${data.product_name}' not found in this order checklist`, 'error');
           }
-        }).catch(err => console.log('QC scan error', err));
+        }).catch(err => log.debug('QC scan error', err));
     });
 
     document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
@@ -2944,7 +2946,7 @@ class OrdersView {
       }
       return [];
     } catch (error) {
-      console.error('Error fetching invoices:', error);
+      log.error('Error fetching invoices:', error);
       return [];
     }
   }
@@ -3267,7 +3269,7 @@ class OrdersView {
 
   async saveOrder(skipRefresh = false) {
     if (!this.currentOrderData) {
-      console.error('No order data to save');
+      log.error('No order data to save');
       this.showNotification('No order to save', 'error');
       return;
     }
@@ -3336,7 +3338,7 @@ class OrdersView {
         }
       }
     } catch (error) {
-      console.error('Error saving:', error);
+      log.error('Error saving:', error);
     }
 
     if (this.currentOrderData && this.currentOrderData.id) {
@@ -3410,7 +3412,7 @@ class OrdersView {
         }
       }
     } catch (error) {
-      console.error('Error deleting order:', error);
+      log.error('Error deleting order:', error);
       this.showNotification('Error deleting order', 'error');
     }
   }
@@ -3422,7 +3424,7 @@ class OrdersView {
       const payload = await resp.json();
       return payload.data || [];
     } catch (e) {
-      console.error('Error:', e);
+      log.error('Error:', e);
       return [];
     }
   }

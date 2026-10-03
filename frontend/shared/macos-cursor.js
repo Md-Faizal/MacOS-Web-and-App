@@ -535,5 +535,5 @@
     version:     '4.0-industrial'
   };
 
-  console.log('🖱️ MacOS Cursor v4.0 ready (Synchronous, Offline, Industrial-Standard)');
+  console.debug('🖱️ MacOS Cursor v4.0 ready (Synchronous, Offline, Industrial-Standard)');
 })();

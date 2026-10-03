@@ -98,7 +98,7 @@ class MediaManager {
     if (this.audioElement.src !== this.getCurrentTrack().url) {
         this.audioElement.src = this.getCurrentTrack().url;
     }
-    this.audioElement.play().catch(e => console.log('Audio play prevented:', e));
+    this.audioElement.play().catch(e => console.debug('Audio play prevented:', e));
     this.startProgressTimer();
     this.updateMediaSession();
     this.notify();

@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Settings') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * SettingsApp - A macOS Tahoe style settings application
  * Features: Appearance, General, About sections with customization options
@@ -83,7 +85,7 @@ export class SettingsApp extends AppWindow {
           if (mutation.type === 'childList') {
             mutation.removedNodes.forEach((node) => {
               if (node === appWindow) {
-                console.log('[Settings] Cleaning up wallpaper resources');
+                log.debug('[Settings] Cleaning up wallpaper resources');
                 this.cleanupWallpapers();
                 if (this.adminModule?.destroy) {
                   this.adminModule.destroy();
@@ -162,7 +164,7 @@ export class SettingsApp extends AppWindow {
    */
   cleanupWallpapers() {
     if (this.wallpaperResourceManager) {
-      console.log('[Settings] Stopping all wallpaper preview videos');
+      log.debug('[Settings] Stopping all wallpaper preview videos');
       this.wallpaperResourceManager.cleanup();
     }
   }
@@ -214,7 +216,7 @@ export class SettingsApp extends AppWindow {
 
     // Listen for profile updates from other modules
     window.addEventListener('macos-profile-updated', () => {
-      console.log('[Settings] Profile update detected, re-syncing...');
+      log.debug('[Settings] Profile update detected, re-syncing...');
       this.fetchAndSyncProfile();
     });
 
@@ -1323,7 +1325,7 @@ export class SettingsApp extends AppWindow {
         }
       }
     } catch (err) {
-      console.error('Failed to sync settings sidebar profile:', err);
+      log.error('Failed to sync settings sidebar profile:', err);
     }
   }
 
@@ -2045,7 +2047,7 @@ export class SettingsApp extends AppWindow {
         }
       }
     } catch (err) {
-      console.error('[Settings] Failed to fetch settings:', err);
+      log.error('[Settings] Failed to fetch settings:', err);
     }
   }
 
@@ -2116,7 +2118,7 @@ export class SettingsApp extends AppWindow {
         body: JSON.stringify(this.settings)
       });
     } catch (e) {
-      console.error('[Settings] Failed to save settings:', e);
+      log.error('[Settings] Failed to save settings:', e);
     }
   }
 
@@ -2126,18 +2128,18 @@ export class SettingsApp extends AppWindow {
       if (wallpaperBg) {
         if (imagePath.endsWith('.mp4') || imagePath.endsWith('.mov') || imagePath.endsWith('.webm')) {
           // Video wallpaper - create properly configured video element
-          console.log('[Wallpaper] Setting video wallpaper:', imagePath);
+          log.debug('[Wallpaper] Setting video wallpaper:', imagePath);
           const video = this.createOptimizedVideo(imagePath);
           video.classList.add('wallpaper-video');
           
           // Error handling
           video.onerror = () => {
-            console.error('[Wallpaper] Failed to load video:', imagePath);
+            log.error('[Wallpaper] Failed to load video:', imagePath);
           };
           
           // Auto-play handling
           video.addEventListener('loadedmetadata', () => {
-            console.log('[Wallpaper] Video ready, starting playback');
+            log.debug('[Wallpaper] Video ready, starting playback');
             let retryCount = 0;
             const maxRetries = 10;
             let retryTimer = null;
@@ -2147,11 +2149,11 @@ export class SettingsApp extends AppWindow {
                 if (err.name === 'AbortError') {
                   retryCount++;
                   if (retryCount < maxRetries) {
-                    console.log(`[Wallpaper] Play interrupted, retrying (${retryCount}/${maxRetries})`);
+                    log.debug(`[Wallpaper] Play interrupted, retrying (${retryCount}/${maxRetries})`);
                     retryTimer = setTimeout(attemptPlay, 1000);
                   }
                 } else {
-                  console.warn('[Wallpaper] Play error:', err.name);
+                  log.warn('[Wallpaper] Play error:', err.name);
                 }
               });
             };
@@ -2162,7 +2164,7 @@ export class SettingsApp extends AppWindow {
           // Handle stalling - buffer more data and resume
           let stalledTimeout;
           video.addEventListener('stalled', () => {
-            console.log('[Wallpaper] Video stalled, buffering...');
+            log.debug('[Wallpaper] Video stalled, buffering...');
             clearTimeout(stalledTimeout);
             stalledTimeout = setTimeout(() => {
               video.play().catch(() => {});
@@ -2173,7 +2175,7 @@ export class SettingsApp extends AppWindow {
           wallpaperBg.appendChild(video);
         } else {
           // Image wallpaper
-          console.log('[Wallpaper] Setting image wallpaper:', imagePath);
+          log.debug('[Wallpaper] Setting image wallpaper:', imagePath);
           wallpaperBg.innerHTML = '';
           wallpaperBg.style.backgroundImage = `url('${imagePath}')`;
           wallpaperBg.style.backgroundSize = 'cover';
@@ -2205,9 +2207,9 @@ export class SettingsApp extends AppWindow {
         timestamp: new Date().toISOString()
       }));
       
-      console.log('[Wallpaper] Wallpaper updated successfully');
+      log.debug('[Wallpaper] Wallpaper updated successfully');
     } catch (error) {
-      console.error('Error updating wallpaper:', error);
+      log.error('Error updating wallpaper:', error);
     }
   }
 
@@ -2219,14 +2221,14 @@ export class SettingsApp extends AppWindow {
       const data = await response.json();
       return data.wallpapers || [];
     } catch (error) {
-      console.error('Error fetching wallpapers from API:', error);
+      log.error('Error fetching wallpapers from API:', error);
       return [];
     }
   }
 
   showAddWallpaperModal() {
     // Not implemented in streaming version
-    console.warn('[Wallpaper] Add wallpaper modal not yet implemented');
+    log.warn('[Wallpaper] Add wallpaper modal not yet implemented');
   }
 }
 

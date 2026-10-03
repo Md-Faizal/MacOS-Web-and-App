@@ -32,8 +32,8 @@ function getSuiteCoreBridge() {
 if (typeof window !== 'undefined') {
   if (window.SuiteCoreBridge && typeof window.SuiteCoreBridge.initBrowser === 'function') {
     window.SuiteCoreBridge.initBrowser().then(loaded => {
-      if (loaded && typeof console !== 'undefined' && console.log) {
-        console.log('[LOAD] bill-calculator.js: SuiteCore WebAssembly Accelerated (WASM: YES)');
+      if (loaded && typeof console !== 'undefined' && console.debug) {
+        console.debug('[LOAD] bill-calculator.js: SuiteCore WebAssembly Accelerated (WASM: YES)');
       }
     });
   }
@@ -304,8 +304,8 @@ class BillCalculator {
 // Export to global scope for browser usage
 if (typeof window !== 'undefined') {
   window.BillCalculator = BillCalculator;
-  if (typeof console !== 'undefined' && console.log) {
-    console.log('[LOAD] BillCalculator exported to window');
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('[LOAD] BillCalculator exported to window');
   }
 }
 

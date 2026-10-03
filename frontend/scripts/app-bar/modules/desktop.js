@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Desktop:AppBar') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 ﻿// Desktop Shortcuts Management
 const getScopedStorageKey = (baseKey) => {
   const userId = window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'guest';
@@ -29,14 +31,14 @@ class DesktopManager {
 
     // Add global dragover handler to allow drops FIRST
     document.addEventListener('dragover', (e) => {
-      console.log('Global dragover handler fired');
+      log.debug('Global dragover handler fired');
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
     }, false);
 
     // Add global dragstart handler for debugging
     document.addEventListener('dragstart', (e) => {
-      console.log('⭐ GLOBAL DRAGSTART:', {
+      log.debug('⭐ GLOBAL DRAGSTART:', {
         target: e.target.tagName,
         id: e.target.id,
         class: e.target.className,
@@ -69,19 +71,19 @@ class DesktopManager {
     `;
     document.body.insertBefore(desktop, document.querySelector('.dock-container'));
     this.desktopArea = desktop;
-    console.log('Desktop area created:', this.desktopArea);
+    log.debug('Desktop area created:', this.desktopArea);
   }
 
   setupDropZone() {
     if (!this.desktopArea) {
-      console.warn('Desktop area not found');
+      log.warn('Desktop area not found');
       return;
     }
 
-    console.log('Setting up drop zone on desktop area');
+    log.debug('Setting up drop zone on desktop area');
 
     this.desktopArea.addEventListener('dragenter', (e) => {
-      console.log('Dragenter on desktop');
+      log.debug('Dragenter on desktop');
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -90,7 +92,7 @@ class DesktopManager {
     }, false);
 
     this.desktopArea.addEventListener('dragover', (e) => {
-      console.log('Dragover on desktop');
+      log.debug('Dragover on desktop');
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -99,7 +101,7 @@ class DesktopManager {
     }, false);
 
     this.desktopArea.addEventListener('dragleave', (e) => {
-      console.log('Dragleave on desktop');
+      log.debug('Dragleave on desktop');
       // Only reset if leaving the desktop area entirely
       const rect = this.desktopArea.getBoundingClientRect();
       const isStillInside = e.clientX >= rect.left && 
@@ -113,9 +115,9 @@ class DesktopManager {
     }, false);
 
     this.desktopArea.addEventListener('drop', (e) => {
-      console.log('DROP EVENT FIRED on desktop area!');
-      console.log('e.dataTransfer:', e.dataTransfer);
-      console.log('e.dataTransfer.types:', Array.from(e.dataTransfer.types));
+      log.debug('DROP EVENT FIRED on desktop area!');
+      log.debug('e.dataTransfer:', e.dataTransfer);
+      log.debug('e.dataTransfer.types:', Array.from(e.dataTransfer.types));
       e.preventDefault();
       e.stopPropagation();
       this.desktopArea.style.backgroundColor = 'transparent';
@@ -125,8 +127,8 @@ class DesktopManager {
   }
 
   handleDesktopDrop(e) {
-    console.log('Drop detected on desktop area at:', e.clientX, e.clientY);
-    console.log('dataTransfer.types:', Array.from(e.dataTransfer.types));
+    log.debug('Drop detected on desktop area at:', e.clientX, e.clientY);
+    log.debug('dataTransfer.types:', Array.from(e.dataTransfer.types));
     
     let dragData = null;
     
@@ -135,35 +137,35 @@ class DesktopManager {
     for (let dataType of dataTypes) {
       try {
         const rawData = e.dataTransfer.getData(dataType);
-        console.log(`getData('${dataType}'):`, rawData, 'length:', rawData?.length);
+        log.debug(`getData('${dataType}'):`, rawData, 'length:', rawData?.length);
         if (rawData && rawData.trim().length > 0) {
           try {
             dragData = JSON.parse(rawData);
-            console.log('✓ Successfully parsed from', dataType, ':', dragData);
+            log.debug('✓ Successfully parsed from', dataType, ':', dragData);
             break;
           } catch (parseError) {
-            console.log('✗ Failed to parse', dataType);
+            log.debug('✗ Failed to parse', dataType);
           }
         }
       } catch (error) {
-        console.log(`✗ Error calling getData('${dataType}'):`, error);
+        log.debug(`✗ Error calling getData('${dataType}'):`, error);
       }
     }
     
     if (!dragData && e.dataTransfer.items) {
-      console.log('Trying items API with', e.dataTransfer.items.length, 'items');
+      log.debug('Trying items API with', e.dataTransfer.items.length, 'items');
       for (let i = 0; i < e.dataTransfer.items.length; i++) {
         const item = e.dataTransfer.items[i];
-        console.log(`Item ${i}:`, {type: item.type, kind: item.kind});
+        log.debug(`Item ${i}:`, {type: item.type, kind: item.kind});
         
         if (item.kind === 'string' && (item.type === 'text/plain' || item.type === 'text/html')) {
           item.getAsString((str) => {
-            console.log('Item getAsString returned:', str);
+            log.debug('Item getAsString returned:', str);
             try {
               const parsed = JSON.parse(str);
               this.processDroppedApp(parsed, e);
             } catch (err) {
-              console.log('Could not parse item string');
+              log.debug('Could not parse item string');
             }
           });
           return;
@@ -174,16 +176,16 @@ class DesktopManager {
     if (dragData) {
       this.processDroppedApp(dragData, e);
     } else {
-      console.warn('No drag data found');
+      log.warn('No drag data found');
     }
   }
 
   processDroppedApp(dragData, e) {
-    console.log('Processing dropped app:', dragData);
+    log.debug('Processing dropped app:', dragData);
     
     // Check if this is a repositioning operation
     if (dragData && dragData.isRepositioning && dragData.source === 'desktop') {
-      console.log('↻ REPOSITIONING shortcut:', dragData.appId);
+      log.debug('↻ REPOSITIONING shortcut:', dragData.appId);
       const shortcut = this.shortcuts.find(s => s.id === dragData.appId);
       if (shortcut) {
         // Get drop position relative to desktop area
@@ -198,7 +200,7 @@ class DesktopManager {
         const occupied = this.shortcuts.find(s => s.id !== shortcut.id && s.gridX === gridPos.gridX && s.gridY === gridPos.gridY);
         
         if (occupied) {
-          console.log('⚠️ Grid cell occupied! Swapping with:', occupied.name);
+          log.debug('⚠️ Grid cell occupied! Swapping with:', occupied.name);
           // Swap positions
           const tempGridX = shortcut.gridX;
           const tempGridY = shortcut.gridY;
@@ -215,8 +217,8 @@ class DesktopManager {
           occupied.x = tempX;
           occupied.y = tempY;
           
-          console.log('✓ Swapped:', shortcut.name, 'now at Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
-          console.log('✓ Swapped:', occupied.name, 'now at Row', tempGridY + 1, 'Column', tempGridX + 1);
+          log.debug('✓ Swapped:', shortcut.name, 'now at Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+          log.debug('✓ Swapped:', occupied.name, 'now at Row', tempGridY + 1, 'Column', tempGridX + 1);
           
           this.saveShortcuts();
           
@@ -237,7 +239,7 @@ class DesktopManager {
           shortcut.gridY = gridPos.gridY;
           shortcut.x = gridPos.x;
           shortcut.y = gridPos.y;
-          console.log('✓ Repositioned to Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+          log.debug('✓ Repositioned to Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
           
           this.saveShortcuts();
           
@@ -255,10 +257,10 @@ class DesktopManager {
     // Otherwise, create a new shortcut
     if (dragData && (dragData.source === 'launchpad' || dragData.source === 'dock')) {
       const appId = dragData.appId;
-      console.log('Creating shortcut for app ID:', appId);
+      log.debug('Creating shortcut for app ID:', appId);
       
       const app = window.availableAppsForLaunchpad?.find(a => a.id === appId);
-      console.log('Found app:', app?.name);
+      log.debug('Found app:', app?.name);
       
       if (app) {
         // Check if shortcut already exists
@@ -275,21 +277,21 @@ class DesktopManager {
           const occupied = this.shortcuts.find(s => s.gridX === gridPos.gridX && s.gridY === gridPos.gridY);
           
           if (occupied) {
-            console.log('⚠️ Grid cell already occupied! Cannot place', app.name);
+            log.debug('⚠️ Grid cell already occupied! Cannot place', app.name);
             return;
           }
           
-          console.log('✓ Adding shortcut for:', app.name);
-          console.log('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+          log.debug('✓ Adding shortcut for:', app.name);
+          log.debug('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
           this.addShortcut(app, gridPos.gridX, gridPos.gridY);
         } else {
-          console.log('ℹ Shortcut already exists for:', app.name);
+          log.debug('ℹ Shortcut already exists for:', app.name);
         }
       } else {
-        console.warn('✗ App not found for ID:', appId);
+        log.warn('✗ App not found for ID:', appId);
       }
     } else {
-      console.warn('✗ Invalid drag data source:', dragData?.source);
+      log.warn('✗ Invalid drag data source:', dragData?.source);
     }
   }
 
@@ -457,20 +459,20 @@ class DesktopManager {
     shortcutEl.addEventListener('click', (e) => {
       // Check if click was on the delete button or its parent
       if (!deleteBtn.contains(e.target)) {
-        console.log('Launching app from shortcut:', shortcut.name);
+        log.debug('Launching app from shortcut:', shortcut.name);
         this.launchApp(shortcut);
       }
     });
 
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      console.log('Deleting shortcut:', shortcut.name);
+      log.debug('Deleting shortcut:', shortcut.name);
       this.removeShortcut(shortcut.id);
     });
 
     // Drag handling - for moving shortcuts around the desktop
     shortcutEl.addEventListener('dragstart', (e) => {
-      console.log('🔵 Shortcut dragstart:', shortcut.name);
+      log.debug('🔵 Shortcut dragstart:', shortcut.name);
       e.dataTransfer.effectAllowed = 'move';
       const dragPayload = JSON.stringify({
         source: 'desktop',
@@ -479,7 +481,7 @@ class DesktopManager {
         isRepositioning: true
       });
       e.dataTransfer.setData('text/plain', dragPayload);
-      console.log('✓ Drag data set:', dragPayload);
+      log.debug('✓ Drag data set:', dragPayload);
 
       const dragImage = document.createElement('div');
       dragImage.style.cssText = `
@@ -505,14 +507,14 @@ class DesktopManager {
     });
 
     shortcutEl.addEventListener('dragend', () => {
-      console.log('🔴 Shortcut dragend:', shortcut.name);
+      log.debug('🔴 Shortcut dragend:', shortcut.name);
       shortcutEl.style.opacity = '1';
       shortcutEl.style.backgroundColor = 'transparent';
     });
 
     // Add dragover handler to shortcut to allow repositioning
     shortcutEl.addEventListener('dragover', (e) => {
-      console.log('⚪ Shortcut dragover');
+      log.debug('⚪ Shortcut dragover');
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -521,7 +523,7 @@ class DesktopManager {
 
     // Add drop handler to shortcut to allow repositioning
     shortcutEl.addEventListener('drop', (e) => {
-      console.log('✅ DROP on shortcut element');
+      log.debug('✅ DROP on shortcut element');
       e.preventDefault();
       e.stopPropagation();
       this.handleDesktopDrop(e);
@@ -566,7 +568,7 @@ class DesktopManager {
       // Render all shortcuts
       this.shortcuts.forEach(shortcut => this.renderShortcut(shortcut));
     } catch (e) {
-      console.error('Error loading desktop shortcuts:', e);
+      log.error('Error loading desktop shortcuts:', e);
       this.shortcuts = [];
     }
   }
@@ -576,38 +578,38 @@ class DesktopManager {
 window.desktopManager = null;
 
 function initializeDesktop() {
-  console.log('Attempting to initialize desktop manager...');
-  console.log('availableAppsForLaunchpad:', window.availableAppsForLaunchpad);
-  console.log('desktopManager exists:', window.desktopManager);
+  log.debug('Attempting to initialize desktop manager...');
+  log.debug('availableAppsForLaunchpad:', window.availableAppsForLaunchpad);
+  log.debug('desktopManager exists:', window.desktopManager);
   
   if (!window.desktopManager && window.availableAppsForLaunchpad) {
-    console.log('Initializing DesktopManager');
+    log.debug('Initializing DesktopManager');
     window.desktopManager = new DesktopManager();
-    console.log('DesktopManager initialized:', window.desktopManager);
+    log.debug('DesktopManager initialized:', window.desktopManager);
   }
 }
 
 // Try to initialize immediately
 if (document.readyState === 'loading') {
-  console.log('Document still loading, waiting for DOMContentLoaded');
+  log.debug('Document still loading, waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', initializeDesktop);
 } else {
-  console.log('Document already loaded, initializing');
+  log.debug('Document already loaded, initializing');
   initializeDesktop();
 }
 
 // Also initialize after multiple delays to ensure dock is ready
 setTimeout(() => {
-  console.log('Attempting initialize after 100ms');
+  log.debug('Attempting initialize after 100ms');
   initializeDesktop();
 }, 100);
 
 setTimeout(() => {
-  console.log('Attempting initialize after 500ms');
+  log.debug('Attempting initialize after 500ms');
   initializeDesktop();
 }, 500);
 
 setTimeout(() => {
-  console.log('Attempting initialize after 1000ms');
+  log.debug('Attempting initialize after 1000ms');
   initializeDesktop();
 }, 1000);

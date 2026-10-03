@@ -2837,7 +2837,7 @@ class AppWindow {
 
           const appName = appItem.dataset.appName;
           if (appName) {
-            console.log(`Selected ${appName} for zone ${zoneIndex + 1}`);
+            console.debug(`Selected ${appName} for zone ${zoneIndex + 1}`);
             
             // Close launchpad first
             const launchpadWindow = document.querySelector('[data-app-id="launchpad"]');
@@ -2896,9 +2896,9 @@ class AppWindow {
       const maxZ = Math.max(...Array.from(allWindows).map(w => parseInt(window.getComputedStyle(w).zIndex) || 0));
       targetApp.style.zIndex = (maxZ + 1).toString();
 
-      console.log(`Tiled ${appNameOrId} to zone at (${zone.x}, ${zone.y})`);
+      console.debug(`Tiled ${appNameOrId} to zone at (${zone.x}, ${zone.y})`);
     } else {
-      console.log(`App ${appNameOrId} not found`);
+      console.debug(`App ${appNameOrId} not found`);
     }
   }
 

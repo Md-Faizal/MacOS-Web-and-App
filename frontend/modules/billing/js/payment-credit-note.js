@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Payments') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * PaymentCreditNote Module
  * Handles payment entry and credit note management with advanced features
@@ -307,7 +309,7 @@ class PaymentCreditNote {
 
     // Handle deep link params
     if (params && params.customerName) {
-      console.log(`🔗 PaymentCreditNote: Pre-selecting customer ${params.customerName}`);
+      log.debug(`🔗 PaymentCreditNote: Pre-selecting customer ${params.customerName}`);
       setTimeout(() => {
         const select = document.getElementById('paymentCustomerSelect');
         if (select) {
@@ -335,7 +337,7 @@ class PaymentCreditNote {
     const paymentCustomerSelect = document.getElementById('paymentCustomerSelect');
     if (paymentCustomerSelect) {
       paymentCustomerSelect.addEventListener('change', () => {
-        this.updateCustomerBalance().catch(err => console.error('Error updating customer balance:', err));
+        this.updateCustomerBalance().catch(err => log.error('Error updating customer balance:', err));
       });
     }
 
@@ -348,7 +350,7 @@ class PaymentCreditNote {
         if (paymentReference && paymentCustomerSelect.value) {
           // Clear reference to trigger auto-fill
           paymentReference.value = '';
-          this.updateCustomerBalance().catch(err => console.error('Error updating customer balance:', err));
+          this.updateCustomerBalance().catch(err => log.error('Error updating customer balance:', err));
         }
       });
     }
@@ -357,7 +359,7 @@ class PaymentCreditNote {
     const payFullBtn = document.getElementById('payFullBtn');
     if (payFullBtn) {
       payFullBtn.addEventListener('click', () => {
-        this.payFullDue().catch(err => console.error('Error in payFullDue:', err));
+        this.payFullDue().catch(err => log.error('Error in payFullDue:', err));
       });
     }
 
@@ -385,7 +387,7 @@ class PaymentCreditNote {
     const creditNoteCustomerSelect = document.getElementById('creditNoteCustomerSelect');
     if (creditNoteCustomerSelect) {
       creditNoteCustomerSelect.addEventListener('change', () => {
-        this.updateCreditNoteCustomerInfo().catch(err => console.error('Error updating credit note customer info:', err));
+        this.updateCreditNoteCustomerInfo().catch(err => log.error('Error updating credit note customer info:', err));
       });
     }
 
@@ -398,7 +400,7 @@ class PaymentCreditNote {
         if (creditNoteReference && creditNoteCustomerSelect.value) {
           // Clear reference to trigger auto-fill
           creditNoteReference.value = '';
-          this.updateCreditNoteCustomerInfo().catch(err => console.error('Error updating credit note customer info:', err));
+          this.updateCreditNoteCustomerInfo().catch(err => log.error('Error updating credit note customer info:', err));
         }
       });
     }
@@ -451,7 +453,7 @@ class PaymentCreditNote {
           // Store it in a dataset
           creditAttachment.dataset.compressedData = compressedBase64;
         } catch (err) {
-          console.error('Error compressing image:', err);
+          log.error('Error compressing image:', err);
           this.showAlert('❌ Failed to process image', 'error');
           e.target.value = '';
         }
@@ -594,11 +596,11 @@ class PaymentCreditNote {
             paymentReference.placeholder = refData.reference_number;
           }
         } catch (err) {
-          console.warn('Could not fetch next reference number:', err);
+          log.warn('Could not fetch next reference number:', err);
         }
       }
     } catch (error) {
-      console.error('Error updating customer balance:', error);
+      log.error('Error updating customer balance:', error);
       if (customerBalanceCard) customerBalanceCard.style.display = 'none';
     }
   }
@@ -626,7 +628,7 @@ class PaymentCreditNote {
         paymentAmount.value = totalDue.toFixed(2);
       }
     } catch (error) {
-      console.error('Error fetching full due amount:', error);
+      log.error('Error fetching full due amount:', error);
       alert('❌ Error fetching customer balance');
     }
   }
@@ -727,7 +729,7 @@ class PaymentCreditNote {
           totalPaid = result.total_collected || 0;
         }
       } catch (error) {
-        console.warn('Error fetching total collected:', error.message);
+        log.warn('Error fetching total collected:', error.message);
         totalPaid = 0;
       }
     }
@@ -791,7 +793,7 @@ class PaymentCreditNote {
       notes: notes || null
     };
 
-    console.log('Sending single consolidated payment data:', paymentData);
+    log.debug('Sending single consolidated payment data:', paymentData);
 
     try {
       const response = await fetch('/api/billing/invoices/payments', {
@@ -807,7 +809,7 @@ class PaymentCreditNote {
         throw new Error(`Failed to save payment: ${errorMsg}`);
       }
 
-      console.log(`✓ Consolidated payment of ₹${amount.toFixed(2)} saved successfully`, result);
+      log.debug(`✓ Consolidated payment of ₹${amount.toFixed(2)} saved successfully`, result);
 
       // Reload billing data from API
       if (this.billingApp.loadBillingDataFromAPI) {
@@ -820,7 +822,7 @@ class PaymentCreditNote {
       this.loadRecentTransactions();
       await this.updateStatsDisplay();
     } catch (error) {
-      console.error('Error saving payment:', error);
+      log.error('Error saving payment:', error);
       this.showAlert(`❌ Error: ${error.message}`, 'error');
     }
   }
@@ -875,11 +877,11 @@ class PaymentCreditNote {
             creditNoteReference.placeholder = refData.reference_number;
           }
         } catch (err) {
-          console.warn('Could not fetch next credit note reference:', err);
+          log.warn('Could not fetch next credit note reference:', err);
         }
       }
     } catch (error) {
-      console.error('Error updating credit note customer info:', error);
+      log.error('Error updating credit note customer info:', error);
       if (customerInfoCard) customerInfoCard.style.display = 'none';
     }
   }
@@ -981,7 +983,7 @@ class PaymentCreditNote {
           attachment_data: attachment_data || null
         };
 
-        console.log('Sending credit note data:', creditData);
+        log.debug('Sending credit note data:', creditData);
 
         const response = await fetch('/api/billing/invoices/creditnotes', {
           method: 'POST',
@@ -997,7 +999,7 @@ class PaymentCreditNote {
         }
 
         totalSaved += creditAmount;
-        console.log(`✓ Credit note of ₹${creditAmount.toFixed(2)} saved for invoice ${invoiceId}`, result);
+        log.debug(`✓ Credit note of ₹${creditAmount.toFixed(2)} saved for invoice ${invoiceId}`, result);
       }
 
       // Reload billing data from API
@@ -1011,7 +1013,7 @@ class PaymentCreditNote {
       this.loadRecentTransactions();
       await this.updateStatsDisplay();
     } catch (error) {
-      console.error('Error saving credit note:', error);
+      log.error('Error saving credit note:', error);
       this.showAlert(`❌ Error: ${error.message}`, 'error');
     }
   }
@@ -1283,7 +1285,7 @@ class PaymentCreditNote {
           ${txn.attachment_data ? `
             <div class="detail-row">
               <span class="label">Attachment</span>
-              <span class="value"><span class="view-attachment-link" onclick="event.stopPropagation(); if(window.HistoryView && window.HistoryView.showViewer) { window.HistoryView.showViewer('${txn.attachment_data}'); } else { console.log('Viewer not ready'); }" style="cursor: pointer; color: #3b82f6; text-decoration: underline; font-weight: bold;">🖼️ View</span></span>
+              <span class="value"><span class="view-attachment-link" onclick="event.stopPropagation(); if(window.HistoryView && window.HistoryView.showViewer) { window.HistoryView.showViewer('${txn.attachment_data}'); } else { log.debug('Viewer not ready'); }" style="cursor: pointer; color: #3b82f6; text-decoration: underline; font-weight: bold;">🖼️ View</span></span>
             </div>
           ` : ''}
           <div class="detail-row">
@@ -1334,7 +1336,7 @@ class PaymentCreditNote {
         }
       }
     } catch (error) {
-      console.error('Error fetching opening balance:', error);
+      log.error('Error fetching opening balance:', error);
     }
   }
 
@@ -1415,7 +1417,7 @@ class PaymentCreditNote {
       }
 
     } catch (error) {
-      console.error('Error saving payment edit:', error);
+      log.error('Error saving payment edit:', error);
       alert('Error updating payment: ' + error.message);
     }
   }
@@ -1448,7 +1450,7 @@ class PaymentCreditNote {
       }
 
     } catch (error) {
-      console.error('Error deleting payment:', error);
+      log.error('Error deleting payment:', error);
       alert('Error deleting transaction: ' + error.message);
     }
   }

@@ -1,3 +1,4 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Wallpaper') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 /**
  * Unified Industrial-Standard Wallpaper Engine
  * Features:
@@ -64,7 +65,7 @@ class WallpaperEngine {
   }
 
   async boot() {
-    console.log('[WallpaperEngine] 🚀 Booting Dual-Layer Crossfade Engine...');
+    log.debug(' 🚀 Booting Dual-Layer Crossfade Engine...');
     this._ensureStyles();
     this._ensureDOMStructure();
 
@@ -76,7 +77,7 @@ class WallpaperEngine {
     
     await this.applyWallpaper(wpToApply, { immediate: true, skipSync: true, variant: savedVariant });
     this.initialized = true;
-    console.log('[WallpaperEngine] ✅ Ready & 60fps Butter Smooth');
+    log.debug(' ✅ Ready & 60fps Butter Smooth');
   }
 
   /**
@@ -458,7 +459,7 @@ class WallpaperEngine {
           // Already displaying this variant, do nothing
           return;
         }
-        console.log('[WallpaperEngine] Theme changed, smoothly adapting variant...');
+        log.debug(' Theme changed, smoothly adapting variant...');
         this.applyWallpaper(this.currentWallpaper, { skipSync: true, variant: 'auto' });
       }
     });
@@ -473,7 +474,7 @@ class WallpaperEngine {
   _setupSync() {
     this.channel.onmessage = (event) => {
       if (event.data.type === 'UPDATE') {
-        console.log('[WallpaperEngine] 🔄 Syncing wallpaper from another tab/window');
+        log.debug(' 🔄 Syncing wallpaper from another tab/window');
         this.applyWallpaper(event.data.wallpaper, { skipSync: true, variant: event.data.variant });
       }
     };

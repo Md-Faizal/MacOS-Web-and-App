@@ -1,5 +1,9 @@
 import { WidgetFactory } from '../../../modules/widgets/js/widget-factory.js';
 
+const log = (typeof window !== 'undefined' && window.MacOSLogger)
+  ? window.MacOSLogger.createScope('Desktop')
+  : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 // Desktop Shortcuts Management
 export class DesktopManager {
   constructor() {
@@ -36,21 +40,15 @@ export class DesktopManager {
     // Initialize desktop context menu (right-click menu)
     this.contextMenu = new window.DesktopContextMenu(this.desktopArea);
 
-    const __DESKTOP_DEBUG__ =
-      (typeof localStorage !== 'undefined' && localStorage.getItem('debug:desktop') === '1') ||
-      (typeof window !== 'undefined' && window.__DEBUG_DESKTOP__ === true);
-
     // Add global dragover handler to allow drops FIRST
     document.addEventListener('dragover', (e) => {
-      if (__DESKTOP_DEBUG__) console.log('Global dragover handler fired');
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
     }, false);
 
     // Add global dragstart handler for debugging
     document.addEventListener('dragstart', (e) => {
-      if (!__DESKTOP_DEBUG__) return;
-      console.log('⭐ GLOBAL DRAGSTART:', {
+      log.debug('Global dragstart:', {
         target: e.target.tagName,
         id: e.target.id,
         class: e.target.className,
@@ -134,14 +132,14 @@ export class DesktopManager {
       this.repositionAllShortcuts();
     });
 
-    console.log('Desktop area and grid container created');
+    log.debug('Desktop area and grid container created');
   }
 
 
 
   setupDropZone() {
     if (!this.desktopArea) {
-      console.warn('Desktop area not found');
+      log.warn('Desktop area not found');
       return;
     }
 
@@ -163,10 +161,10 @@ export class DesktopManager {
     `;
     this.gridContainer.appendChild(this.dropIndicator);
 
-    console.log('Setting up drop zone on desktop area');
+    log.debug('Setting up drop zone on desktop area');
 
     this.desktopArea.addEventListener('dragenter', (e) => {
-      console.log('Dragenter on desktop');
+      log.debug('Dragenter on desktop');
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'copy' ? 'copy' : 'move';
@@ -188,7 +186,7 @@ export class DesktopManager {
     }, false);
 
     this.desktopArea.addEventListener('dragleave', (e) => {
-      console.log('Dragleave on desktop');
+      log.debug('Dragleave on desktop');
       // Only reset if leaving the desktop area entirely
       const rect = this.desktopArea.getBoundingClientRect();
       const isStillInside = e.clientX >= rect.left && 
@@ -202,9 +200,9 @@ export class DesktopManager {
     }, false);
 
     this.desktopArea.addEventListener('drop', (e) => {
-      console.log('DROP EVENT FIRED on desktop area!');
-      console.log('e.dataTransfer:', e.dataTransfer);
-      console.log('e.dataTransfer.types:', Array.from(e.dataTransfer.types));
+      log.debug('DROP EVENT FIRED on desktop area!');
+      log.debug('e.dataTransfer:', e.dataTransfer);
+      log.debug('e.dataTransfer.types:', Array.from(e.dataTransfer.types));
       e.preventDefault();
       e.stopPropagation();
       this.hideDropIndicator();
@@ -214,7 +212,7 @@ export class DesktopManager {
 
     // Handle dragend globally to clear desktop highlight if drag ends without drop
     document.addEventListener('dragend', (e) => {
-      console.log('Global dragend: clearing desktop highlight');
+      log.debug('Global dragend: clearing desktop highlight');
       window.activeDragSpanX = 1;
       window.activeDragSpanY = 1;
       this.hideDropIndicator();
@@ -261,7 +259,7 @@ export class DesktopManager {
 
     // Diagnostic Logging (Gated for performance in hot resize loops)
     if (window.__DEBUG_DESKTOP__ || (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('Desktop'))) {
-      console.log('📐 Grid Size Calculation:', {
+      log.debug('📐 Grid Size Calculation:', {
         viewport: `${viewportCols}x${viewportRows}`,
         benchmark: `${this.benchmarkCols}x${this.benchmarkRows}`,
         icons: `${maxIconCol}x${maxIconRow}`,
@@ -304,7 +302,7 @@ export class DesktopManager {
     this.benchmarkCols = viewportCols;
     this.benchmarkRows = viewportRows;
     
-    console.log('👷 Grid Calibrated to:', this.benchmarkCols, 'x', this.benchmarkRows);
+    log.debug('👷 Grid Calibrated to:', this.benchmarkCols, 'x', this.benchmarkRows);
     this.repositionAllShortcuts();
     this.saveShortcuts();
     this.scrollToCenter('smooth');
@@ -333,7 +331,7 @@ export class DesktopManager {
         behavior: behavior
       });
       
-      console.log(`🧭 Desktop Centered (Horizontal Only): ScrollLeft=${Math.round(scrollLeft)}`);
+      log.debug(`🧭 Desktop Centered (Horizontal Only): ScrollLeft=${Math.round(scrollLeft)}`);
     }, 50);
   }
 
@@ -344,8 +342,8 @@ export class DesktopManager {
   }
 
   handleDesktopDrop(e) {
-    console.log('Drop detected on desktop area at:', e.clientX, e.clientY);
-    console.log('dataTransfer.types:', Array.from(e.dataTransfer.types));
+    log.debug('Drop detected on desktop area at:', e.clientX, e.clientY);
+    log.debug('dataTransfer.types:', Array.from(e.dataTransfer.types));
     
     let dragData = null;
     
@@ -354,35 +352,35 @@ export class DesktopManager {
     for (let dataType of dataTypes) {
       try {
         const rawData = e.dataTransfer.getData(dataType);
-        console.log(`getData('${dataType}'):`, rawData, 'length:', rawData?.length);
+        log.debug(`getData('${dataType}'):`, rawData, 'length:', rawData?.length);
         if (rawData && rawData.trim().length > 0) {
           try {
             dragData = JSON.parse(rawData);
-            console.log('✓ Successfully parsed from', dataType, ':', dragData);
+            log.debug('✓ Successfully parsed from', dataType, ':', dragData);
             break;
           } catch (parseError) {
-            console.log('✗ Failed to parse', dataType);
+            log.debug('✗ Failed to parse', dataType);
           }
         }
       } catch (error) {
-        console.log(`✗ Error calling getData('${dataType}'):`, error);
+        log.debug(`✗ Error calling getData('${dataType}'):`, error);
       }
     }
     
     if (!dragData && e.dataTransfer.items) {
-      console.log('Trying items API with', e.dataTransfer.items.length, 'items');
+      log.debug('Trying items API with', e.dataTransfer.items.length, 'items');
       for (let i = 0; i < e.dataTransfer.items.length; i++) {
         const item = e.dataTransfer.items[i];
-        console.log(`Item ${i}:`, {type: item.type, kind: item.kind});
+        log.debug(`Item ${i}:`, {type: item.type, kind: item.kind});
         
         if (item.kind === 'string' && (item.type === 'text/plain' || item.type === 'text/html')) {
           item.getAsString((str) => {
-            console.log('Item getAsString returned:', str);
+            log.debug('Item getAsString returned:', str);
             try {
               const parsed = JSON.parse(str);
               this.processDroppedApp(parsed, e);
             } catch (err) {
-              console.log('Could not parse item string');
+              log.debug('Could not parse item string');
             }
           });
           return;
@@ -393,16 +391,16 @@ export class DesktopManager {
     if (dragData) {
       this.processDroppedApp(dragData, e);
     } else {
-      console.warn('No drag data found');
+      log.warn('No drag data found');
     }
   }
 
   processDroppedApp(dragData, e) {
-    console.log('Processing dropped app:', dragData);
+    log.debug('Processing dropped app:', dragData);
     
     // Check if this is a repositioning operation
     if (dragData && dragData.isRepositioning && dragData.source === 'desktop') {
-      console.log('↻ REPOSITIONING shortcut:', dragData.appId);
+      log.debug('↻ REPOSITIONING shortcut:', dragData.appId);
       const shortcut = this.shortcuts.find(s => s.id === dragData.appId);
       if (shortcut) {
         // Get drop position relative to gridContainer
@@ -436,7 +434,7 @@ export class DesktopManager {
         }
         
         if (occupied) {
-          console.log('⚠️ Grid cell occupied! Swapping with:', occupied.name);
+          log.debug('⚠️ Grid cell occupied! Swapping with:', occupied.name);
           // Only swap if both are 1x1, otherwise cancel
           const occSpanX = occupied.spanX || 1;
           const occSpanY = occupied.spanY || 1;
@@ -458,8 +456,8 @@ export class DesktopManager {
             occupied.x = tempX;
             occupied.y = tempY;
             
-            console.log('✓ Swapped:', shortcut.name, 'now at Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
-            console.log('✓ Swapped:', occupied.name, 'now at Row', tempGridY + 1, 'Column', tempGridX + 1);
+            log.debug('✓ Swapped:', shortcut.name, 'now at Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+            log.debug('✓ Swapped:', occupied.name, 'now at Row', tempGridY + 1, 'Column', tempGridX + 1);
             
             this.saveShortcuts();
             
@@ -475,7 +473,7 @@ export class DesktopManager {
               el2.style.top = occupied.y + 'px';
             }
           } else {
-            console.log('⚠️ Differently sized items cannot be swapped! Move canceled.');
+            log.debug('⚠️ Differently sized items cannot be swapped! Move canceled.');
           }
         } else {
           // Cell is empty, move normally
@@ -483,7 +481,7 @@ export class DesktopManager {
           shortcut.gridY = gridPos.gridY;
           shortcut.x = gridPos.x;
           shortcut.y = gridPos.y;
-          console.log('✓ Repositioned to Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+          log.debug('✓ Repositioned to Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
           
           this.saveShortcuts();
           
@@ -501,10 +499,10 @@ export class DesktopManager {
     // Otherwise, create a new shortcut
     if (dragData && (dragData.source === 'launchpad' || dragData.source === 'dock')) {
       const appId = dragData.appId;
-      console.log('Creating shortcut for app ID:', appId);
+      log.debug('Creating shortcut for app ID:', appId);
       
       const app = window.availableAppsForLaunchpad?.find(a => a.id === appId);
-      console.log('Found app:', app?.name);
+      log.debug('Found app:', app?.name);
       
       if (app) {
         // Check if shortcut already exists
@@ -521,24 +519,24 @@ export class DesktopManager {
           const occupied = this.shortcuts.find(s => s.gridX === gridPos.gridX && s.gridY === gridPos.gridY);
           
           if (occupied) {
-            console.log('⚠️ Grid cell already occupied! Cannot place', app.name);
+            log.debug('⚠️ Grid cell already occupied! Cannot place', app.name);
             return;
           }
           
-          console.log('✓ Adding shortcut for:', app.name);
-          console.log('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+          log.debug('✓ Adding shortcut for:', app.name);
+          log.debug('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
           this.addShortcut(app, gridPos.gridX, gridPos.gridY);
         } else {
-          console.log('ℹ Shortcut already exists for:', app.name);
+          log.debug('ℹ Shortcut already exists for:', app.name);
         }
       } else {
-        console.warn('✗ App not found for ID:', appId);
+        log.warn('✗ App not found for ID:', appId);
       }
     }
     // Handle widget drops from widget selector
     else if (dragData && dragData.source === 'widget-selector') {
       const widgetName = dragData.widgetName;
-      console.log('Creating widget:', widgetName);
+      log.debug('Creating widget:', widgetName);
       
       // Generate unique ID for widget instance
       const widgetId = 'widget-' + widgetName.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
@@ -578,7 +576,7 @@ export class DesktopManager {
       }
       
       if (isOccupied) {
-        console.log('⚠️ Grid cell already occupied! Cannot place widget', widgetName);
+        log.debug('⚠️ Grid cell already occupied! Cannot place widget', widgetName);
         return;
       }
       
@@ -601,11 +599,11 @@ export class DesktopManager {
       this.saveShortcuts();
       this.renderShortcut(widget);
       
-      console.log('✓ Added widget:', widgetName);
-      console.log('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
+      log.debug('✓ Added widget:', widgetName);
+      log.debug('✓ Placed at: Row', gridPos.gridY + 1, 'Column', gridPos.gridX + 1);
     }
     else {
-      console.warn('✗ Invalid drag data source:', dragData?.source);
+      log.warn('✗ Invalid drag data source:', dragData?.source);
     }
   }
 
@@ -649,7 +647,7 @@ export class DesktopManager {
     if (!shortcut) return false;
 
     if (!this.canResizeShortcut(appId, newSpanX, newSpanY)) {
-      console.warn(`Cannot resize ${shortcut.name}: Not enough space.`);
+      log.warn(`Cannot resize ${shortcut.name}: Not enough space.`);
       return false;
     }
 
@@ -683,7 +681,7 @@ export class DesktopManager {
       }));
     }
 
-    console.log(`✓ Resized ${shortcut.name} to ${newSpanX}x${newSpanY}`);
+    log.debug(`✓ Resized ${shortcut.name} to ${newSpanX}x${newSpanY}`);
     return true;
   }
 
@@ -1040,21 +1038,21 @@ export class DesktopManager {
     const shortcut = this.shortcuts.find(s => s.id === appId);
     if (shortcut && shortcut.isWidget) {
       if (shortcut.widgetType === 'notes') {
-        console.log(`🗑️ Deleting quick note data for: ${appId}`);
+        log.debug(`🗑️ Deleting quick note data for: ${appId}`);
         fetch(`/api/quick-notes/${appId}`, { method: 'DELETE' })
           .then(res => res.json())
           .then(data => {
-            if (data.success) console.log(`✓ Note ${appId} deleted from server`);
+            if (data.success) log.debug(`✓ Note ${appId} deleted from server`);
           })
-          .catch(err => console.error('✗ Failed to delete note from server:', err));
+          .catch(err => log.error('✗ Failed to delete note from server:', err));
       } else if (shortcut.widgetType === 'reminders') {
-        console.log(`🗑️ Deleting reminders data for: ${appId}`);
+        log.debug(`🗑️ Deleting reminders data for: ${appId}`);
         fetch(`/api/reminders/${appId}`, { method: 'DELETE' })
           .then(res => res.json())
           .then(data => {
-            if (data.success) console.log(`✓ Reminders ${appId} deleted from server`);
+            if (data.success) log.debug(`✓ Reminders ${appId} deleted from server`);
           })
-          .catch(err => console.error('✗ Failed to delete reminders from server:', err));
+          .catch(err => log.error('✗ Failed to delete reminders from server:', err));
       }
     }
 
@@ -1071,7 +1069,7 @@ export class DesktopManager {
   async loadShortcuts() {
     this.isLoadingShortcuts = true;
     try {
-      console.log('📡 Fetching desktop state from server...');
+      log.debug('📡 Fetching desktop state from server...');
       const response = await fetch('/api/desktop/state');
       const data = await response.json();
 
@@ -1079,7 +1077,7 @@ export class DesktopManager {
         // Handle both new object-based format and old array-only format
         if (Array.isArray(data.state)) {
           this.shortcuts = data.state;
-          console.log('✓ Desktop state loaded (old format):', this.shortcuts.length, 'items');
+          log.debug('✓ Desktop state loaded (old format):', this.shortcuts.length, 'items');
         } else if (typeof data.state === 'object') {
           this.shortcuts = data.state.state || [];
           
@@ -1087,7 +1085,7 @@ export class DesktopManager {
             this.benchmarkCols = data.state.metadata.benchmarkCols || this.benchmarkCols;
             this.benchmarkRows = data.state.metadata.benchmarkRows || this.benchmarkRows;
           }
-          console.log('✓ Desktop state loaded (new format):', this.shortcuts.length, 'items');
+          log.debug('✓ Desktop state loaded (new format):', this.shortcuts.length, 'items');
         }
         
         // Sync to localStorage as backup
@@ -1103,16 +1101,16 @@ export class DesktopManager {
         const saved = localStorage.getItem(this.STORAGE_KEY);
         if (saved) {
           this.shortcuts = JSON.parse(saved);
-          console.log('ℹ Desktop state loaded from localStorage (fallback):', this.shortcuts.length, 'items');
+          log.debug('ℹ Desktop state loaded from localStorage (fallback):', this.shortcuts.length, 'items');
           // Try to sync to server if we just loaded from local
           this.saveShortcuts();
         } else {
-          console.log('ℹ No desktop state found, starting fresh');
+          log.debug('ℹ No desktop state found, starting fresh');
           this.shortcuts = [];
         }
       }
     } catch (error) {
-      console.warn('✗ Failed to fetch desktop state from server, falling back to localStorage:', error);
+      log.warn('✗ Failed to fetch desktop state from server, falling back to localStorage:', error);
       const saved = localStorage.getItem(this.STORAGE_KEY);
       if (saved) {
         this.shortcuts = JSON.parse(saved);
@@ -1158,7 +1156,7 @@ export class DesktopManager {
     
     this._saveTimeout = setTimeout(async () => {
       try {
-        console.log('📡 Syncing desktop state to server...');
+        log.debug('📡 Syncing desktop state to server...');
         const response = await fetch('/api/desktop/state', {
           method: 'POST',
           headers: {
@@ -1175,12 +1173,12 @@ export class DesktopManager {
         
         const data = await response.json();
         if (data.success) {
-          console.log('✓ Desktop state synced to server successfully');
+          log.debug('✓ Desktop state synced to server successfully');
         } else {
-          console.error('✗ Failed to sync desktop state to server:', data.error);
+          log.error('✗ Failed to sync desktop state to server:', data.error);
         }
       } catch (error) {
-        console.error('✗ Error syncing desktop state to server:', error);
+        log.error('✗ Error syncing desktop state to server:', error);
       }
     }, 1000); // 1-second debounce
   }
@@ -1239,10 +1237,10 @@ export class DesktopManager {
     if (isVisible) {
       this.gridOverlay.style.display = 'block';
       this.drawGrid();
-      console.log('👷 Grid Debug View: ENABLED');
+      log.debug('👷 Grid Debug View: ENABLED');
     } else {
       this.gridOverlay.style.display = 'none';
-      console.log('👷 Grid Debug View: DISABLED');
+      log.debug('👷 Grid Debug View: DISABLED');
     }
 
     // Persist preference

@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Contacts') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * ContactsApp - A macOS Contacts application with detailed contact management
  * Features: Contact list, detailed contact cards, search, add/edit contacts with business info
@@ -182,9 +184,9 @@ class ContactsApp extends AppWindow {
           }
         }
         this.showNotification('Contacts refreshed from database', 'success');
-        console.log('✓ Contacts refreshed from database');
+        log.debug('✓ Contacts refreshed from database');
       } catch (error) {
-        console.error('Failed to refresh contacts:', error);
+        log.error('Failed to refresh contacts:', error);
         this.showNotification('Failed to refresh contacts', 'error');
       } finally {
         refreshBtn.style.opacity = '1';
@@ -855,15 +857,15 @@ class ContactsApp extends AppWindow {
           last_edited_by_name: contact.last_edited_by_name,
           color: this.generateColorForContact(contact.name)
         }));
-        console.log(`✓ Loaded ${this.contacts.length} contacts from API`);
+        log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);
         this.renderContactsList();
         return this.contacts;
       })
       .catch(error => {
-        console.error('Error loading contacts from API:', error);
+        log.error('Error loading contacts from API:', error);
         const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const port = isDev ? '3002 (dev) or 3001 (prod)' : '3001';
-        console.warn(`⚠️  Contacts API not available on :${port}. The billing-api-server may not be running.`);
+        log.warn(`⚠️  Contacts API not available on :${port}. The billing-api-server may not be running.`);
         this.contacts = [];
         this.renderContactsList();
         throw error;
@@ -931,7 +933,7 @@ class ContactsApp extends AppWindow {
         this.showContactModal(mappedContact);
       })
       .catch(error => {
-        console.error('Error fetching contact for edit:', error);
+        log.error('Error fetching contact for edit:', error);
         // Fallback to local data if API fails
         const localContact = this.contacts.find(c => c.id === this.selectedContactId);
         if (localContact) {
@@ -1170,12 +1172,12 @@ class ContactsApp extends AppWindow {
           return response.json();
         })
         .then(() => {
-          console.log('Contact updated successfully');
+          log.debug('Contact updated successfully');
           this.loadContactsFromAPI();
           closeModal();
         })
         .catch(error => {
-          console.error('Update error:', error);
+          log.error('Update error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
           alert(`Error updating contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
@@ -1193,12 +1195,12 @@ class ContactsApp extends AppWindow {
           return response.json();
         })
         .then(() => {
-          console.log('Contact created successfully');
+          log.debug('Contact created successfully');
           this.loadContactsFromAPI();
           closeModal();
         })
         .catch(error => {
-          console.error('Create error:', error);
+          log.error('Create error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
           alert(`Error creating contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);
@@ -1222,7 +1224,7 @@ class ContactsApp extends AppWindow {
           return response.json();
         })
         .then(() => {
-          console.log('Contact deleted successfully');
+          log.debug('Contact deleted successfully');
           this.loadContactsFromAPI();
           this.selectedContactId = null;
           this.cardContainer.innerHTML = `
@@ -1233,7 +1235,7 @@ class ContactsApp extends AppWindow {
           `;
         })
         .catch(error => {
-          console.error('Delete error:', error);
+          log.error('Delete error:', error);
           const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const port = isDev ? 3002 : 3001;
           alert(`Error deleting contact: ${error.message}\n\nMake sure the backend API server is running on port ${port}`);

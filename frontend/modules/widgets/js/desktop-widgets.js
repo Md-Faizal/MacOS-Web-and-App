@@ -476,7 +476,7 @@ export class DesktopWidgetsPanel {
           }
 
           if (dropped) {
-             console.log('✓ Widget successfully placed on desktop');
+             console.debug('✓ Widget successfully placed on desktop');
           }
           
           if (dragGhost) {

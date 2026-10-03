@@ -19,7 +19,7 @@ export class ConnectivityManager {
         const status = online ? 'Back Online' : 'Offline Mode';
         const type = online ? 'success' : 'warning';
         
-        console.log(`🌐 System: ${status}`);
+        console.debug(`🌐 System: ${status}`);
         
         if (window.notifications) {
             window.notifications.show(status, `System is now ${online ? 'connected to the internet' : 'running offline'}.`, type);

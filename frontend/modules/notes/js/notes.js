@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Notes') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 /**
  * FieldTracker - Track which fields have changed in a note
  * Enables partial updates (only send changed fields to server)
@@ -84,13 +86,13 @@ class AdaptiveDebouncer {
     }
     
     const editCount = this.editCounts.get(noteId);
-    console.log(`⏱️ Scheduling sync for ${noteId} in ${delay}ms (${editCount} edits)`);
+    log.debug(`⏱️ Scheduling sync for ${noteId} in ${delay}ms (${editCount} edits)`);
     
     // Set new timer
     const timer = setTimeout(() => {
       this.editCounts.set(noteId, 0);
       this.timers.delete(noteId);
-      console.log(`⏰ Adaptive debounce fired for ${noteId}`);
+      log.debug(`⏰ Adaptive debounce fired for ${noteId}`);
       this.onSync(noteId);
     }, delay);
     
@@ -144,7 +146,7 @@ class LoadingQueue {
     try {
       await task.action();
     } catch (e) {
-      console.warn(`[LoadingQueue] Task failed:`, e);
+      log.warn(`[LoadingQueue] Task failed:`, e);
     } finally {
       // Add slight delay between background tasks to prevent locking the main thread
       setTimeout(() => this.processNext(), 20);
@@ -240,7 +242,7 @@ class NotesApp extends AppWindow {
   noteETags = {};
 
   async initializeApp() {
-    console.log('🚀 Initializing Notes App with clean architecture...');
+    log.debug('🚀 Initializing Notes App with clean architecture...');
     
     try {
       // Load CSS immediately before anything else
@@ -253,13 +255,13 @@ class NotesApp extends AppWindow {
       this.renderLoadingState();
       
       // Step 2: Load note tiles immediately and render as soon as available
-      console.log('📥 Fetching note titles...');
+      log.debug('📥 Fetching note titles...');
       const startTime = performance.now();
       
       await this.loadNoteTiles();
       
       const loadTime = (performance.now() - startTime).toFixed(0);
-      console.log(`⏱️  Note titles loaded in ${loadTime}ms`);
+      log.debug(`⏱️  Note titles loaded in ${loadTime}ms`);
       
       // Render list immediately with titles
       this.renderNotesList();
@@ -271,9 +273,9 @@ class NotesApp extends AppWindow {
       // Step 4: Start real-time sync (SSE + BroadcastChannel)
       this.setupRealTimeSync();
 
-      console.log('✅ Notes app initialized (titles ready, loading details in background)');
+      log.debug('✅ Notes app initialized (titles ready, loading details in background)');
     } catch (error) {
-      console.error('❌ Failed to initialize notes app:', error);
+      log.error('❌ Failed to initialize notes app:', error);
       this.showNotification('Failed to load notes', 'error');
     }
   }
@@ -484,9 +486,9 @@ class NotesApp extends AppWindow {
         }
 
         this.showNotification('Notes refreshed from database', 'success');
-        console.log('✓ Notes refreshed from database');
+        log.debug('✓ Notes refreshed from database');
       } catch (error) {
-        console.error('Failed to refresh notes:', error);
+        log.error('Failed to refresh notes:', error);
         this.showNotification('Failed to refresh notes', 'error');
       } finally {
         refreshBtn.style.opacity = '1';
@@ -652,7 +654,7 @@ class NotesApp extends AppWindow {
         if (data.clientId && data.clientId === this.clientId) return;
         this.handleSyncEvent(data);
       } catch (err) {
-        console.warn('[SSE] Failed to parse event:', err);
+        log.warn('[SSE] Failed to parse event:', err);
       }
     };
 
@@ -663,12 +665,12 @@ class NotesApp extends AppWindow {
     this.eventSource.addEventListener('content-streaming', handleEvent);
 
     this.eventSource.addEventListener('connected', () => {
-      console.log('📡 [SSE] Connected to real-time events stream');
+      log.debug('📡 [SSE] Connected to real-time events stream');
     });
 
     // Auto-reconnect after 5s on any error
     this.eventSource.onerror = () => {
-      console.warn('📡 [SSE] Connection lost — reconnecting in 5s...');
+      log.warn('📡 [SSE] Connection lost — reconnecting in 5s...');
       this.eventSource.close();
       setTimeout(() => this.connectSSE(), 5000);
     };
@@ -681,7 +683,7 @@ class NotesApp extends AppWindow {
   handleSyncEvent(data) {
     if (!data || !data.type) return;
     const { type, id, noteId, title } = data;
-    console.log(`🔄 [Sync] Received: ${type}`, id || noteId || '');
+    log.debug(`🔄 [Sync] Received: ${type}`, id || noteId || '');
 
     switch (type) {
       case 'content-streaming': {
@@ -784,7 +786,7 @@ class NotesApp extends AppWindow {
       try {
         this.broadcastChannel.postMessage({ type, clientId: this.clientId, ...data });
       } catch (e) {
-        console.warn('[BroadcastChannel] emit failed:', e);
+        log.warn('[BroadcastChannel] emit failed:', e);
       }
     }
   }
@@ -808,7 +810,7 @@ class NotesApp extends AppWindow {
   }
 
   async processSyncQueue() {
-    console.log('🔄 Processing sync queue (triggered by adaptive debouncer)...');
+    log.debug('🔄 Processing sync queue (triggered by adaptive debouncer)...');
     
     // Get edited notes that are ready to sync
     const notesToSync = [];
@@ -822,7 +824,7 @@ class NotesApp extends AppWindow {
     }
     
     if (notesToSync.length === 0) {
-      console.log('📭 No notes to sync');
+      log.debug('📭 No notes to sync');
       return;
     }
     
@@ -856,7 +858,7 @@ class NotesApp extends AppWindow {
 
   async syncNoteToServer(note) {
     if (this.noteState[note.id] === 'syncing') {
-      console.log(`⏳ Note ${note.id} already syncing, skipping...`);
+      log.debug(`⏳ Note ${note.id} already syncing, skipping...`);
       return;
     }
     
@@ -864,7 +866,7 @@ class NotesApp extends AppWindow {
     const hasTextChanges = this.fieldTracker && this.fieldTracker.hasChanges();
 
     if (!hasTextChanges) {
-      console.log(`ℹ️  No text changes to sync for note ${note.id}`);
+      log.debug(`ℹ️  No text changes to sync for note ${note.id}`);
       // Improvement B: If fieldTracker is null/unset (e.g. note was marked edited but user
       // switched away before field tracker was initialized), reset to synced to avoid
       // the note getting stuck in 'edited' state forever.
@@ -883,11 +885,11 @@ class NotesApp extends AppWindow {
     try {
       // Use cached ETag if available, otherwise fetch current state
       let eTag = this.noteETags[note.id];
-      console.log(`🔍 Check ETag cache for note ${note.id}:`, eTag ? `"${eTag}"` : 'EMPTY');
+      log.debug(`🔍 Check ETag cache for note ${note.id}:`, eTag ? `"${eTag}"` : 'EMPTY');
       
       if (!eTag) {
         // If we don't have a cached ETag, fetch it
-        console.log(`📥 Fetching ETag for note ${note.id}...`);
+        log.debug(`📥 Fetching ETag for note ${note.id}...`);
         const serverResponse = await fetch(`${this.apiEndpoint}/${note.id}`);
         if (!serverResponse.ok) {
           throw new Error(`Failed to fetch current state: ${serverResponse.status}`);
@@ -895,12 +897,12 @@ class NotesApp extends AppWindow {
         eTag = this.getETag(serverResponse);
         if (eTag) {
           this.noteETags[note.id] = eTag;
-          console.log(`✅ Cached ETag for note ${note.id}: "${eTag}"`);
+          log.debug(`✅ Cached ETag for note ${note.id}: "${eTag}"`);
         } else {
-          console.warn(`⚠️  No ETag received from server for note ${note.id}`);
+          log.warn(`⚠️  No ETag received from server for note ${note.id}`);
         }
       } else {
-        console.log(`✅ Using cached ETag for note ${note.id}: "${eTag}"`);
+        log.debug(`✅ Using cached ETag for note ${note.id}: "${eTag}"`);
       }
       
       // ===== Prepare text update payload =====
@@ -909,10 +911,10 @@ class NotesApp extends AppWindow {
       let updatePayload;
       if (this.fieldTracker && this.fieldTracker.hasChanges()) {
         updatePayload = this.fieldTracker.getChanges();
-        console.log(`📤 Syncing partial update for ${note.id}: changed fields = ${Object.keys(updatePayload).join(', ')}`);
+        log.debug(`📤 Syncing partial update for ${note.id}: changed fields = ${Object.keys(updatePayload).join(', ')}`);
       } else {
         updatePayload = { title: note.title, content: note.content };
-        console.log(`📤 Syncing full update for ${note.id}`);
+        log.debug(`📤 Syncing full update for ${note.id}`);
       }
 
       const headers = { 'Content-Type': 'application/json' };
@@ -941,7 +943,7 @@ class NotesApp extends AppWindow {
 
       if (this.fieldTracker) {
         this.fieldTracker.reset();
-        console.log(`✅ Reset field tracker for ${note.id}`);
+        log.debug(`✅ Reset field tracker for ${note.id}`);
       }
       
       // Success!
@@ -954,9 +956,9 @@ class NotesApp extends AppWindow {
       // Notify other tabs instantly via BroadcastChannel
       this.emit('note-updated', { id: note.id, title: note.title, content: note.content });
       
-      console.log(`✅ Successfully synced note: ${note.title}`);
+      log.debug(`✅ Successfully synced note: ${note.title}`);
     } catch (error) {
-      console.error(`❌ Failed to sync note ${note.id}:`, error);
+      log.error(`❌ Failed to sync note ${note.id}:`, error);
       
       this.noteState[note.id] = 'error';
       this.noteSyncErrors[note.id] = error.message;
@@ -972,7 +974,7 @@ class NotesApp extends AppWindow {
   // ===== LOADING FUNCTIONS =====
 
   async loadNoteTiles() {
-    console.log('📋 Loading note tiles...');
+    log.debug('📋 Loading note tiles...');
     const startTime = performance.now();
     try {
       // Fetch only minimal data (id, title, created_at, updated_at) for faster load
@@ -1004,20 +1006,20 @@ class NotesApp extends AppWindow {
       
       this.tilesLoaded = true;
       const loadTime = (performance.now() - startTime).toFixed(2);
-      console.log(`✅ Loaded ${this.notes.length} note tiles in ${loadTime}ms`);
+      log.debug(`✅ Loaded ${this.notes.length} note tiles in ${loadTime}ms`);
       return this.notes;
     } catch (error) {
-      console.error('❌ Failed to load note tiles:', error);
+      log.error('❌ Failed to load note tiles:', error);
       throw error;
     }
   }
 
   async loadNoteContentsInBackground() {
-    console.log('📄 Queuing background content loading...');
+    log.debug('📄 Queuing background content loading...');
     for (const note of this.notes) {
        this.loadingManager.add(`${note.id}-content`, 'NORMAL', async () => {
          await this.loadSingleNoteContent(note).catch(e => {
-           console.warn(`⚠️  Failed to load content for ${note.id}:`, e);
+           log.warn(`⚠️  Failed to load content for ${note.id}:`, e);
          });
        });
     }
@@ -1036,16 +1038,16 @@ class NotesApp extends AppWindow {
       const eTag = this.getETag(response);
       if (eTag) {
         this.noteETags[note.id] = eTag;
-        console.log(`📄 Loaded content for: ${note.title}, ETag: "${eTag}"`);
+        log.debug(`📄 Loaded content for: ${note.title}, ETag: "${eTag}"`);
       } else {
-        console.warn(`⚠️  Loaded content for: ${note.title}, but NO ETag received!`);
+        log.warn(`⚠️  Loaded content for: ${note.title}, but NO ETag received!`);
       }
       
       // ===== IMPROVED: Reset field tracker after content loads =====
       // This ensures we're only tracking user edits, not the initial content load
       if (this.currentNoteId === note.id && this.fieldTracker) {
         this.fieldTracker.reset();
-        console.log(`🔄 Reset field tracker for ${note.id} after content loaded`);
+        log.debug(`🔄 Reset field tracker for ${note.id} after content loaded`);
       }
       
       // Update UI immediately with content (don't wait for images)
@@ -1060,7 +1062,7 @@ class NotesApp extends AppWindow {
   }
 
   async loadNoteImagesInBackground() {
-    console.log('🖼️  Queuing background image loading...');
+    log.debug('🖼️  Queuing background image loading...');
     
     // Low priority queueing for all notes.
     // Bug 7 fix: guard on BOTH images.length AND imagesLoading to prevent double-fetching
@@ -1070,7 +1072,7 @@ class NotesApp extends AppWindow {
        this.loadingManager.add(`${note.id}-images`, 'LOW', async () => {
          if (!note.images.length && !this.imagesLoading[note.id]) {
             await this.loadSingleNoteImages(note).catch(e => {
-              console.warn(`Failed to load images for ${note.id}:`, e);
+              log.warn(`Failed to load images for ${note.id}:`, e);
             });
          }
        });
@@ -1109,7 +1111,7 @@ class NotesApp extends AppWindow {
             }
           }
         } catch (err) {
-          console.warn(`Failed to load individual image ${meta[i].id}:`, err);
+          log.warn(`Failed to load individual image ${meta[i].id}:`, err);
         }
       }
     } finally {
@@ -1164,12 +1166,12 @@ class NotesApp extends AppWindow {
     // Create in API
     this.createNoteOnServer(note);
     
-    console.log(`📝 Created new note: ${id}`);
+    log.debug(`📝 Created new note: ${id}`);
   }
 
   async createNoteOnServer(note) {
     try {
-      console.log(`📤 Creating note on server: ${note.title}`);
+      log.debug(`📤 Creating note on server: ${note.title}`);
       
       // Only send the fields the server actually uses — avoids sending images:[],
       // imageIds:[], isNew, created_at (server sets its own), etc.
@@ -1186,7 +1188,7 @@ class NotesApp extends AppWindow {
       }
 
       const result = await response.json();
-      console.log(`✅ Note created on server:`, result);
+      log.debug(`✅ Note created on server:`, result);
       
       delete note.isNew;
       if (note.isDeleted) {
@@ -1199,7 +1201,7 @@ class NotesApp extends AppWindow {
       // Notify other tabs instantly via BroadcastChannel
       this.emit('note-created', { id: note.id, title: note.title, content: note.content || '' });
     } catch (error) {
-      console.error('❌ Failed to create note on server:', error);
+      log.error('❌ Failed to create note on server:', error);
       this.noteState[note.id] = 'error';
       this.noteSyncErrors[note.id] = error.message;
       this.showNotification('Failed to sync note to server', 'warning');
@@ -1261,7 +1263,7 @@ class NotesApp extends AppWindow {
       this.editorLoader.style.display = 'flex';
       this.textarea.style.display = 'none';
       this.loadSingleNoteContent(note).catch(e => {
-        console.warn('Failed to load content:', e);
+        log.warn('Failed to load content:', e);
         this.textarea.value = 'Failed to load content';
         this.editorLoader.style.display = 'none';
         this.textarea.style.display = 'block';
@@ -1273,7 +1275,7 @@ class NotesApp extends AppWindow {
       this.imagesLoading[id] = true;
       this.imagesLoader.style.display = 'flex';
       this.loadSingleNoteImages(note).catch(e => {
-        console.warn('Failed to load images:', e);
+        log.warn('Failed to load images:', e);
         this.imagesLoader.style.display = 'none';
       });
     }
@@ -1325,19 +1327,19 @@ class NotesApp extends AppWindow {
       this.deleteNoteOnServer(noteId, noteTitle);
     }
     
-    console.log(`🗑️  Deleted note: ${noteTitle}`);
+    log.debug(`🗑️  Deleted note: ${noteTitle}`);
   }
 
   async deleteNoteOnServer(noteId, noteTitle) {
     try {
-      console.log(`📤 Deleting note on server: ${noteId}`);
+      log.debug(`📤 Deleting note on server: ${noteId}`);
       
       const response = await fetch(`${this.apiEndpoint}/${noteId}?clientId=${this.clientId}`, {
         method: 'DELETE'
       });
 
       if (response.status === 404) {
-        console.log('Note not found on server (already deleted)');
+        log.debug('Note not found on server (already deleted)');
         return;
       }
 
@@ -1345,12 +1347,12 @@ class NotesApp extends AppWindow {
         throw new Error(`API error: ${response.status}`);
       }
 
-      console.log(`✅ Note deleted from server: ${noteTitle}`);
+      log.debug(`✅ Note deleted from server: ${noteTitle}`);
       this.showNotification(`Deleted: ${noteTitle}`, 'success');
       // Notify other tabs instantly via BroadcastChannel
       this.emit('note-deleted', { id: noteId });
     } catch (error) {
-      console.error('❌ Failed to delete note from server:', error);
+      log.error('❌ Failed to delete note from server:', error);
       this.showNotification('Failed to delete note from server', 'error');
     }
   }
@@ -1555,7 +1557,7 @@ class NotesApp extends AppWindow {
     if (note.imageIds) note.imageIds.splice(index, 1);
     this.renderImages();
     
-    console.log(`🗑️  Removed image at index ${index} from note`);
+    log.debug(`🗑️  Removed image at index ${index} from note`);
     
     if (imageId) {
       try {
@@ -1569,7 +1571,7 @@ class NotesApp extends AppWindow {
         // Notify other tabs instantly via BroadcastChannel
         this.emit('image-updated', { noteId: note.id });
       } catch (err) {
-        console.error('Failed to delete image on server — rolling back:', err);
+        log.error('Failed to delete image on server — rolling back:', err);
         // Restore the image at its original position
         note.images.splice(index, 0, removedImage);
         if (note.imageIds && removedImageId !== undefined) {
@@ -1679,7 +1681,7 @@ class NotesApp extends AppWindow {
           // Wait for parent note to finish syncing to server to prevent FK constraint violations.
           // This handles the race condition between optimistic UI creation and server-side persistence.
           if (note.isNew) {
-            console.log(`⏳ Waiting for note ${note.id} to sync before uploading image...`);
+            log.debug(`⏳ Waiting for note ${note.id} to sync before uploading image...`);
             let retries = 60; // Wait up to 6 seconds (60 * 100ms)
             while (note.isNew && retries > 0) {
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -1688,7 +1690,7 @@ class NotesApp extends AppWindow {
             if (note.isNew) {
               throw new Error('Parent note took too long to sync. Please try again.');
             }
-            console.log(`✅ Note ${note.id} synced — proceeding with image upload.`);
+            log.debug(`✅ Note ${note.id} synced — proceeding with image upload.`);
           }
 
           // Upload the image with retry-with-backoff logic.
@@ -1708,7 +1710,7 @@ class NotesApp extends AppWindow {
             const status = uploadResponse.status;
             if (attempt < MAX_UPLOAD_RETRIES && (status === 404 || status === 500 || status === 503)) {
               const delay = attempt * 500; // 500ms, 1s, 1.5s, 2s
-              console.warn(`⚠️ Image upload attempt ${attempt} failed (HTTP ${status}). Retrying in ${delay}ms...`);
+              log.warn(`⚠️ Image upload attempt ${attempt} failed (HTTP ${status}). Retrying in ${delay}ms...`);
               await new Promise(resolve => setTimeout(resolve, delay));
             } else {
               // Non-retriable error or max retries exhausted
@@ -1736,7 +1738,7 @@ class NotesApp extends AppWindow {
           // Notify other tabs instantly (before SSE arrives)
           this.emit('image-updated', { noteId: note.id });
         } catch (err) {
-          console.error('Image upload failed:', err);
+          log.error('Image upload failed:', err);
           // Visually mark the image as errored
           placeholderWrapper.classList.add('note-image-error');
           const overlay = placeholderWrapper.querySelector('.image-sync-overlay');

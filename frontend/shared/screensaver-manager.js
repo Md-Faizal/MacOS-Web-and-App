@@ -1,3 +1,4 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Screensaver') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 /**
  * macOS Sonoma / Sequoia Screensaver Engine
  * 
@@ -44,7 +45,7 @@ class ScreensaverManager {
       }
     });
 
-    console.log(`[ScreensaverManager] 💤 Initialized (Timeout: ${this.timeoutMinutes === 0 ? 'Never' : this.timeoutMinutes + ' min'})`);
+    log.debug(` 💤 Initialized (Timeout: ${this.timeoutMinutes === 0 ? 'Never' : this.timeoutMinutes + ' min'})`);
   }
 
   getTimeoutMinutes() {
@@ -148,7 +149,7 @@ class ScreensaverManager {
       detail: { isPreview }
     }));
 
-    console.log('[ScreensaverManager] 🌌 Screensaver started: Desktop chrome hidden, wallpaper playing');
+    log.debug(' 🌌 Screensaver started: Desktop chrome hidden, wallpaper playing');
   }
 
   /**
@@ -166,7 +167,7 @@ class ScreensaverManager {
     window.dispatchEvent(new CustomEvent('macos-screensaver-deactivated'));
 
     this.resetTimer();
-    console.log('[ScreensaverManager] ☀️ Screensaver dismissed: Welcome back');
+    log.debug(' ☀️ Screensaver dismissed: Welcome back');
   }
 
   /**

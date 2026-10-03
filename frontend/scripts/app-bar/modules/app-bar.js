@@ -1,3 +1,5 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Dock') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 // Dock Initialization and Management
 function initializeDock() {
   window.initializeDock = initializeDock;
@@ -5,7 +7,7 @@ function initializeDock() {
   
   // Check if dockContainer exists
   if (!dockContainer) {
-    console.error('Dock container not found in the DOM');
+    log.error('Dock container not found in the DOM');
     return;
   }
 
@@ -145,7 +147,7 @@ function initializeDock() {
       }
     }
   } catch (e) {
-    console.warn('Error reading worker permissions in dock:', e);
+    log.warn('Error reading worker permissions in dock:', e);
   }
 
   const availableApps = allowedAppsList 
@@ -806,7 +808,7 @@ function initializeDock() {
       if (app) {
         app.action(params);
       } else {
-        console.error(`App with ID ${appId} not found`);
+        log.error(`App with ID ${appId} not found`);
       }
     }
   };
@@ -1214,20 +1216,20 @@ function initializeDock() {
   // Setup drag and drop listeners
   function setupAppDragListeners(appElement, isRecent) {
     if (window.MacOSLogger && window.MacOSLogger.isDebugEnabled('AppBar')) {
-      console.log('Attaching drag listeners to:', appElement.id);
+      log.debug('Attaching drag listeners to:', appElement.id);
     }
     
     appElement.addEventListener('dragstart', (e) => {
-      console.log('↓ Dragstart fired on:', appElement.id, 'target:', e.target);
+      log.debug('↓ Dragstart fired on:', appElement.id, 'target:', e.target);
       const appId = appElement.id.replace('app-', '').replace('-recent', '');
       const app = availableApps.find(a => a.id === appId);
       
       if (!app) {
-        console.warn('App not found for id:', appId);
+        log.warn('App not found for id:', appId);
         return;
       }
       
-      console.log('Dock drag start:', app.name);
+      log.debug('Dock drag start:', app.name);
       
       e.dataTransfer.effectAllowed = 'copyMove';
       // Support both old format (for dock) and new format (for desktop/launchpad)
@@ -1239,15 +1241,15 @@ function initializeDock() {
         appName: app.name
       });
       e.dataTransfer.setData('text/plain', dragPayload);
-      console.log('✓ Dock setting drag data:', dragPayload);
-      console.log('✓ effectAllowed:', e.dataTransfer.effectAllowed);
+      log.debug('✓ Dock setting drag data:', dragPayload);
+      log.debug('✓ effectAllowed:', e.dataTransfer.effectAllowed);
       
       appElement.classList.add('dragging');
       appElement.parentElement.classList.add('dragging');
     });
 
     appElement.addEventListener('dragend', (e) => {
-      console.log('↑ Dragend fired on:', appElement.id);
+      log.debug('↑ Dragend fired on:', appElement.id);
       appElement.classList.remove('dragging');
       if (appElement.parentElement) {
         appElement.parentElement.classList.remove('dragging', 'drag-over');
@@ -1403,7 +1405,7 @@ function initializeDock() {
               if (window.desktopManager && appObj) {
                 const dragPayload = { source: 'dock', appId: appId, appName: appObj.name };
                 const syntheticEvent = { clientX: last.clientX, clientY: last.clientY };
-                try { window.desktopManager.processDroppedApp(dragPayload, syntheticEvent); } catch (err) { console.error('desktopManager.processDroppedApp error', err); }
+                try { window.desktopManager.processDroppedApp(dragPayload, syntheticEvent); } catch (err) { log.error('desktopManager.processDroppedApp error', err); }
               }
             }
           }
@@ -1429,7 +1431,7 @@ function initializeDock() {
 
 // Listen for session verification to dynamically re-filter for workers
 window.addEventListener('macos-auth-verified', () => {
-  console.log('[Dock] Auth verified, re-initializing dock permissions');
+  log.debug('[Dock] Auth verified, re-initializing dock permissions');
   initializeDock();
 });
 

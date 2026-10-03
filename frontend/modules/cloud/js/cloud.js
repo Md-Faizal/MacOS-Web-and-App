@@ -544,7 +544,7 @@ class CloudApp extends AppWindow {
         if (!video.src) return;
 
         if (video.readyState < 2) { // HAVE_CURRENT_DATA or lower
-          console.log('Video not ready, queuing play...');
+          console.debug('Video not ready, queuing play...');
           this.viewerState.pendingPlay = true;
           overlayPlay.classList.add('buffering');
           return;

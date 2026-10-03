@@ -420,7 +420,7 @@ class AIVisionApp extends AppWindow {
       btnGallery.addEventListener('click', () => galleryInput.click());
       galleryInput.addEventListener('change', (e) => {
         if (e.target.files[0]) {
-          console.log('Gallery image selected:', e.target.files[0].name);
+          console.debug('Gallery image selected:', e.target.files[0].name);
           this.triggerScanSequence(container, true);
         }
       });
