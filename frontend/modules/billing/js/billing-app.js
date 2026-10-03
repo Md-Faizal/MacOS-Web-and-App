@@ -679,15 +679,7 @@ export class BillingApp extends AppWindow {
 
       <!-- Main View -->
       <div class="billing-main">
-        <div class="billing-view-container">
-          <div class="billing-empty-state">
-            <div>
-              <p style="margin: 0 0 8px 0; font-size: 18px;">💳</p>
-              <p style="margin: 0;">BillingDashboard</p>
-              <p style="margin: 8px 0 0 0; font-size: 12px; color: #bca3af;">Manage your company bills and invoices</p>
-            </div>
-          </div>
-        </div>
+        <div class="billing-view-container"></div>
       </div>
     `;
 
@@ -1474,6 +1466,10 @@ export class BillingApp extends AppWindow {
     const safeName = (viewName === 'existing') ? 'ledger' : viewName;
     let panel = this._subviewPanels.get(safeName);
     if (!panel || !this.viewContainer.contains(panel)) {
+      if (this.viewContainer) {
+        const emptyState = this.viewContainer.querySelector('.billing-empty-state');
+        if (emptyState) emptyState.remove();
+      }
       panel = document.createElement('div');
       panel.className = 'billing-subview-panel';
       panel.dataset.subview = safeName;

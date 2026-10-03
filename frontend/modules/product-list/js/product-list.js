@@ -321,6 +321,8 @@ export class ProductListApp extends AppWindow {
       panel.style.flexDirection = 'column';
       panel.style.overflow = 'auto';
       if (this.rootViewContainer) {
+        const emptyState = this.rootViewContainer.querySelector('.product-empty-state');
+        if (emptyState) emptyState.remove();
         this.rootViewContainer.appendChild(panel);
       }
       this._subviewPanels.set(viewName, panel);
@@ -534,15 +536,7 @@ export class ProductListApp extends AppWindow {
           </div>
         </div>
 
-        <div class="product-view-container">
-          <div class="product-empty-state">
-            <div>
-              <p>📦</p>
-              <p>Product List</p>
-              <p>Manage your product inventory</p>
-            </div>
-          </div>
-        </div>
+        <div class="product-view-container"></div>
       </div>
     `;
 
