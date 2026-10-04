@@ -421,7 +421,6 @@ export class BillingApp extends AppWindow {
     if (typeof window !== 'undefined' && window.showNotification) {
       return window.showNotification(message, type, { app: 'Billing', title: 'Billing', duration: duration });
     }
-  }, duration);
   }
 
   isWorkerUser() {
