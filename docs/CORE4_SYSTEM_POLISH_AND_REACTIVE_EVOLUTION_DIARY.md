@@ -754,13 +754,35 @@ window.MacOSBiometrics = {
 
 ---
 
+## 3.4 Core 4 Enterprise Reactivity & Lifecycle Hotfix (v1.36.1)
+
+### A. Problem Statement & Root Cause Diagnosis
+1. **Window Manager App ID Collision**: `app-bar.js` registered the Product List app as `'products'`, but `ProductListApp` constructor registered itself under `'product-list'`. On closing the window, the cleanup routine failed to match the registered key, leaving stale DOM state that required a double-click on subsequent launches.
+2. **Premature Initial Empty State**: `ProductListApp.renderAllProducts()` executed synchronously in the constructor before the initial asynchronous API call completed, displaying a misleading *"No products yet"* message to the user.
+3. **Deaf Event Domain Subscriptions**: `ProductListApp` was only listening for `inventory:` events, missing `products:variant`, `products:batch`, and `products:category` broadcasts from backend mutations.
+4. **Billing Subview Activation Freezing**: `BillingApp.switchView()` kept subview panels alive to avoid DOM destruction, but only provided refresh hooks for `ledger` and `payment-credit`. Switching to `edit` (Edit Bills & Payments), `orders`, or `dashboard` left those panels permanently frozen.
+5. **Dangling Memory Reference in Payments**: `payment-credit-note.js` copied `billingApp.billingData` during initialization. When `billingApp` replaced `this.billingData` with a fresh object after an API fetch, the payment module remained bound to the obsolete object.
+6. **Ledger Disconnect on Tab Switch**: `LedgerView.stopPolling()` called `this._dataBusUnsub()`, completely severing the Ledger from real-time events whenever the user navigated to another tab. When returning to the Ledger, in-memory API caching caused diff engines to discard updates.
+7. **Race Condition in Payment Deletion**: `deletePayment` initiated an optimistic fade animation and triggered an unawaited background fetch. Concurrently, `syncWithServer(true)` ran while the server was still processing the deletion, querying the old state and resurrecting the deleted card.
+
+### B. Enterprise Engineering Solution
+* **Synchronized Window Identifiers**: Standardized `appId: 'products'` across `app-bar.js`, `AppWindow.launchApp`, `ProductListApp`, and `close()` cleanup handlers. Added automatic live-window validation in `AppWindow.launchApp` to guarantee instant single-click launch.
+* **Loading State Lifecycle**: Introduced `this.isLoading = true` in `ProductListApp`, presenting an Apple-style progress spinner until the catalog is fully hydrated from the API.
+* **Shared Static API Cache Registry**: Upgraded `BillingAPI` with `static _sharedCache` and `static _sharedInFlightRequests`, reducing read TTL to 3000ms and ensuring that cache invalidations propagate across every domain and instance simultaneously.
+* **Omnipresent Real-Time Subscriptions**: Retained `CoreDataBus` subscriptions permanently across the lifecycle of `LedgerView` and `PaymentCreditNote`.
+* **Dynamic Property Bindings**: Converted `billingData` in `PaymentCreditNote` into dynamic getters and setters, ensuring live access to `billingApp.billingData`.
+* **Awaited Optimistic Pipeline**: Restructured `deletePayment` and `recordPayment` into sequential, awaited operations that verify server execution before triggering full view synchronization.
+
+---
+
 ## 4. Continuity Instructions for the Next Step
 
 > **Status & Current Focus**:
 > 1. **Pillar 01 (Console Log Spam Suppression & Production Gating)** is **🟢 COMPLETED** (Full production gating, ring buffer flight recorder, and complete source-level refactor across all 31 modules).
 > 2. **Pillar 02 (Background API Throttling & Deduplication Caching)** is **🟢 COMPLETED** (In-flight request deduplication, smart TTL read caching, automatic mutation cache invalidation, and 60-second focus cooldown gate).
-> 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], keep-alive view panels, and ironclad zero-refresh synchronization across Billing, Ledger, Product List, Contacts, Notes, and Analytics).
+> 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], keep-alive view panels, and ironclad zero-refresh synchronization across Billing, Ledger, Product List, Contacts, Notes, and Analytics - verified under v1.36.1).
 > 4. **Pillar 04 (Uniform On-Screen Glass & Native Device Notifications)** is **🟢 COMPLETED** (Unified macOS Sonoma glassmorphic toast stack, Web Audio acoustic chimes, native OS desktop notifications when backgrounded, automatic `CoreDataBus` alerts, 100% notification consistency replacing all ad-hoc alerts/toasts across Billing, Orders, Payments, Ledger, Contacts, and Notes, with high-contrast light/dark mode optimization and mobile-responsive viewport scaling).
 > 5. **Pillar 05 (Billion-Dollar Grade API & Architectural Documentation)** is **🟡 NEXT UP**.
 > 6. Objective for Pillar 05: Construct complete OpenAPI/TypeScript interface contracts, interactive architectural sequence diagrams, and system blueprints across the WebApp, Native Android POS, and Rust compute layers.
+
 
