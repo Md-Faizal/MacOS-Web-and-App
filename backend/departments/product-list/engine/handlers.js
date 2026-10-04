@@ -2,6 +2,7 @@ const path = require('path');
 const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../shared/api/product-list-contract');
 const productListDepartment = require('../service');
+const dataBus = require('../../../core/sync/data-bus');
 
 let SuiteCoreBridge = null;
 try {
@@ -257,6 +258,9 @@ module.exports = function(db) {
           metadata: { category_id: finalCategoryId, classification, variants_count: variants ? variants.length : 0 }
         });
 
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('inventory:product', 'created', { id: productId, name, category_id: finalCategoryId });
+
         res.status(201).json({ 
           success: true, 
           id: productId,
@@ -471,6 +475,9 @@ module.exports = function(db) {
           metadata: { category_id: finalCategoryId, classification }
         });
 
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('inventory:product', 'updated', { id, name });
+
         res.json({ success: true, id });
       } catch (error) {
         console.error(`[API ERROR] Failed to update product ${req.params.id}:`, error);
@@ -527,6 +534,9 @@ module.exports = function(db) {
           resourceId: id,
           resourceName: prod ? prod.name : null
         });
+
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('inventory:product', 'deleted', { id, name: prod ? prod.name : null });
 
         res.json({ success: true, id });
       } catch (error) {

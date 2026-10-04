@@ -43,6 +43,15 @@ class ContactsApp extends AppWindow {
         this.loadContactsFromAPI();
       });
     }
+
+    if (typeof window !== 'undefined' && window.MacOSStore) {
+      this._storeContactsUnsub = window.MacOSStore.subscribe('contacts', (contacts) => {
+        if (Array.isArray(contacts) && contacts !== this.contacts) {
+          this.contacts = contacts;
+          this.renderContactsList();
+        }
+      });
+    }
   }
 
   setupContactsUI() {
@@ -874,6 +883,9 @@ class ContactsApp extends AppWindow {
           color: this.generateColorForContact(contact.name)
         }));
         log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.reconcile('contacts', this.contacts);
+        }
         this.renderContactsList();
         if (this.selectedContactId) {
           const stillExists = this.contacts.some(c => c.id === this.selectedContactId);
@@ -1195,15 +1207,17 @@ class ContactsApp extends AppWindow {
         })
         .then(() => {
           log.debug('Contact updated successfully');
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'updated', { id: this.editingContactId });
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'updated', { id: this.editingContactId, name });
+          if (typeof window !== 'undefined' && window.MacOSStore) {
+            window.MacOSStore.patch('contacts', arr => arr.map(c => c.id === this.editingContactId ? { ...c, ...contactData, name } : c));
+          }
           this.loadContactsFromAPI();
+          this.showNotification('Contact Updated', `"${name}" profile saved successfully`, 'success');
           closeModal();
         })
         .catch(error => {
           log.error('Update error:', error);
-          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const port = isDev ? 3002 : 3001;
-          this.showNotification(`Error updating contact: ${error.message}`, 'error');
+          this.showNotification('Save Failed', `Error updating contact: ${error.message}`, 'error');
         });
     } else {
       // Create new contact via API
@@ -1217,17 +1231,20 @@ class ContactsApp extends AppWindow {
           if (!response.ok) throw new Error(`API error: ${response.statusText}`);
           return response.json();
         })
-        .then(() => {
+        .then((result) => {
           log.debug('Contact created successfully');
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'created', {});
+          const newId = result?.id;
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'created', { id: newId, name });
+          if (typeof window !== 'undefined' && window.MacOSStore) {
+            window.MacOSStore.patch('contacts', arr => [...arr, { ...contactData, id: newId, name }]);
+          }
           this.loadContactsFromAPI();
+          this.showNotification('Contact Saved', `"${name}" added to directory`, 'success');
           closeModal();
         })
         .catch(error => {
           log.error('Create error:', error);
-          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const port = isDev ? 3002 : 3001;
-          this.showNotification(`Error creating contact: ${error.message}`, 'error');
+          this.showNotification('Save Failed', `Error creating contact: ${error.message}`, 'error');
         });
     }
   }
@@ -1249,7 +1266,11 @@ class ContactsApp extends AppWindow {
         })
         .then(() => {
           log.debug('Contact deleted successfully');
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'deleted', { id: contactId });
+          const contactName = contact.name;
+          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'deleted', { id: contactId, name: contactName });
+          if (typeof window !== 'undefined' && window.MacOSStore) {
+            window.MacOSStore.patch('contacts', arr => arr.filter(c => c.id !== contactId));
+          }
           this.loadContactsFromAPI();
           this.selectedContactId = null;
           this.cardContainer.innerHTML = `
@@ -1258,12 +1279,11 @@ class ContactsApp extends AppWindow {
               <div class="contact-empty-state-text">No contact selected</div>
             </div>
           `;
+          this.showNotification('Contact Removed', `"${contactName}" deleted`, 'info');
         })
         .catch(error => {
           log.error('Delete error:', error);
-          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const port = isDev ? 3002 : 3001;
-          this.showNotification(`Error deleting contact: ${error.message}`, 'error');
+          this.showNotification('Delete Failed', `Error deleting contact: ${error.message}`, 'error');
         });
     }
   }
@@ -1364,13 +1384,23 @@ class ContactsApp extends AppWindow {
     }
   }
 
-  showNotification(message, type = 'info') {
+  showNotification(titleOrMsg, messageOrType = 'info', type = null) {
+    let title = 'Contacts';
+    let message = titleOrMsg;
+    let actualType = messageOrType;
+
+    if (type !== null) {
+      title = titleOrMsg;
+      message = messageOrType;
+      actualType = type;
+    }
+
     if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
       return window.MacOSNotificationManager.notify({
         app: 'Contacts',
-        title: 'Contacts',
+        title: title,
         message: message,
-        type: type
+        type: actualType
       });
     }
     let notification = document.querySelector('.contacts-notification');
@@ -1381,7 +1411,7 @@ class ContactsApp extends AppWindow {
     }
 
     notification.textContent = message;
-    notification.className = `contacts-notification contacts-notification-${type}`;
+    notification.className = `contacts-notification contacts-notification-${actualType}`;
     notification.style.display = 'block';
 
     setTimeout(() => {

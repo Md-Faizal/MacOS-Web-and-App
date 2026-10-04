@@ -528,20 +528,31 @@
      */
     setupCoreDataBusListener() {
       if (typeof window === 'undefined' || !window.CoreDataBus) {
-        // Retry when CoreDataBus is initialized
+        this._coreDataBusRetries = (this._coreDataBusRetries || 0) + 1;
+        if (this._coreDataBusRetries > 20) {
+          // Bounded retry: 20 x 500ms = 10s max
+          return;
+        }
         setTimeout(() => this.setupCoreDataBusListener(), 500);
         return;
       }
+      this._coreDataBusRetries = 0;
 
       // Billing events
       window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        // Prevent duplicate toasts on initiating tab (initiating tab already shows local action toast)
+        if (data.originId && data.originId === window.CoreDataBus.originId && !data?.payload?._forceNotify) {
+          return;
+        }
+
+        const domain = data?.domain;
         const action = data?.action;
         const payload = data?.payload || {};
 
-        if (action === 'created' && data?.domain === 'billing:invoice') {
+        if (action === 'created' && domain === 'billing:invoice') {
           const invNo = payload.invoice_no ? ` #${payload.invoice_no}` : '';
           const amt = payload.total_amount ? ` (₹${Number(payload.total_amount).toLocaleString('en-IN')})` : '';
-          this.success('Bill Created', `New invoice${invNo} generated${amt}`, {
+          this.success('Bill Created', `Invoice${invNo} generated${amt}`, {
             app: 'Billing',
             tag: `bill-${payload.id || Date.now()}`,
             onClick: () => {
@@ -550,7 +561,7 @@
               }
             }
           });
-        } else if (action === 'created' && data?.domain === 'billing:payment') {
+        } else if (action === 'created' && domain === 'billing:payment') {
           const cust = payload.customer_name ? ` from ${payload.customer_name}` : '';
           const amt = payload.amount ? `₹${Number(payload.amount).toLocaleString('en-IN')}` : 'Payment';
           this.success('Payment Received', `${amt}${cust} recorded successfully`, {
@@ -562,33 +573,78 @@
               }
             }
           });
+        } else if (action === 'deleted' && domain === 'billing:invoice') {
+          const invNo = payload.invoice_no ? ` #${payload.invoice_no}` : '';
+          this.info('Invoice Deleted', `Invoice${invNo} removed`, {
+            app: 'Billing',
+            tag: `bill-del-${payload.id || Date.now()}`
+          });
         }
       });
 
       // Inventory events
       window.CoreDataBus.subscribeDomain('inventory:', (data) => {
+        if (data.originId && data.originId === window.CoreDataBus.originId && !data?.payload?._forceNotify) {
+          return;
+        }
+
+        const domain = data?.domain;
         const action = data?.action;
         const payload = data?.payload || {};
 
-        if (action === 'created' && data?.domain === 'inventory:product') {
-          const name = payload.name ? `: ${payload.name}` : '';
+        if (action === 'created' && domain === 'inventory:product') {
+          const name = payload.name ? `: "${payload.name}"` : '';
           this.info('Product Added', `New item${name} registered in inventory`, {
             app: 'Products',
             tag: `product-${payload.id || Date.now()}`
+          });
+        } else if (action === 'created' && domain === 'inventory:batch') {
+          const batchNo = payload.batchNo || payload.batch_no || '';
+          this.success('Batch Added', `Batch ${batchNo} added to inventory`, {
+            app: 'Products',
+            tag: `batch-${Date.now()}`
+          });
+        } else if (action === 'created' && domain === 'inventory:variant') {
+          this.success('Variant Added', 'New variant registered in inventory', {
+            app: 'Products',
+            tag: `variant-${Date.now()}`
+          });
+        } else if (action === 'deleted' && domain === 'inventory:product') {
+          const name = payload.name ? `: "${payload.name}"` : '';
+          this.info('Product Removed', `Item${name} removed from inventory`, {
+            app: 'Products',
+            tag: `product-del-${Date.now()}`
           });
         }
       });
 
       // Contacts events
       window.CoreDataBus.subscribeDomain('contacts:', (data) => {
+        if (data.originId && data.originId === window.CoreDataBus.originId && !data?.payload?._forceNotify) {
+          return;
+        }
+
+        const domain = data?.domain;
         const action = data?.action;
         const payload = data?.payload || {};
 
-        if (action === 'created' && data?.domain === 'contacts:customer') {
-          const name = payload.name ? `: ${payload.name}` : '';
-          this.info('Contact Saved', `New customer profile${name} created`, {
+        if (action === 'created' && domain === 'contacts:customer') {
+          const name = payload.name ? ` "${payload.name}"` : '';
+          this.info('Contact Saved', `Customer${name} added to directory`, {
             app: 'Contacts',
             tag: `contact-${payload.id || Date.now()}`
+          });
+        } else if (action === 'updated' && domain === 'contacts:customer') {
+          const name = payload.name ? ` "${payload.name}"` : '';
+          this.info('Contact Updated', `Customer${name} profile saved`, {
+            app: 'Contacts',
+            tag: `contact-${payload.id || Date.now()}`
+          });
+        } else if (action === 'deleted' && domain === 'contacts:customer') {
+          const name = payload.name ? ` "${payload.name}"` : '';
+          this.info('Contact Removed', `Customer${name} deleted`, {
+            app: 'Contacts',
+            tag: `contact-del-${payload.id || Date.now()}`
           });
         }
       });

@@ -43,22 +43,36 @@
 
   // Dispatch event internally to in-page subscribers
   function dispatchInternal(type, payload, broadcast = true) {
-    const customEvent = new CustomEvent(type, {
-      detail: {
-        payload,
-        originId,
-        timestamp: Date.now()
-      }
-    });
-    eventTarget.dispatchEvent(customEvent);
+    const lastColon = type.lastIndexOf(':');
+    const domain = lastColon !== -1 ? type.substring(0, lastColon) : type;
+    const action = lastColon !== -1 ? type.substring(lastColon + 1) : '';
 
-    // Also dispatch on window for legacy window.addEventListener compatibility
+    const detail = {
+      type,
+      domain,
+      action,
+      payload,
+      originId,
+      timestamp: Date.now()
+    };
+
+    // 1. Primary event: exact type on EventTarget (e.g. 'billing:invoice:created')
+    eventTarget.dispatchEvent(new CustomEvent(type, { detail }));
+
+    // 2. Also dispatch domain on EventTarget if type has an action (e.g. 'billing:invoice')
+    if (domain !== type) {
+      eventTarget.dispatchEvent(new CustomEvent(domain, { detail }));
+    }
+
+    // 3. Domain wildcard event on EventTarget for subscribeDomain
+    eventTarget.dispatchEvent(new CustomEvent('core-data-domain', { detail }));
+
+    // 4. Also dispatch on window for legacy window.addEventListener compatibility
     try {
-      window.dispatchEvent(new CustomEvent('core-data-change', {
-        detail: { type, payload, originId, timestamp: Date.now() }
-      }));
+      window.dispatchEvent(new CustomEvent('core-data-change', { detail }));
     } catch (_) {}
 
+    // 5. Broadcast to other open tabs via BroadcastChannel
     if (broadcast && broadcastChannel) {
       try {
         broadcastChannel.postMessage({
@@ -83,20 +97,24 @@
     if (sseConnection) return;
 
     try {
-      const sseUrl = '/api/billing/events';
+      // Prefer unified /api/events with fallback to /api/billing/events
+      const sseUrl = '/api/events';
       sseConnection = new EventSource(sseUrl);
 
       sseConnection.onopen = () => {
-        log.debug('🔌 SSE Real-Time Data Stream Connected (/api/billing/events)');
+        log.debug('🔌 SSE Real-Time Data Stream Connected (/api/events)');
         sseRetryDelay = 2000;
       };
 
       sseConnection.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          if (data && data.type) {
-            log.debug('⚡ [SSE Inbound Event]:', data.type, data.payload);
-            dispatchInternal(data.type, data.payload, true);
+          if (data) {
+            const eventType = data.type || (data.domain && data.action ? `${data.domain}:${data.action}` : null);
+            if (eventType) {
+              log.debug('⚡ [SSE Inbound Event]:', eventType, data.payload);
+              dispatchInternal(eventType, data.payload, false); // false = do not re-broadcast
+            }
           }
         } catch (_) {}
       };
@@ -145,7 +163,7 @@
     },
 
     /**
-     * Subscribe to a specific domain event (e.g. 'billing:invoice:created', or wildcard 'billing:invoice:*')
+     * Subscribe to a specific domain event (e.g. 'billing:invoice:created', or wildcard 'billing:invoice')
      * @param {string} type Pattern to match
      * @param {function} handler Callback receiving (payload, metadata)
      * @returns {function} Unsubscribe function
@@ -166,17 +184,27 @@
     },
 
     /**
-     * Helper to subscribe to any event matching a domain prefix
+     * Helper to subscribe to any event matching a domain prefix (e.g. 'billing:', 'inventory:', 'contacts:')
+     * Passes normalized event data { domain, action, payload, type, timestamp, originId } to handler.
+     * @param {string} domainPrefix Prefix to match
+     * @param {function} handler Callback receiving (data, type, payload)
+     * @returns {function} Unsubscribe function
      */
-    subscribeDomain(domain, handler) {
+    subscribeDomain(domainPrefix, handler) {
       const listener = (event) => {
-        if (event.detail && event.detail.type && event.detail.type.startsWith(domain)) {
-          handler(event.detail.type, event.detail.payload, event.detail);
+        const d = event.detail;
+        if (d && d.type && d.type.startsWith(domainPrefix)) {
+          try {
+            handler(d, d.type, d.payload);
+          } catch (err) {
+            log.error('Error in CoreDataBus subscribeDomain callback for', domainPrefix, err);
+          }
         }
       };
-      window.addEventListener('core-data-change', listener);
+
+      eventTarget.addEventListener('core-data-domain', listener);
       return () => {
-        window.removeEventListener('core-data-change', listener);
+        eventTarget.removeEventListener('core-data-domain', listener);
       };
     }
   };

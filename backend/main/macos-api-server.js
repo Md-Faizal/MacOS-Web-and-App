@@ -610,6 +610,12 @@ app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, 
   req.on('close', () => clearInterval(timer));
 });
 
+// Central Unified Real-Time SSE Stream across all domains (Billing, Products, Contacts, Notes)
+const coreDataBus = require('../core/sync/data-bus');
+app.get('/api/events', (req, res) => {
+  coreDataBus.handleSSEConnection(req, res, globalDb);
+});
+
 // Profile Routes
 app.get('/api/profile', authModule.authMiddleware, profileModule.getProfile);
 app.post('/api/profile', authModule.authMiddleware, profileModule.updateProfile);
@@ -637,8 +643,8 @@ for (const route of routes) {
 
   } else if (route.path === '/api/billing') {
     app.use(route.path, (req, res, next) => {
-      // Exempt public ledger access
-      if (req.path.startsWith('/public/')) {
+      // Exempt public ledger access and SSE stream
+      if (req.path.startsWith('/public/') || req.path === '/events') {
         return next();
       }
       authModule.authMiddleware(req, res, next);

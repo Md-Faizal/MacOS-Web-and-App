@@ -1779,6 +1779,11 @@ export class BillingApp extends AppWindow {
         };
 
         this.saveBillingData();
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.reconcile('invoices', this.billingData.bills);
+          window.MacOSStore.reconcile('payments', this.billingData.payments);
+          window.MacOSStore.reconcile('orders', this.billingData.orders);
+        }
         return this.billingData;
       } catch (err) {
         log.error('Failed to load billing data from API:', err.message);

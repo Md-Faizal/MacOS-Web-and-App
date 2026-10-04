@@ -199,101 +199,22 @@ function getProductPackUnit(product) {
 /**
  * Notification System - Shows user feedback for success/error/warning
  */
-class NotificationManager {
-  constructor() {
-    this.container = null;
-    this.initContainer();
-  }
-
-  initContainer() {
-    this.container = document.getElementById('notification-container');
-    if (!this.container) {
-      this.container = document.createElement('div');
-      this.container.id = 'notification-container';
-      this.container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; font-family: system-ui;';
-      document.body.appendChild(this.container);
-    }
-  }
-
-  show(message, type = 'info', duration = 3000) {
+// Product List Notifications Facade — routes to system-wide MacOSNotificationManager
+const ProductNotifications = {
+  show(message, type = 'info', duration = 3000, title = 'Product List') {
     if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
       return window.MacOSNotificationManager.notify({
         app: 'Products',
-        title: 'Product List',
+        title: title || 'Product List',
         message: message,
         type: type,
         duration: duration
       });
     }
-    const notification = document.createElement('div');
-    const colors = {
-      success: '#34c759',
-      error: '#ff3b30',
-      warning: '#ff9500',
-      info: '#0071e3'
-    };
-    const icons = {
-      success: '✓',
-      error: '✕',
-      warning: '⚠',
-      info: 'ℹ'
-    };
-
-    notification.style.cssText = `
-      background: ${colors[type] || colors.info};
-      color: white;
-      padding: 12px 16px;
-      border-radius: 6px;
-      margin-bottom: 10px;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      animation: slideIn 0.3s ease;
-      max-width: 300px;
-      word-break: break-word;
-    `;
-    notification.innerHTML = `<span>${icons[type]}</span><span>${message}</span>`;
-    
-    this.container.appendChild(notification);
-    
-    if (duration > 0) {
-      setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => notification.remove(), 300);
-      }, duration);
-    }
-
-    return notification;
+    if (type === 'error') console.error('[ProductList]', message);
+    else console.info('[ProductList]', message);
   }
-}
-
-// Add animation styles
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateX(400px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-  @keyframes slideOut {
-    from {
-      opacity: 1;
-      transform: translateX(0);
-    }
-    to {
-      opacity: 0;
-      transform: translateX(400px);
-    }
-  }
-`;
-if (document.head) document.head.appendChild(style);
+};
 
 /**
  * ProductListApp - A product management application
@@ -351,7 +272,7 @@ export class ProductListApp extends AppWindow {
     this.categories = []; // Categories loaded only from API
     this.currentView = 'all';
     this.searchQuery = ''; // Store current search query
-    this.notifications = new NotificationManager();
+    this.notifications = ProductNotifications;
     this.setupProductUI();
     this.checkBackendConnection();
 
@@ -360,9 +281,22 @@ export class ProductListApp extends AppWindow {
         log.debug('Reactive trigger from CoreDataBus for inventory update');
         if (this.apiEnabled) this.loadProducts();
       });
-      this._dataBusBillingUnsub = window.CoreDataBus.subscribe('billing:invoice', () => {
-        log.debug('Reactive trigger from CoreDataBus for bill creation (refreshing product stock)');
-        if (this.apiEnabled) this.loadProducts();
+      this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        if (data?.domain === 'billing:invoice') {
+          log.debug('Reactive trigger from CoreDataBus for bill creation (refreshing product stock)');
+          if (this.apiEnabled) this.loadProducts();
+        }
+      });
+    }
+
+    if (typeof window !== 'undefined' && window.MacOSStore) {
+      this._storeProductsUnsub = window.MacOSStore.subscribe('products', (storeProducts) => {
+        if (Array.isArray(storeProducts) && storeProducts !== this.products) {
+          this.products = storeProducts;
+          if (this.currentView === 'all') {
+            this.renderAllProducts();
+          }
+        }
       });
     }
   }
@@ -418,6 +352,9 @@ export class ProductListApp extends AppWindow {
       const normalizedProducts = this.normalizeApiCollection(products, []);
       log.debug('✅ Products loaded from API:', normalizedProducts.length, 'products');
       this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
+      if (typeof window !== 'undefined' && window.MacOSStore) {
+        window.MacOSStore.reconcile('products', this.products);
+      }
       
       // Update 'all' subview panel in-place without disrupting active tab
       const allPanel = this.getOrCreateSubviewPanel('all');
@@ -1334,22 +1271,20 @@ export class ProductListApp extends AppWindow {
         // Update existing product
         log.debug(`Updating product ${product.id}:`, productData);
         await this.api.updateProduct(product.id, productData);
-        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'updated', { id: product.id });
+        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'updated', { id: product.id, name: product.name });
         log.debug(`✓ Product ${product.id} updated in API`);
-        this.notifications.show('Product updated successfully!', 'success', 2000);
       } else {
         // Create new product
         log.debug('Creating new product:', productData);
         const result = await this.api.createProduct(productData);
         product.id = result.id;
-        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'created', { id: result.id });
+        if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'created', { id: result.id, name: product.name });
         log.debug(`✓ Product created in API with ID ${result.id}`);
-        this.notifications.show('Product created successfully!', 'success', 2000);
       }
       return true;
     } catch (error) {
       log.error('Error saving product to API:', error);
-      this.notifications.show(`Failed to save product: ${error.message}`, 'error', 3000);
+      this.notifications.show(`Save Failed: ${error.message}`, 'error', 3000, 'Save Failed');
       return false;
     }
   }
@@ -1359,14 +1294,16 @@ export class ProductListApp extends AppWindow {
     
     try {
       log.debug(`Deleting product ${productId} from API`);
+      const prod = this.products.find(p => p.id == productId);
+      const prodName = prod ? `"${prod.name}"` : 'Item';
       await this.api.deleteProduct(productId);
-      if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'deleted', { id: productId });
+      if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'deleted', { id: productId, name: prod?.name });
       log.debug(`✓ Product ${productId} deleted from API`);
-      this.notifications.show('Product deleted', 'info', 2000);
+      this.notifications.show(`${prodName} removed from inventory`, 'info', 2000, 'Product Removed');
       return true;
     } catch (error) {
       log.error('Error deleting product from API:', error);
-      this.notifications.show(`Failed to delete product: ${error.message}`, 'error', 3000);
+      this.notifications.show(`Failed to delete product: ${error.message}`, 'error', 3000, 'Delete Failed');
       return false;
     }
   }
@@ -1399,6 +1336,8 @@ export class ProductListApp extends AppWindow {
       const result = await this.api.createVariant(productId, variantData);
       log.debug(`✓ Variant created with ID ${result.id}`);
       this.api.invalidateCache('/products');
+      const packLabel = variant.packSizeValue ? `${variant.packSizeValue} ${variant.packSizeType || ''}` : 'Variant';
+      this.notifications.show(`${packLabel} variant added`, 'success', 2000, 'Variant Added');
       if (typeof window !== 'undefined' && window.CoreDataBus) {
         window.CoreDataBus.publish('inventory:variant', 'created', { productId, variantId: result.id });
       }
@@ -1406,6 +1345,7 @@ export class ProductListApp extends AppWindow {
     } catch (error) {
       log.error('Error creating variant in API:', error);
       log.warn('Variant saved locally, API sync failed');
+      this.notifications.show(`Failed to add variant: ${error.message}`, 'error', 3000, 'Variant Error');
       return null;
     }
   }
@@ -1438,6 +1378,7 @@ export class ProductListApp extends AppWindow {
       await this.api.deleteVariant(variantId);
       log.debug(`✓ Variant ${variantId} deleted from API`);
       this.api.invalidateCache('/products');
+      this.notifications.show('Variant removed', 'info', 2000, 'Variant Removed');
       if (typeof window !== 'undefined' && window.CoreDataBus) {
         window.CoreDataBus.publish('inventory:variant', 'deleted', { variantId });
       }
@@ -1445,6 +1386,7 @@ export class ProductListApp extends AppWindow {
     } catch (error) {
       log.error('Error deleting variant from API:', error);
       log.warn('Variant deleted locally, API sync failed');
+      this.notifications.show(`Failed to delete variant: ${error.message}`, 'error', 3000, 'Variant Error');
       return false;
     }
   }
@@ -1468,13 +1410,15 @@ export class ProductListApp extends AppWindow {
       const result = await this.api.createBatch(variantId, batchData);
       log.debug(`✓ Batch created with ID ${result.id}`);
       this.api.invalidateCache('/products');
+      this.notifications.show(`Batch ${batch.batchNo} added`, 'success', 2000, 'Batch Added');
       if (typeof window !== 'undefined' && window.CoreDataBus) {
-        window.CoreDataBus.publish('inventory:batch', 'created', { variantId, batchId: result.id });
+        window.CoreDataBus.publish('inventory:batch', 'created', { variantId, batchId: result.id, batchNo: batch.batchNo });
       }
       return result;
     } catch (error) {
       log.error('Error creating batch in API:', error);
       log.warn('Batch saved locally, API sync failed');
+      this.notifications.show(`Failed to add batch: ${error.message}`, 'error', 3000, 'Batch Error');
       return null;
     }
   }
@@ -1816,7 +1760,7 @@ export class ProductListApp extends AppWindow {
               product.lastUpdated = new Date();
               app.saveProductToAPI(product).then(success => {
                 if (success) {
-                  app.notifications.show('Batch removed successfully', 'success', 2000);
+                  app.notifications.show(`Batch ${batchNo} removed`, 'info', 2000, 'Batch Removed');
                   app.renderAllProducts();
                 }
               });
@@ -1913,6 +1857,7 @@ export class ProductListApp extends AppWindow {
           const success = await app.saveProductToAPI(product);
           overlay.parentElement.remove();
           if (success) {
+            app.notifications.show(`Batch ${batchNo} added`, 'success', 2000, 'Batch Added');
             app.renderAllProducts();
           }
         }
@@ -2063,7 +2008,10 @@ export class ProductListApp extends AppWindow {
       if (success) {
         // Only push to local list and navigate on success
         this.products.push(product);
-        this.notifications.show('Product saved successfully!', 'success', 2000);
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.patch('products', arr => [...arr, product]);
+        }
+        this.notifications.show(`"${product.name}" added to inventory`, 'success', 2500, 'Product Added');
         const createPanel = this._subviewPanels?.get('create');
         if (createPanel) {
           delete createPanel.dataset.rendered;
@@ -2413,7 +2361,7 @@ export class ProductListApp extends AppWindow {
       const success = await app.saveProductToAPI(product);
       
       if (success) {
-        app.notifications.show('Product updated successfully!', 'success', 2000);
+        app.notifications.show(`"${product.name}" changes saved`, 'success', 2000, 'Product Updated');
         app.switchView('all');
       }
     };
@@ -2433,6 +2381,7 @@ export class ProductListApp extends AppWindow {
           // Save to API
           const success = await app.saveProductToAPI(product);
           if (success) {
+            app.notifications.show('Variant removed', 'info', 2000, 'Variant Removed');
             app.renderEditProductView(productId);
           } else {
             app.notifications.show('Failed to save variant removal to server', 'warning', 2500);
@@ -2451,6 +2400,7 @@ export class ProductListApp extends AppWindow {
           // Save to API
           const success = await app.saveProductToAPI(product);
           if (success) {
+            app.notifications.show('Batch removed', 'info', 2000, 'Batch Removed');
             app.renderEditProductView(productId);
           } else {
             app.notifications.show('Failed to save batch removal to server', 'warning', 2500);
@@ -2553,9 +2503,13 @@ export class ProductListApp extends AppWindow {
         const batch = new ProductBatch(batchNo, mfgDate, expiryDate, mrp, unitsSold);
         variant.addBatch(batch);
         product.lastUpdated = new Date();
-        app.saveProductToAPI(product);
         overlay.parentElement.remove();
-        app.renderEditProductView(productId);
+        app.saveProductToAPI(product).then(success => {
+          if (success) {
+            app.notifications.show(`Batch ${batchNo} added`, 'success', 2000, 'Batch Added');
+            app.renderEditProductView(productId);
+          }
+        });
       }
     });
 
@@ -2669,7 +2623,7 @@ export class ProductListApp extends AppWindow {
       overlay.parentElement.remove();
       
       if (success) {
-        app.notifications.show('Variant added successfully!', 'success', 2000);
+        app.notifications.show(`${packSize} variant added`, 'success', 2000, 'Variant Added');
         
         // Re-render the appropriate view
         if (isEdit) {

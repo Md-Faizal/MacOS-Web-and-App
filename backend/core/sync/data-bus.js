@@ -78,14 +78,18 @@ class CoreDataBusBackend {
   broadcast(domain, action, payload = {}) {
     if (this.clients.size === 0) return;
 
+    const type = `${domain}:${action}`;
     const eventPayload = {
+      type,
       domain,
       action,
       payload,
       timestamp: Date.now()
     };
 
-    const sseMessage = `event: ${domain}\ndata: ${JSON.stringify(eventPayload)}\n\n`;
+    // Send named domain event AND default message event for universal client compatibility
+    const sseMessage = `event: ${domain}\ndata: ${JSON.stringify(eventPayload)}\n\n` +
+                       `data: ${JSON.stringify(eventPayload)}\n\n`;
 
     for (const client of this.clients) {
       try {

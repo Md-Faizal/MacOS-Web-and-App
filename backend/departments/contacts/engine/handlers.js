@@ -2,6 +2,7 @@ const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildContactsListResponse } = require('../../../shared/api/contacts-contract');
 const { generateLedgerToken } = require('../../../core/billing/ledger-token');
 const contactsDepartment = require('../service');
+const dataBus = require('../../../core/sync/data-bus');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);
@@ -143,6 +144,9 @@ module.exports = function(db) {
           metadata: { phone, email, opening_balance, exclude_from_stats: isWorker ? workerExclude : adminExclude }
         });
 
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('contacts:customer', 'created', { id: newContactId, name });
+
         res.status(201).json({ success: true, id: newContactId });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -279,6 +283,9 @@ module.exports = function(db) {
           metadata: req.body
         });
 
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('contacts:customer', 'updated', { id, name: req.body.name });
+
         res.json({ success: true, id });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -404,6 +411,9 @@ module.exports = function(db) {
           resourceId: id,
           resourceName: contactName
         });
+
+        // Real-Time SSE Broadcast
+        dataBus.broadcast('contacts:customer', 'deleted', { id, name: contactName });
         
         res.json({ 
           success: true, 
