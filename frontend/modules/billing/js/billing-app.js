@@ -14,13 +14,22 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  * BillingAPI - Handles communication with the Go backend
  */
 export class BillingAPI {
+  static _sharedCache = new Map();
+  static _sharedInFlightRequests = new Map();
+
   constructor(baseURL = '/api') {
     this.baseURL = baseURL;
     // Use a default API key for development
     this.apiKey = 'test-api-key-1234';
-    this._inFlightRequests = new Map();
-    this._cache = new Map();
-    this.DEFAULT_CACHE_TTL = 15000; // 15 seconds TTL for reads
+    this.DEFAULT_CACHE_TTL = 3000; // 3 seconds TTL for reads
+  }
+
+  get _cache() {
+    return BillingAPI._sharedCache;
+  }
+
+  get _inFlightRequests() {
+    return BillingAPI._sharedInFlightRequests;
   }
 
   /**
@@ -28,19 +37,23 @@ export class BillingAPI {
    * If pattern is omitted, all cached responses are cleared.
    */
   invalidateCache(pattern = null) {
+    BillingAPI.invalidateSharedCache(pattern);
+  }
+
+  static invalidateSharedCache(pattern = null) {
     if (!pattern) {
-      this._cache.clear();
-      this._inFlightRequests.clear();
+      BillingAPI._sharedCache.clear();
+      BillingAPI._sharedInFlightRequests.clear();
       return;
     }
-    for (const key of this._cache.keys()) {
+    for (const key of BillingAPI._sharedCache.keys()) {
       if (key.includes(pattern)) {
-        this._cache.delete(key);
+        BillingAPI._sharedCache.delete(key);
       }
     }
-    for (const key of this._inFlightRequests.keys()) {
+    for (const key of BillingAPI._sharedInFlightRequests.keys()) {
       if (key.includes(pattern)) {
-        this._inFlightRequests.delete(key);
+        BillingAPI._sharedInFlightRequests.delete(key);
       }
     }
   }
@@ -1568,10 +1581,30 @@ export class BillingApp extends AppWindow {
         if (params) viewInstance.params = params;
         viewInstance.syncWithServer(true);
       } else if (safeName === 'payment-credit') {
+        viewInstance.billingData = this.billingData;
         viewInstance.loadRecentTransactions();
         viewInstance.updateStatsDisplay?.();
-      } else if (safeName === 'create' && params && params.customerName) {
-        this.billEditor.renderCreateBillView({ customer_name: params.customerName });
+      } else if (safeName === 'create') {
+        if (params && params.customerName) {
+          this.billEditor.renderCreateBillView({ customer_name: params.customerName });
+        }
+      } else if (safeName === 'edit') {
+        if (this.editBillsPayments) {
+          this.editBillsPayments.billingData = this.billingData;
+          this.editBillsPayments.renderEditBillListView();
+        }
+      } else if (safeName === 'orders') {
+        if (viewInstance && typeof viewInstance.render === 'function') {
+          viewInstance.render();
+        }
+      } else if (safeName === 'history') {
+        if (viewInstance && typeof viewInstance.render === 'function') {
+          viewInstance.render();
+        }
+      } else if (safeName === 'dashboard') {
+        if (viewInstance && typeof viewInstance.render === 'function') {
+          viewInstance.render();
+        }
       }
     }
 
@@ -1802,6 +1835,15 @@ export class BillingApp extends AppWindow {
         };
 
         this.saveBillingData();
+        // Propagate fresh billingData reference to mounted subview modules
+        if (this.paymentCreditNote) this.paymentCreditNote.billingData = this.billingData;
+        if (this.editBillsPayments) this.editBillsPayments.billingData = this.billingData;
+        if (this.billEditor) this.billEditor.billingData = this.billingData;
+        const pmtView = this._subviewInstances?.get('payment-credit');
+        if (pmtView) pmtView.billingData = this.billingData;
+        const editView = this._subviewInstances?.get('edit');
+        if (editView) editView.billingData = this.billingData;
+
         if (typeof window !== 'undefined' && window.MacOSStore) {
           window.MacOSStore.reconcile('invoices', this.billingData.bills);
           window.MacOSStore.reconcile('payments', this.billingData.payments);
@@ -1944,28 +1986,29 @@ export class BillingApp extends AppWindow {
         window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
       }
 
-      // Update ledger in-place without resetting customer selection or refreshing whole view
+      // Reload fresh canonical billing data from server
+      if (this.loadBillingDataFromAPI) {
+        await this.loadBillingDataFromAPI({ forceRefresh: true });
+      }
+
+      // Update ledger in-place with fresh data
       const ledgerView = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
       if (ledgerView && typeof ledgerView.syncWithServer === 'function') {
-        ledgerView.syncWithServer(true);
+        await ledgerView.syncWithServer(true);
       }
 
       // Refresh payment-credit view in-place if open
       const paymentView = this._subviewInstances?.get('payment-credit');
       if (paymentView && typeof paymentView.loadRecentTransactions === 'function') {
+        paymentView.billingData = this.billingData;
         paymentView.loadRecentTransactions();
         paymentView.updateStatsDisplay?.();
-      }
-
-      // Silently reload billing data in background
-      if (this.loadBillingDataFromAPI) {
-        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
     } catch (error) {
       log.error('Error deleting payment:', error);
       this.showNotification(`Error deleting payment: ${error.message}`, 'error');
       if (this.loadBillingDataFromAPI) {
-        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        await this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
     }
   }

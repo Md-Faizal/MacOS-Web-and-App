@@ -2969,7 +2969,15 @@ class EditBillsPayments {
       // Sync ledger if mounted
       const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
       if (ledgerInstance) {
-        ledgerInstance.syncWithServer(true);
+        await ledgerInstance.syncWithServer(true);
+      }
+
+      // Refresh payment-credit view if mounted
+      const paymentView = this.billingApp?._subviewInstances?.get('payment-credit');
+      if (paymentView && typeof paymentView.loadRecentTransactions === 'function') {
+        paymentView.billingData = this.billingApp.billingData;
+        paymentView.loadRecentTransactions();
+        paymentView.updateStatsDisplay?.();
       }
 
       // Go back to list view

@@ -14,8 +14,14 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class PaymentCreditNote {
+  get billingData() {
+    return this.billingApp?.billingData || this._billingData || {};
+  }
+  set billingData(val) {
+    this._billingData = val;
+  }
+
   refreshCustomerDropdowns() {
-    this.billingData = this.billingApp.billingData || {};
     const customers = this.getUniqueCustomers();
     ['paymentCustomerSelect', 'creditNoteCustomerSelect'].forEach(id => {
       const select = document.getElementById(id);
@@ -28,14 +34,12 @@ class PaymentCreditNote {
   }
 
   startPolling() {
-    this.stopPolling();
     if (typeof window !== 'undefined' && window.CoreDataBus && !this._dataBusUnsub) {
       this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
-        if (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote') {
-          this.loadRecentTransactions();
-          this.loadTransactionHistory();
-          if (this.updateStatsDisplay) this.updateStatsDisplay();
-        } else if (data?.domain === 'contacts:customer') {
+        this.loadRecentTransactions();
+        this.loadTransactionHistory();
+        if (this.updateStatsDisplay) this.updateStatsDisplay();
+        if (data?.domain === 'contacts:customer') {
           this.refreshCustomerDropdowns();
         }
       });
@@ -43,18 +47,17 @@ class PaymentCreditNote {
   }
 
   stopPolling() {
-    if (this._dataBusUnsub) {
-      try { this._dataBusUnsub(); } catch (_) {}
-      this._dataBusUnsub = null;
-    }
+    // Keep real-time CoreDataBus listener alive so updates are never missed while tab is hidden
   }
+
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.viewContainer = billingApp.viewContainer;
-    this.billingData = billingApp.billingData || {};
+    this._billingData = billingApp.billingData || {};
     this.currentBillId = null;
     this.paymentMethod = 'cash';
     this.selectedBillDetails = null;
+    this.startPolling();
   }
 
   isWorkerUser() {
@@ -883,7 +886,7 @@ class PaymentCreditNote {
 
       // Background canonical reload with forceRefresh
       if (this.billingApp.loadBillingDataFromAPI) {
-        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: true });
       }
 
       // Dispatched reactively via CoreDataBus event stream with full customer and amount formatting
@@ -895,7 +898,7 @@ class PaymentCreditNote {
       // Immediately sync active ledger if mounted
       const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
       if (ledgerInstance) {
-        ledgerInstance.syncWithServer(true);
+        await ledgerInstance.syncWithServer(true);
       }
     } catch (error) {
       log.error('Error saving payment:', error);

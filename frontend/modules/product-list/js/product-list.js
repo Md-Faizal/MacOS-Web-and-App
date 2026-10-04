@@ -258,7 +258,7 @@ export class ProductListApp extends AppWindow {
 
   constructor(containerId, callbacks = {}) {
     const width = window.innerWidth;
-    let config = { appId: 'product-list', appName: 'Product List', containerId: containerId, callbacks: callbacks };
+    let config = { appId: 'products', appName: 'Product List', containerId: containerId, callbacks: callbacks };
     
     if (width < 768) {
       const mobileSizes = AppWindow.calculateMobileSizing();
@@ -273,23 +273,37 @@ export class ProductListApp extends AppWindow {
 
     this.api = new BillingAPI('/api'); // Initialize API client pointing to backend
     this.apiEnabled = false; // Will be set to true when backend is ready
+    this.isLoading = true;
     this.products = [];
     this.categories = []; // Categories loaded only from API
     this.currentView = 'all';
     this.searchQuery = ''; // Store current search query
     this.notifications = ProductNotifications;
+
+    window.currentProductApp = this;
+    window.currentProductListApp = this;
+    window.currentProductsApp = this;
+    window.productsInstance = this;
+
     this.setupProductUI();
     this.checkBackendConnection();
 
     if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._dataBusProductsUnsub = window.CoreDataBus.subscribeDomain('products:', (data) => {
+        log.debug('Reactive trigger from CoreDataBus for products update:', data);
+        if (this.api) this.api.invalidateCache('/products');
+        if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
+      });
       this._dataBusInventoryUnsub = window.CoreDataBus.subscribeDomain('inventory:', () => {
         log.debug('Reactive trigger from CoreDataBus for inventory update');
-        if (this.apiEnabled) this.loadProducts();
+        if (this.api) this.api.invalidateCache('/products');
+        if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
       });
       this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
         if (data?.domain === 'billing:invoice') {
           log.debug('Reactive trigger from CoreDataBus for bill creation (refreshing product stock)');
-          if (this.apiEnabled) this.loadProducts();
+          if (this.api) this.api.invalidateCache('/products');
+          if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
         }
       });
     }
@@ -361,6 +375,7 @@ export class ProductListApp extends AppWindow {
       const normalizedProducts = this.normalizeApiCollection(products, []);
       log.debug('✅ Products loaded from API:', normalizedProducts.length, 'products');
       this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
+      this.isLoading = false;
       if (typeof window !== 'undefined' && window.MacOSStore) {
         window.MacOSStore.reconcile('products', this.products);
       }
@@ -1552,6 +1567,19 @@ export class ProductListApp extends AppWindow {
     // Get filtered products based on search query
     const productsToDisplay = this.filterProducts();
     
+    if (this.isLoading && (!this.products || this.products.length === 0)) {
+      this.viewContainer.innerHTML = `
+        <div class="product-empty-state">
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="width: 32px; height: 32px; border: 3px solid rgba(0,0,0,0.15); border-top-color: #007aff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px;"></div>
+            <p class="empty-state-title" style="font-weight: 600; color: #1e293b;">Loading Products...</p>
+            <p class="empty-state-subtitle" style="color: #64748b;">Syncing inventory catalog with server</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     if (productsToDisplay.length === 0) {
       // Show empty state or no results message
       const emptyMessage = this.searchQuery 

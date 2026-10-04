@@ -3121,6 +3121,12 @@ class AppWindow {
       if (window[`current${camelAppId}App`] === this) delete window[`current${camelAppId}App`];
       if (window[`current${this.constructor.name}`] === this) delete window[`current${this.constructor.name}`];
       if (window[`${this.appId}Instance`] === this) delete window[`${this.appId}Instance`];
+      if (this.appId === 'products' || this.appId === 'product-list') {
+        if (window.currentProductApp === this) delete window.currentProductApp;
+        if (window.currentProductListApp === this) delete window.currentProductListApp;
+        if (window.currentProductsApp === this) delete window.currentProductsApp;
+        if (window.productsInstance === this) delete window.productsInstance;
+      }
       if (window.currentAIVisionApp === this) delete window.currentAIVisionApp;
       if (window.currentAiVisionApp === this) delete window.currentAiVisionApp;
       if (window.currentCalculatorApp === this) delete window.currentCalculatorApp;
@@ -3205,23 +3211,30 @@ class AppWindow {
     const camelAppId = appId.replace(/-([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toUpperCase());
 
     const getExistingInstance = () => {
-      return (className && window[`current${className}`]) ||
+      let inst = (className && window[`current${className}`]) ||
              window[`current${camelAppId}App`] ||
              window[`current${appId.replace(/-([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, c => c.toUpperCase())}App`] ||
-             window.currentAIVisionApp ||
-             window.currentAiVisionApp ||
              window[`${appId}Instance`];
+      if (!inst && (appId === 'products' || appId === 'product-list')) {
+        inst = window.currentProductApp || window.currentProductListApp || window.currentProductsApp || window.productsInstance;
+      }
+      if (!inst && (appId === 'ai-vision' || appId === 'aivision')) {
+        inst = window.currentAIVisionApp || window.currentAiVisionApp;
+      }
+      return inst;
     };
 
     let instance = getExistingInstance();
+    const hasLiveWindow = container.querySelector('.app-window') !== null;
 
-    // If an instance exists but is marked closed, wipe dirty HTML before launching
-    if (instance && instance.windowState === 'closed') {
+    // If an instance exists but is marked closed, or if container has stale HTML without a live window, wipe cleanly
+    if (!hasLiveWindow || (instance && instance.windowState === 'closed')) {
       container.innerHTML = '';
       instance = null;
     }
 
-    if (container.innerHTML === '') {
+    if (container.innerHTML === '' || !instance) {
+      container.innerHTML = '';
       try {
         const callbacks = {
           onOpen: () => stateSetter(appId, 'open'),
@@ -3234,6 +3247,12 @@ class AppWindow {
         if (className) window[`current${className}`] = newInstance;
         window[`current${camelAppId}App`] = newInstance;
         window[`${appId}Instance`] = newInstance;
+        if (appId === 'products' || appId === 'product-list') {
+          window.currentProductApp = newInstance;
+          window.currentProductListApp = newInstance;
+          window.currentProductsApp = newInstance;
+          window.productsInstance = newInstance;
+        }
         stateSetter(appId, 'open');
         if (recentKey) localStorage.setItem(recentKey, appId);
         return newInstance;

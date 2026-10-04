@@ -33,6 +33,18 @@ class LedgerView {
     this.pollingInterval = null;
     this.updatedCustomerIds = new Set();
     this.oldLedgerSnapshot = null;
+
+    if (typeof window !== 'undefined' && window.CoreDataBus && !this._dataBusUnsub) {
+      this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        log.debug('Reactive trigger received from CoreDataBus in Ledger:', data?.domain, data?.action);
+        if (data?.action === 'deleted' && (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote')) {
+          this.removePaymentOptimistically(data?.payload?.id);
+        } else if (data?.action === 'created' && (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote')) {
+          this.injectPaymentOptimistically(data?.payload);
+        }
+        this.syncWithServer(true);
+      });
+    }
   }
 
   isWorkerUser() {
@@ -45,15 +57,8 @@ class LedgerView {
   }
 
   startPolling(interval = 60000) {
-    this.stopPolling();
-    if (window.CoreDataBus && !this._dataBusUnsub) {
-      this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
-        log.debug('Reactive trigger received from CoreDataBus in Ledger:', data?.domain, data?.action);
-        if (data?.action === 'deleted' && (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote')) {
-          this.removePaymentOptimistically(data?.payload?.id);
-        }
-        this.syncWithServer(true);
-      });
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
     }
     this.pollingInterval = setInterval(() => this.syncWithServer(), interval);
   }
@@ -63,10 +68,7 @@ class LedgerView {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-    if (this._dataBusUnsub) {
-      try { this._dataBusUnsub(); } catch (_) {}
-      this._dataBusUnsub = null;
-    }
+    // Retain real-time CoreDataBus listener permanently so background mutations are captured!
   }
 
   
@@ -175,6 +177,10 @@ class LedgerView {
 
   async syncWithServer(isManual = false) {
     try {
+      if (isManual && this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
       // 1. Refresh global billing data in memory even if ledger tab is currently hidden
       if (this.billingApp?.loadBillingDataFromAPI) {
         await this.billingApp.loadBillingDataFromAPI({ forceRefresh: isManual });
@@ -2551,7 +2557,7 @@ class LedgerView {
           if (deleteBillBtn) {
             deleteBillBtn.addEventListener('click', (e) => {
               e.stopPropagation();
-              window.currentBillingApp.deleteBill(recordIdValue);
+              (window.currentBillingApp || this.billingApp).deleteBill(recordIdValue);
             });
           }
           
@@ -2559,7 +2565,7 @@ class LedgerView {
           if (deletePaymentBtn) {
             deletePaymentBtn.addEventListener('click', (e) => {
               e.stopPropagation();
-              window.currentBillingApp.deletePayment(recordIdValue);
+              (window.currentBillingApp || this.billingApp).deletePayment(recordIdValue);
             });
           }
           
