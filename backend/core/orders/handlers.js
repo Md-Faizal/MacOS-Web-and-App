@@ -1,4 +1,5 @@
 const createActivityLogger = require('../audit/activity-logger');
+const dataBus = require('../sync/data-bus');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);

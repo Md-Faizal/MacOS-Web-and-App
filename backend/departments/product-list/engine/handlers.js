@@ -570,6 +570,9 @@ module.exports = function(db) {
 
         const stmt = db.prepare('INSERT INTO categories (name, created_at) VALUES (?, datetime(\'now\'))');
         const result = stmt.run(name);
+        try {
+          dataBus.broadcast('inventory:category', 'created', { id: result.lastInsertRowid, name });
+        } catch (_) {}
         res.status(201).json({ success: true, id: result.lastInsertRowid, name });
       } catch (error) {
         if (error.message && error.message.includes('UNIQUE constraint failed')) {
@@ -600,6 +603,9 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Category not found or no changes applied' });
         }
 
+        try {
+          dataBus.broadcast('inventory:category', 'updated', { id, name });
+        } catch (_) {}
         res.json({ success: true, id, name });
       } catch (error) {
         console.error('Error updating category:', error.message);
@@ -628,6 +634,9 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Category not found' });
         }
 
+        try {
+          dataBus.broadcast('inventory:category', 'deleted', { id });
+        } catch (_) {}
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error deleting category:', error.message);
@@ -667,6 +676,9 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Batch not found or no changes applied' });
         }
 
+        try {
+          dataBus.broadcast('inventory:batch', 'updated', { id, batch_no });
+        } catch (_) {}
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error updating batch:', error.message);
@@ -688,6 +700,9 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Batch not found' });
         }
 
+        try {
+          dataBus.broadcast('inventory:batch', 'deleted', { id });
+        } catch (_) {}
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error deleting batch:', error.message);
@@ -744,6 +759,9 @@ module.exports = function(db) {
           return res.status(404).json({ error: 'Variant not found' });
         }
 
+        try {
+          dataBus.broadcast('inventory:variant', 'updated', { id });
+        } catch (_) {}
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error updating variant:', error.message);
@@ -765,7 +783,9 @@ module.exports = function(db) {
           VALUES (?, ?, ?, datetime('now'), datetime('now'))
         `);
         const result = stmt.run(product_id, pack_size_value, pack_size_type);
-
+        try {
+          dataBus.broadcast('inventory:variant', 'created', { id: result.lastInsertRowid, product_id });
+        } catch (_) {}
         res.status(201).json({ success: true, id: result.lastInsertRowid });
       } catch (error) {
         console.error('Error creating variant:', error.message);
@@ -787,7 +807,9 @@ module.exports = function(db) {
           VALUES (?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))
         `);
         const result = stmt.run(variant_id, batch_no, mrp, mfg_date || null, exp_date || null);
-
+        try {
+          dataBus.broadcast('inventory:batch', 'created', { id: result.lastInsertRowid, variant_id, batch_no });
+        } catch (_) {}
         res.status(201).json({ success: true, id: result.lastInsertRowid });
       } catch (error) {
         if (error.message && error.message.includes('UNIQUE constraint failed')) {

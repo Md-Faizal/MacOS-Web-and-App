@@ -80,8 +80,8 @@ class AnalyticsApp extends AppWindow {
     window.currentAnalyticsApp = this;
 
     if (typeof window !== 'undefined' && window.CoreDataBus) {
-      this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', () => {
-        log.debug('[AnalyticsApp] Billing event received, refreshing customer insights');
+      this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        log.debug('[AnalyticsApp] Billing event received, refreshing active view & insights:', data?.domain, data?.action);
         this.refreshCustomerList().catch(() => {});
         if (this._subviewPanels) {
           this._subviewPanels.forEach((panel, name) => {
@@ -89,6 +89,28 @@ class AnalyticsApp extends AppWindow {
               delete panel.dataset.rendered;
             }
           });
+        }
+        // Active view immediate live re-render
+        if (this.currentView === 'dashboard') {
+          this.dashboardView?.render?.();
+        } else if (this.currentView === 'customer-aging') {
+          this.agingView?.render?.();
+        } else if (this.currentView === 'sales-reports') {
+          this.salesView?.render?.();
+        } else if (this.currentView === 'customer-profile' && this.currentCustomerId) {
+          this.profileView?.render?.(this.currentCustomerId);
+        }
+      });
+
+      this._dataBusContactsUnsub = window.CoreDataBus.subscribeDomain('contacts:', () => {
+        log.debug('[AnalyticsApp] Contact event received, refreshing customer list');
+        this.refreshCustomerList().catch(() => {});
+      });
+
+      this._dataBusOrdersUnsub = window.CoreDataBus.subscribeDomain('orders:', () => {
+        log.debug('[AnalyticsApp] Order event received, refreshing order insights');
+        if (this.currentView === 'order-analytics') {
+          this.orderView?.render?.();
         }
       });
     }

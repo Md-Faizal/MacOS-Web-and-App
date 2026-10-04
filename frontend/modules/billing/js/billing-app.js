@@ -401,7 +401,15 @@ export class BillingApp extends AppWindow {
         this.api.invalidateCache('/billing/ledger/customers');
         this.api.invalidateCache('/customers');
         this.api.invalidateCache('/contacts');
-        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.loadBillingDataFromAPI({ forceRefresh: true }).then(() => {
+          if (this.currentView === 'ledger') {
+            this._subviewInstances?.get('ledger')?.syncWithServer(true);
+          } else if (this.currentView === 'payment-credit') {
+            this._subviewInstances?.get('payment-credit')?.refreshCustomerDropdowns?.();
+          } else if (this.currentView === 'create') {
+            this.billEditor?.populateCustomersList?.();
+          }
+        }).catch(() => {});
       });
 
       // Cross-App Reactivity: listen to Inventory mutations
@@ -409,7 +417,11 @@ export class BillingApp extends AppWindow {
         log.debug('[BillingApp] Inventory update received from DataBus:', data?.domain, data?.action);
         this.api.invalidateCache('/products');
         this.api.invalidateCache('/categories');
-        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.loadBillingDataFromAPI({ forceRefresh: true }).then(() => {
+          if (this.currentView === 'create') {
+            this.billEditor?.populateProductsList?.();
+          }
+        }).catch(() => {});
       });
     }
 

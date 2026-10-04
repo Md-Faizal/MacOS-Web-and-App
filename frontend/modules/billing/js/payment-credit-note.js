@@ -14,6 +14,19 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class PaymentCreditNote {
+  refreshCustomerDropdowns() {
+    this.billingData = this.billingApp.billingData || {};
+    const customers = this.getUniqueCustomers();
+    ['paymentCustomerSelect', 'creditNoteCustomerSelect'].forEach(id => {
+      const select = document.getElementById(id);
+      if (select) {
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">-- Choose a customer --</option>' +
+          customers.map(c => `<option value="${c}"${c === currentVal ? ' selected' : ''}>${c}</option>`).join('');
+      }
+    });
+  }
+
   startPolling() {
     this.stopPolling();
     if (typeof window !== 'undefined' && window.CoreDataBus && !this._dataBusUnsub) {
@@ -22,6 +35,8 @@ class PaymentCreditNote {
           this.loadRecentTransactions();
           this.loadTransactionHistory();
           if (this.updateStatsDisplay) this.updateStatsDisplay();
+        } else if (data?.domain === 'contacts:customer') {
+          this.refreshCustomerDropdowns();
         }
       });
     }
