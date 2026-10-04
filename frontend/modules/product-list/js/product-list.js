@@ -224,10 +224,13 @@ const ProductNotifications = {
 
 export class ProductListApp extends AppWindow {
   get viewContainer() {
-    return this.activePanel || this.rootViewContainer;
+    if (this.activePanel) return this.activePanel;
+    return this.getOrCreateSubviewPanel(this.currentView || 'all');
   }
   set viewContainer(val) {
-    this.rootViewContainer = val;
+    if (val && val !== this.rootViewContainer) {
+      this.activePanel = val;
+    }
   }
 
   getOrCreateSubviewPanel(viewName) {
@@ -247,6 +250,8 @@ export class ProductListApp extends AppWindow {
         this.rootViewContainer.appendChild(panel);
       }
       this._subviewPanels.set(viewName, panel);
+    } else if (this.rootViewContainer && !this.rootViewContainer.contains(panel)) {
+      this.rootViewContainer.appendChild(panel);
     }
     return panel;
   }
@@ -341,14 +346,18 @@ export class ProductListApp extends AppWindow {
     }
   }
 
-  async loadProducts() {
+  async loadProducts(options = {}) {
     if (!this.apiEnabled) {
       log.error('API not available - cannot load products');
       return;
     }
     
     try {
-      const products = await this.api.getProducts();
+      const force = options.forceRefresh !== false;
+      if (force && this.api) {
+        this.api.invalidateCache('/products');
+      }
+      const products = await this.api.getProducts({ forceRefresh: force });
       const normalizedProducts = this.normalizeApiCollection(products, []);
       log.debug('✅ Products loaded from API:', normalizedProducts.length, 'products');
       this.products = normalizedProducts.map(p => this.deserializeProductFromAPI(p));
@@ -356,20 +365,25 @@ export class ProductListApp extends AppWindow {
         window.MacOSStore.reconcile('products', this.products);
       }
       
-      // Update 'all' subview panel in-place without disrupting active tab
+      // Update subview panels with fresh data
       const allPanel = this.getOrCreateSubviewPanel('all');
-      const prevActive = this.activePanel;
-      this.activePanel = allPanel;
-      this.renderAllProducts();
-      allPanel.dataset.rendered = 'true';
-      this.activePanel = prevActive;
+      if (this.currentView === 'all') {
+        this.activePanel = allPanel;
+        allPanel.style.display = 'flex';
+        this.renderAllProducts();
+        allPanel.dataset.rendered = 'true';
+      } else {
+        const prev = this.activePanel;
+        this.activePanel = allPanel;
+        this.renderAllProducts();
+        allPanel.dataset.rendered = 'true';
+        this.activePanel = prev;
+      }
 
-      // If inventory panel exists and was rendered, update it in background
-      const invPanel = this._subviewPanels?.get('inventory');
-      if (invPanel && invPanel.dataset.rendered) {
+      if (this.currentView === 'inventory') {
+        const invPanel = this.getOrCreateSubviewPanel('inventory');
         this.activePanel = invPanel;
         this.renderInventoryView();
-        this.activePanel = prevActive;
       }
     } catch (error) {
       log.error('Error loading products from API:', error);
@@ -435,8 +449,8 @@ export class ProductListApp extends AppWindow {
     // Setup product-specific event listeners
     this.setupProductEventListeners();
 
-    // Render initial state
-    this.renderAllProducts();
+    // Switch to initial 'all' view to ensure panel attachment and immediate render
+    this.switchView('all');
 
     // Store reference for app management
     window.currentProductApp = this;
@@ -1086,11 +1100,9 @@ export class ProductListApp extends AppWindow {
     }
     this.activePanel = targetPanel;
 
-    // Render if not yet rendered, or if edit view (dynamic)
-    if (!targetPanel.dataset.rendered || viewName === 'edit') {
-      this.renderView(viewName);
-      targetPanel.dataset.rendered = 'true';
-    }
+    // Desktop UI expectation: Always render active view with latest data
+    this.renderView(viewName);
+    targetPanel.dataset.rendered = 'true';
   }
 
   updateHeader(viewName) {
@@ -1266,6 +1278,7 @@ export class ProductListApp extends AppWindow {
     
     try {
       const productData = this.formatProductForAPI(product);
+      if (this.api) this.api.invalidateCache('/products');
       
       if (product.id && product.id > 0) {
         // Update existing product
@@ -1281,6 +1294,7 @@ export class ProductListApp extends AppWindow {
         if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'created', { id: result.id, name: product.name });
         log.debug(`✓ Product created in API with ID ${result.id}`);
       }
+      await this.loadProducts({ forceRefresh: true });
       return true;
     } catch (error) {
       log.error('Error saving product to API:', error);
@@ -1296,10 +1310,16 @@ export class ProductListApp extends AppWindow {
       log.debug(`Deleting product ${productId} from API`);
       const prod = this.products.find(p => p.id == productId);
       const prodName = prod ? `"${prod.name}"` : 'Item';
+      if (this.api) this.api.invalidateCache('/products');
       await this.api.deleteProduct(productId);
       if (window.CoreDataBus) window.CoreDataBus.publish('inventory:product', 'deleted', { id: productId, name: prod?.name });
       log.debug(`✓ Product ${productId} deleted from API`);
       this.notifications.show(`${prodName} removed from inventory`, 'info', 2000, 'Product Removed');
+      this.products = this.products.filter(p => p.id != productId);
+      if (this.currentView === 'all') {
+        this.renderAllProducts();
+      }
+      await this.loadProducts({ forceRefresh: true });
       return true;
     } catch (error) {
       log.error('Error deleting product from API:', error);

@@ -2930,6 +2930,13 @@ class EditBillsPayments {
     }
 
     try {
+      // Optimistic removal from in-memory billing data
+      if (this.billingApp?.billingData?.payments) {
+        this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
+          p => String(p.id) !== String(paymentId)
+        );
+      }
+
       const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
       const response = await fetch(apiUrl, {
         method: 'DELETE'
@@ -2945,9 +2952,24 @@ class EditBillsPayments {
         this.billingApp.showNotification('Transaction deleted successfully', 'success');
       }
 
-      // Reload data from API
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+      }
+
+      // Reload data from API with forceRefresh
       if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI();
+        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: true });
+      }
+
+      // Sync ledger if mounted
+      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+      if (ledgerInstance) {
+        ledgerInstance.syncWithServer(true);
       }
 
       // Go back to list view

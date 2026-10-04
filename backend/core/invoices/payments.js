@@ -594,6 +594,12 @@ module.exports = function(db) {
           metadata: { amount: updatedPayment?.amount || updatedPayment?.credit_amount, customer_id: updatedPayment?.customer_id }
         });
 
+        // Real-time reactive broadcast
+        try {
+          dataBus.broadcast('billing:payment', 'updated', { id, customer_id: updatedPayment?.customer_id });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id: updatedPayment?.customer_id });
+        } catch (_) {}
+
         res.json({
           success: true,
           message: 'Payment updated successfully',
@@ -641,6 +647,12 @@ module.exports = function(db) {
           resourceName: payment.reference_number || null,
           metadata: { customer_id, amount: payment.amount || payment.credit_amount }
         });
+
+        // Real-time reactive broadcast
+        try {
+          dataBus.broadcast('billing:payment', 'deleted', { id, customer_id });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.json({ 
           success: true, 

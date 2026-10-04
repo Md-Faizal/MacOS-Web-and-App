@@ -14,6 +14,25 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class PaymentCreditNote {
+  startPolling() {
+    this.stopPolling();
+    if (typeof window !== 'undefined' && window.CoreDataBus && !this._dataBusUnsub) {
+      this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        if (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote') {
+          this.loadRecentTransactions();
+          this.loadTransactionHistory();
+          if (this.updateStatsDisplay) this.updateStatsDisplay();
+        }
+      });
+    }
+  }
+
+  stopPolling() {
+    if (this._dataBusUnsub) {
+      try { this._dataBusUnsub(); } catch (_) {}
+      this._dataBusUnsub = null;
+    }
+  }
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.viewContainer = billingApp.viewContainer;
@@ -857,6 +876,12 @@ class PaymentCreditNote {
       await this.updateCustomerBalance();
       this.loadRecentTransactions();
       await this.updateStatsDisplay();
+
+      // Immediately sync active ledger if mounted
+      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+      if (ledgerInstance) {
+        ledgerInstance.syncWithServer(true);
+      }
     } catch (error) {
       log.error('Error saving payment:', error);
       this.showAlert(`❌ Error: ${error.message}`, 'error');
@@ -1470,6 +1495,22 @@ class PaymentCreditNote {
     }
 
     try {
+      // 1. Optimistic removal from in-memory billing data
+      if (this.billingApp?.billingData?.payments) {
+        this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
+          p => String(p.id) !== String(paymentId)
+        );
+      }
+
+      // 2. 0ms DOM removal of the transaction row
+      const row = document.querySelector(`[data-payment-id="${paymentId}"]`);
+      if (row) {
+        row.style.transition = 'all 0.2s ease';
+        row.style.opacity = '0';
+        row.style.transform = 'scale(0.96)';
+        setTimeout(() => row.remove(), 200);
+      }
+
       const response = await fetch(`/api/billing/invoices/payments/${paymentId}`, {
         method: 'DELETE'
       });
@@ -1482,19 +1523,29 @@ class PaymentCreditNote {
         this.billingApp.showNotification('Transaction deleted successfully', 'success');
       }
       
-      // Reload transactions
-      this.loadTransactionHistory();
-      
-      // Invalidate API cache & publish update
+      // Invalidate API cache immediately
       if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
+
+      // Publish delete event to CoreDataBus
       if (typeof window !== 'undefined' && window.CoreDataBus) {
-        window.CoreDataBus.publish('billing:payment', 'updated', { id: paymentId });
+        window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId });
         window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
       }
+
+      // Reload local history
+      this.loadTransactionHistory();
+      if (this.updateStatsDisplay) this.updateStatsDisplay();
+
+      // Background canonical reload
       if (this.billingApp?.loadBillingDataFromAPI) {
         this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
+      // Synchronize ledger subview instance
+      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+      if (ledgerInstance) {
+        ledgerInstance.syncWithServer(true);
+      }
     } catch (error) {
       log.error('Error deleting payment:', error);
       this.showAlert('Error deleting transaction: ' + error.message, 'error');

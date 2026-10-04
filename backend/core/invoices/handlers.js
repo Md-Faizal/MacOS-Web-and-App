@@ -6,6 +6,7 @@
 
 const BillCalculator = require('../../../frontend/shared/bill-calculator');
 const { helpers } = require('./payments');
+const dataBus = require('../sync/data-bus');
 
 module.exports = function(db) {
   function getWorkerContactScope(req, tableAlias = 'c') {
@@ -199,6 +200,12 @@ module.exports = function(db) {
             originalItem.gst_reverse ? 1 : 0
           );
         });
+
+        // Broadcast real-time events
+        try {
+          dataBus.broadcast('billing:invoice', 'created', { id: invoice_id, customer_id, grand_total: summary.grand_total });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.status(201).json({
           success: true,
@@ -815,6 +822,12 @@ module.exports = function(db) {
         `).get(customer_id);
 
         const current_due = ledgerRecord ? (ledgerRecord.current_due || 0) : 0;
+
+        // Broadcast real-time events
+        try {
+          dataBus.broadcast('billing:invoice', 'deleted', { id, customer_id });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.json({ 
           success: true, 

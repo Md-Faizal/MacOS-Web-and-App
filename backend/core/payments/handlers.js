@@ -1,3 +1,5 @@
+const dataBus = require('../sync/data-bus');
+
 // Request handlers for Payments module
 module.exports = function(db) {
   return {
@@ -18,6 +20,12 @@ module.exports = function(db) {
         const stmt = db.prepare(sql);
         const result = stmt.run(transaction_id || null, amount, payment_method, reference_number || null, notes || null);
         
+        // Real-time broadcast
+        try {
+          dataBus.broadcast('billing:payment', 'created', { id: result.lastInsertRowid, transaction_id, amount });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id: transaction_id });
+        } catch (_) {}
+
         res.status(201).json({
           id: result.lastInsertRowid,
           transaction_id: transaction_id || null,
@@ -198,6 +206,12 @@ module.exports = function(db) {
               total_bills = ?, total_payments = ?, updated_at = datetime('now')
           WHERE customer_id = ?
         `).run(current_due, totals.total_debit, total_credit, current_status, totals.total_bills, totals.total_payments_count, customer_id);
+
+        // Real-time broadcast
+        try {
+          dataBus.broadcast('billing:payment', 'deleted', { id, customer_id });
+          dataBus.broadcast('billing:ledger', 'updated', { customer_id });
+        } catch (_) {}
 
         res.json({ message: 'Payment deleted successfully', id, current_due });
       } catch (err) {

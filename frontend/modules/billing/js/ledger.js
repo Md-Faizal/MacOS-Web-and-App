@@ -48,8 +48,11 @@ class LedgerView {
     this.stopPolling();
     if (window.CoreDataBus && !this._dataBusUnsub) {
       this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
-        log.debug('Reactive trigger received from CoreDataBus:', data?.domain, data?.action);
-        this.syncWithServer(false);
+        log.debug('Reactive trigger received from CoreDataBus in Ledger:', data?.domain, data?.action);
+        if (data?.action === 'deleted' && (data?.domain === 'billing:payment' || data?.domain === 'billing:creditnote')) {
+          this.removePaymentOptimistically(data?.payload?.id);
+        }
+        this.syncWithServer(true);
       });
     }
     this.pollingInterval = setInterval(() => this.syncWithServer(), interval);
@@ -67,6 +70,26 @@ class LedgerView {
   }
 
   
+  /**
+   * ⚡ 0ms Instantaneous Optimistic Payment Card Removal
+   */
+  removePaymentOptimistically(paymentId) {
+    if (!paymentId) return;
+    if (this.billingApp?.billingData?.payments) {
+      this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
+        p => String(p.id) !== String(paymentId)
+      );
+    }
+    const elements = document.querySelectorAll(`[data-payment-id="${paymentId}"]`);
+    elements.forEach(el => {
+      const container = el.closest('.timeline-record') || el.closest('.ledger-table-row') || el;
+      container.style.transition = 'all 0.2s ease';
+      container.style.opacity = '0';
+      container.style.transform = 'scale(0.96)';
+      setTimeout(() => container.remove(), 200);
+    });
+  }
+
   /**
    * ⚡ 0ms Instantaneous Optimistic Payment Card Injection
    * Renders the new payment card instantly into the active Ledger view without waiting
@@ -152,15 +175,14 @@ class LedgerView {
 
   async syncWithServer(isManual = false) {
     try {
-      // Guard: Ensure ledger container exists in DOM before updating
+      // 1. Refresh global billing data in memory even if ledger tab is currently hidden
+      if (this.billingApp?.loadBillingDataFromAPI) {
+        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: isManual });
+      }
+
+      // Guard: Ensure ledger container exists in DOM before updating DOM elements
       if (!this.viewContainer || !document.getElementById('ledgerTotalDue')) {
         return;
-      }
-      
-      // 1. Refresh global billing data (bills, payments, ...)
-      // We MUST await this before getLedgerData because it joins with these arrays
-      if (this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: isManual });
       }
       
       // 2. Aggregate fresh data for Ledger
@@ -244,6 +266,8 @@ class LedgerView {
     const updatedBillIds = new Set();
     const newPaymentIds = new Set();
     const updatedPaymentIds = new Set();
+    const deletedPaymentIds = new Set();
+    const deletedBillIds = new Set();
     this.updatedCustomerIds = new Set();
 
     if (this.oldLedgerSnapshot) {
@@ -274,6 +298,24 @@ class LedgerView {
             updatedPaymentIds.add(newPmt.id);
           }
         });
+
+        // Track deletions for 0ms reactive sync
+        if (oldCust) {
+          (oldCust.payments || []).forEach(oldPmt => {
+            const exists = (newCust.payments || []).some(p => String(p.id) === String(oldPmt.id));
+            if (!exists) {
+              deletedPaymentIds.add(oldPmt.id);
+              this.updatedCustomerIds.add(newCust.customerName);
+            }
+          });
+          (oldCust.bills || []).forEach(oldBill => {
+            const exists = (newCust.bills || []).some(b => String(b.id) === String(oldBill.id));
+            if (!exists) {
+              deletedBillIds.add(oldBill.id);
+              this.updatedCustomerIds.add(newCust.customerName);
+            }
+          });
+        }
       });
     } else {
       // First sync after load - map initial customers for future diffing
@@ -290,7 +332,7 @@ class LedgerView {
     
     if (oldSnapshotSummary === newSnapshotSummary && !isImmediate && 
         newBillIds.size === 0 && updatedBillIds.size === 0 && 
-        newPaymentIds.size === 0 && updatedPaymentIds.size === 0) {
+        newPaymentIds.size === 0 && updatedPaymentIds.size === 0 && deletedPaymentIds.size === 0 && deletedBillIds.size === 0) {
       return;
     }
 

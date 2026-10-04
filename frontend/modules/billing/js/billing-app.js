@@ -30,11 +30,17 @@ export class BillingAPI {
   invalidateCache(pattern = null) {
     if (!pattern) {
       this._cache.clear();
+      this._inFlightRequests.clear();
       return;
     }
     for (const key of this._cache.keys()) {
       if (key.includes(pattern)) {
         this._cache.delete(key);
+      }
+    }
+    for (const key of this._inFlightRequests.keys()) {
+      if (key.includes(pattern)) {
+        this._inFlightRequests.delete(key);
       }
     }
   }
@@ -50,6 +56,8 @@ export class BillingAPI {
       if (endpoint.includes('/products')) this.invalidateCache('/products');
       if (endpoint.includes('/contacts')) this.invalidateCache('/contacts');
       if (endpoint.includes('/orders')) this.invalidateCache('/orders');
+      if (endpoint.includes('/payments')) this.invalidateCache('/billing');
+      if (endpoint.includes('/invoices')) this.invalidateCache('/billing');
 
       const headers = {
         'Content-Type': 'application/json',
@@ -1546,7 +1554,7 @@ export class BillingApp extends AppWindow {
       // Instant 0ms activation: View is already mounted in DOM (No redraw, no soft refresh!)
       if (safeName === 'ledger') {
         if (params) viewInstance.params = params;
-        viewInstance.syncWithServer(false);
+        viewInstance.syncWithServer(true);
       } else if (safeName === 'payment-credit') {
         viewInstance.loadRecentTransactions();
         viewInstance.updateStatsDisplay?.();
@@ -1621,8 +1629,11 @@ export class BillingApp extends AppWindow {
   async loadBillingDataFromAPI(options = {}) {
     if (!this.apiEnabled) throw new Error('API not enabled');
 
-    // Deduplicate in-flight call to loadBillingDataFromAPI itself!
-    if (this._loadBillingDataPromise) {
+    // Deduplicate in-flight call to loadBillingDataFromAPI unless forceRefresh is explicitly requested
+    if (options.forceRefresh === true) {
+      this._loadBillingDataPromise = null;
+      if (this.api) this.api.invalidateCache('/billing');
+    } else if (this._loadBillingDataPromise) {
       return this._loadBillingDataPromise;
     }
 
@@ -1924,7 +1935,7 @@ export class BillingApp extends AppWindow {
       // Update ledger in-place without resetting customer selection or refreshing whole view
       const ledgerView = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
       if (ledgerView && typeof ledgerView.syncWithServer === 'function') {
-        ledgerView.syncWithServer(false);
+        ledgerView.syncWithServer(true);
       }
 
       // Refresh payment-credit view in-place if open
