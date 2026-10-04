@@ -852,7 +852,7 @@ class PaymentCreditNote {
         this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
       }
 
-      this.showAlert(`✓ Payment of ₹${amount.toFixed(2)} recorded successfully`, 'success');
+      // Dispatched reactively via CoreDataBus event stream with full customer and amount formatting
       this.clearPaymentForm();
       await this.updateCustomerBalance();
       this.loadRecentTransactions();

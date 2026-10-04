@@ -418,41 +418,10 @@ export class BillingApp extends AppWindow {
         duration: duration
       });
     }
-    const toast = document.createElement('div');
-    toast.className = `billing-toast billing-toast-${type}`;
-    const bg = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#0071e3');
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: ${bg};
-      color: #ffffff;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-      z-index: 100000;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      pointer-events: none;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      opacity: 0;
-      transform: translateY(12px);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    requestAnimationFrame(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    });
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(12px)';
-      setTimeout(() => toast.remove(), 350);
-    }, duration);
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Billing', duration: duration });
+    }
+  }, duration);
   }
 
   isWorkerUser() {
@@ -2356,15 +2325,7 @@ export class BillingApp extends AppWindow {
         const toastId = 'pdf-success-' + Date.now();
         const toast = document.createElement('div');
         toast.id = toastId;
-        toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#4CAF50;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-        
-        let message = `✓ ${fileName} saved successfully`;
-        if (result.folder) message = `✓ Saved to ${result.folder}/${fileName}`;
-        else if (result.fallback) message = `✓ ${fileName} downloaded successfully`;
-        
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => { if (document.getElementById(toastId)) document.getElementById(toastId).remove(); }, 4000);
+        this.showNotification(message, 'success');
       }
     } catch (error) {
       // Remove loading indicator
@@ -2375,9 +2336,7 @@ export class BillingApp extends AppWindow {
       const errorId = 'pdf-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
+      this.showNotification(`✗ Error: ${error.message}`, 'error');
       setTimeout(() => {
         const el = document.getElementById(errorId);
         if (el) el.remove();
@@ -2416,9 +2375,7 @@ export class BillingApp extends AppWindow {
       const errorId = 'pdf-print-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
+      this.showNotification(`✗ Error: ${error.message}`, 'error');
       setTimeout(() => { const el = document.getElementById(errorId); if (el) el.remove(); }, 5000);
     }
   }
@@ -2622,9 +2579,7 @@ export class BillingApp extends AppWindow {
       const errorId = 'pdf-preview-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
+      this.showNotification(`✗ Error: ${error.message}`, 'error');
       setTimeout(() => {
         const el = document.getElementById(errorId);
         if (el) el.remove();
@@ -2730,15 +2685,7 @@ export class BillingApp extends AppWindow {
         const toastId = 'pdf-success-' + Date.now();
         const toast = document.createElement('div');
         toast.id = toastId;
-        toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#4CAF50;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-        
-        let message = `✓ ${fileName} saved successfully`;
-        if (result.folder) message = `✓ Saved to ${result.folder}/${fileName}`;
-        else if (result.fallback) message = `✓ ${fileName} downloaded successfully`;
-        
-        toast.textContent = message;
-        document.body.appendChild(toast);
-        setTimeout(() => { if (document.getElementById(toastId)) document.getElementById(toastId).remove(); }, 4000);
+        this.showNotification(message, 'success');
       }
 
     } catch (error) {
@@ -2749,9 +2696,7 @@ export class BillingApp extends AppWindow {
       const errorId = 'pdf-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
+      this.showNotification(`✗ Error: ${error.message}`, 'error');
       setTimeout(() => {
         const el = document.getElementById(errorId);
         if (el) el.remove();
@@ -2941,9 +2886,7 @@ export class BillingApp extends AppWindow {
       const errorId = 'pdf-preview-error-' + Date.now();
       const errorDiv = document.createElement('div');
       errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
+      this.showNotification(`✗ Error: ${error.message}`, 'error');
       setTimeout(() => {
         const el = document.getElementById(errorId);
         if (el) el.remove();

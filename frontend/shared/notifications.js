@@ -77,43 +77,68 @@
     autoRequestNativePermission() {
       if (typeof window === 'undefined' || !('Notification' in window) || !window.Notification) return;
 
-      const triggerPermissionPrompt = () => {
-        if (window.Notification && window.Notification.permission === 'default') {
-          try {
-            const req = window.Notification.requestPermission();
-            if (req && typeof req.then === 'function') {
-              req.then(permission => {
-                log.debug('Device Notification permission result:', permission);
-                if (permission === 'granted') {
-                  this.dispatchNativeNotification('Notifications Active', 'Native device notifications are now enabled.', { app: 'System' });
-                }
-              }).catch(err => {
-                log.debug('Notification permission request suppressed:', err);
-              });
-            }
-          } catch (e) {
-            log.debug('Direct Notification.requestPermission call failed:', e);
-          }
+      // If already granted or denied, don't show prompt
+      if (window.Notification.permission !== 'default') return;
+
+      const showBanner = () => {
+        if (window.Notification.permission !== 'default') return;
+        if (sessionStorage.getItem('macos_perm_banner_dismissed') === 'true') return;
+        if (document.getElementById('macos-permission-banner')) return;
+
+        const banner = document.createElement('div');
+        banner.id = 'macos-permission-banner';
+        banner.className = 'macos-permission-banner';
+        banner.innerHTML = `
+          <div class="perm-banner-icon">🔔</div>
+          <div class="perm-banner-content">
+            <div class="perm-banner-title">Enable Desktop Notifications</div>
+            <div class="perm-banner-desc">Get instant desktop alerts for payments, bills, and order updates.</div>
+          </div>
+          <div class="perm-banner-actions">
+            <button class="perm-btn perm-btn-later" id="macosPermLaterBtn">Later</button>
+            <button class="perm-btn perm-btn-allow" id="macosPermAllowBtn">Allow Notifications</button>
+          </div>
+        `;
+
+        document.body.appendChild(banner);
+
+        const allowBtn = banner.querySelector('#macosPermAllowBtn');
+        const laterBtn = banner.querySelector('#macosPermLaterBtn');
+
+        if (allowBtn) {
+          allowBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.Notification.requestPermission().then(permission => {
+              banner.style.animation = 'bannerSlideDown 0.3s ease reverse forwards';
+              setTimeout(() => banner.remove(), 300);
+              if (permission === 'granted') {
+                this.dispatchNativeNotification('Notifications Active', 'Native desktop alerts are now enabled.', { app: 'System' });
+                this.notify({
+                  app: 'System',
+                  title: 'Notifications Enabled',
+                  message: 'Native desktop alerts are active for all apps.',
+                  type: 'success'
+                });
+              }
+            }).catch(() => { banner.remove(); });
+          });
+        }
+
+        if (laterBtn) {
+          laterBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sessionStorage.setItem('macos_perm_banner_dismissed', 'true');
+            banner.style.animation = 'bannerSlideDown 0.3s ease reverse forwards';
+            setTimeout(() => banner.remove(), 300);
+          });
         }
       };
 
-      // 1. Immediately request after short delay on startup
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setTimeout(triggerPermissionPrompt, 300));
+        document.addEventListener('DOMContentLoaded', () => setTimeout(showBanner, 800));
       } else {
-        setTimeout(triggerPermissionPrompt, 300);
+        setTimeout(showBanner, 800);
       }
-
-      // 2. Also register on first user interaction in case the browser enforces user-gesture restriction for permission prompts
-      const onFirstInteraction = () => {
-        triggerPermissionPrompt();
-        window.removeEventListener('click', onFirstInteraction);
-        window.removeEventListener('pointerdown', onFirstInteraction);
-        window.removeEventListener('keydown', onFirstInteraction);
-      };
-      window.addEventListener('click', onFirstInteraction, { once: true });
-      window.addEventListener('pointerdown', onFirstInteraction, { once: true });
-      window.addEventListener('keydown', onFirstInteraction, { once: true });
     }
 
     requestNativePermission() {
@@ -326,10 +351,39 @@
       const body = document.createElement('div');
       body.className = 'toast-body';
 
+      // Dynamically detect theme for guaranteed high contrast regardless of CSS caching
+      const isDark = (typeof document !== 'undefined') && Boolean(
+        (typeof document.documentElement?.getAttribute === 'function' && document.documentElement.getAttribute('data-theme') === 'dark') ||
+        (typeof document.documentElement?.getAttribute === 'function' && document.documentElement.getAttribute('data-macos-theme') === 'dark') ||
+        (typeof document.body?.getAttribute === 'function' && document.body.getAttribute('data-theme') === 'dark') ||
+        (typeof document.body?.classList?.contains === 'function' && document.body.classList.contains('dark-theme')) ||
+        (typeof document.body?.classList?.contains === 'function' && document.body.classList.contains('dark-mode')) ||
+        (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches &&
+         !(typeof document.documentElement?.getAttribute === 'function' && document.documentElement.getAttribute('data-theme') === 'light'))
+      );
+
+      // Force guaranteed high-contrast styling on container
+      toast.style.background = isDark ? 'rgba(28, 30, 34, 0.96)' : 'rgba(255, 255, 255, 0.98)';
+      toast.style.color = isDark ? '#ffffff' : '#111827';
+      toast.style.border = isDark ? '1px solid rgba(255, 255, 255, 0.16)' : '1px solid rgba(0, 0, 0, 0.12)';
+      toast.style.boxShadow = isDark 
+        ? '0 18px 40px rgba(0,0,0,0.65), 0 2px 10px rgba(0,0,0,0.35)' 
+        : '0 14px 34px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)';
+
+      appTitle.style.color = isDark ? '#d1d5db' : '#4b5563';
+      appTitle.style.fontWeight = '700';
+      timeSpan.style.color = isDark ? '#9ca3af' : '#6b7280';
+      closeBtn.style.color = isDark ? '#f3f4f6' : '#374151';
+      closeBtn.style.background = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.07)';
+
       if (title) {
         const titleEl = document.createElement('div');
         titleEl.className = 'toast-title';
         titleEl.textContent = title;
+        titleEl.style.color = isDark ? '#ffffff' : '#111827';
+        titleEl.style.fontWeight = '700';
+        titleEl.style.fontSize = '13.5px';
+        titleEl.style.lineHeight = '1.35';
         body.appendChild(titleEl);
       }
 
@@ -337,6 +391,10 @@
         const msgEl = document.createElement('div');
         msgEl.className = 'toast-message';
         msgEl.textContent = message;
+        msgEl.style.color = isDark ? '#e5e7eb' : '#374151';
+        msgEl.style.fontWeight = '500';
+        msgEl.style.fontSize = '12.5px';
+        msgEl.style.lineHeight = '1.45';
         body.appendChild(msgEl);
       }
 

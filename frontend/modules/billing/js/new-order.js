@@ -670,16 +670,20 @@ class OrdersView {
   }
 
   showNotification(message, type = 'info') {
-    const id = 'toast-' + Date.now();
-    const toast = document.createElement('div');
-    toast.id = id;
-    toast.className = `notification ${type}`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      const el = document.getElementById(id);
-      if (el) el.remove();
-    }, 4000);
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Orders',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Orders' });
+    }
   }
 
   showConfirm(title, message) {

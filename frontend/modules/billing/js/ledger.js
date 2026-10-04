@@ -66,6 +66,90 @@ class LedgerView {
     }
   }
 
+  
+  /**
+   * ⚡ 0ms Instantaneous Optimistic Payment Card Injection
+   * Renders the new payment card instantly into the active Ledger view without waiting
+   * for multi-endpoint network round-trips!
+   */
+  injectPaymentOptimistically(payment) {
+    if (!payment) return;
+    log.debug('⚡ Optimistically injecting payment into Ledger in 0ms:', payment);
+
+    // 1. Ensure memory store contains payment
+    if (this.billingApp?.billingData) {
+      if (!this.billingApp.billingData.payments) this.billingApp.billingData.payments = [];
+      const exists = this.billingApp.billingData.payments.some(p => String(p.id) === String(payment.id));
+      if (!exists) {
+        this.billingApp.billingData.payments.unshift(payment);
+      }
+    }
+
+    const selectedCustomer = window.currentSelectedCustomer || null;
+    const paymentCust = payment.customer_name || payment.customer || '';
+
+    // If viewing all customers OR viewing this specific customer:
+    if (!selectedCustomer || selectedCustomer === paymentCust) {
+      // Find payments container
+      const container = document.getElementById('ledgerPaymentsContainer');
+      if (container) {
+        // If empty placeholder is shown, clear it
+        if (container.innerHTML.includes('NO PAYMENTS') || container.innerHTML.includes('NO TRANSACTIONS')) {
+          container.innerHTML = '';
+        }
+
+        // Generate card HTML
+        const cardHtml = this.renderPaymentRecord(payment);
+        
+        // Find existing month group or create one at the very top
+        const rawDate = new Date(payment.payment_date || payment.date || payment.created_at || Date.now());
+        const monthYear = rawDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        
+        // Check if there is already a section with this month
+        const monthHeaders = Array.from(container.querySelectorAll('div')).filter(d => d.textContent.includes(monthYear.toUpperCase()));
+        if (monthHeaders.length > 0) {
+          const targetHeader = monthHeaders[0];
+          const wrapper = document.createElement('div');
+          wrapper.innerHTML = cardHtml;
+          const cardEl = wrapper.firstElementChild;
+          if (cardEl) {
+            cardEl.style.animation = 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+            targetHeader.insertAdjacentElement('afterend', cardEl);
+          }
+        } else {
+          // Prepend new month group with card
+          const groupDiv = document.createElement('div');
+          groupDiv.style.marginBottom = '12px';
+          groupDiv.innerHTML = `
+            <div style="padding: 8px 12px; background: #000000; font-weight: 700; font-size: 11px; color: #ffffff; border-radius: 2px; margin-bottom: 8px; font-family: 'Courier New', monospace; letter-spacing: 0.3px; text-transform: uppercase;">█ ${monthYear}</div>
+            ${cardHtml}
+          `;
+          groupDiv.style.animation = 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+          container.prepend(groupDiv);
+        }
+
+        this.attachPaymentRecordListeners(container);
+      }
+
+      // Also prepend to unified timeline container if active
+      const unifiedContainer = document.getElementById('ledgerUnifiedContainer');
+      if (unifiedContainer) {
+        if (unifiedContainer.innerHTML.includes('NO TRANSACTIONS')) {
+          unifiedContainer.innerHTML = '';
+        }
+        const unifiedCardHtml = this.renderPaymentRecord(payment, 'unified-payment-');
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = unifiedCardHtml;
+        const unifiedCardEl = wrapper.firstElementChild;
+        if (unifiedCardEl) {
+          unifiedCardEl.style.animation = 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+          unifiedContainer.prepend(unifiedCardEl);
+          this.attachPaymentRecordListeners(unifiedContainer);
+        }
+      }
+    }
+  }
+
   async syncWithServer(isManual = false) {
     try {
       // Guard: Ensure ledger container exists in DOM before updating
