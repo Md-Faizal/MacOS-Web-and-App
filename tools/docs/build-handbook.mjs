@@ -365,7 +365,10 @@ async function main() {
   await writeFile(htmlPath, buildHtml(schemaTables), 'utf8');
   await writeFile(path.join(outputRoot, 'inventory.json'), `${JSON.stringify(inventory, null, 2)}\n`, 'utf8');
 
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: process.env.CI === 'true' ? ['--no-sandbox', '--disable-setuid-sandbox'] : [],
+  });
   try {
     const page = await browser.newPage();
     await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle0' });

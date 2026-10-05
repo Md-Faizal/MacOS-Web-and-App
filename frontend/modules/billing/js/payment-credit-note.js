@@ -832,6 +832,7 @@ class PaymentCreditNote {
 
     log.debug('Sending single consolidated payment data:', paymentData);
 
+    let paymentSaved = false;
     try {
       const response = await fetch('/api/billing/invoices/payments', {
         method: 'POST',
@@ -846,7 +847,10 @@ class PaymentCreditNote {
         throw new Error(`Failed to save payment: ${errorMsg}`);
       }
 
+      paymentSaved = true;
       log.debug(`✓ Consolidated payment of ₹${amount.toFixed(2)} saved successfully`, result);
+      this.showAlert(`✓ Payment of ₹${amount.toFixed(2)} recorded successfully for ${customerName}`, 'success');
+      this.clearPaymentForm();
 
       // Invalidate API read cache immediately
       if (this.billingApp?.api) {
@@ -890,7 +894,6 @@ class PaymentCreditNote {
       }
 
       // Dispatched reactively via CoreDataBus event stream with full customer and amount formatting
-      this.clearPaymentForm();
       await this.updateCustomerBalance();
       this.loadRecentTransactions();
       await this.updateStatsDisplay();
@@ -901,8 +904,13 @@ class PaymentCreditNote {
         await ledgerInstance.syncWithServer(true);
       }
     } catch (error) {
-      log.error('Error saving payment:', error);
-      this.showAlert(`❌ Error: ${error.message}`, 'error');
+      if (paymentSaved) {
+        log.warn('Payment was saved, but the billing view did not fully refresh:', error);
+        this.showAlert('Payment was saved, but some billing details could not be refreshed.', 'warning');
+      } else {
+        log.error('Error saving payment:', error);
+        this.showAlert(`❌ Error: ${error.message}`, 'error');
+      }
     }
   }
 
