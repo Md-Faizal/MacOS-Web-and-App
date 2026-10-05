@@ -46,6 +46,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
         <div style="pointer-events:none;position:absolute;inset:18% 14%;border:2px solid #ffea00;box-shadow:0 0 0 999px rgba(0,0,0,.16);"></div>
       </div>
       <p data-qr-status role="status" aria-live="polite" style="min-height:20px;margin:12px 0 0;font-size:13px;font-weight:700;">Starting camera…</p>
+      <button type="button" data-qr-retry style="display:none;margin-top:8px;padding:9px 12px;border:2px solid #000;background:#ffea00;font-weight:800;cursor:pointer;">Retry camera access</button>
     </section>
   `;
   document.body.appendChild(overlay);
@@ -53,7 +54,9 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   const video = overlay.querySelector('[data-qr-video]');
   const status = overlay.querySelector('[data-qr-status]');
   const closeButton = overlay.querySelector('[data-qr-close]');
+  const retryButton = overlay.querySelector('[data-qr-retry]');
   let controls = null;
+  let stream = null;
   let closed = false;
   let processing = false;
   let lastValue = null;
@@ -63,6 +66,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     if (closed) return;
     closed = true;
     controls?.stop();
+    stream?.getTracks().forEach(track => track.stop());
     document.removeEventListener('keydown', onKeyDown);
     overlay.remove();
   };
@@ -71,18 +75,72 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     if (event.key === 'Escape') close();
   };
   closeButton.addEventListener('click', close);
+  retryButton.addEventListener('click', () => startCamera());
   overlay.addEventListener('click', event => {
     if (event.target === overlay) close();
   });
   document.addEventListener('keydown', onKeyDown);
 
-  const start = async () => {
+  function showCameraError(error) {
+    console.error('[QR Scanner] Camera startup failed:', error);
+    if (closed) return;
+    const policy = document.permissionsPolicy || document.featurePolicy;
+    let cameraAllowedByPolicy = true;
     try {
+      if (policy?.allowsFeature) cameraAllowedByPolicy = policy.allowsFeature('camera');
+    } catch (policyError) {
+      console.warn('[QR Scanner] Unable to inspect camera Permissions-Policy:', policyError);
+    }
+
+    retryButton.style.display = 'none';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      status.textContent = 'Camera requires HTTPS or localhost. Open this app over a secure connection.';
+    } else if (!cameraAllowedByPolicy) {
+      status.textContent = 'This page is blocked from using the camera by the server Permissions-Policy.';
+    } else if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
+      status.textContent = 'Camera permission is blocked. Allow camera access for this site in browser site settings, then retry.';
+      retryButton.style.display = 'inline-block';
+    } else if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
+      status.textContent = 'No camera was found. Connect or enable a camera, then retry.';
+      retryButton.style.display = 'inline-block';
+    } else if (error?.name === 'NotReadableError' || error?.name === 'TrackStartError') {
+      status.textContent = 'The camera is busy or unavailable. Close other camera apps and retry.';
+      retryButton.style.display = 'inline-block';
+    } else {
+      status.textContent = error?.message || 'Unable to start the camera. Check browser camera permission and retry.';
+      retryButton.style.display = 'inline-block';
+    }
+  }
+
+  async function startCamera() {
+    retryButton.style.display = 'none';
+    status.textContent = 'Requesting camera permission…';
+    try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException('Camera access requires HTTPS or localhost.', 'SecurityError');
+      }
+
+      controls?.stop();
+      stream?.getTracks().forEach(track => track.stop());
+      controls = null;
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } }
+      });
+      if (closed) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+        return;
+      }
+
       const { BrowserMultiFormatReader } = await loadZXingBrowser();
-      if (closed) return;
+      if (closed) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       const reader = new BrowserMultiFormatReader();
-      controls = await reader.decodeFromConstraints(
-        { audio: false, video: { facingMode: { ideal: 'environment' } } },
+      controls = await reader.decodeFromStream(
+        stream,
         video,
         async result => {
           if (closed || processing) return;
@@ -114,16 +172,12 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       if (closed) controls.stop();
       else status.textContent = 'Camera ready. Align a product or batch QR inside the frame.';
     } catch (error) {
-      console.error('[QR Scanner] Camera startup failed:', error);
-      if (!closed) {
-        status.textContent = error?.name === 'NotAllowedError'
-          ? 'Camera access was denied. Allow camera access and try again.'
-          : (error?.message || 'Unable to start the camera. Check camera permission and HTTPS access.');
-      }
+      stream?.getTracks().forEach(track => track.stop());
+      stream = null;
+      showCameraError(error);
     }
-  };
+  }
 
-  start();
-
+  startCamera();
   return close;
 }

@@ -6,6 +6,8 @@ The Node API has multiple request controls that solve different problems. Origin
 
 The entrypoint installs request IDs, response helpers, security headers, body parsers, cookie parsing, CSRF/origin checks, a small in-memory rate-limit map, and route-specific auth gates. Middleware ordering and prefix exceptions matter. Verify the exact method, path, cookies, bearer header, origin and nested route handler when debugging a 401/403/429; do not weaken a global control to fix one endpoint.
 
+The global Permissions-Policy allows camera access only to the first-party page (`camera=(self)`) so browser camera features such as QR scanning can request user permission. Microphone and geolocation remain disabled. Camera APIs also require HTTPS or localhost and the user must grant site-level permission.
+
 ## Browser and Mobile Sessions
 
 The auth department constructs auth, profile, OAuth, worker Google, permission and audit modules. The server mounts login/refresh/logout/status/security-question/WebAuthn routes and applies auth middleware selectively. Owner-administration routes add an owner-only guard after authentication. The billing, products, cloud, logs, wallpaper, and settings route groups have specific path/method exceptions in the main server; use the current mount code rather than assuming the entire prefix has one policy.
