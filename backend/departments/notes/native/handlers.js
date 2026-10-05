@@ -5,6 +5,19 @@ const crypto = require('crypto');
 // Module-level so it persists across handler factory calls.
 const sseClients = new Set();
 
+function hasNotesPermission(db, user, action) {
+  if (!user?.id && !user?.userId) return false;
+  if (user.role === 'owner') return true;
+  try {
+    const permission = db.prepare(`
+      SELECT ${action} FROM user_permissions WHERE user_id = ? AND module = 'notes'
+    `).get(user.id || user.userId);
+    return Number(permission?.[action]) === 1;
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * Broadcast an SSE event to every connected client.
  * Silently drops dead connections.
@@ -13,6 +26,7 @@ function broadcast(event, data) {
   if (sseClients.size === 0) return;
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
+    if (!hasNotesPermission(client.db, client.user, 'can_view')) continue;
     try {
       client.res.write(msg);
     } catch (e) {
@@ -62,6 +76,10 @@ module.exports = function(db) {
   return {
     // ===== SSE SUBSCRIPTION =====
     subscribeSSE: (req, res) => {
+      if (!req.user || !hasNotesPermission(db, req.user, 'can_view')) {
+        return res.status(req.user ? 403 : 401).json({ error: 'Forbidden' });
+      }
+
       // Standard SSE response headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -73,7 +91,14 @@ module.exports = function(db) {
       // Initial connection confirmation event
       res.write(`event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
 
-      const client = { res };
+      const client = {
+        res,
+        db,
+        user: {
+          id: req.user.id || req.user.userId,
+          role: req.user.role
+        }
+      };
       sseClients.add(client);
       console.log(`📡 [SSE] Client connected. Total: ${sseClients.size}`);
 
@@ -96,6 +121,10 @@ module.exports = function(db) {
     // without performing a DB write. Used for WhatsApp-style live typing sync.
     streamNoteContent: (req, res) => {
       try {
+        if (!hasNotesPermission(db, req.user, 'can_edit')) {
+          return res.status(req.user ? 403 : 401).json({ error: 'Forbidden' });
+        }
+
         const { id } = req.params;
         const { title, content, clientId } = req.body;
 

@@ -612,7 +612,7 @@ app.get('/api/realtime/events', authModule.authMiddleware, adminAuth.ownerOnly, 
 
 // Central Unified Real-Time SSE Stream across all domains (Billing, Products, Contacts, Notes)
 const coreDataBus = require('../core/sync/data-bus');
-app.get('/api/events', (req, res) => {
+app.get('/api/events', authModule.authMiddleware, (req, res) => {
   coreDataBus.handleSSEConnection(req, res, globalDb);
 });
 

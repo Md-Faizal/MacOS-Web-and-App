@@ -1,6 +1,7 @@
 const express = require('express');
 const createHandlers = require('./native/handlers');
 const createRoutes = require('./native/routes');
+const createPermissions = require('../auth/engine/permissions');
 
 module.exports = {
   name: 'notes',
@@ -13,7 +14,16 @@ module.exports = {
     if (!db) throw new TypeError('Notes department requires a database');
     const router = express.Router();
     const service = createHandlers(db);
+    const permissions = createPermissions(db);
     let initialized = false;
+
+    router.use((req, res, next) => {
+      let action = 'can_view';
+      if (req.method === 'POST') action = req.path === '/' ? 'can_create' : 'can_edit';
+      if (req.method === 'PUT') action = 'can_edit';
+      if (req.method === 'DELETE') action = 'can_delete';
+      return permissions.requirePermission('notes', action)(req, res, next);
+    });
 
     router.get('/health', (req, res) => {
       try {

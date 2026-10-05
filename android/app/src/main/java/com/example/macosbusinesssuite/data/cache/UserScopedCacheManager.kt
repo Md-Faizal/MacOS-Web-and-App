@@ -33,6 +33,7 @@ class UserScopedCacheManager private constructor(private val context: Context) {
         private const val KEY_TOP_PRODUCTS = "cached_top_products"
         private const val KEY_TOP_CUSTOMERS = "cached_top_customers"
         private const val KEY_LAST_SYNC_PREFIX = "last_sync_"
+        private const val CACHE_MAX_AGE_MS = 5 * 60 * 1000L
     }
 
     private fun getPrefs(userId: String): SharedPreferences {
@@ -46,14 +47,27 @@ class UserScopedCacheManager private constructor(private val context: Context) {
      */
     private fun getReadPrefs(primaryKey: String, fallbackKey: String? = null, requiredPrefKey: String? = null): SharedPreferences {
         val primaryPrefs = getPrefs(primaryKey)
-        if (fallbackKey.isNullOrBlank() || fallbackKey.equals(primaryKey, ignoreCase = true)) {
-            return primaryPrefs
+        val fallbackPrefs = if (fallbackKey.isNullOrBlank() || fallbackKey.equals(primaryKey, ignoreCase = true)) {
+            null
+        } else {
+            getPrefs(fallbackKey)
         }
-        if (requiredPrefKey != null && !primaryPrefs.contains(requiredPrefKey)) {
-            val fallbackPrefs = getPrefs(fallbackKey)
-            if (fallbackPrefs.contains(requiredPrefKey)) {
-                return fallbackPrefs
-            }
+
+        if (requiredPrefKey == null) return primaryPrefs
+
+        val lastSyncKey = "$KEY_LAST_SYNC_PREFIX$requiredPrefKey"
+        fun hasFreshSnapshot(prefs: SharedPreferences?): Boolean {
+            if (prefs == null || !prefs.contains(requiredPrefKey)) return false
+            val lastSync = prefs.getLong(lastSyncKey, 0L)
+            val age = System.currentTimeMillis() - lastSync
+            if (lastSync > 0L && age in 0..CACHE_MAX_AGE_MS) return true
+            prefs.edit().remove(requiredPrefKey).remove(lastSyncKey).apply()
+            return false
+        }
+
+        if (hasFreshSnapshot(primaryPrefs)) return primaryPrefs
+        if (hasFreshSnapshot(fallbackPrefs)) {
+            return fallbackPrefs ?: primaryPrefs
         }
         return primaryPrefs
     }
@@ -262,7 +276,13 @@ class UserScopedCacheManager private constructor(private val context: Context) {
             if (salesTrends != null) editor.putString(KEY_SALES_TRENDS, gson.toJson(salesTrends))
             if (topProducts != null) editor.putString(KEY_TOP_PRODUCTS, gson.toJson(topProducts))
             if (topCustomers != null) editor.putString(KEY_TOP_CUSTOMERS, gson.toJson(topCustomers))
-            editor.putLong("$KEY_LAST_SYNC_PREFIX" + "analytics", System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            if (summary != null) editor.putLong("$KEY_LAST_SYNC_PREFIX$KEY_ANALYTICS_SUMMARY", now)
+            if (kpi != null) editor.putLong("$KEY_LAST_SYNC_PREFIX$KEY_EXECUTIVE_KPI", now)
+            if (salesTrends != null) editor.putLong("$KEY_LAST_SYNC_PREFIX$KEY_SALES_TRENDS", now)
+            if (topProducts != null) editor.putLong("$KEY_LAST_SYNC_PREFIX$KEY_TOP_PRODUCTS", now)
+            if (topCustomers != null) editor.putLong("$KEY_LAST_SYNC_PREFIX$KEY_TOP_CUSTOMERS", now)
+            editor.putLong("$KEY_LAST_SYNC_PREFIX" + "analytics", now)
             editor.apply()
         } catch (_: Exception) {}
     }

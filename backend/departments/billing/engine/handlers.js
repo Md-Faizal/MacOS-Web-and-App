@@ -1343,6 +1343,14 @@ module.exports = function(db) {
           WHERE id = ?
         `).run(finalInvoiceNo, creatorId, orderId);
 
+        dataBus.broadcast('billing:invoice', 'created', {
+          id: invoiceId,
+          customer_id: order.customer_id,
+          grand_total: serverCalc.summary.grand_total
+        });
+        dataBus.broadcast('billing:ledger', 'updated', { customer_id: order.customer_id });
+        dataBus.broadcast('orders:order', 'updated', { id: orderId });
+
         // Audit log
         activityLogger.logActivity(req, {
           module: 'billing',

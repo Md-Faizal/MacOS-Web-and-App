@@ -25,10 +25,15 @@ module.exports = {
             duration TEXT,
             description TEXT,
             category TEXT,
+            end_date TEXT,
+            end_time TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
           )
         `);
+        const columns = new Set(db.pragma('table_info(calendar_events)').map(column => column.name));
+        if (!columns.has('end_date')) db.exec('ALTER TABLE calendar_events ADD COLUMN end_date TEXT');
+        if (!columns.has('end_time')) db.exec('ALTER TABLE calendar_events ADD COLUMN end_time TEXT');
       },
       getDatabase() {
         return db;

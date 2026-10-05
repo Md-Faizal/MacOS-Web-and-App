@@ -35,6 +35,10 @@ class CoreDataBusBackend {
    * Handle incoming SSE connection request
    */
   handleSSEConnection(req, res, db = null) {
+    if (!req.user || !(req.user.id || req.user.userId)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -45,18 +49,21 @@ class CoreDataBusBackend {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       res,
       req,
+      db,
+      user: {
+        id: req.user.id || req.user.userId,
+        role: req.user.role
+      },
       connectedAt: Date.now()
     };
 
     this.clients.add(client);
 
     // Send initial handshake event
-    const initialFingerprint = db ? this.getDomainFingerprint('billing', db) : null;
     const welcome = {
       type: 'connected',
       client_id: client.id,
-      timestamp: Date.now(),
-      fingerprint: initialFingerprint
+      timestamp: Date.now()
     };
     res.write(`event: init\ndata: ${JSON.stringify(welcome)}\n\n`);
 
@@ -87,16 +94,45 @@ class CoreDataBusBackend {
       timestamp: Date.now()
     };
 
-    // Send named domain event AND default message event for universal client compatibility
-    const sseMessage = `event: ${domain}\ndata: ${JSON.stringify(eventPayload)}\n\n` +
-                       `data: ${JSON.stringify(eventPayload)}\n\n`;
-
     for (const client of this.clients) {
+      if (!this._clientCanReadDomain(client, domain)) continue;
+
       try {
+        const scopedEvent = {
+          ...eventPayload,
+          payload: client.user.role === 'owner' ? payload : {}
+        };
+        const sseMessage = `event: ${domain}\ndata: ${JSON.stringify(scopedEvent)}\n\n` +
+                           `data: ${JSON.stringify(scopedEvent)}\n\n`;
         client.res.write(sseMessage);
       } catch (_) {
         this.clients.delete(client);
       }
+    }
+  }
+
+  _clientCanReadDomain(client, domain) {
+    if (client.user?.role === 'owner') return true;
+
+    const moduleByDomain = {
+      billing: 'billing',
+      contacts: 'contacts',
+      inventory: 'products',
+      products: 'products',
+      orders: 'orders',
+      notes: 'notes',
+      calendar: 'calendar'
+    };
+    const moduleName = moduleByDomain[String(domain).split(':')[0]];
+    if (!moduleName || !client.db || !client.user?.id) return false;
+
+    try {
+      const permission = client.db.prepare(`
+        SELECT can_view FROM user_permissions WHERE user_id = ? AND module = ?
+      `).get(client.user.id, moduleName);
+      return Number(permission?.can_view) === 1;
+    } catch (_) {
+      return false;
     }
   }
 

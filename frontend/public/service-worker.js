@@ -13,7 +13,6 @@
  */
 
 const CACHE_VERSION = 'wallpaper-v6';
-const API_CACHE = 'api-cache-v1';
 const ASSET_CACHE = 'asset-cache-v4';
 const IMAGE_CACHE = 'image-cache-v4';
 const VIDEO_CACHE = 'video-cache-v3';  // Incremented for new logic
@@ -68,7 +67,6 @@ self.addEventListener('activate', (event) => {
           // Delete old cache versions
           if (
             cacheName !== CACHE_VERSION &&
-            cacheName !== API_CACHE &&
             cacheName !== ASSET_CACHE &&
             cacheName !== IMAGE_CACHE &&
             cacheName !== VIDEO_CACHE
@@ -96,6 +94,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Business data and event streams must always pass through to the server.
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
   // Auth, Profile, Health, and WebSocket/SSE endpoints: ALWAYS bypass SW (Network only)
   if (
     url.pathname.startsWith('/api/auth/') ||
@@ -112,38 +115,6 @@ self.addEventListener('fetch', (event) => {
 
   // Bypass cache if force=true is present
   if (url.searchParams.get('force') === 'true') {
-    return;
-  }
-
-  // API calls: Stale-While-Revalidate
-  // Serve from cache immediately, update in background
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      caches.open(API_CACHE).then((cache) => {
-        return cache.match(request).then((response) => {
-          swLog.log(`API Request (${url.pathname}):`, response ? 'CACHE HIT' : 'CACHE MISS');
-          
-          // Return cached response immediately
-          const fetchPromise = fetch(request).then((networkResponse) => {
-            // Update cache in background
-            if (networkResponse && networkResponse.status === 200) {
-              cache.put(request, networkResponse.clone());
-              swLog.log(`API cache updated: ${url.pathname}`);
-            }
-            return networkResponse;
-          }).catch((err) => {
-            swLog.warn('Fetch failed:', url.pathname, err);
-            return response || new Response(JSON.stringify({ error: 'Network unavailable' }), {
-              status: 503,
-              headers: { 'Content-Type': 'application/json' }
-            });
-          });
-          
-          // Return cached response first, or wait for fetch
-          return response || fetchPromise;
-        });
-      })
-    );
     return;
   }
 

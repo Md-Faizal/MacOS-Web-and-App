@@ -666,6 +666,12 @@ class NotesApp extends AppWindow {
 
     this.eventSource.addEventListener('connected', () => {
       log.debug('📡 [SSE] Connected to real-time events stream');
+      if (this.hasConnectedSSE) {
+        this.reconcileNotesAfterReconnect().catch(error => {
+          log.warn('[SSE] Note reconciliation failed after reconnect:', error);
+        });
+      }
+      this.hasConnectedSSE = true;
     });
 
     // Auto-reconnect after 5s on any error
@@ -674,6 +680,13 @@ class NotesApp extends AppWindow {
       this.eventSource.close();
       setTimeout(() => this.connectSSE(), 5000);
     };
+  }
+
+  async reconcileNotesAfterReconnect() {
+    await this.loadNoteTiles();
+    this.renderNotesList();
+    this.loadNoteContentsInBackground();
+    this.loadNoteImagesInBackground();
   }
 
   /**
@@ -989,19 +1002,23 @@ class NotesApp extends AppWindow {
       }
       
       // Initialize notes with metadata only
-      this.notes = apiNotes.map(note => ({
-        id: note.id,
-        title: note.title,
-        content: null, // Will load separately (null means not yet loaded)
-        images: [], // Will load separately
-        created_at: note.created_at,
-        updated_at: note.updated_at
-      }));
+      const previousNotes = new Map(this.notes.map(note => [note.id, note]));
+      this.notes = apiNotes.map(note => {
+        const previous = previousNotes.get(note.id);
+        return {
+          id: note.id,
+          title: note.title,
+          content: previous?.content ?? null,
+          images: previous?.images ?? [],
+          created_at: note.created_at,
+          updated_at: note.updated_at
+        };
+      });
       
       // Initialize state for all notes
       this.notes.forEach(note => {
-        this.noteState[note.id] = 'pristine';
-        this.noteSyncErrors[note.id] = null;
+        if (!this.noteState[note.id]) this.noteState[note.id] = 'pristine';
+        if (this.noteSyncErrors[note.id] === undefined) this.noteSyncErrors[note.id] = null;
       });
       
       this.tilesLoaded = true;
@@ -1026,6 +1043,7 @@ class NotesApp extends AppWindow {
   }
 
   async loadSingleNoteContent(note) {
+    if (['edited', 'syncing'].includes(this.noteState[note.id])) return;
     this.contentLoading[note.id] = true;
     try {
       const response = await fetch(`${this.apiEndpoint}/${note.id}`);

@@ -91,6 +91,26 @@
   let sseConnection = null;
   let sseRetryDelay = 2000;
   let sseReconnectTimer = null;
+  let hasConnectedToSSE = false;
+
+  function dispatchReconciliation(reason) {
+    [
+      'billing:invoice:updated',
+      'contacts:customer:updated',
+      'inventory:product:updated',
+      'orders:order:updated',
+      'notes:note:updated',
+      'calendar:event:updated'
+    ].forEach((type) => {
+      dispatchInternal(type, { reason }, false);
+    });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      dispatchReconciliation('visibility');
+    }
+  });
 
   function initSSE() {
     if (typeof EventSource === 'undefined') return;
@@ -104,6 +124,10 @@
       sseConnection.onopen = () => {
         log.debug('🔌 SSE Real-Time Data Stream Connected (/api/events)');
         sseRetryDelay = 2000;
+        if (hasConnectedToSSE) {
+          dispatchReconciliation('sse-reconnected');
+        }
+        hasConnectedToSSE = true;
       };
 
       sseConnection.onmessage = (e) => {

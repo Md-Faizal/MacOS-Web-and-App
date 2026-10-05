@@ -990,6 +990,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        sessionManager.userId?.let { cacheManager.clearUserCache(it) }
+
         // Immediately purge local credentials and reset UI state on Main thread
         sessionManager.clearSession()
         sessionManager.biometricEnabled = false

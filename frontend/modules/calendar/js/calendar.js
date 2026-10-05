@@ -20,11 +20,20 @@ class CalendarApp extends AppWindow {
     super(config);
 
     this.events = this.loadEvents();
+    this.apiUrl = '/api/calendar';
+    this._syncGeneration = 0;
     // Allow initialDate from callbacks
     this.currentDate = (callbacks && callbacks.initialDate) ? new Date(callbacks.initialDate) : new Date();
     this.viewMode = 'month'; // 'day', 'week', 'month', 'year'
     this.selectedDate = new Date(this.currentDate);
     this.setupCalendarUI();
+    this.syncEventsFromServer();
+
+    if (window.CoreDataBus) {
+      this._dataBusCalendarUnsub = window.CoreDataBus.subscribeDomain('calendar:', () => {
+        this.syncEventsFromServer();
+      });
+    }
   }
 
 
@@ -35,6 +44,32 @@ class CalendarApp extends AppWindow {
     this.setupCalendarEventListeners();
     this.renderCalendar();
     window.currentCalendarApp = this;
+  }
+
+  normalizeEvent(event) {
+    return {
+      ...event,
+      startDate: new Date(event.startDate || event.date),
+      endDate: new Date(event.endDate || event.end_date || event.date),
+      startTime: event.startTime || event.start_time || event.time || '',
+      endTime: event.endTime || event.end_time || ''
+    };
+  }
+
+  async syncEventsFromServer() {
+    const generation = ++this._syncGeneration;
+    try {
+      const response = await fetch(this.apiUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Calendar API error: ${response.status}`);
+      const events = await response.json();
+      if (!Array.isArray(events)) throw new Error('Invalid Calendar response');
+      if (generation !== this._syncGeneration) return;
+      this.events = events.map(event => this.normalizeEvent(event));
+      this.saveEventsToStorage();
+      this.renderCalendar();
+    } catch (error) {
+      console.warn('[Calendar] Server sync unavailable; keeping local events.', error);
+    }
   }
 
   buildCalendarLayout() {
@@ -630,7 +665,7 @@ class CalendarApp extends AppWindow {
     this.eventModal.style.display = 'flex';
   }
 
-  saveEvent() {
+  async saveEvent() {
     const title = document.getElementById('event-title').value;
     const calendar = document.getElementById('event-calendar').value;
     const startDate = document.getElementById('event-start-date').value;
@@ -643,14 +678,29 @@ class CalendarApp extends AppWindow {
       id: Date.now().toString(),
       title,
       category: calendar,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      startTime,
-      endTime,
+      date: startDate,
+      end_date: endDate,
+      time: startTime,
+      end_time: endTime,
       description
     };
 
-    this.events.push(event);
+    try {
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+      if (!response.ok) throw new Error(`Calendar API error: ${response.status}`);
+      const savedEvent = this.normalizeEvent(await response.json());
+      this.events.push(savedEvent);
+      window.CoreDataBus?.publish('calendar:event', 'created', { id: savedEvent.id });
+    } catch (error) {
+      console.error('[Calendar] Failed to save event:', error);
+      window.showNotification?.('Calendar event could not be saved to the server.', 'error');
+      return;
+    }
+
     this.saveEventsToStorage();
     this.eventModal.style.display = 'none';
     this.eventForm.reset();

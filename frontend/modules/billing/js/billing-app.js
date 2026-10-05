@@ -93,7 +93,10 @@ export class BillingAPI {
     // For GET requests:
     const ttl = typeof options.ttlMs === 'number' ? options.ttlMs : this.DEFAULT_CACHE_TTL;
     const forceRefresh = options.forceRefresh === true;
-    const cacheKey = url;
+    const userId = typeof window !== 'undefined'
+      ? (window.currentUserData?.id || sessionStorage.getItem('macos_user_id') || localStorage.getItem('macos_active_user_id') || 'anonymous')
+      : 'anonymous';
+    const cacheKey = `${userId}:${url}`;
 
     // 1. Return fresh cached response if valid and not forcing refresh
     if (!forceRefresh && this._cache.has(cacheKey)) {
@@ -105,8 +108,11 @@ export class BillingAPI {
 
     // 2. In-flight request deduplication:
     // If an identical GET request is already pending, share the same Promise!
-    if (this._inFlightRequests.has(cacheKey)) {
-      return this._inFlightRequests.get(cacheKey);
+    if (forceRefresh) {
+      this._cache.delete(cacheKey);
+      this._inFlightRequests.delete(cacheKey);
+    } else if (this._inFlightRequests.has(cacheKey)) {
+      return this._inFlightRequests.get(cacheKey).promise;
     }
 
     const headers = {
@@ -115,25 +121,30 @@ export class BillingAPI {
       ...options.headers
     };
 
-    const fetchPromise = (async () => {
+    const requestEntry = {};
+    requestEntry.promise = (async () => {
       try {
         const response = await fetch(url, { ...options, headers });
         if (!response.ok) {
           throw new Error(`API Error: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
-        this._cache.set(cacheKey, { data, timestamp: Date.now() });
+        if (this._inFlightRequests.get(cacheKey) === requestEntry) {
+          this._cache.set(cacheKey, { data, timestamp: Date.now() });
+        }
         return data;
       } catch (error) {
         log.error(`API Request Failed (${endpoint}):`, error);
         throw error;
       } finally {
-        this._inFlightRequests.delete(cacheKey);
+        if (this._inFlightRequests.get(cacheKey) === requestEntry) {
+          this._inFlightRequests.delete(cacheKey);
+        }
       }
     })();
 
-    this._inFlightRequests.set(cacheKey, fetchPromise);
-    return fetchPromise;
+    this._inFlightRequests.set(cacheKey, requestEntry);
+    return requestEntry.promise;
   }
 
   // Products

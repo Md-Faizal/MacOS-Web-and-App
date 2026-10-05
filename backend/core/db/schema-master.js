@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   duration TEXT,
   description TEXT,
   category TEXT,
+  end_date TEXT,
+  end_time TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
