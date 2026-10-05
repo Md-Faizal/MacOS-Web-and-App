@@ -1,3 +1,6 @@
+import { resolveCatalogQr } from '../../../shared/catalog-qr.mjs';
+import { openQrScanner } from '../../../shared/qr-scanner.js';
+
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:NewBill') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
@@ -332,8 +335,9 @@ class BillEditor {
                 <input type="hidden" id="gstReverseCheckbox" value="false">
               </div>
 
-              <div class="form-actions">
+              <div class="form-actions" style="flex-wrap:wrap;">
                 <button id="addProductBtn" class="btn btn-primary">+ Add Product</button>
+                <button type="button" id="scanQrProductBtn" class="btn btn-secondary">▦ Scan Product QR</button>
               </div>
             </div>
 
@@ -601,6 +605,7 @@ class BillEditor {
 
   setupCreateBillListeners() {
     const addBtn = document.getElementById('addProductBtn');
+    const scanQrBtn = document.getElementById('scanQrProductBtn');
     const makeBtn = document.getElementById('makeBillBtn');
     const listBtn = document.getElementById('billListBtn');
     const clearBtn = document.getElementById('clearAllBtn');
@@ -612,6 +617,12 @@ class BillEditor {
     const gstReverseBtn = document.getElementById('gstReverseBtn');
 
     addBtn?.addEventListener('click', () => this.addProductToBill());
+    scanQrBtn?.addEventListener('click', () => {
+      openQrScanner({
+        title: 'Scan product or batch QR',
+        onScan: value => this.addCatalogQrToBill(value)
+      });
+    });
     makeBtn?.addEventListener('click', () => this.makeBill());
     listBtn?.addEventListener('click', () => this.switchView('existing'));
     clearBtn?.addEventListener('click', () => this.clearBillForm());
@@ -724,7 +735,91 @@ class BillEditor {
         const result = await response.json();
         this.cachedProducts = this.normalizeProducts(result);
       }
-    } catch (_) {}
+    } catch (error) {
+      log.warn('Unable to preload the product catalog:', error);
+    }
+  }
+
+  async addCatalogQrToBill(value) {
+    if (!this.cachedProducts.length) {
+      const response = await fetch('/api/products');
+      if (!response.ok) throw new Error(`Product catalog request failed (${response.status}).`);
+      this.cachedProducts = this.normalizeProducts(await response.json());
+    }
+
+    const match = resolveCatalogQr(this.cachedProducts, value);
+    if (!match) {
+      this.showNotification('QR not recognized in the product catalog. Check the product or batch label.', 'warning');
+      return 'QR not found. Try another product or batch label.';
+    }
+
+    let selected = match;
+    if (match.type === 'product') {
+      const product = match.product;
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const nestedBatches = variants.flatMap(variant =>
+        (Array.isArray(variant.batches) ? variant.batches : []).map(batch => ({ variant, batch }))
+      );
+      const catalogBatches = nestedBatches.length
+        ? nestedBatches
+        : (Array.isArray(product.batches) ? product.batches.map(batch => ({
+          variant: variants.find(candidate => String(candidate.id) === String(batch.variant_id)) || variants[0] || null,
+          batch
+        })) : []);
+
+      if (catalogBatches.length === 1) {
+        selected = { type: 'batch', product, ...catalogBatches[0] };
+      } else if (catalogBatches.length > 1 || variants.length > 1) {
+        this.clearProductDetailsFields();
+        document.getElementById('productName').value = product.name || '';
+        this.currentProduct = product;
+        this.fillProductFormFields(product);
+        document.getElementById('productQty').value = '1';
+        this.showNotification('Choose a pack or batch, then add it. Batch QR labels add directly.', 'info');
+        return { message: 'Choose the product pack or batch, then press Add Product.', close: true };
+      }
+    }
+
+    const { product, variant, batch } = selected;
+    const selectedVariant = variant || null;
+    const selectedBatch = batch || null;
+    const scannedProduct = {
+      ...product,
+      pack_value: selectedVariant?.pack_size_value ?? product.pack_value,
+      pack_type: selectedVariant?.pack_size_type ?? product.pack_type,
+      pack: selectedVariant
+        ? `${selectedVariant.pack_size_value || ''} ${selectedVariant.pack_size_type || ''}`.trim()
+        : product.pack,
+      batch_no: selectedBatch?.batch_no ?? selectedBatch?.batchNo ?? product.batch_no,
+      mrp: selectedBatch?.mrp ?? product.mrp,
+      variants: selectedVariant
+        ? [{ ...selectedVariant, batches: selectedBatch ? [selectedBatch] : [] }]
+        : (product.variants || [])
+    };
+
+    this.clearProductDetailsFields();
+    const productNameInput = document.getElementById('productName');
+    productNameInput.value = product.name || '';
+    this.currentProduct = {
+      ...product,
+      variant_id: selectedVariant?.id ?? null,
+      batch_id: selectedBatch?.id ?? null
+    };
+    this.fillProductFormFields(scannedProduct, false);
+
+    const customerName = document.getElementById('customerName')?.value.trim();
+    if (customerName) await this.loadProductMemoryFromAPI(product.name, customerName);
+    else this.setDefaultPreferenceValues();
+
+    document.getElementById('productQty').value = '1';
+    if (!Number.parseFloat(document.getElementById('productMRP').value)) {
+      this.showNotification('Product found, but it has no price. Review the item before adding it.', 'warning');
+      return { message: 'Product found. Enter a price and add it from the bill form.', close: true };
+    }
+
+    await this.addProductToBill(null, false, true);
+    this.showNotification(`✓ Scanned ${product.name}`, 'success');
+    return `Added ${product.name}. Scan another label to add more.`;
   }
 
   calculateProductPriceRange(product) {
@@ -920,7 +1015,7 @@ class BillEditor {
     }
   }
 
-  fillProductFormFields(product) {
+  fillProductFormFields(product, loadPreferences = true) {
     // Show gold/non-gold indicator immediately
     this.updateFormGoldIndicator(product);
 
@@ -1027,7 +1122,7 @@ class BillEditor {
 
     // Load preferences for this customer + product
     const customerNameElement = document.getElementById('customerName');
-    if (customerNameElement) {
+    if (loadPreferences && customerNameElement) {
       const customerName = customerNameElement.value.trim();
       if (customerName) {
         this.loadProductMemoryFromAPI(product.name, customerName);
@@ -1946,7 +2041,7 @@ class BillEditor {
     }
   }
 
-  async addProductToBill(itemData = null, suppressRefresh = false) {
+  async addProductToBill(itemData = null, suppressRefresh = false, incrementDuplicate = false) {
     const schemeValue = itemData ? itemData.scheme : document.getElementById('productScheme').value;
     let scheme = schemeValue;
     
@@ -2094,6 +2189,10 @@ class BillEditor {
     });
 
     if (existingProductIndex !== -1) {
+      if (incrementDuplicate) {
+        this.mergeProductQuantity(existingProductIndex, product.qty);
+        return;
+      }
       // Product already exists - show modal
       this.showDuplicateProductModal(product, existingProductIndex);
       return;
@@ -3635,4 +3734,3 @@ class BillEditor {
 
 // Export to global scope
 window.BillEditor = BillEditor;
-

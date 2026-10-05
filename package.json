@@ -38,6 +38,8 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@simplewebauthn/server": "^13.3.3",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "archiver": "^7.0.1",
     "axios": "^1.13.4",
     "bcryptjs": "^3.0.3",

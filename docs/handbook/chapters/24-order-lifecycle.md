@@ -16,7 +16,7 @@ Update accepts stage, notes, QC/delivery fields, total and items. When a non-emp
 
 ## Three-Stage Browser Workflow
 
-`frontend/modules/billing/js/new-order.js` owns the MacOS order workflow. It loads `/api/billing/orders`, tracks current order/stage and renders the relevant stage panel. Stage transitions update `current_stage` and call the order save path. Stage 1 supports catalog line items and an AI vision assist entry; Stage 2 covers QC/packing and allows navigation back to Stage 1; Stage 3 captures delivery completion and can navigate back to Stage 2.
+`frontend/modules/billing/js/new-order.js` owns the MacOS order workflow. It loads `/api/billing/orders`, tracks current order/stage and renders the relevant stage panel. Stage transitions update `current_stage` and call the order save path. Stage 1 supports catalog line items, an AI label-scan action, and a QR scanner for existing product/batch catalog tags. A product QR adds one unit when its options are unambiguous; batch QR selects the exact batch, and repeated scans increment the matching line. Product tags with multiple variants/batches keep the existing selection step. Order lines currently persist product/batch, quantity, and unit price; discounts, schemes, and tax remain part of invoice entry rather than the order-line contract. Stage 2 covers QC/packing and allows navigation back to Stage 1; Stage 3 captures delivery completion and can navigate back to Stage 2.
 
 The UI can filter stage 2/stage 3 order queues separately. Verify whether each stage change is persisted before the next render and which fields are replaced when saving. A stage move should be tested against stale detail data and retries.
 

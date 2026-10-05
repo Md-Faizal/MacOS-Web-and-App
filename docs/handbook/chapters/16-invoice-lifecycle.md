@@ -22,6 +22,8 @@ The create form reads customer name and date fields, maps each in-memory product
 
 Those client totals are useful for a preview but are not authoritative. The backend receives the line items and recalculates through the server calculation engine. Do not document a client-provided total as the value persisted by the API.
 
+The shared new/edit bill editor also offers camera-based QR entry. It decodes the existing catalog product URLs (`/public/product/{id-or-sku}`) and batch URLs (`/public/batch/{batchNo}`), then resolves them against the loaded `/api/products` catalog. A batch tag selects its exact variant and batch; a product tag with multiple choices asks the operator to select a pack or batch. A successful unambiguous scan adds one unit, while scanning again after moving away from the tag increments that line. Customer-specific saved discounts, schemes, and tax preferences continue through the existing bill-entry path; QR contents do not supply or override financial totals.
+
 ## Server Validation and Calculation
 
 The handler:

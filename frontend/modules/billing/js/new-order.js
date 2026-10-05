@@ -1,3 +1,6 @@
+import { resolveCatalogQr } from '../../../shared/catalog-qr.mjs';
+import { openQrScanner } from '../../../shared/qr-scanner.js';
+
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /* 3-Stage Order Management System
@@ -2182,11 +2185,12 @@ class OrdersView {
             <!-- Product Search -->
             <div style="margin-bottom:20px;">
               <label style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">SEARCH & ADD PRODUCTS</label>
-              <div style="display:flex; gap:8px;">
-                <input id="productSearch" list="productsList" placeholder="Search products..." style="flex:1; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" />
+              <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                <input id="productSearch" list="productsList" placeholder="Search products..." style="flex:1 1 140px; min-width:140px; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" />
                 <datalist id="productsList"></datalist>
                 <button id="addProductBtn" style="padding:10px 16px; background:#0066cc; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:600;">+ ADD</button>
-                <button id="stage1VisionAssistBtn" style="padding:10px 16px; background:#10b981; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">📷 AI ASSIST</button>
+                <button type="button" id="stage1QrScanBtn" style="padding:10px 16px; background:#ffea00; color:#000; border:1px solid #000; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">▦ SCAN QR</button>
+                <button type="button" id="stage1VisionAssistBtn" style="padding:10px 16px; background:#10b981; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">📷 AI LABEL SCAN</button>
               </div>
             </div>
 
@@ -2261,6 +2265,14 @@ class OrdersView {
     });
 
     const visionAssistBtn = document.getElementById('stage1VisionAssistBtn');
+    const qrScanBtn = document.getElementById('stage1QrScanBtn');
+    qrScanBtn?.addEventListener('click', () => {
+      openQrScanner({
+        title: 'Scan product or batch QR',
+        onScan: value => this.addCatalogQrToOrder(value)
+      });
+    });
+
     visionAssistBtn?.addEventListener('click', () => {
       if (!window.AIVisionService) return this.showNotification('AI Vision Service not loaded', 'error');
       
@@ -2302,6 +2314,38 @@ class OrdersView {
       this.renderCurrentStage();
       this.showNotification('✓ Stage 1 complete', 'success');
     });
+  }
+
+  async addCatalogQrToOrder(value) {
+    if (!this.products.length) await this.loadCustomersAndProducts();
+
+    const match = resolveCatalogQr(this.products, value);
+    if (!match) {
+      this.showNotification('QR not recognized in the product catalog. Check the product or batch label.', 'warning');
+      return 'QR not found. Try another product or batch label.';
+    }
+
+    if (match.type === 'batch') {
+      this.addProductToOrder(match.product, match.variant?.id, match.batch.id);
+      return `Added ${match.product.name}, batch ${match.batch.batch_no || match.batch.batchNo || ''}. Scan another label.`;
+    }
+
+    const product = match.product;
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const nestedBatches = variants.flatMap(variant =>
+      (Array.isArray(variant.batches) ? variant.batches : []).map(batch => ({ variant, batch }))
+    );
+    const catalogBatches = nestedBatches.length
+      ? nestedBatches
+      : (Array.isArray(product.batches) ? product.batches : []);
+
+    if (variants.length > 1 || catalogBatches.length > 1) {
+      this.handleAddProduct(product);
+      return { message: 'Choose the product pack or batch to add it.', close: true };
+    }
+
+    this.handleAddProduct(product);
+    return `Added ${product.name}. Scan another label.`;
   }
 
   handleAddProduct(product) {
@@ -2500,7 +2544,9 @@ class OrdersView {
   addProductToOrder(product, variantId, batchId) {
     // Get variant and batch details from product
     const variant = variantId ? product.variants?.find(v => v.id === variantId) : product.variants?.[0];
-    const batch = batchId ? product.batches?.find(b => b.id === batchId) : (variant?.batches?.[0] || product.batches?.[0]);
+    const batch = batchId
+      ? (product.batches?.find(b => String(b.id) === String(batchId)) || variant?.batches?.find(b => String(b.id) === String(batchId)))
+      : (variant?.batches?.[0] || product.batches?.[0]);
     
     // Get price from batch MRP
     const price = batch?.mrp || variant?.price || product.mrp || 0;
@@ -3609,4 +3655,3 @@ class OrdersView {
 }
 
 window.OrdersView = OrdersView;
-
