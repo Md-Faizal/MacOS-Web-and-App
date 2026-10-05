@@ -1,10 +1,41 @@
+let zxingLoadPromise;
+
+function loadZXingBrowser() {
+  if (window.ZXingBrowser?.BrowserMultiFormatReader) {
+    return Promise.resolve(window.ZXingBrowser);
+  }
+  if (zxingLoadPromise) return zxingLoadPromise;
+
+  zxingLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = '/shared/vendor/zxing-browser.min.js';
+    script.onload = () => {
+      if (window.ZXingBrowser?.BrowserMultiFormatReader) {
+        resolve(window.ZXingBrowser);
+      } else {
+        zxingLoadPromise = null;
+        script.remove();
+        reject(new Error('The QR decoder bundle loaded but did not expose its reader.'));
+      }
+    };
+    script.onerror = () => {
+      zxingLoadPromise = null;
+      script.remove();
+      reject(new Error('Unable to load the local QR decoder bundle.'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return zxingLoadPromise;
+}
+
 export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   if (typeof onScan !== 'function') {
     throw new TypeError('QR scanner requires an onScan callback.');
   }
 
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif;';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483644;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif;';
   overlay.innerHTML = `
     <section role="dialog" aria-modal="true" aria-label="${title}" style="position:relative;width:min(560px,100%);background:#fff;color:#111;border:3px solid #000;border-radius:12px;box-shadow:8px 8px 0 #000;padding:20px;">
       <button type="button" aria-label="Close scanner" data-qr-close style="position:absolute;right:12px;top:10px;width:36px;height:36px;border:2px solid #000;background:#ffea00;font-size:22px;font-weight:800;cursor:pointer;">×</button>
@@ -22,7 +53,6 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   const video = overlay.querySelector('[data-qr-video]');
   const status = overlay.querySelector('[data-qr-status]');
   const closeButton = overlay.querySelector('[data-qr-close]');
-  let reader = null;
   let controls = null;
   let closed = false;
   let processing = false;
@@ -33,7 +63,6 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     if (closed) return;
     closed = true;
     controls?.stop();
-    reader?.reset();
     document.removeEventListener('keydown', onKeyDown);
     overlay.remove();
   };
@@ -49,9 +78,9 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
 
   const start = async () => {
     try {
-      const { BrowserMultiFormatReader } = await import('@zxing/browser');
+      const { BrowserMultiFormatReader } = await loadZXingBrowser();
       if (closed) return;
-      reader = new BrowserMultiFormatReader();
+      const reader = new BrowserMultiFormatReader();
       controls = await reader.decodeFromConstraints(
         { audio: false, video: { facingMode: { ideal: 'environment' } } },
         video,
