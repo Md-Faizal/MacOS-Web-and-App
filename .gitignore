@@ -3,6 +3,8 @@ node_modules/
 
 # ─── Build output ───
 dist/
+artifacts/documentation/
+docs/handbook/site/
 
 # ─── Runtime data (never commit) ───
 logs/*

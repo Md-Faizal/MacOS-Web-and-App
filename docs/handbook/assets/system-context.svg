@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 460" role="img" aria-labelledby="title description">
+  <title id="title">MacOS Business Suite logical component map</title>
+  <desc id="description">Three clients connect to a shared Node.js API, which uses persistent data services and can integrate with the shared Rust compute crate.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#486b59"/></marker>
+    <style>
+      .box{fill:#fffefa;stroke:#b9c8bb;stroke-width:2}.client{fill:#e5eee5;stroke:#74917d;stroke-width:2}.core{fill:#173f35;stroke:#173f35;stroke-width:2}.rust{fill:#f5e8c8;stroke:#c39a45;stroke-width:2}.line{fill:none;stroke:#486b59;stroke-width:3;marker-end:url(#arrow)}.label{font:600 18px 'Segoe UI',sans-serif;fill:#19231f}.sub{font:14px 'Segoe UI',sans-serif;fill:#58665f}.light{fill:#fffefa}.tag{font:11px Consolas,monospace;fill:#b74e3b}
+    </style>
+  </defs>
+  <rect width="960" height="460" rx="4" fill="#f6f5ef"/>
+  <text x="42" y="45" class="tag">LOGICAL OWNERSHIP MAP / NOT A DEPLOYMENT TOPOLOGY</text>
+  <rect x="44" y="88" width="240" height="82" rx="3" class="client"/><text x="64" y="121" class="label">MacOS Web</text><text x="64" y="146" class="sub">HTML / CSS / JavaScript</text>
+  <rect x="44" y="190" width="240" height="82" rx="3" class="client"/><text x="64" y="223" class="label">Zentra</text><text x="64" y="248" class="sub">React / TypeScript</text>
+  <rect x="44" y="292" width="240" height="82" rx="3" class="client"/><text x="64" y="325" class="label">Android POS</text><text x="64" y="350" class="sub">Kotlin / Compose / Material 3</text>
+  <rect x="385" y="174" width="250" height="118" rx="3" class="core"/><text x="408" y="215" class="label light">Node.js / Express API</text><text x="408" y="242" class="sub light">Shared HTTP and domain services</text><text x="408" y="265" class="sub light">backend/main/macos-api-server.js</text>
+  <rect x="708" y="92" width="205" height="88" rx="3" class="box"/><text x="732" y="128" class="label">SQLite / storage</text><text x="732" y="153" class="sub">Persistent domain data</text>
+  <rect x="708" y="278" width="205" height="88" rx="3" class="rust"/><text x="732" y="314" class="label">suite_core</text><text x="732" y="339" class="sub">Rust / native / WASM</text>
+  <path d="M284 129 C330 129 334 206 385 206" class="line"/><path d="M284 231 H385" class="line"/><path d="M284 333 C330 333 334 260 385 260" class="line"/>
+  <path d="M635 207 C675 207 670 137 708 137" class="line"/><path d="M635 258 C675 258 670 322 708 322" class="line"/>
+  <text x="311" y="105" class="tag">HTTP / API</text>
+</svg>

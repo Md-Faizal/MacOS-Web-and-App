@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-labelledby="title description">
+  <title id="title">Cross-client real-time synchronization path</title>
+  <desc id="description">A browser mutation reaches the API and data layer, then a server event stream fans out to browser event bus subscribers and other tabs, which refresh canonical state.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#486b59"/></marker>
+    <style>
+      .client{fill:#e5eee5;stroke:#74917d;stroke-width:2}.api{fill:#173f35;stroke:#173f35;stroke-width:2}.bus{fill:#f5e8c8;stroke:#c39a45;stroke-width:2}.box{fill:#fffefa;stroke:#b9c8bb;stroke-width:2}.path{fill:none;stroke:#486b59;stroke-width:3;marker-end:url(#arrow)}.relay{fill:none;stroke:#b74e3b;stroke-width:2;stroke-dasharray:8 6;marker-end:url(#arrow)}.title{font:600 17px 'Segoe UI',sans-serif;fill:#19231f}.sub{font:13px 'Segoe UI',sans-serif;fill:#58665f}.light{fill:#fffefa}.tag{font:11px Consolas,monospace;fill:#b74e3b}
+    </style>
+  </defs>
+  <rect width="1200" height="420" fill="#f6f5ef"/>
+  <text x="35" y="34" class="tag">EVENT INVALIDATION / REFRESH PATH - NOT A DURABLE QUEUE</text>
+  <rect x="32" y="106" width="165" height="92" rx="3" class="client"/><text x="51" y="140" class="title">Browser mutation</text><text x="51" y="168" class="sub">POST /api/billing</text>
+  <rect x="250" y="106" width="165" height="92" rx="3" class="api"/><text x="270" y="140" class="title light">Express handler</text><text x="270" y="168" class="sub light">validate + write</text>
+  <rect x="468" y="106" width="150" height="92" rx="3" class="box"/><text x="491" y="140" class="title">SQLite</text><text x="491" y="168" class="sub">canonical state</text>
+  <rect x="668" y="106" width="165" height="92" rx="3" class="api"/><text x="692" y="140" class="title light">SSE broadcast</text><text x="692" y="168" class="sub light">process-wide clients</text>
+  <rect x="883" y="72" width="145" height="92" rx="3" class="bus"/><text x="901" y="106" class="title">CoreDataBus</text><text x="901" y="134" class="sub">EventTarget</text>
+  <rect x="883" y="208" width="145" height="92" rx="3" class="bus"/><text x="901" y="242" class="title">Broadcast</text><text x="901" y="270" class="sub">other tabs</text>
+  <rect x="1071" y="140" width="105" height="92" rx="3" class="client"/><text x="1084" y="174" class="title">View</text><text x="1084" y="202" class="sub">refetch</text>
+  <path d="M197 152H246" class="path"/><path d="M415 152H464" class="path"/><path d="M618 152H664" class="path"/>
+  <path d="M833 145 C852 145 855 118 879 118" class="path"/><path d="M833 164 C852 164 855 254 879 254" class="relay"/>
+  <path d="M1028 118 C1052 118 1047 160 1067 169" class="path"/><path d="M1028 254 C1052 254 1047 214 1067 203" class="relay"/>
+  <text x="691" y="328" class="tag">AUTHORIZATION / PAYLOAD SCOPE MUST BE VERIFIED</text>
+  <text x="286" y="365" class="sub">A consumer event should trigger canonical refetch; do not treat the event payload as the database record.</text>
+</svg>

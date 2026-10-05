@@ -7,6 +7,10 @@ A MacOS-inspired desktop experience built for the web. This project combines:
 - SQLite-based billing/ERP-style modules and an AI assistant
 - PM2-driven production deployment (local + VM)
 
+## Engineering Handbook
+
+Start with [the AI documentation index](docs/AI-INDEX.md) for concise source routing, or browse the [handbook source](docs/handbook/README.md). Build the illustrated HTML handbook, dependency inventory, master PDF, and focused PDF volumes with `npm run docs:build`.
+
 ---
 
 ## Environments & Ports

@@ -1,0 +1,81 @@
+name: Build Engineering Handbook
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/handbook/**'
+      - 'docs/AI-INDEX.md'
+      - 'docs/ai-reference/**'
+      - 'tools/docs/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'zentra-analytics-dashboard/package.json'
+      - 'zentra-analytics-dashboard/package-lock.json'
+      - 'android/gradle/libs.versions.toml'
+      - 'shared/suite_core/Cargo.toml'
+      - 'shared/suite_core/Cargo.lock'
+      - '.github/workflows/build-documentation.yml'
+  pull_request:
+    paths:
+      - 'docs/handbook/**'
+      - 'docs/AI-INDEX.md'
+      - 'docs/ai-reference/**'
+      - 'tools/docs/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'zentra-analytics-dashboard/package.json'
+      - 'zentra-analytics-dashboard/package-lock.json'
+      - 'android/gradle/libs.versions.toml'
+      - 'shared/suite_core/Cargo.toml'
+      - 'shared/suite_core/Cargo.lock'
+      - '.github/workflows/build-documentation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: documentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Render HTML and PDF handbook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build handbook
+        run: npm run docs:build
+
+      - name: Verify generated files
+        run: |
+          test -s docs/handbook/site/index.html
+          test -s docs/handbook/site/inventory.json
+          test -s docs/handbook/site/schema-catalog.json
+          test -s artifacts/documentation/handbook-metrics.json
+          expected_pdfs=$(node -e "console.log(require('./docs/handbook/manifest.json').volumes.length + 1)")
+          test "$(find artifacts/documentation -maxdepth 1 -name '*.pdf' -type f | wc -l)" -eq "$expected_pdfs"
+          for pdf in artifacts/documentation/*.pdf; do test -s "$pdf"; done
+          node -e "const m=require('./artifacts/documentation/handbook-metrics.json');if(m.masterPdfPages>m.targetMasterPages.maximum)process.exit(1)"
+
+      - name: Upload handbook artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: engineering-handbook-${{ github.sha }}
+          path: |
+            artifacts/documentation/
+            docs/handbook/site/
+          if-no-files-found: error
+          retention-days: 30

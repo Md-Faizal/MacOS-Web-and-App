@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "sourceOfTruth": [
+    "package manifests and lockfiles",
+    "Gradle build files and version catalog",
+    "Cargo.toml, Cargo.lock, source and tests",
+    "active CI workflows and deployment scripts"
+  ],
+  "components": [
+    {
+      "id": "macos-web",
+      "kind": "frontend",
+      "source": ["frontend/", "vite.config.js"],
+      "runtimeConfig": ["package.json", "vite.config.js"],
+      "handbookChapter": "docs/handbook/chapters/04-web-frontends.md"
+    },
+    {
+      "id": "zentra",
+      "kind": "frontend",
+      "source": ["zentra-analytics-dashboard/src/"],
+      "runtimeConfig": ["zentra-analytics-dashboard/package.json", "zentra-analytics-dashboard/vite.config.ts"],
+      "handbookChapter": "docs/handbook/chapters/04-web-frontends.md"
+    },
+    {
+      "id": "node-api",
+      "kind": "backend",
+      "source": ["backend/", "backend/main/macos-api-server.js"],
+      "runtimeConfig": ["package.json", "ecosystem.config.js", "server-prod.js"],
+      "handbookChapter": "docs/handbook/chapters/02-node-api.md"
+    },
+    {
+      "id": "suite-core",
+      "kind": "compute-library",
+      "source": ["shared/suite_core/src/", "shared/suite_core/tests/"],
+      "runtimeConfig": ["shared/suite_core/Cargo.toml", "shared/suite_core/Cargo.lock"],
+      "handbookChapter": "docs/handbook/chapters/03-rust-core.md"
+    },
+    {
+      "id": "android-pos",
+      "kind": "native-application",
+      "source": ["android/app/src/main/"],
+      "runtimeConfig": ["android/app/build.gradle.kts", "android/gradle/libs.versions.toml", "android/gradle/wrapper/gradle-wrapper.properties"],
+      "handbookChapter": "docs/handbook/chapters/05-android.md"
+    }
+  ],
+  "operations": {
+    "productionVmInventory": "needs-owner-confirmation",
+    "secrets": "external-approved-secret-store-only",
+    "handbookChapter": "docs/handbook/chapters/07-operations.md"
+  }
+}

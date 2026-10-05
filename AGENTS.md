@@ -2,6 +2,8 @@
 
 This project defines specific developer tasks configured in `.vscode/tasks.json` and `.agents/skills/project-tasks/SKILL.md`.
 
+For repository questions, start with `docs/AI-INDEX.md` and load only the relevant handbook chapter. Manifests, lockfiles, source, and active workflows are authoritative; flag conflicts and unverified production/VM details instead of inferring them.
+
 When the user asks to perform standard lifecycle tasks, use the established commands:
 
 - **Start MacOS (Frontend + Backend)**: `npm run dev:local`

@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "title": "MacOS Business Suite Engineering Handbook",
+  "description": "A source-verified guide to architecture, developer workflows, dependencies, and operations.",
+  "targetMasterPages": { "minimum": 200, "maximum": 300, "goal": 245 },
+  "chapters": [
+    { "id": "system-map", "title": "System Map", "file": "chapters/00-system-map.md" },
+    { "id": "setup", "title": "Workstation Setup", "file": "chapters/01-setup.md" },
+    { "id": "node-api", "title": "Node.js Backend and API", "file": "chapters/02-node-api.md" },
+    { "id": "rust-core", "title": "Rust Compute Core", "file": "chapters/03-rust-core.md" },
+    { "id": "web-frontends", "title": "Web Frontends", "file": "chapters/04-web-frontends.md" },
+    { "id": "android", "title": "Android POS", "file": "chapters/05-android.md" },
+    { "id": "dependencies", "title": "Dependencies and Toolchains", "file": "chapters/06-dependencies.md" },
+    { "id": "operations", "title": "Operations and Deployment", "file": "chapters/07-operations.md" },
+    { "id": "repository-map", "title": "Repository Map and Ownership", "file": "chapters/08-repository-map.md" },
+    { "id": "runtime-paths", "title": "Runtime Modes and Request Paths", "file": "chapters/09-runtime-paths.md" },
+    { "id": "department-boundaries", "title": "Departments and Data Boundaries", "file": "chapters/10-department-boundaries.md" },
+    { "id": "persistence", "title": "SQLite Persistence and Migrations", "file": "chapters/11-persistence.md" },
+    { "id": "security-boundaries", "title": "Authentication and Security Boundaries", "file": "chapters/12-security-boundaries.md" },
+    { "id": "macos-workflows", "title": "MacOS Web Shell and Billing Workflow", "file": "chapters/13-macos-workflows.md" },
+    { "id": "zentra-architecture", "title": "Zentra Application Architecture", "file": "chapters/14-zentra-architecture.md" },
+    { "id": "android-architecture", "title": "Android Navigation and Session Architecture", "file": "chapters/15-android-architecture.md" },
+    { "id": "invoice-lifecycle", "title": "Invoice Creation and Integrity Lifecycle", "file": "chapters/16-invoice-lifecycle.md" },
+    { "id": "realtime-sync", "title": "Real-Time Events and Cross-Client Synchronization", "file": "chapters/17-realtime-sync.md" },
+    { "id": "inventory-lifecycle", "title": "Product and Inventory Lifecycle", "file": "chapters/18-inventory-lifecycle.md" },
+    { "id": "analytics-contracts", "title": "Analytics Data and Metric Contracts", "file": "chapters/19-analytics-contracts.md" },
+    { "id": "release-workflows", "title": "CI Release and Deployment Workflows", "file": "chapters/20-release-workflows.md" },
+    { "id": "rust-module-map", "title": "Rust Core Module and FFI Map", "file": "chapters/21-rust-module-map.md" },
+    { "id": "android-billing", "title": "Android Billing and Session Data Flow", "file": "chapters/22-android-billing.md" },
+    { "id": "payment-lifecycle", "title": "Payments, Credit Notes, and Ledger Updates", "file": "chapters/23-payment-lifecycle.md" },
+    { "id": "order-lifecycle", "title": "Order Stages and Invoice Conversion", "file": "chapters/24-order-lifecycle.md" },
+    { "id": "contacts-scope", "title": "Contacts, Worker Access, and Retention", "file": "chapters/25-contacts-scope.md" },
+    { "id": "auth-sessions", "title": "Browser and Mobile Authentication Sessions", "file": "chapters/26-auth-sessions.md" },
+    { "id": "workspace-modules", "title": "Notes, Calendar, and Cloud Storage", "file": "chapters/27-workspace-modules.md" }
+  ],
+  "volumes": [
+    {
+      "id": "architecture",
+      "title": "Architecture and System Map",
+      "description": "Component boundaries, request paths, and implementation ownership.",
+      "chapters": ["system-map", "repository-map", "runtime-paths", "department-boundaries", "node-api", "rust-core", "web-frontends", "android", "macos-workflows", "zentra-architecture", "android-architecture"]
+    },
+    {
+      "id": "developer-workflows",
+      "title": "Developer Setup and Commands",
+      "description": "Verified workstation prerequisites, launch commands, and stack-specific checks.",
+      "chapters": ["setup", "dependencies"]
+    },
+    {
+      "id": "backend-rust",
+      "title": "Backend and Rust Core",
+      "description": "The Express API, data ownership, Rust targets, and native integration boundaries.",
+      "chapters": ["node-api", "rust-core", "rust-module-map"]
+    },
+    {
+      "id": "backend-security",
+      "title": "Backend API and Security Boundaries",
+      "description": "API routing, authorization boundaries, request lifecycle, and security risks.",
+      "chapters": ["node-api", "department-boundaries", "security-boundaries", "auth-sessions"]
+    },
+    {
+      "id": "data-and-domains",
+      "title": "Data and Core Domain Boundaries",
+      "description": "SQLite ownership, schema relationships, startup migrations, and safe data changes.",
+      "chapters": ["department-boundaries", "persistence", "inventory-lifecycle", "analytics-contracts", "contacts-scope", "schema-catalog"]
+    },
+    {
+      "id": "billing-workflows",
+      "title": "Billing Workflow and Invoice Integrity",
+      "description": "Browser invoice submission, server calculation, persistence, events, and failure boundaries.",
+      "chapters": ["macos-workflows", "invoice-lifecycle", "payment-lifecycle", "order-lifecycle"]
+    },
+    {
+      "id": "realtime-sync",
+      "title": "Real-Time Events and Synchronization",
+      "description": "Backend broadcasts, browser event relays, ledger refresh, and access-control review.",
+      "chapters": ["realtime-sync", "macos-workflows"]
+    },
+    {
+      "id": "web-frontends",
+      "title": "Web Frontends",
+      "description": "The vanilla JavaScript MacOS interface and the Zentra React dashboard.",
+      "chapters": ["web-frontends", "macos-workflows", "zentra-architecture", "invoice-lifecycle", "workspace-modules"]
+    },
+    {
+      "id": "android-pos",
+      "title": "Android POS",
+      "description": "Kotlin, Jetpack Compose, Material 3, dependencies, and release caution.",
+      "chapters": ["android", "android-architecture", "android-billing"]
+    },
+    {
+      "id": "operations",
+      "title": "Operations and Deployment",
+      "description": "Local health checks, CI workflows, deployment routes, and verified VM facts.",
+      "chapters": ["operations", "release-workflows"]
+    }
+  ]
+}

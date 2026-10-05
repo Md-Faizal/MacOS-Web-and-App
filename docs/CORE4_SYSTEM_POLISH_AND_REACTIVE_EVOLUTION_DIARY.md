@@ -6,11 +6,11 @@
 
 ---
 
-## 1. Executive Master Roadmap (The 10 Pillars)
+## 1. Executive Master Roadmap (The 10 Pillars + Cross-Cutting Release Gate)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 THE 10 PILLARS OF ENTERPRISE EVOLUTION                                │
+│                          THE 10 PILLARS + CROSS-CUTTING P0 RELEASE GATE                               │
 ├────┬──────────────────────────────────────────────────────────┬──────────────┬────────────────────────┤
 │ #  │ Pillar / Problem Focus                                   │ Status       │ Target Phase           │
 ├────┼──────────────────────────────────────────────────────────┼──────────────┼────────────────────────┤
@@ -18,12 +18,13 @@
 │ 02 │ Background API Throttling & Deduplication Caching        │ 🟢 COMPLETED │ Phase 2: Performance   │
 │ 03 │ Reactive Cross-App UI Synchronization (Zero-Refresh)     │ 🟢 COMPLETED │ Phase 3: Reactivity    │
 │ 04 │ Uniform On-Screen Glass & Native Device Notifications    │ 🟢 COMPLETED │ Phase 4: Notifications │
-│ 05 │ Billion-Dollar Grade API & Architectural Documentation   │ 🟡 NEXT UP    │ Phase 5: Documentation │
+│ 05 │ Billion-Dollar Grade API & Architectural Documentation   │ 🟡 IN PROGRESS │ Phase 5: Documentation │
 │ 06 │ AI Camera OCR & Prescription Auto-Matching (Lazy DB)     │ ⚪ PENDING    │ Phase 6: AI Vision     │
 │ 07 │ Pure Rust Vector PDF: Catalog, Payments & Credit Notes    │ ⚪ PENDING    │ Phase 7: Rust PDF V2   │
 │ 08 │ Deep QR Code & Barcode Hardware Scanning Integration     │ ⚪ PENDING    │ Phase 8: Hardware/Ops  │
 │ 09 │ Standard Compliance, GST & Business Intelligence Reports │ ⚪ PENDING    │ Phase 9: Reports & BI  │
 │ 10 │ PayPal-Style Passkey & Biometric Touch ID Security       │ ⚪ PENDING    │ Phase 10: Passkey/Auth │
+│ 11 │ Production Security & Data Integrity Release Gate (P0)   │ 🔴 P0 GATE     │ Cross-Cutting          │
 └────┴──────────────────────────────────────────────────────────┴──────────────┴────────────────────────┘
 ```
 
@@ -258,13 +259,51 @@ According to GitHub repository analysis, the active multi-platform codebase dist
 
 ---
 
-### ⚪ PILLAR 05: Billion-Dollar Grade API & Architecture Documentation
+### 🟡 PILLAR 05: Billion-Dollar Grade API & Architecture Documentation (IN PROGRESS)
 
-* Complete OpenAPI/TypeScript schemas, interactive sequence diagrams, and architecture maps covering:
-  - MacOS WebApp frontend architecture & WASM bridge.
-  - Zentra analytics multi-tenant dashboard.
-  - Android Kotlin Native POS architecture & JNI boundaries.
-  - Express backend departments, database schemas, and cryptographic ledger verification.
+#### Current Verified Deliverables (2026-10-05)
+* Source-controlled handbook with 28 chapters, a designed HTML site, master PDF and 10 focused PDF volumes.
+* Current generated progress: **131 master pages / 200-300 target**, approximately **18,514 chapter words**, **1,108 nonblank AI-reference lines**, **45 schema tables / 474 columns** in a generated schema appendix, and **11 screenshot placeholders**.
+* Current detailed coverage includes system topology, Node/Express routes and middleware, SQLite schema/migrations, Rust modules/FFI boundaries, MacOS billing/inventory/contacts/notes flows, Zentra architecture, Android navigation/billing/session data flow, deployment workflows, auth/session flows, and event synchronization.
+* The AI entrypoint is `docs/AI-INDEX.md`; its modular reference set is under `docs/ai-reference/`. The build enforces the 1,000-2,000 nonblank-line target and generates a per-source catalog.
+* The handbook builder emits per-volume PDF counts and current progress to `artifacts/documentation/handbook-metrics.json`; generated PDFs/site are CI artifacts, not committed source.
+
+#### Remaining Acceptance Criteria
+1. Expand the master to **at least 200 and no more than 300 substantive pages**. Current 131-page build is explicitly not complete; continue with source-verified subsystem workflows rather than padding.
+2. Capture and review real development/staging screenshots with synthetic records. The 11 current slots are placeholders, not evidence of a running screen.
+3. Complete API contracts and route-by-route auth/response documentation; reconcile legacy modules and duplicate route families against current handlers/tests.
+4. Expand Rust/WASM/JNI caller verification and Android target/build/release coverage; a crate export or host test is not proof of a client integration.
+5. Obtain owner-reviewed VM inventory, backup/restore, monitoring, rollback, RPO/RTO and access boundary details before publishing a production runbook.
+6. Resolve the security and data-integrity P0 findings in Pillar 11 and update the handbook only after remediation is verified.
+
+#### Next Work Order
+1. Finish the backend/API and data-domain chapters, including verified endpoint schemas, auth matrix, migration strategy, concurrency/idempotency and failure behavior.
+2. Deepen feature walkthroughs for billing, payments/credit notes, orders, inventory, contacts, analytics, notes/calendar/cloud, Zentra and Android with entrypoint → state → request → persistence → response/error paths.
+3. Capture synthetic-data screenshots in the priority queue in `docs/handbook/FIGURE-CAPTURE-GUIDE.md`; replace placeholders only after review.
+4. Add an owner-approved production topology/runbook appendix; leave unknown VM details marked `needs-owner-confirmation`.
+5. Rebuild and review `handbook-metrics.json` after each volume; update this diary's page/word/line counts from the generated report, not estimates.
+
+---
+
+### 🔴 PILLAR 11: Production Security & Data Integrity Release Gate (P0, CROSS-CUTTING)
+
+This recommended objective closes production risks not covered by the passkey proposal alone. It applies to all ten pillars and is a release gate, not an optional feature phase.
+
+* Remove and rotate credential-like fallback/signing values found in API startup, auth/mobile session services, the browser billing client and Android networking. Require approved secret injection and fail-closed startup; review repository history, artifacts and deployed versions.
+* Review and explicitly authorize `/api/events` SSE access and payload scope. Current source mounts the stream directly and the process-wide broadcaster fans events to connected clients; verify auth, role/tenant filtering and data minimization.
+* Define transactional/idempotent behavior for invoice creation, order-to-invoice conversion, payment/credit-note allocation, and ledger synchronization. Add failure-injection and retry tests; do not promise atomicity from non-transactional writes.
+* Review destructive retention behavior: contact deletion removes linked invoices, invoice items, payments, orders, ledger and access rows; product deletion removes linked invoice/order line items. Require an approved retention/archive policy and reversible backup before production use.
+* Bound cloud uploads and verify MIME/content, quotas, storage cleanup, public share token expiry/revocation, and audit logging. The current upload handler declares an unlimited file-size limit.
+* Validate Android release signing and token-at-rest migration. A debug-keystore fallback and reversible legacy token obfuscation are not production signing/security guarantees.
+* Gate release on automated secret scanning, authorization tests, transaction/retry tests, schema migration tests, backup restore evidence, and owner approval for production operations.
+
+#### Recommended Acceptance Criteria for Existing Objectives
+* **Pillar 06 (OCR)**: require explicit camera consent, synthetic/test-data mode, confidence thresholds, human confirmation before catalog selection, and image retention/deletion rules. Never auto-issue a prescription or invoice solely from OCR output.
+* **Pillar 07 (Documents)**: separate PDF generation from thermal printer/ESC-POS transport; verify layouts with real printer models, tax/accounting owners, accessibility and output-content tests. Publish latency/size claims only from repeatable benchmarks on named hardware/builds.
+* **Pillar 08 (Scanning)**: test HID keyboard-wedge scanners separately from camera scanning; define focus capture, prefix/suffix handling, duplicate scans, offline queueing, batch validation and hardware-device matrix.
+* **Pillar 09 (Compliance/BI)**: require accounting/legal/pharmacy-owner review for every statutory report/export. Trace each field to source tables and business definitions; label estimates/proxies, and test worker/contact scope and time-zone boundaries.
+* **Pillar 10 (Passkeys)**: extend the existing server WebAuthn implementation rather than hand-roll signature verification in WASM. Require backend step-up authorization bound to action, resource, expiry and replay prevention; define recovery, device revocation, Android parity and audit behavior.
+* All objectives: include threat/privacy analysis, migration/rollback plan, owner, measurable acceptance tests, supported-platform matrix, observability and a rollback trigger before marking completion.
 
 ---
 
@@ -1005,12 +1044,18 @@ Each problem is assigned a permanent identifier (`PRB-XXX`), full root-cause ana
 
 ## 4. Continuity Instructions for the Next Step
 
-> **Status & Current Focus**:
+> **Status & Current Focus (updated 2026-10-05)**:
 > 1. **Pillar 01 (Console Log Spam Suppression & Production Gating)** is **🟢 COMPLETED** (Full production gating, ring buffer flight recorder, and complete source-level refactor across all 31 modules).
 > 2. **Pillar 02 (Background API Throttling & Deduplication Caching)** is **🟢 COMPLETED** (In-flight request deduplication, smart TTL read caching, automatic mutation cache invalidation, and 60-second focus cooldown gate).
 > 3. **Pillar 03 (Reactive Cross-App UI Synchronization - Zero Refresh)** is **🟢 COMPLETED** (Pure Rust WASM state fingerprinting, tri-layer `CoreDataBus` [BroadcastChannel + EventTarget + SSE stream], keep-alive view panels, and ironclad zero-refresh synchronization across Billing, Ledger, Product List, Contacts, Notes, and Analytics - verified under v1.36.1).
 > 4. **Pillar 04 (Uniform On-Screen Glass & Native Device Notifications)** is **🟢 COMPLETED** (Unified macOS Sonoma glassmorphic toast stack, Web Audio acoustic chimes, native OS desktop notifications when backgrounded, automatic `CoreDataBus` alerts, 100% notification consistency replacing all ad-hoc alerts/toasts across Billing, Orders, Payments, Ledger, Contacts, and Notes, with high-contrast light/dark mode optimization and mobile-responsive viewport scaling).
-> 5. **Pillar 05 (Billion-Dollar Grade API & Architectural Documentation)** is **🟡 NEXT UP**.
-> 6. Objective for Pillar 05: Construct complete OpenAPI/TypeScript interface contracts, interactive architectural sequence diagrams, and system blueprints across the WebApp, Native Android POS, and Rust compute layers.
+> 5. **Pillar 05 (Billion-Dollar Grade API & Architectural Documentation)** is **🟡 IN PROGRESS**. The current handbook build is 131 pages toward a 200-300 page target; see its generated `handbook-metrics.json` for current counts. It is not complete until the page target, reviewed screenshots, route/contracts, and owner-approved operations content are satisfied.
+> 6. **Pillar 06 (AI Camera OCR)** remains pending. Before implementation, complete the P0 secret/session hardening in Pillar 11 for any client/API surfaces the camera flow will use.
+> 7. **Pillar 11 (Production Security & Data Integrity Release Gate)** is **🔴 OPEN / RELEASE-BLOCKING** until signing-secret fallbacks, SSE authorization scope, financial transaction/idempotency guarantees, destructive retention policies, upload limits, and Android signing/storage risks are remediated and verified.
+> **Next actions (in order)**:
+> 1. **Pillar 11 P0**: security owner inventory/revoke/rotate embedded signing/API credentials; remove source fallbacks; review `/api/events` authorization/payload scope; define transactional/idempotent invoice, payment, credit-note and order-conversion behavior; approve contact/product retention; bound upload size; validate Android signing and token migration.
+> 2. **Pillar 05**: continue the handbook from its generated 131-page baseline toward 200-300 substantive pages; finish API/data contracts and subsystem workflows; replace screenshot placeholders using synthetic staging data; obtain owner-reviewed VM, backup/restore, monitoring and recovery facts.
+> 3. Regenerate `artifacts/documentation/handbook-metrics.json` after every volume and update the page/word/line counts here only from that report. Do not mark P05 complete until the target pages, screenshots, contracts, owner review and CI artifact checks pass.
+> 4. After the P0 gate is closed, reprioritize Pillars 06-10 using the acceptance criteria above; regulatory/PDF claims require domain-owner review and fresh benchmarks.
 
 

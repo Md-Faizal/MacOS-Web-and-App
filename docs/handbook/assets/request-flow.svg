@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" role="img" aria-labelledby="title description">
+  <title id="title">Local browser request lifecycle</title>
+  <desc id="description">A browser UI sends an API request through Vite's development proxy to Express middleware, a department router, and persistent data access, then receives a response for rendering.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#486b59"/></marker>
+    <style>
+      .box{fill:#fffefa;stroke:#9bb19f;stroke-width:2}.api{fill:#173f35;stroke:#173f35;stroke-width:2}.data{fill:#f5e8c8;stroke:#c39a45;stroke-width:2}.path{stroke:#486b59;stroke-width:3;marker-end:url(#arrow)}.title{font:600 18px 'Segoe UI',sans-serif;fill:#19231f}.sub{font:13px 'Segoe UI',sans-serif;fill:#58665f}.light{fill:#fffefa}.tag{font:11px Consolas,monospace;fill:#b74e3b}
+    </style>
+  </defs>
+  <rect width="1200" height="330" fill="#f6f5ef"/>
+  <text x="36" y="34" class="tag">LOCAL MAIN-WEB REQUEST / ILLUSTRATIVE, NOT A PRODUCTION NETWORK MAP</text>
+  <rect x="32" y="104" width="180" height="104" rx="3" class="box"/><text x="54" y="143" class="title">Browser UI</text><text x="54" y="170" class="sub">frontend module</text><text x="54" y="190" class="sub">relative /api URL</text>
+  <rect x="276" y="104" width="180" height="104" rx="3" class="box"/><text x="298" y="143" class="title">Vite dev server</text><text x="298" y="170" class="sub">frontend root</text><text x="298" y="190" class="sub">/api proxy</text>
+  <rect x="520" y="104" width="180" height="104" rx="3" class="api"/><text x="542" y="143" class="title light">Express API</text><text x="542" y="170" class="sub light">request ID / policy</text><text x="542" y="190" class="sub light">parsing / auth</text>
+  <rect x="764" y="104" width="180" height="104" rx="3" class="box"/><text x="786" y="143" class="title">Department</text><text x="786" y="170" class="sub">route + domain rules</text><text x="786" y="190" class="sub">response contract</text>
+  <rect x="1008" y="104" width="160" height="104" rx="3" class="data"/><text x="1028" y="143" class="title">Data layer</text><text x="1028" y="170" class="sub">DB / storage</text><text x="1028" y="190" class="sub">transaction</text>
+  <path d="M212 156H272" class="path"/><path d="M456 156H516" class="path"/><path d="M700 156H760" class="path"/><path d="M944 156H1004" class="path"/>
+  <path d="M1090 236 C1090 292 614 292 610 236" fill="none" stroke="#b74e3b" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+  <text x="720" y="284" class="tag">RESPONSE / ERROR ENVELOPE RETURNS TO CLIENT</text>
+</svg>

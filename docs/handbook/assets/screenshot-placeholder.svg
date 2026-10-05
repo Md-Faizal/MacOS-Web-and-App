@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title description">
+  <title id="title">Screenshot placeholder</title>
+  <desc id="description">Reserved space for a verified application screenshot captured with synthetic data.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#d9ded8" stroke-width="1"/></pattern>
+  </defs>
+  <rect width="1200" height="675" fill="#f6f5ef"/>
+  <rect x="1" y="1" width="1198" height="673" fill="url(#grid)" stroke="#173f35" stroke-width="2"/>
+  <path d="M40 56H1160M40 615H1160" stroke="#b9c8bb" stroke-width="2"/>
+  <text x="600" y="300" text-anchor="middle" font-family="Consolas,monospace" font-size="28" font-weight="700" fill="#b74e3b">SCREENSHOT PLACEHOLDER</text>
+  <text x="600" y="346" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="19" fill="#58665f">Replace with a verified capture. See FIGURE-CAPTURE-GUIDE.md</text>
+  <text x="58" y="42" font-family="Consolas,monospace" font-size="14" fill="#173f35">HANDBOOK FIGURE SLOT</text>
+  <text x="58" y="646" font-family="Consolas,monospace" font-size="14" fill="#58665f">SYNTHETIC DATA ONLY / RECORD APP REVISION AND VIEWPORT</text>
+</svg>
