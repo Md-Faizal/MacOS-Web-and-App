@@ -775,6 +775,234 @@ window.MacOSBiometrics = {
 
 ---
 
+## 3.5 The Master Problem Registry: Exhaustive Forensic Record of All Core 4 & System Polish Bugs (For Future Resolution)
+
+This master registry serves as the definitive, immutable record of every observed, diagnosed, and latent problem across the **Core 4 Business Suite** (Product List, Billing App, Ledger, Payments & Credit Notes), the **Window Management Layer**, and the **Production Deployment & Asset Delivery Pipeline**.
+
+Each problem is assigned a permanent identifier (`PRB-XXX`), full root-cause analysis, affected modules, reproduction conditions, and future resolution requirements.
+
+---
+
+### Category A: Product List & Window Management Subsystem
+
+#### [PRB-001] Window Launch ID Mismatch Requiring Double-Click to Open
+* **System Component**: [app-window.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/scripts/app-bar/modules/app-window.js), [app-bar.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/scripts/app-bar/app-bar.js), [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js)
+* **Observed Symptom**: Clicking the Product List icon in the Dock or App Bar does nothing on the first click; only the second click successfully mounts and opens the window.
+* **Technical Root Cause**:
+  1. `app-bar.js` registered the launch trigger with `appId: 'products'`.
+  2. Inside `product-list.js`, the constructor initialized the window with `appId: 'product-list'`.
+  3. When the user closed the window, `AppWindow.prototype.close()` looked for active instances under `'product-list'`, leaving the global instance map key `'products'` pointing to an orphaned, closed DOM node.
+  4. The first subsequent click detected the lingering reference and executed cleanup; only the second click launched a new `AppWindow`.
+* **Resolution Blueprint**: Enforce strict bidirectional key synchronization (`appId: 'products'` globally), ensure `AppWindow.launchApp` validates DOM presence before assuming an instance is active, and purge dangling window manager handles on teardown.
+
+---
+
+#### [PRB-002] Premature Catalog Hydration & Flickering "No products yet" Empty State
+* **System Component**: [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js)
+* **Observed Symptom**: When the Product List app is opened, it immediately displays a giant "No products yet" placeholder screen for 0.5–2 seconds before products pop in, or it remains permanently stuck on the empty placeholder if network latency occurs.
+* **Technical Root Cause**:
+  1. The constructor called `this.switchView('all')` synchronously during instantiation.
+  2. `this.renderAllProducts()` executed immediately against `this.products = []` before the asynchronous `this.api.getProducts()` network fetch completed.
+  3. No loading indicator or skeleton was presented during the hydration window.
+* **Resolution Blueprint**: Introduce `this.isLoading = true` with a macOS glassmorphic loading spinner or skeleton placeholder in `renderAllProducts()`, suppressing the "No products yet" state until `this.api.getProducts()` resolves.
+
+---
+
+#### [PRB-003] Product Catalog Stagnation without Complete App Closure & Reopening
+* **System Component**: [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js), [core-databus.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/shared/core-databus.js)
+* **Observed Symptom**: Adding a new product, editing variants, or adding inventory batches does not update the open Product List table in real-time. The user is forced to quit the app entirely and relaunch it to see updated inventory.
+* **Technical Root Cause**:
+  1. `ProductListApp` initialized its internal catalog once during boot and did not trigger view re-renders upon mutation completion.
+  2. The view container lacked dynamic diffing or store hydration hooks for in-place table updates.
+* **Resolution Blueprint**: Connect the catalog table directly to `MacOSReactiveStore` and `CoreDataBus`, updating the in-memory array and issuing targeted DOM row insertions or selective re-renders without destroying view state.
+
+---
+
+#### [PRB-004] Duplicate Notification Toasts on Batch Creation
+* **System Component**: [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js), [notifications.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/shared/notifications.js)
+* **Observed Symptom**: Whenever the user submits a new batch in Product List, two identical toast notifications appear in the top-right corner back-to-back.
+* **Technical Root Cause**:
+  1. The batch submission callback explicitly invoked `this.showNotification('Batch added successfully', 'success')`.
+  2. Simultaneously, `saveProductToAPI()` or the background `CoreDataBus` event listener received the mutation broadcast and triggered a second `showNotification` call.
+* **Resolution Blueprint**: Silence notifications inside lower-level data persistence utilities (`saveProductToAPI`), and implement tab/action origin deduplication in `notifications.js` using monotonic event transaction IDs (`txId`).
+
+---
+
+#### [PRB-005] Deaf Domain Event Subscriptions in Product List
+* **System Component**: [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js), [macos-api-server.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/main/macos-api-server.js)
+* **Observed Symptom**: Mutations made in Billing (e.g. stock depletion on invoice creation) or multi-tab instances fail to reflect in Product List.
+* **Technical Root Cause**:
+  1. `ProductListApp` only subscribed to the `inventory:` domain (`CoreDataBus.subscribeDomain('inventory', ...)`).
+  2. The backend Express API and Billing suite broadcast product changes under `products:product`, `products:variant`, `products:batch`, and `billing:invoice`.
+  3. Because the domain strings differed, `ProductListApp` completely ignored all backend events.
+* **Resolution Blueprint**: Register broad multi-domain subscriptions across `products:`, `inventory:`, and `billing:invoice`, and normalize event naming across frontend and backend.
+
+---
+
+#### [PRB-006] Destructive Subview Wiping (`innerHTML = ''`) Resetting Scroll & Inputs
+* **System Component**: [product-list.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/product-list/js/product-list.js), [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js)
+* **Observed Symptom**: Switching tabs in Product List or Billing wipes all form inputs in progress, causes visual white/black flashes, and resets list scroll positions to the top.
+* **Technical Root Cause**:
+  1. `switchView()` implemented navigation by clearing the master container via `this.viewContainer.innerHTML = ''` and instantiating entire HTML trees from scratch.
+* **Resolution Blueprint**: Implement **Keep-Alive View Panels** (`_subviewPanels = new Map()`). Mount each subview into a dedicated persistent panel (`<div class="subview-panel">`) and toggle visibility via CSS `display: none` / `flex`.
+
+---
+
+### Category B: Billing App Subviews & Tab Navigation Subsystem
+
+#### [PRB-007] Subview Stagnation on Tab Switching (Requires App Reopen)
+* **System Component**: [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js)
+* **Observed Symptom**: Navigating between Billing tabs (Ledger, Payment & Credit Note, Edit Bills & Payments, Orders, Dashboard) displays stale data from the initial app load. Recent transactions never appear until the app is closed and reopened.
+* **Technical Root Cause**:
+  1. Once a subview panel was mounted into `_subviewPanels`, subsequent clicks on navigation tabs only toggled `panel.style.display = 'block'`.
+  2. No activation or hydration lifecycle hook (`onActivated()`, `refresh()`) was invoked on the subview instance.
+* **Resolution Blueprint**: Implement a standardized `IActivatedView` interface. When `BillingApp.switchView(viewName)` activates a panel, automatically call `subviewInstance.onActivated()` or `subviewInstance.syncWithServer(true)` to re-hydrate the view.
+
+---
+
+#### [PRB-008] Frozen Subview Panels in Keep-Alive Mode (`edit`, `orders`, `dashboard`)
+* **System Component**: [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js)
+* **Observed Symptom**: Changes to invoices or payments do not reflect in the "Edit Bills & Payments" or "Orders" screens when navigating back to them.
+* **Technical Root Cause**:
+  1. Previous refresh attempts only called `syncWithServer()` on `ledgerInstance` and `paymentCreditInstance`.
+  2. The `edit`, `orders`, and `dashboard` views were excluded from lifecycle synchronization.
+* **Resolution Blueprint**: Dispatch synchronization calls to all mounted subviews (`this._editBillsApp?.loadBills()`, `this._ordersApp?.loadOrders()`, `this._dashboardApp?.render()`) upon tab activation.
+
+---
+
+#### [PRB-009] Inconsistent Notification Wording & Missing Action Feedback
+* **System Component**: [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js), [new-bill.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/new-bill.js)
+* **Observed Symptom**: Certain critical financial operations (e.g. credit note creation, bill deletion, background sync) finish with zero user feedback or display generic "Success" messages without identifiers.
+* **Technical Root Cause**:
+  1. Ad-hoc legacy calls mixed `alert()`, `console.log()`, and inline DOM text without standard notification dispatchers.
+* **Resolution Blueprint**: Route 100% of feedback through `MacOSNotificationManager.showNotification()` with explicit entity titles, transaction amounts, and invoice IDs.
+
+---
+
+### Category C: Ledger Synchronization & Latency Subsystem
+
+#### [PRB-010] 1–2 Minute Delay or Multiple Clicks Required for Payments to Reflect in Ledger
+* **System Component**: [ledger.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/ledger.js), [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js)
+* **Observed Symptom**: When a payment is recorded in the Payments tab, navigating to the Ledger shows old balances. The new payment only appears after waiting 1–2 minutes or clicking the Ledger tab repeatedly.
+* **Technical Root Cause**:
+  1. Ledger was disconnected from real-time events while the user was on the Payments tab (see PRB-011).
+  2. Returning to the Ledger ran `syncLedger()`, but `BillingAPI` served cached data from its 15-second cache.
+  3. Ledger's diff algorithm compared the cached response with current state, found no changes, and discarded the render.
+  4. The view only updated when the 60-second fallback polling interval finally made a fresh network request.
+* **Resolution Blueprint**: Provide immediate optimistic transaction injection (`injectPaymentOptimistically`) on `billing:payment.created`, bypass the cache via `{ forceRefresh: true }` when switching to the Ledger tab, and keep the event listener alive permanently.
+
+---
+
+#### [PRB-011] Event Bus Severing on Tab Switch in Ledger
+* **System Component**: [ledger.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/ledger.js)
+* **Observed Symptom**: Ledger stops receiving all live financial updates the moment the user clicks another tab in the Billing suite.
+* **Technical Root Cause**:
+  1. In `ledger.js`, navigating away invoked `stopPolling()`.
+  2. Inside `stopPolling()`, the code executed `if (this._dataBusUnsub) { this._dataBusUnsub(); this._dataBusUnsub = null; }`, killing the event subscription.
+* **Resolution Blueprint**: Decouple interval timer polling from real-time event bus subscriptions. Move the `CoreDataBus` subscription into the constructor and never unsubscribe during routine tab switches.
+
+---
+
+#### [PRB-012] Blind Polling Overhead & Resource Drain
+* **System Component**: [ledger.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/ledger.js)
+* **Observed Symptom**: Background network tabs in browser DevTools showed high request frequency when Ledger was idle.
+* **Technical Root Cause**:
+  1. Ledger previously ran an unconditional 8-second polling timer (`setInterval(..., 8000)`) against `/api/billing/ledger/customers`.
+* **Resolution Blueprint**: Replace high-frequency polling with event-driven reactive synchronization (`CoreDataBus` SSE / BroadcastChannel) and relax the heartbeat fallback to 60 seconds.
+
+---
+
+### Category D: Payment & Credit Note Lifecycle & Deletion Races
+
+#### [PRB-013] Payment Deletion Ghost / Resurrection Bug
+* **System Component**: [payment-credit-note.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/payment-credit-note.js), [edit-bills-payments.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/edit-bills-payments.js)
+* **Observed Symptom**: When deleting a payment, it does not disappear immediately. It fades out and reappears, only truly disappearing after the app is closed and reopened.
+* **Technical Root Cause**:
+  1. `deletePayment()` applied an optimistic CSS fade-out and fired a `fetch(..., { method: 'DELETE' })` without awaiting its completion.
+  2. Concurrently, it called `this.ledgerInstance.syncWithServer(true)`.
+  3. The sync request reached the database before the DELETE query completed execution.
+  4. The server returned the old payment record, which the sync logic re-rendered back into the DOM.
+* **Resolution Blueprint**: Await the DELETE network request to completion, purge the local in-memory store immediately, invalidate all cache keys (`/billing`, `/ledger`), and only then invoke server synchronization.
+
+---
+
+#### [PRB-014] Dangling Memory Pointer to Stale `billingData`
+* **System Component**: [payment-credit-note.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/payment-credit-note.js), [billing-app.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/modules/billing/js/billing-app.js)
+* **Observed Symptom**: Payments recorded or deleted in the payment subview fail to update customer balances displayed in the same view.
+* **Technical Root Cause**:
+  1. During initialization, `PaymentCreditNote` executed `this.billingData = billingApp.billingData`.
+  2. When `BillingApp.loadBillingDataFromAPI()` fetched new data, it executed `this.billingData = { ...freshData }`.
+  3. `PaymentCreditNote` remained bound to the original obsolete object in memory.
+* **Resolution Blueprint**: Replace static property copying with a dynamic getter/setter:
+  ```javascript
+  get billingData() { return this.billingApp?.billingData || {}; }
+  ```
+
+---
+
+### Category E: Cross-App Event Bus & Multi-Device Sync Subsystem
+
+#### [PRB-015] Event Handler Signature Inconsistency in `subscribeDomain`
+* **System Component**: [core-databus.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/shared/core-databus.js)
+* **Observed Symptom**: Certain event subscribers threw runtime errors (`data is undefined`) or failed to react to incoming events.
+* **Technical Root Cause**:
+  1. `subscribeDomain` passed parameters as `callback(type, payload, detail)`.
+  2. Other parts of the application passed a single payload object `callback(eventData)`.
+* **Resolution Blueprint**: Standardize the event payload schema across all subscribers: `callback({ domain, action, payload, origin, txId })`.
+
+---
+
+#### [PRB-016] Backend SSE Multi-Cast Gaps
+* **System Component**: [macos-api-server.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/main/macos-api-server.js), [data-bus.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/backend/core/sync/data-bus.js)
+* **Observed Symptom**: Changes made on one device (or the Android POS) do not update browser tabs on another computer.
+* **Technical Root Cause**:
+  1. Contact creation, category edits, and product stock adjustments updated SQLite directly without dispatching `dataBus.broadcast(...)`.
+* **Resolution Blueprint**: Attach `dataBus.broadcast(domain, action, payload)` to all mutation routes in the backend Express API.
+
+---
+
+#### [PRB-017] Tab Echo Feedback Loops
+* **System Component**: [core-databus.js](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/shared/core-databus.js)
+* **Observed Symptom**: When an action occurs in Tab A, Tab A receives its own broadcasted event and re-fetches data it already holds.
+* **Technical Root Cause**:
+  1. `BroadcastChannel` messages were processed without verifying sender identity.
+* **Resolution Blueprint**: Attach a unique `tabId = crypto.randomUUID()` to all outbound events; discard incoming events where `event.origin === this.tabId`.
+
+---
+
+### Category F: Production Asset Caching & Deployment Pipeline
+
+#### [PRB-018] Hardcoded Stale Cache-Buster Parameters in `home.html`
+* **System Component**: [home.html](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/frontend/home.html)
+* **Observed Symptom**: User clears browser cache, yet the browser continues running outdated code.
+* **Technical Root Cause**:
+  1. Script tags in `home.html` contained static query parameters, e.g.:
+     `<script type="module" src="/modules/product-list/js/product-list.js?v=20260904_v16"></script>`
+  2. When source files changed, the query string remained `?v=20260904_v16`, causing Cloudflare and browser disk caches to serve stale bytecode.
+* **Resolution Blueprint**: Automate cache-busting by injecting the active Git commit hash or `package.json` version dynamically during the deployment build process.
+
+---
+
+#### [PRB-019] Nginx Routing Configuration Bypass for `/modules/`
+* **System Component**: `/etc/nginx/sites-enabled/*` on production server
+* **Observed Symptom**: Static module files bypassed Nginx disk caching headers and were routed to Node.js with default cache policies.
+* **Technical Root Cause**:
+  1. Nginx had location rules for `/frontend/` and `/assets/`, but `/modules/` fell through to the catch-all proxy `location /`.
+  2. Express served these files with `Cache-Control: public, max-age=0`, which permitted intermediary 304 caching based on stale ETags.
+* **Resolution Blueprint**: Add explicit location blocks in Nginx for `/modules/` or enforce `Cache-Control: no-cache, no-store, must-revalidate` on all development and unbundled JavaScript modules.
+
+---
+
+#### [PRB-020] Docker Host Bind-Mount vs Container Build Version Drift
+* **System Component**: [Dockerfile](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/Dockerfile), [docker-compose.yml](file:///c:/Users/HP/Desktop/MacOS%20Project/MacOS-Development/docker-compose.yml)
+* **Observed Symptom**: Container metadata reported version `1.31.1` while host filesystem was running `1.36.1`.
+* **Technical Root Cause**:
+  1. Docker containers ran images built during earlier deploys, relying on host bind-mounts for `/app/frontend` and `/app/backend`.
+  2. Any changes in dependencies, Node environment variables, or non-mounted paths remained frozen at the image build time.
+* **Resolution Blueprint**: Rebuild production Docker containers with `--no-cache` upon minor and major releases, ensuring complete parity between image layer state and host volumes.
+
+---
+
 ## 4. Continuity Instructions for the Next Step
 
 > **Status & Current Focus**:

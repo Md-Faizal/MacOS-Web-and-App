@@ -1835,14 +1835,20 @@ export class BillingApp extends AppWindow {
         };
 
         this.saveBillingData();
-        // Propagate fresh billingData reference to mounted subview modules
-        if (this.paymentCreditNote) this.paymentCreditNote.billingData = this.billingData;
-        if (this.editBillsPayments) this.editBillsPayments.billingData = this.billingData;
-        if (this.billEditor) this.billEditor.billingData = this.billingData;
-        const pmtView = this._subviewInstances?.get('payment-credit');
-        if (pmtView) pmtView.billingData = this.billingData;
-        const editView = this._subviewInstances?.get('edit');
-        if (editView) editView.billingData = this.billingData;
+        // Propagate fresh billingData reference to mounted subview modules safely
+        const safeSetBillingData = (target) => {
+          if (!target) return;
+          try {
+            target.billingData = this.billingData;
+          } catch (_) {}
+        };
+        safeSetBillingData(this.paymentCreditNote);
+        safeSetBillingData(this.editBillsPayments);
+        safeSetBillingData(this.billEditor);
+        safeSetBillingData(this._subviewInstances?.get('payment-credit'));
+        safeSetBillingData(this._subviewInstances?.get('edit'));
+        safeSetBillingData(this._subviewInstances?.get('create'));
+        safeSetBillingData(this._subviewInstances?.get('dashboard'));
 
         if (typeof window !== 'undefined' && window.MacOSStore) {
           window.MacOSStore.reconcile('invoices', this.billingData.bills);

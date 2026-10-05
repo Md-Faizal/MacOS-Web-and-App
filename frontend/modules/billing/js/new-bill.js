@@ -99,7 +99,10 @@ class BillEditor {
   }
 
   get billingData() {
-    return this.billingApp.billingData;
+    return this.billingApp?.billingData || this._billingData || {};
+  }
+  set billingData(val) {
+    this._billingData = val;
   }
 
   get api() {

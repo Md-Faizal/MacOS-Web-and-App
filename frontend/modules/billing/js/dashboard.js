@@ -44,7 +44,10 @@ class BillingDashboard {
   }
 
   get billingData() {
-    return this.billingApp.billingData || { bills: [], payments: [], contacts: [], reminders: [] };
+    return this.billingApp?.billingData || this._billingData || { bills: [], payments: [], contacts: [], reminders: [] };
+  }
+  set billingData(val) {
+    this._billingData = val;
   }
 
   getScopedData() {
