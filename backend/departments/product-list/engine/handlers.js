@@ -887,18 +887,38 @@ module.exports = function(db) {
       try {
         if (!db) throw new Error('Database connection lost');
         const sku = req.params.sku;
-        
-        // Find product by ID, Name, or Batch Number
-        const stmt = db.prepare(`
+
+        const productByIdStmt = db.prepare(`
           SELECT DISTINCT p.*, c.name as category_name
           FROM products p
           LEFT JOIN categories c ON p.category_id = c.id
-          LEFT JOIN variants v ON v.product_id = p.id
-          LEFT JOIN batches b ON b.variant_id = v.id
-          WHERE p.id = ? OR p.name = ? OR b.batch_no = ?
+          WHERE p.id = ?
           LIMIT 1
         `);
-        const product = stmt.get(sku, sku, sku);
+        const productByNameStmt = db.prepare(`
+          SELECT p.*, c.name as category_name
+          FROM products p
+          LEFT JOIN categories c ON p.category_id = c.id
+          WHERE p.name = ?
+          LIMIT 1
+        `);
+        const productsByBatchStmt = db.prepare(`
+          SELECT DISTINCT p.id, v.id AS variant_id, b.id AS batch_id
+          FROM products p
+          INNER JOIN variants v ON v.product_id = p.id
+          INNER JOIN batches b ON b.variant_id = v.id
+          WHERE b.batch_no = ?
+          LIMIT 2
+        `);
+        let product = productByIdStmt.get(sku) || productByNameStmt.get(sku);
+
+        if (!product) {
+          const batchMatches = productsByBatchStmt.all(sku);
+          if (batchMatches.length > 1) {
+            return res.status(409).json({ error: 'Batch number is ambiguous; use a QR label with product and batch IDs.' });
+          }
+          product = batchMatches[0] ? productByIdStmt.get(batchMatches[0].id) : null;
+        }
 
         if (!product) {
           return res.status(404).json({ error: 'Product not found' });
@@ -955,74 +975,11 @@ module.exports = function(db) {
 
         const action = req.body?.action || req.query?.action || 'download';
         const filename = req.body?.filename || 'UCA_Product_Catalog.pdf';
-        
-        let htmlContent = req.body?.html;
-
-        if (!htmlContent) {
-          // Fallback: build HTML dynamically from database products
-          const stmt = db.prepare(`
-            SELECT p.*, c.name as category_name
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            ORDER BY p.name ASC
-          `);
-          const products = stmt.all();
-          const enrichedProducts = products.map(product => {
-            const variantsStmt = db.prepare(`SELECT * FROM variants WHERE product_id = ? ORDER BY id`);
-            const variants = variantsStmt.all(product.id);
-            const enrichedVariants = variants.map(v => {
-              const batchesStmt = db.prepare(`
-                SELECT *,
-                  (
-                    COALESCE((
-                      SELECT SUM(ii.qty) 
-                      FROM invoice_items ii 
-                      WHERE ii.batch_id = batches.id
-                         OR (ii.batch_id IS NULL AND ii.variant_id = batches.variant_id AND ii.batch_no = batches.batch_no)
-                         OR (ii.batch_id IS NULL AND ii.variant_id IS NULL AND ii.batch_no = batches.batch_no AND ii.product_id = (SELECT product_id FROM variants WHERE id = batches.variant_id))
-                    ), 0) + COALESCE(batches.units_sold, 0)
-                  ) AS units_sold
-                FROM batches WHERE variant_id = ? ORDER BY batch_no COLLATE NOCASE ASC
-              `);
-              return { ...v, packSize: `${v.pack_size_value} ${v.pack_size_type}`, batches: naturalSortBatches(batchesStmt.all(v.id)) };
-            });
-            return { ...product, category: product.category_name || 'General', variants: enrichedVariants };
+        const htmlContent = req.body?.html;
+        if (typeof htmlContent !== 'string' || !htmlContent.trim()) {
+          return res.status(400).json({
+            error: 'PDF generation requires current product-list HTML with stable QR labels. Generate the PDF from Product List.'
           });
-
-          let tocItems = enrichedProducts.map(p => `
-            <a href="#prod-${p.id}" class="qr-toc-entry">
-              <span class="qr-toc-name">${p.name}</span>
-              <span class="qr-toc-dots"></span>
-              <span class="qr-toc-info">${p.variants.length}V</span>
-            </a>
-          `).join('');
-
-          let productItems = enrichedProducts.map(p => `
-            <div class="qr-product-block" id="prod-${p.id}">
-              <div class="qr-product-header">
-                <div class="qr-product-title-group">
-                  <h2 class="qr-product-name"><a href="https://mac.faizal.uk/public/product/${p.id}">${p.name}</a></h2>
-                  <span class="qr-category-pill">${p.category}</span>
-                </div>
-              </div>
-            </div>
-          `).join('');
-
-          htmlContent = `
-            <div class="qr-print-page qr-toc-page">
-              <div class="qr-doc-header">
-                <p class="qr-doc-brand"><a href="https://mac.faizal.uk">UCA Inventory System</a></p>
-                <h1 class="qr-doc-title">Product Catalog</h1>
-              </div>
-              <div class="qr-toc-section">
-                <div class="qr-toc-heading">Index (A–Z)</div>
-                <div class="qr-toc-columns">${tocItems}</div>
-              </div>
-            </div>
-            <div class="qr-print-page">
-              <div class="qr-catalog-products">${productItems}</div>
-            </div>
-          `;
         }
 
         const pdfBuffer = await generatePDFFromHTML(htmlContent);
@@ -1044,4 +1001,3 @@ module.exports = function(db) {
     }
   };
 };
-

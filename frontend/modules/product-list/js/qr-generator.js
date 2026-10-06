@@ -1,3 +1,9 @@
+import {
+  createCatalogBatchQrUrl,
+  createCatalogProductQrUrl,
+  resolveCatalogQrBaseUrl
+} from '../../../shared/catalog-qr-url.mjs';
+
 export class QRGenerator {
   constructor() {
     this.scriptLoaded = false;
@@ -52,16 +58,15 @@ export class QRGenerator {
   }
 
   generateProductURL(sku) {
-    const baseUrl = window.location.origin;
-    return `${baseUrl}/public/product/${encodeURIComponent(sku)}`;
+    return createCatalogProductQrUrl(this.getBaseUrl(), sku);
   }
 
   generateBatchURL(batchNo, productId = null, variantId = null, batchId = null) {
-    const baseUrl = window.location.origin;
-    const url = new URL(`/public/batch/${encodeURIComponent(batchNo)}`, baseUrl);
-    if (productId !== null && productId !== undefined) url.searchParams.set('sku', String(productId));
-    if (variantId !== null && variantId !== undefined) url.searchParams.set('variant_id', String(variantId));
-    if (batchId !== null && batchId !== undefined) url.searchParams.set('batch_id', String(batchId));
-    return url.toString();
+    return createCatalogBatchQrUrl(this.getBaseUrl(), batchNo, productId, variantId, batchId);
+  }
+
+  getBaseUrl() {
+    const configuredBaseUrl = import.meta.env?.VITE_PUBLIC_APP_URL || window.MACOS_PUBLIC_URL || '';
+    return resolveCatalogQrBaseUrl(window.location.origin, configuredBaseUrl);
   }
 }

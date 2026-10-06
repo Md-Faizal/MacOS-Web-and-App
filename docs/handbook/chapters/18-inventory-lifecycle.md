@@ -6,6 +6,12 @@ The main Product List UI is `frontend/modules/product-list/js/product-list.js`. 
 
 The UI's domain model nests `Product` → `ProductVariant` → `ProductBatch` for interaction, while the database stores normalized `products`, `variants`, and `batches` rows. Serializers translate between nested client state and API payloads. Keep those shapes distinct when debugging missing IDs, stale stock, or destructive sync.
 
+## QR Label Generation and Verification
+
+Product-list PDFs refresh the catalog from the API immediately before generating labels and embed stable product, variant, and batch IDs. `VITE_PUBLIC_APP_URL` configures the public HTTPS origin encoded in QR links; local-host printing is blocked unless this is explicitly configured, preventing labels that point to an unreachable development server. Batch links include the human-readable batch number plus stable IDs. The public product page resolves a batch QR through its `sku` product ID and highlights the exact `batch_id`; it must not silently show a sample/fallback product when a QR lookup fails. The PDF API rejects requests without current product-list HTML rather than silently producing a QR-free fallback catalog.
+
+Keep catalog IDs stable after labels are printed. Before launch, test generated product and batch QR links on the public hostname, verify deleted/missing IDs fail clearly, and confirm product-list print actions stop rather than print from stale catalog data if the API refresh fails.
+
 ## Catalog Read Path
 
 `GET /api/products` returns products enriched with category/creator/editor metadata, variants and batches. Search requests first try the Rust SuiteCore bridge when it is loaded. If that path is unavailable/fails, the handler falls back to SQL `LIKE` over product name, alternate-language name and category. The no-search path reads catalog rows ordered by creation date.

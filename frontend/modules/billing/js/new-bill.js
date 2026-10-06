@@ -2437,7 +2437,7 @@ class BillEditor {
             
             <div class="product-card-details">
               <div class="product-detail-item" data-field="batch" role="button" tabindex="0" aria-label="Change batch for ${this.escapeHtml(normalized.name)}" title="Select another available batch" style="cursor: pointer;">
-                <div class="product-detail-label">Batch <span style="font-size: 10px; opacity: .75;">· Change</span></div>
+                <div class="product-detail-label">Batch</div>
                 <div class="product-detail-value">${normalized.batch}</div>
               </div>
               

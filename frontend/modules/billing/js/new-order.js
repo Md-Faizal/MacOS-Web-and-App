@@ -1,4 +1,5 @@
 import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/catalog-qr.mjs';
+import { clampQcReceivedQuantity, incrementQcReceivedQuantity } from '../../../shared/qc-quantity.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
@@ -2190,7 +2191,6 @@ class OrdersView {
                 <datalist id="productsList"></datalist>
                 <button id="addProductBtn" style="padding:10px 16px; background:#0066cc; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:600;">+ ADD</button>
                 <button type="button" id="stage1QrScanBtn" style="padding:10px 16px; background:#ffea00; color:#000; border:1px solid #000; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">▦ SCAN QR</button>
-                <button type="button" id="stage1VisionAssistBtn" style="padding:10px 16px; background:#10b981; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">📷 AI LABEL SCAN</button>
               </div>
             </div>
 
@@ -2264,38 +2264,12 @@ class OrdersView {
       }
     });
 
-    const visionAssistBtn = document.getElementById('stage1VisionAssistBtn');
     const qrScanBtn = document.getElementById('stage1QrScanBtn');
     qrScanBtn?.addEventListener('click', () => {
       openQrScanner({
         title: 'Scan product or batch QR',
         onScan: value => this.addCatalogQrToOrder(value)
       });
-    });
-
-    visionAssistBtn?.addEventListener('click', () => {
-      if (!window.AIVisionService) return this.showNotification('AI Vision Service not loaded', 'error');
-      
-      window.AIVisionService.requestScan({ mode: 'order_stage1' })
-        .then((data) => {
-          if (!data || !data.product_name) return;
-          // Search catalog for matched product ID or name
-          let matchedProduct = null;
-          if (data.product_id) {
-            matchedProduct = this.products.find(p => String(p.id) === String(data.product_id));
-          }
-          if (!matchedProduct && data.product_name) {
-            matchedProduct = this.products.find(p => p.name.toLowerCase().includes(data.product_name.toLowerCase()));
-          }
-
-          if (matchedProduct) {
-            this.handleAddProduct(matchedProduct);
-            this.showNotification(`✓ AI Matched: ${matchedProduct.name}`, 'success');
-          } else {
-            this.showNotification(`Extracted label text: ${data.product_name}`, 'info');
-            if (searchInput) searchInput.value = data.product_name;
-          }
-        }).catch(err => log.debug('Scan error', err));
     });
 
     const notesArea = document.getElementById('orderNotes');
@@ -2879,7 +2853,7 @@ class OrdersView {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
               <h3 style="font-size:14px; font-weight:600;">STAGE 2: QC & RECEIVE ITEMS</h3>
               <div style="display:flex; gap:8px;">
-                <button id="stage2VisionQCBtn" style="padding:6px 12px; background:#10b981; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:700; font-size:11px; display:flex; align-items:center; gap:6px;">📷 SCAN QC ITEM</button>
+                <button id="stage2QrQCBtn" style="padding:6px 12px; background:#ffea00; color:#000; border:1px solid #000; border-radius:3px; cursor:pointer; font-weight:700; font-size:11px; display:flex; align-items:center; gap:6px;">▦ SCAN QC ITEM</button>
                 <button id="exitStageBtn" style="width:32px; height:32px; padding:0; background:#ff6b6b; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:18px; font-weight:bold; line-height:1;">✕</button>
               </div>
             </div>
@@ -2892,16 +2866,19 @@ class OrdersView {
                   ${items.map((item, idx) => {
                     const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
                     const batchDisplay = item.batch_no || 'N/A';
+                    const expectedQuantity = Number(item.qty ?? item.quantity ?? 0);
+                    const receivedQuantity = Number(item.received_quantity ?? 0);
                     return `
                     <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; gap:10px;">
-                      <input type="checkbox" class="item-check" data-idx="${idx}" ${this.currentOrderData.checklist_items && this.currentOrderData.checklist_items[idx] ? 'checked' : ''} style="margin-top:4px;" />
+                      <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px;" />
                       <div style="flex:1;">
                         <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
                         ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
                         <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
                         <div style="font-size:9px; color:#000000; font-weight:600; margin:2px 0;">MRP: ₹${parseFloat(item.mrp || item.unit_price || item.price || 0).toFixed(2)}</div>
-                        <div style="font-size:10px; color:#666; margin:2px 0;">Expected: ${item.qty || item.quantity || 0} units</div>
-                        <input type="number" class="received-qty" data-idx="${idx}" value="${item.received_quantity || 0}" placeholder="${item.qty || item.quantity || 0}" min="0" style="width:100%; padding:4px; margin-top:6px; border:1px solid #ddd; border-radius:2px;" />
+                        <div style="font-size:10px; color:#666; margin:2px 0;">Received: <span data-received-count="${idx}">${receivedQuantity}</span> / ${expectedQuantity} units</div>
+                        <label for="receivedQty-${idx}" style="font-size:10px; color:#555;">Scan once per unit or enter received quantity</label>
+                        <input type="number" id="receivedQty-${idx}" class="received-qty" data-idx="${idx}" value="${receivedQuantity}" placeholder="${expectedQuantity}" min="0" max="${expectedQuantity}" step="any" style="width:100%; padding:4px; margin-top:4px; border:1px solid #ddd; border-radius:2px;" />
                       </div>
                     </div>
                   `;
@@ -2931,61 +2908,26 @@ class OrdersView {
 
     // Smart checklist logic
     container.querySelectorAll('.item-check').forEach(checkbox => {
-      checkbox.addEventListener('change', (e) => {
+      checkbox.addEventListener('change', () => {
         const idx = parseInt(checkbox.dataset.idx);
-        const qtyInput = container.querySelector(`.received-qty[data-idx="${idx}"]`);
-        if (checkbox.checked) {
-          if (parseInt(qtyInput.value) === 0) {
-            qtyInput.value = this.currentOrderData.items[idx].qty || this.currentOrderData.items[idx].quantity || 0;
-          }
-        } else {
-          qtyInput.value = 0;
-        }
+        const item = this.currentOrderData.items[idx];
+        const expectedQuantity = Number(item?.qty ?? item?.quantity ?? 0);
+        this.setQcReceivedQuantity(container, idx, checkbox.checked ? expectedQuantity : 0);
       });
     });
 
     container.querySelectorAll('.received-qty').forEach(input => {
-      input.addEventListener('input', (e) => {
+      input.addEventListener('input', () => {
         const idx = parseInt(input.dataset.idx);
-        const checkbox = container.querySelector(`.item-check[data-idx="${idx}"]`);
-        const value = parseInt(input.value) || 0;
-        checkbox.checked = value > 0;
+        this.setQcReceivedQuantity(container, idx, input.value);
       });
     });
 
-    document.getElementById('stage2VisionQCBtn')?.addEventListener('click', () => {
-      if (!window.AIVisionService) return this.showNotification('AI Vision Service not loaded', 'error');
-
-      window.AIVisionService.requestScan({ mode: 'order_stage2' })
-        .then((data) => {
-          if (!data || !data.product_name) return;
-          
-          // Match against order items
-          const items = this.currentOrderData.items || [];
-          let targetIdx = -1;
-
-          if (data.product_id) {
-            targetIdx = items.findIndex(i => String(i.product_id) === String(data.product_id));
-          }
-          if (targetIdx === -1 && data.product_name) {
-            targetIdx = items.findIndex(i => (i.product_name || '').toLowerCase().includes(data.product_name.toLowerCase()));
-          }
-
-          if (targetIdx !== -1) {
-            const checkbox = container.querySelector(`.item-check[data-idx="${targetIdx}"]`);
-            const qtyInput = container.querySelector(`.received-qty[data-idx="${targetIdx}"]`);
-            
-            if (checkbox && qtyInput) {
-              checkbox.checked = true;
-              const expectedQty = items[targetIdx].qty || items[targetIdx].quantity || 1;
-              qtyInput.value = expectedQty;
-              items[targetIdx].received_quantity = expectedQty;
-              this.showNotification(`✓ QC Verified & Checked: ${items[targetIdx].product_name}`, 'success');
-            }
-          } else {
-            this.showNotification(`Item '${data.product_name}' not found in this order checklist`, 'error');
-          }
-        }).catch(err => log.debug('QC scan error', err));
+    document.getElementById('stage2QrQCBtn')?.addEventListener('click', () => {
+      openQrScanner({
+        title: 'Scan QR to verify QC item',
+        onScan: value => this.markQcItemFromQr(value, container)
+      });
     });
 
     document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
@@ -3014,6 +2956,125 @@ class OrdersView {
       this.renderCurrentStage();
       this.showNotification('✓ Changes saved', 'success');
     });
+  }
+
+  setQcReceivedQuantity(container, index, value) {
+    const item = this.currentOrderData?.items?.[index];
+    const input = container.querySelector(`.received-qty[data-idx="${index}"]`);
+    const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
+    if (!item || !input || !checkbox) return null;
+
+    const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+    const received = clampQcReceivedQuantity(value, expected);
+    input.max = String(expected);
+    input.value = String(received);
+    item.received_quantity = received;
+    checkbox.checked = expected > 0 && received >= expected;
+    const checklistItems = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
+    checklistItems[index] = checkbox.checked;
+    const count = container.querySelector(`[data-received-count="${index}"]`);
+    if (count) count.textContent = String(received);
+    return { expected, received, complete: checkbox.checked };
+  }
+
+  async markQcItemFromQr(value, container) {
+    if (!this.products.length) await this.loadCustomersAndProducts();
+
+    const { match, reason } = diagnoseCatalogQr(this.products, value);
+    if (!match) {
+      return { success: false, message: catalogQrFailureMessage(reason) };
+    }
+
+    const orderItems = this.currentOrderData.items || [];
+    const productId = match.product?.id;
+    let matchingIndexes = orderItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => productId != null && String(item.product_id) === String(productId));
+
+    if (!matchingIndexes.length) {
+      const productName = String(match.product?.name || '').trim().toLowerCase();
+      matchingIndexes = orderItems
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => productName && String(item.product_name || '').trim().toLowerCase() === productName);
+    }
+
+    if (match.type === 'batch') {
+      const batchId = match.batch?.id;
+      const variantId = match.variant?.id;
+      matchingIndexes = matchingIndexes.filter(({ item }) => {
+        if (variantId != null && item.variant_id != null && String(item.variant_id) !== String(variantId)) return false;
+        if (batchId != null && item.batch_id != null) return String(item.batch_id) === String(batchId);
+        const batchNo = String(match.batch?.batch_no ?? match.batch?.batchNo ?? '').trim().toLowerCase();
+        return batchNo && batchNo === String(item.batch_no || '').trim().toLowerCase();
+      });
+    }
+
+    if (matchingIndexes.length === 0) {
+      const batchSuffix = match.type === 'batch'
+        ? ` (batch ${match.batch?.batch_no ?? match.batch?.batchNo ?? ''})`
+        : '';
+      return {
+        success: false,
+        message: `${match.product?.name || 'Scanned product'}${batchSuffix} is not in this order's QC checklist.`
+      };
+    }
+    if (matchingIndexes.length > 1) {
+      const lineIdentities = new Set(matchingIndexes.map(({ item }) =>
+        `${item.variant_id ?? `${item.pack_size_value || ''}:${item.pack_size_type || ''}`}|${item.batch_id ?? String(item.batch_no || '').trim().toLowerCase()}`
+      ));
+      if (match.type !== 'batch' && lineIdentities.size > 1) {
+        return {
+          success: false,
+          message: 'This product has multiple variants or batches in the order. Scan its batch QR to identify the correct QC line.'
+        };
+      }
+      const incompleteItems = matchingIndexes.filter(({ item }) =>
+        Number(item.received_quantity || 0) < Number(item.qty ?? item.quantity ?? 0)
+      );
+      if (incompleteItems.length > 0) matchingIndexes = incompleteItems.slice(0, 1);
+      else {
+        return {
+          success: false,
+          message: 'This product appears more than once in the order. Scan its batch QR to identify the correct QC line.'
+        };
+      }
+    }
+
+    const { item, index } = matchingIndexes[0];
+    const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
+    const qtyInput = container.querySelector(`.received-qty[data-idx="${index}"]`);
+    if (!checkbox || !qtyInput) {
+      return { success: false, message: 'The matching QC checklist item is not available. Refresh the order and try again.' };
+    }
+
+    const expectedQuantity = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+    const currentQuantity = Math.max(0, Number(qtyInput.value || item.received_quantity || 0) || 0);
+    if (expectedQuantity <= 0) {
+      return { success: false, message: 'This order line has no expected quantity to receive.' };
+    }
+    if (currentQuantity >= expectedQuantity) {
+      return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
+    }
+    const nextQuantity = incrementQcReceivedQuantity(currentQuantity, expectedQuantity);
+    if (nextQuantity === null) {
+      return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
+    }
+    this.setQcReceivedQuantity(container, index, nextQuantity);
+
+    const productLabel = item.product_name || match.product.name || 'Product';
+    const batchLabel = item.batch_no || (match.type === 'batch' ? match.batch?.batch_no ?? match.batch?.batchNo : '');
+    const label = `QC · ${productLabel}${batchLabel ? ` · ${batchLabel}` : ''}`;
+    return {
+      success: true,
+      label,
+      message: `QC received ${nextQuantity}/${expectedQuantity} ${productLabel}.`,
+      undo: () => {
+        if (!this.currentOrderData.items.includes(item)) return false;
+        const current = Number(qtyInput.value || 0) || 0;
+        this.setQcReceivedQuantity(container, index, Math.max(0, current - 1));
+        return true;
+      }
+    };
   }
 
   // ===== STAGE 3: DELIVERY & BILL =====
@@ -3612,8 +3673,13 @@ class OrdersView {
       let hasValidationError = false;
       document.querySelectorAll('.received-qty').forEach(input => {
         const idx = parseInt(input.dataset.idx);
-        const val = parseInt(input.value) || 0;
+        const val = Number(input.value) || 0;
+        const expected = Number(items[idx]?.qty ?? items[idx]?.quantity ?? 0);
         const checkbox = document.querySelector(`.item-check[data-idx="${idx}"]`);
+
+        if (val < 0 || val > expected) {
+          hasValidationError = true;
+        }
         
         // Update checklist state
         if (checkbox) {
@@ -3631,7 +3697,7 @@ class OrdersView {
       });
 
       if (hasValidationError) {
-        throw new Error('Checked items must have a quantity greater than zero');
+        throw new Error('Received quantities must be between zero and the expected quantity; checked items must have a quantity greater than zero.');
       }
 
       if (qcDateInput) {

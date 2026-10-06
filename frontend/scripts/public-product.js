@@ -67,10 +67,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Extract SKU/ID from URL pathname or query param
     const urlParams = new URLSearchParams(window.location.search);
-    let sku = urlParams.get('sku') || urlParams.get('id');
+    const pathParts = window.location.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+    const isBatchQr = pathParts.length >= 3 && pathParts[pathParts.length - 2] === 'batch';
+    const isProductQr = pathParts.length >= 3 && pathParts[pathParts.length - 2] === 'product';
+    const isCatalogQr = isBatchQr || isProductQr;
+    const scannedBatch = isBatchQr ? {
+        batchNo: pathParts[pathParts.length - 1],
+        productId: urlParams.get('sku'),
+        variantId: urlParams.get('variant_id'),
+        batchId: urlParams.get('batch_id')
+    } : null;
+    let sku = (isBatchQr ? scannedBatch.productId : null) || urlParams.get('sku') || urlParams.get('id');
 
     if (!sku) {
-        const pathParts = window.location.pathname.split('/');
         sku = pathParts[pathParts.length - 1];
         if (sku === 'public-product.html' || sku === '') {
             sku = null;
@@ -85,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Page, Search Engine & Custom Mouse Cursor
     initCustomCursor();
     initSearchEngine();
-    fetchProductData(sku);
+    fetchProductData(sku, scannedBatch, isCatalogQr);
 
     // ========================================================
     // CUSTOM MATCHING THEMED TRADITIONAL ARROW MOUSE CURSOR
@@ -143,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========================================================
     // DATA FETCHING & RENDER ENGINE
     // ========================================================
-    async function fetchProductData(productSku) {
+    async function fetchProductData(productSku, scannedBatch = null, strictCatalogLookup = false) {
         try {
             const response = await fetch(`/api/products/public/${productSku}`);
             let product = null;
@@ -185,20 +194,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Fallback to static mock data if API is empty/unreachable
-            if (!allCatalogProducts || allCatalogProducts.length === 0) {
+            if ((!allCatalogProducts || allCatalogProducts.length === 0) && !strictCatalogLookup) {
                 allCatalogProducts = fallbackProducts;
             }
 
             if (!product) {
-                // Try finding it in fallback
                 product = allCatalogProducts.find(p => String(p.id) === String(productSku) || String(p.name).toLowerCase() === String(productSku).toLowerCase());
-                if (!product) {
-                    product = allCatalogProducts[0]; // fallback to first item
-                }
             }
 
             if (!product) {
-                throw new Error('Product not found');
+                throw new Error('Product not found. The QR may refer to a catalog entry that is no longer available.');
+            }
+
+            if (scannedBatch?.batchId) {
+                const batchExists = (product.variants || []).some(variant =>
+                    (!scannedBatch.variantId || String(variant.id) === String(scannedBatch.variantId)) &&
+                    (variant.batches || []).some(batch => String(batch.id) === String(scannedBatch.batchId))
+                );
+                if (!batchExists) {
+                    throw new Error('This batch QR does not match the current product catalog.');
+                }
             }
 
             // Dynamically refresh search recommendations & randomized catalogs
@@ -206,14 +221,14 @@ document.addEventListener('DOMContentLoaded', () => {
             renderHeaderQuickCatalog();
 
             const relatedProducts = getRandomSample(allCatalogProducts.filter(p => String(p.id) !== String(product.id)), 3);
-            renderProduct(product, relatedProducts);
+            renderProduct(product, relatedProducts, scannedBatch);
         } catch (error) {
             console.error('Failed to load product details:', error);
             showError();
         }
     }
 
-    function renderProduct(product, related = []) {
+    function renderProduct(product, related = [], scannedBatch = null) {
         const isGold = product.classification === 'Gold';
         const categoryName = product.category_name || 'Healthcare Formula';
 
@@ -327,8 +342,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += `<div class="batches-container">`;
                     variant.batches.forEach(batch => {
                         const mrpFormatted = typeof batch.mrp === 'number' ? batch.mrp.toFixed(2) : parseFloat(batch.mrp || 0).toFixed(2);
+                        const isScannedBatch = scannedBatch && (
+                            scannedBatch.batchId
+                                ? String(batch.id) === String(scannedBatch.batchId)
+                                : String(batch.batch_no || '').toLowerCase() === String(scannedBatch.batchNo || '').toLowerCase()
+                        );
                         html += `
-              <div class="batch-item">
+              <div class="batch-item"${isScannedBatch ? ' style="outline:3px solid #16a34a; outline-offset:2px;"' : ''}>
+                ${isScannedBatch ? '<div style="font-weight:700; color:#15803d; margin-bottom:8px;">✓ Scanned batch</div>' : ''}
                 <div class="batch-field">
                   <span class="batch-label">Batch Number</span>
                   <span class="batch-value">${batch.batch_no}</span>

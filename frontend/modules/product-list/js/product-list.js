@@ -406,6 +406,27 @@ export class ProductListApp extends AppWindow {
     }
   }
 
+  async getFreshProductsForQrPrint() {
+    if (!this.apiEnabled || !this.api) {
+      this.notifications.show('Cannot generate QR labels until the product catalog API is available.', 'error', 5000);
+      return null;
+    }
+
+    try {
+      this.api.invalidateCache('/products');
+      const response = await this.api.getProducts({ forceRefresh: true });
+      const products = this.normalizeApiCollection(response, null);
+      if (!Array.isArray(products)) {
+        throw new Error('The product catalog returned an invalid response.');
+      }
+      return products.map(product => this.deserializeProductFromAPI(product));
+    } catch (error) {
+      log.error('Unable to refresh catalog before generating QR labels:', error);
+      this.notifications.show(`Cannot generate QR labels from stale data: ${error.message}`, 'error', 6000);
+      return null;
+    }
+  }
+
   deserializeProductFromAPI(apiProduct) {
     const product = new Product(apiProduct.name, apiProduct.category_name || 'Uncategorized', false);
     product.id = apiProduct.id;
@@ -1703,7 +1724,7 @@ export class ProductListApp extends AppWindow {
                           <span class="batch-value">${batch.unitsSold}</span>
                         </div>
                         <div class="batch-actions" style="display: flex; gap: 4px; margin-top: 8px;">
-                          <button class="batch-action-btn print-batch-qr" style="flex: 1; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer;" data-product-id="${product.id}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}" title="Print QR">🖨️ QR</button>
+                          <button class="batch-action-btn print-batch-qr" style="flex: 1; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer;" data-product-id="${product.id}" data-variant-id="${variant.id ?? ''}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}" data-batch-id="${batch.id ?? ''}" title="Print QR">🖨️ QR</button>
                           <button class="batch-delete-btn" style="flex: 1;" data-product-id="${product.id}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}">Remove Batch</button>
                         </div>
                       </div>
@@ -1753,9 +1774,11 @@ export class ProductListApp extends AppWindow {
       // Print Batch QR
       if (target.classList.contains('print-batch-qr')) {
         const productId = target.dataset.productId;
+        const variantId = target.dataset.variantId;
         const packSize = target.dataset.packSize;
         const batchNo = target.dataset.batchNo;
-        app.printBatchQR(productId, packSize, batchNo);
+        const batchId = target.dataset.batchId;
+        app.printBatchQR(productId, packSize, batchNo, batchId, variantId);
         return;
       }
 
@@ -3443,6 +3466,14 @@ export class ProductListApp extends AppWindow {
 
   async printMasterCatalog() {
     const generator = new QRGenerator();
+    try {
+      generator.getBaseUrl();
+    } catch (error) {
+      this.notifications.show(error.message, 'error', 6000);
+      return;
+    }
+    const freshProducts = await this.getFreshProductsForQrPrint();
+    if (!freshProducts) return;
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
     const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
@@ -3451,7 +3482,7 @@ export class ProductListApp extends AppWindow {
     const bgPatternSVG = `<div class="qr-neo-grid"></div>`;
 
     // Alphabetical Sorting
-    const sortedProducts = [...this.products].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    const sortedProducts = [...freshProducts].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
     // Extract unique categories
     const uniqueCategories = [...new Set(sortedProducts.map(p => p.category))].sort();
@@ -3682,10 +3713,21 @@ export class ProductListApp extends AppWindow {
   }
 
   async printProductCatalog(productId) {
-    const product = this.products.find(p => p.id == productId);
-    if (!product) return;
-    
     const generator = new QRGenerator();
+    try {
+      generator.getBaseUrl();
+    } catch (error) {
+      this.notifications.show(error.message, 'error', 6000);
+      return;
+    }
+    const freshProducts = await this.getFreshProductsForQrPrint();
+    if (!freshProducts) return;
+    const product = freshProducts.find(p => String(p.id) === String(productId));
+    if (!product) {
+      this.notifications.show('That product is no longer in the refreshed catalog; no QR PDF was generated.', 'error', 6000);
+      return;
+    }
+
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
     const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
@@ -3796,15 +3838,42 @@ export class ProductListApp extends AppWindow {
     this._triggerPrint(catalogHtml, `UCA_Product_${cleanProductName}.pdf`);
   }
 
-  async printBatchQR(productId, packSize, batchNo) {
-    const product = this.products.find(p => p.id == productId);
-    if (!product) return;
-    const variant = product.variants.find(v => v.packSize === packSize);
-    if (!variant) return;
-    const batch = variant.batches.find(b => b.batchNo === batchNo);
+  async printBatchQR(productId, packSize, batchNo, batchId = null, variantId = null) {
+    const generator = new QRGenerator();
+    try {
+      generator.getBaseUrl();
+    } catch (error) {
+      this.notifications.show(error.message, 'error', 6000);
+      return;
+    }
+    const freshProducts = await this.getFreshProductsForQrPrint();
+    if (!freshProducts) return;
+    const product = freshProducts.find(p => String(p.id) === String(productId));
+    if (!product) {
+      this.notifications.show('That product is no longer in the refreshed catalog; no QR PDF was generated.', 'error', 6000);
+      return;
+    }
+    const variant = variantId
+      ? product.variants.find(v => String(v.id) === String(variantId))
+      : product.variants.find(v => v.packSize === packSize);
+    if (!variant) {
+      this.notifications.show('That product pack no longer exists in the refreshed catalog; no QR PDF was generated.', 'error', 6000);
+      return;
+    }
+    const matchingBatches = batchId
+      ? variant.batches.filter(b => String(b.id) === String(batchId))
+      : variant.batches.filter(b => String(b.batchNo) === String(batchNo));
+    if (matchingBatches.length !== 1) {
+      this.notifications.show(
+        matchingBatches.length ? 'More than one matching batch was found. Refresh the product list and choose by batch ID.' : 'The selected batch no longer exists in the catalog. Refresh and try again.',
+        'error',
+        6000
+      );
+      return;
+    }
+    const batch = matchingBatches[0];
     if (!batch) return;
     
-    const generator = new QRGenerator();
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
     const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
