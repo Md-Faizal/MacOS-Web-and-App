@@ -549,6 +549,7 @@ class OrdersView {
     this.orders = [];
     this.currentOrderData = null;
     this.currentOrderId = null;
+    this.qrScanHistory = [];
     this.selectedCustomerId = null;
     this.currentStage = null;
     this.suppressionDays = 0;
@@ -1721,6 +1722,7 @@ class OrdersView {
   }
 
   async createNewOrder(customerId, customerName) {
+    this.qrScanHistory = [];
     const orderId = 'ORD-' + Date.now();
     const orderDate = new Date();
     let orderNumber = `ORD-${String(orderDate.getFullYear()).slice(-2)}xxxx`; // Fallback placeholder
@@ -1767,6 +1769,7 @@ class OrdersView {
   loadOrder(orderId) {
     const order = this.orders.find(o => String(o.id) === String(orderId));
     if (order) {
+      this.qrScanHistory = [];
       this.currentOrderData = { ...order };
       this.currentOrderId = String(orderId);
       this.currentStage = order.current_stage || 'stage1';
@@ -1825,6 +1828,7 @@ class OrdersView {
       const res = await fetch(`/api/billing/orders/${orderId}`);
       if (res.ok) {
         const order = await res.json();
+        this.qrScanHistory = [];
         
         // Normalize items to use consistent property names (qty, price)
         const items = (order.items || []).map(item => {
@@ -2268,6 +2272,7 @@ class OrdersView {
     qrScanBtn?.addEventListener('click', () => {
       openQrScanner({
         title: 'Scan product or batch QR',
+        history: this.qrScanHistory,
         onScan: value => this.addCatalogQrToOrder(value)
       });
     });
@@ -2305,6 +2310,7 @@ class OrdersView {
       return {
         success: true,
         label: `${match.product.name} · ${match.batch.batch_no || match.batch.batchNo || ''}`,
+        historyKey: JSON.stringify(['order', match.product.id, match.variant?.id ?? null, match.batch.id]),
         message: `Added ${match.product.name}. Scan another label or undo this item.`,
         undo: added.undo
       };
@@ -2330,6 +2336,7 @@ class OrdersView {
     return {
       success: true,
       label: `${product.name}${batch?.batch_no ? ` · ${batch.batch_no}` : ''}`,
+      historyKey: JSON.stringify(['order', product.id, variant?.id ?? null, batch?.id ?? null]),
       message: `Added ${product.name}. Scan another label or undo this item.`,
       undo: added.undo
     };
@@ -2926,6 +2933,7 @@ class OrdersView {
     document.getElementById('stage2QrQCBtn')?.addEventListener('click', () => {
       openQrScanner({
         title: 'Scan QR to verify QC item',
+        history: this.qrScanHistory,
         onScan: value => this.markQcItemFromQr(value, container)
       });
     });
@@ -3067,6 +3075,7 @@ class OrdersView {
     return {
       success: true,
       label,
+      historyKey: JSON.stringify(['order-qc', item.product_id, item.variant_id ?? null, item.batch_id ?? null]),
       message: `QC received ${nextQuantity}/${expectedQuantity} ${productLabel}.`,
       undo: () => {
         if (!this.currentOrderData.items.includes(item)) return false;

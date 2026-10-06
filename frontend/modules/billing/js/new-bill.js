@@ -78,6 +78,7 @@ class BillEditor {
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.currentBillProducts = [];
+    this.qrScanHistory = [];
     this.editBillProducts = [];
     this.currentProduct = null;
     this.currentEditProduct = null;
@@ -189,6 +190,7 @@ class BillEditor {
 
 
   renderCreateBillView(billDataToEdit = null) {
+    this.qrScanHistory = [];
     // If editing, store the bill data and ID
     if (billDataToEdit) {
       this.editingBillId = billDataToEdit.id || billDataToEdit.bill_id;
@@ -622,6 +624,7 @@ class BillEditor {
     scanQrBtn?.addEventListener('click', () => {
       openQrScanner({
         title: 'Scan product or batch QR',
+        history: this.qrScanHistory,
         onScan: value => this.addCatalogQrToBill(value)
       });
     });
@@ -855,6 +858,7 @@ class BillEditor {
     return {
       success: true,
       label: `${product.name}${batchNo ? ` · ${batchNo}` : ''}`,
+      historyKey: JSON.stringify(['bill', product.id, selectedVariant?.id ?? null, selectedBatch?.id ?? batchNo ?? null]),
       message: `Added ${product.name}. Scan another label or undo this item.`,
       undo: () => {
         const currentIndex = this.currentBillProducts.indexOf(addedLine);
@@ -3664,6 +3668,7 @@ class BillEditor {
     const customerNameInput = document.getElementById('customerName');
     if (customerNameInput) customerNameInput.value = '';
     this.currentBillProducts = [];
+    this.qrScanHistory = [];
     this.editingBillId = null;
     this.billDataToEdit = null;
     this.renderProductList();

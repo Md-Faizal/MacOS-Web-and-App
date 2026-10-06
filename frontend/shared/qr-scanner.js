@@ -1,3 +1,10 @@
+import {
+  QR_SCAN_ATTEMPT_DELAY_MS,
+  QR_SCAN_REARM_DELAY_MS,
+  QR_SCAN_SUCCESS_DELAY_MS,
+  shouldRearmRepeatedQr
+} from './qr-scan-policy.mjs';
+
 let zxingLoadPromise;
 let activeScannerClose = null;
 
@@ -167,6 +174,16 @@ const scannerStyles = `
     overflow-wrap: anywhere;
     font-weight: 650;
   }
+  .qr-scan-quantity {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: rgba(74, 222, 128, .14);
+    color: #4ade80;
+    font-size: 11px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+  }
   .qr-scan-undone { color: #aab2ba; text-decoration: line-through; }
   .qr-scan-undo {
     min-width: auto !important;
@@ -322,6 +339,16 @@ const scannerStyles = `
     backdrop-filter: blur(16px) saturate(150%);
     -webkit-backdrop-filter: blur(16px) saturate(150%);
   }
+  .qr-scanner-controls button:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+  }
+  .qr-scanner-flash { display: none !important; }
+  .qr-scanner-expanded .qr-scanner-flash { display: grid !important; }
+  .qr-scanner-flash-active {
+    background: rgba(250, 204, 21, .72) !important;
+    color: #171717 !important;
+  }
   .qr-scanner-message {
     position: absolute;
     inset: 50% 16px auto;
@@ -379,6 +406,10 @@ const scannerStyles = `
     flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+  .qr-scan-quantity {
+    background: rgba(74, 222, 128, .16);
+    color: #86efac;
   }
   .qr-scan-undone { color: rgba(255, 255, 255, .48); text-decoration: line-through; }
   .qr-scan-undo {
@@ -524,9 +555,12 @@ function playScanTone(success) {
   }
 }
 
-export function openQrScanner({ onScan, title = 'Scan product QR' }) {
+export function openQrScanner({ onScan, title = 'Scan product QR', history = [] }) {
   if (typeof onScan !== 'function') {
     throw new TypeError('QR scanner requires an onScan callback.');
+  }
+  if (!Array.isArray(history)) {
+    throw new TypeError('QR scanner history must be an array.');
   }
 
   ensureScannerStyles();
@@ -552,6 +586,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       <div class="qr-scan-entries" data-qr-entries></div>
     </section>
     <div class="qr-scanner-controls">
+      <button type="button" class="qr-scanner-flash" data-qr-flash aria-label="Turn camera flash on" aria-pressed="false" title="Flash unavailable" disabled>⚡</button>
       <button type="button" data-qr-expand aria-label="Expand scanner" title="Expand">⤢</button>
       <button type="button" data-qr-close aria-label="Close QR scanner" title="Close">×</button>
     </div>
@@ -570,11 +605,14 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   videoWrap.setAttribute('role', 'button');
   videoWrap.setAttribute('aria-label', 'Camera preview. Activate to show scanner controls.');
   const expandButton = popup.querySelector('[data-qr-expand]');
+  const flashButton = popup.querySelector('[data-qr-flash]');
   const backdrop = document.createElement('div');
   backdrop.className = 'qr-scanner-backdrop';
-  const entries = [];
+  const entries = history;
   let controls = null;
   let stream = null;
+  let flashSupported = false;
+  let flashEnabled = false;
   let closed = false;
   let processing = false;
   let lastValue = null;
@@ -645,26 +683,45 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
 
   const renderHistory = () => {
     historyContainer.replaceChildren();
-    entries.forEach(entry => {
+    const groups = new Map();
+    entries.forEach((entry, index) => {
+      const key = entry.historyKey == null ? `entry-${index}` : String(entry.historyKey);
+      let group = groups.get(key);
+      if (!group) {
+        group = { label: entry.label, entries: [] };
+        groups.set(key, group);
+      }
+      group.entries.push(entry);
+    });
+
+    groups.forEach(group => {
       const row = document.createElement('div');
       row.className = 'qr-scan-entry';
       const label = document.createElement('span');
-      label.className = `qr-scan-entry-name${entry.undone ? ' qr-scan-undone' : ''}`;
-      label.textContent = entry.label;
+      const activeEntries = group.entries.filter(entry => !entry.undone);
+      label.className = `qr-scan-entry-name${activeEntries.length ? '' : ' qr-scan-undone'}`;
+      label.textContent = group.label;
       row.appendChild(label);
 
-      if (entry.undone) {
+      if (activeEntries.length) {
+        const quantity = document.createElement('span');
+        quantity.className = 'qr-scan-quantity';
+        quantity.textContent = `Qty +${activeEntries.length}`;
+        quantity.setAttribute('aria-label', `${activeEntries.length} unit${activeEntries.length === 1 ? '' : 's'} added by scanning`);
+        row.appendChild(quantity);
+
+        const undoButton = document.createElement('button');
+        undoButton.type = 'button';
+        undoButton.className = 'qr-scan-undo';
+        undoButton.textContent = 'Undo 1';
+        undoButton.setAttribute('aria-label', `Undo one scan of ${group.label}`);
+        undoButton.addEventListener('click', () => undoEntry(activeEntries[activeEntries.length - 1]));
+        row.appendChild(undoButton);
+      } else {
         const undoneLabel = document.createElement('span');
         undoneLabel.className = 'qr-scan-undone-label';
         undoneLabel.textContent = 'Undone';
         row.appendChild(undoneLabel);
-      } else {
-        const undoButton = document.createElement('button');
-        undoButton.type = 'button';
-        undoButton.className = 'qr-scan-undo';
-        undoButton.textContent = 'Undo';
-        undoButton.addEventListener('click', () => undoEntry(entry));
-        row.appendChild(undoButton);
       }
       historyContainer.appendChild(row);
     });
@@ -686,6 +743,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       showFeedback(error?.message || 'Unable to undo this scan.', false);
     }
   };
+  renderHistory();
 
   function showFeedback(message, success, undoEntry = null) {
     popup.classList.remove('qr-scan-success', 'qr-scan-failure');
@@ -744,6 +802,22 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
 
   const onKeyDownBound = onKeyDown;
   popup.querySelector('[data-qr-close]').addEventListener('click', close);
+  flashButton.addEventListener('click', async () => {
+    const track = stream?.getVideoTracks()[0];
+    if (!track || !flashSupported) return;
+    const nextEnabled = !flashEnabled;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: nextEnabled }] });
+      flashEnabled = nextEnabled;
+      flashButton.classList.toggle('qr-scanner-flash-active', flashEnabled);
+      flashButton.setAttribute('aria-pressed', String(flashEnabled));
+      flashButton.setAttribute('aria-label', `Turn camera flash ${flashEnabled ? 'off' : 'on'}`);
+      flashButton.title = `Turn flash ${flashEnabled ? 'off' : 'on'}`;
+    } catch (error) {
+      console.warn('[QR Scanner] Unable to toggle camera flash:', error);
+      showToast(error?.message || 'Unable to toggle the camera flash.', false);
+    }
+  });
   expandButton.addEventListener('click', () => {
     if (!expanded) {
       const bounds = popup.getBoundingClientRect();
@@ -903,37 +977,62 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       controls = null;
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: 'environment' } }
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30, max: 30 }
+        }
       });
+      const videoTrack = stream.getVideoTracks()[0];
+      try {
+        flashSupported = typeof videoTrack?.applyConstraints === 'function'
+          && videoTrack.getCapabilities?.().torch === true;
+      } catch (error) {
+        flashSupported = false;
+        console.warn('[QR Scanner] Unable to inspect camera flash capabilities:', error);
+      }
+      flashEnabled = false;
+      flashButton.disabled = !flashSupported;
+      flashButton.title = flashSupported ? 'Turn flash on' : 'Flash is unavailable on this camera';
+      flashButton.setAttribute('aria-label', flashSupported ? 'Turn camera flash on' : 'Camera flash unavailable');
+      flashButton.setAttribute('aria-pressed', 'false');
+      flashButton.classList.remove('qr-scanner-flash-active');
       if (closed) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
         return;
       }
 
-      const { BrowserMultiFormatReader } = await loadZXingBrowser();
+      const { BrowserQRCodeReader } = await loadZXingBrowser();
       if (closed) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
         return;
       }
-      const reader = new BrowserMultiFormatReader();
+      if (typeof BrowserQRCodeReader !== 'function') {
+        throw new Error('The local QR decoder bundle does not include the QR-only reader.');
+      }
+      const reader = new BrowserQRCodeReader(undefined, {
+        delayBetweenScanAttempts: QR_SCAN_ATTEMPT_DELAY_MS,
+        delayBetweenScanSuccess: QR_SCAN_SUCCESS_DELAY_MS
+      });
       controls = await reader.decodeFromStream(
         stream,
         video,
         async result => {
           if (closed || processing) return;
           if (!result) {
-            if (lastValue && Date.now() - lastSeenAt > 1000) lastValue = null;
+            if (lastValue && shouldRearmRepeatedQr(lastSeenAt, Date.now())) lastValue = null;
             return;
           }
 
           const value = result.getText().trim();
           if (!value) return;
-          updateTrackingBox(result, value);
           lastSeenAt = Date.now();
           if (value === lastValue) return;
           lastValue = value;
+          updateTrackingBox(result, value);
           processing = true;
           try {
             const response = await onScan(value);
@@ -944,6 +1043,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
             if (success) {
               const entry = response?.undo ? {
                 label: response.label || message || 'Scanned product',
+                historyKey: response.historyKey,
                 undo: response.undo,
                 undone: false
               } : null;
@@ -953,14 +1053,12 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
               }
               showFeedback(message || 'Item scanned.', true, entry);
             } else {
-              lastValue = null;
               showFeedback(message || 'QR could not be matched to a product.', false);
             }
 
             if (response?.close) close();
           } catch (error) {
             console.error('[QR Scanner] Scan handling failed:', error);
-            lastValue = null;
             updateTrackingBox(result, value, false);
             showFeedback(error?.message || 'Could not add the scanned item.', false);
           } finally {
