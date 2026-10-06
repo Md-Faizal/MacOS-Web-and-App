@@ -3,6 +3,8 @@ const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildProductListResponse, buildProductCategoriesResponse } = require('../../../shared/api/product-list-contract');
 const productListDepartment = require('../service');
 const dataBus = require('../../../core/sync/data-bus');
+const QRCode = require('qrcode');
+const archiver = require('archiver');
 
 let SuiteCoreBridge = null;
 try {
@@ -16,6 +18,66 @@ function naturalSortBatches(batches) {
   return batches.sort((a, b) => 
     (a.batch_no || '').localeCompare(b.batch_no || '', undefined, { numeric: true, sensitivity: 'base' })
   );
+}
+
+function escapeXml(value) {
+  return String(value ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
+    .replace(/[<>&"']/g, character => ({
+    '<': '&lt;',
+    '>': '&gt;',
+    '&': '&amp;',
+    '"': '&quot;',
+    "'": '&apos;'
+    })[character]);
+}
+
+function qrRowsFromUrl(url) {
+  const qr = QRCode.create(url, { errorCorrectionLevel: 'H' });
+  const { size, data } = qr.modules;
+  return Array.from({ length: size }, (_, row) =>
+    Array.from(data.subarray(row * size, (row + 1) * size), module => module ? '1' : '0').join('')
+  );
+}
+
+function renderQrSvg(label) {
+  const size = label.qr_rows.length;
+  const pathData = [];
+  label.qr_rows.forEach((row, y) => {
+    for (let x = 0; x < size; x++) {
+      if (row[x] === '1') pathData.push(`M${x + 4} ${y + 4}h1v1h-1z`);
+    }
+  });
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size + 8} ${size + 8}" role="img" aria-label="${escapeXml(label.product_name)} QR code">`,
+    `<title>${escapeXml(label.product_name)}${label.batch_no ? ` - ${escapeXml(label.batch_no)}` : ''}</title>`,
+    `<rect width="100%" height="100%" fill="#fff"/>`,
+    `<path d="${pathData.join('')}" fill="#000"/>`,
+    `</svg>`
+  ].join('');
+}
+
+function csvValue(value) {
+  let text = String(value ?? '');
+  if (/^[\s]*[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function catalogLabelsCsv(labels) {
+  const header = ['product_id', 'product_name', 'variant_id', 'variant', 'batch_id', 'batch_no', 'mrp', 'qr_url', 'svg_file'];
+  const rows = labels.map(label => [
+    label.product_id,
+    label.product_name,
+    label.variant_id,
+    label.variant,
+    label.batch_id,
+    label.batch_no,
+    label.mrp === null || label.mrp === undefined ? '' : Number(label.mrp).toFixed(2),
+    label.qr_url,
+    label.svg_file
+  ]);
+  return [header, ...rows].map(row => row.map(csvValue).join(',')).join('\r\n');
 }
 
 module.exports = function(db) {
@@ -997,6 +1059,158 @@ module.exports = function(db) {
       } catch (err) {
         console.error('Error in generateCatalogPDF handler:', err);
         return res.status(500).json({ error: 'Failed to generate catalog PDF', details: err.message });
+      }
+    },
+
+    generateCatalogPrintAssets: async (req, res) => {
+      try {
+        const format = req.body?.format;
+        if (format !== 'pdf' && format !== 'zip') {
+          return res.status(400).json({ error: 'Choose either the PDF label sheet or the SVG designer ZIP.' });
+        }
+        if (typeof req.body?.baseUrl !== 'string' || !req.body.baseUrl.trim()) {
+          return res.status(400).json({ error: 'A public HTTPS base URL is required for product QR labels.' });
+        }
+
+        const { resolveCatalogQrBaseUrl, createCatalogProductQrUrl, createCatalogBatchQrUrl } =
+          await import('../../../../frontend/shared/catalog-qr-url.mjs');
+        let baseUrl;
+        try {
+          baseUrl = resolveCatalogQrBaseUrl('', req.body.baseUrl);
+        } catch (error) {
+          return res.status(400).json({ error: error.message });
+        }
+
+        const productRows = db.prepare(`
+          SELECT p.id AS product_id, p.name AS product_name, p.odia_name,
+                 c.name AS category_name, v.id AS variant_id,
+                 v.pack_size_value, v.pack_size_type,
+                 b.id AS batch_id, b.batch_no, b.mrp
+          FROM products p
+          LEFT JOIN categories c ON c.id = p.category_id
+          LEFT JOIN variants v ON v.product_id = p.id
+          LEFT JOIN batches b ON b.variant_id = v.id
+          ORDER BY p.name COLLATE NOCASE, p.id, v.id, b.batch_no COLLATE NOCASE
+        `).all();
+
+        if (productRows.length === 0) {
+          return res.status(404).json({ error: 'There are no products in the catalog to export.' });
+        }
+
+        const labels = [];
+        const productsWithBatch = new Set(
+          productRows
+            .filter(row => row.batch_id !== null && row.batch_id !== undefined)
+            .map(row => String(row.product_id))
+        );
+        const productOnlyLabels = new Set();
+        for (const row of productRows) {
+          const productId = String(row.product_id);
+          let qrUrl;
+          let type;
+          if (row.batch_id !== null && row.batch_id !== undefined) {
+            type = 'batch';
+            qrUrl = createCatalogBatchQrUrl(
+              baseUrl,
+              row.batch_no,
+              row.product_id,
+              row.variant_id,
+              row.batch_id
+            );
+          } else {
+            if (productOnlyLabels.has(productId) || productsWithBatch.has(productId)) continue;
+            productOnlyLabels.add(productId);
+            type = 'product';
+            qrUrl = createCatalogProductQrUrl(baseUrl, row.product_id);
+          }
+
+          if (labels.length >= 2_000) {
+            return res.status(413).json({ error: 'This export exceeds the 2,000-label limit. Export a smaller catalog selection.' });
+          }
+
+          const safeVariant = row.variant_id === null || row.variant_id === undefined
+            ? ''
+            : `${row.pack_size_value || ''} ${row.pack_size_type || ''}`.trim();
+          const qrRows = qrRowsFromUrl(qrUrl);
+          const label = {
+            type,
+            product_id: productId,
+            product_name: String(row.product_name || ''),
+            variant_id: row.variant_id === null || row.variant_id === undefined ? '' : String(row.variant_id),
+            variant: safeVariant,
+            batch_id: row.batch_id === null || row.batch_id === undefined ? '' : String(row.batch_id),
+            batch_no: row.batch_no === null || row.batch_no === undefined ? '' : String(row.batch_no),
+            mrp: row.mrp === null || row.mrp === undefined ? null : Number(row.mrp),
+            qr_url: qrUrl,
+            qr_rows: qrRows
+          };
+          label.svg_file = type === 'batch'
+            ? `qrs/product-${productId}-batch-${label.batch_id}.svg`
+            : `qrs/product-${productId}.svg`;
+          labels.push(label);
+        }
+
+        if (labels.length === 0) {
+          return res.status(404).json({ error: 'There are no product or batch QR labels available to export.' });
+        }
+
+        if (!SuiteCoreBridge || typeof SuiteCoreBridge.renderCatalogQrLabelPdf !== 'function') {
+          throw new Error('The Rust SuiteCore renderer is unavailable. Rebuild and deploy suite_core.wasm before generating press PDFs.');
+        }
+        const renderedPdf = SuiteCoreBridge.renderCatalogQrLabelPdf({
+          labels: labels.map(({ qr_url, svg_file, type, ...label }) => label)
+        });
+        const pdfBuffer = Buffer.from(renderedPdf.pdf_base64, 'base64');
+        if (
+          renderedPdf.byte_count !== pdfBuffer.length ||
+          !pdfBuffer.subarray(0, 8).equals(Buffer.from('%PDF-1.4'))
+        ) {
+          throw new Error('The Rust renderer returned an invalid QR label PDF.');
+        }
+
+        if (format === 'pdf') {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Length', pdfBuffer.length);
+          res.setHeader('Content-Disposition', 'attachment; filename="UCA_QR_Label_Sheets.pdf"');
+          return res.end(pdfBuffer);
+        }
+
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="UCA_QR_Label_Designer_Pack.zip"');
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        let archiveFailed = false;
+        const failArchive = error => {
+          if (archiveFailed) return;
+          archiveFailed = true;
+          console.error('[ProductCatalog] Print-asset archive failed:', error);
+          archive.abort();
+          if (!res.headersSent) res.status(500).json({ error: 'Unable to package product QR print assets.' });
+          else res.destroy(error);
+        };
+        archive.on('warning', failArchive);
+        archive.on('error', failArchive);
+        archive.pipe(res);
+        archive.append(pdfBuffer, { name: 'UCA_QR_Label_Sheets.pdf' });
+        archive.append(catalogLabelsCsv(labels), { name: 'labels.csv' });
+        archive.append(
+          'Scalable monochrome vector QR artwork. Set final label dimensions in your label-design or print-imposition software. The PDF is an A4 reference sheet laid out 3 columns by 8 rows; confirm press stock, safe area, and cut lines before production.',
+          { name: 'README.txt' }
+        );
+        for (const label of labels) {
+          archive.append(renderQrSvg(label), { name: label.svg_file });
+        }
+        await archive.finalize();
+        return undefined;
+      } catch (error) {
+        console.error('[ProductCatalog] QR print-asset generation failed:', error);
+        if (res.headersSent) {
+          res.destroy(error);
+          return undefined;
+        }
+        return res.status(500).json({
+          error: 'Failed to generate Rust QR print assets.',
+          details: error.message
+        });
       }
     }
   };

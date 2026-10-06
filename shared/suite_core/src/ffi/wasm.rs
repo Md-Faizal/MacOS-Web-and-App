@@ -1,9 +1,13 @@
-use crate::analytics::aging::{calculate_customer_aging, calculate_receivables_aging, UnpaidBillItem};
-use crate::catalog::search::{search_catalog, match_query_against_target, SearchCatalogItem, SearchOptions, SearchResultItem};
+use crate::analytics::aging::{
+    calculate_customer_aging, calculate_receivables_aging, UnpaidBillItem,
+};
+use crate::catalog::search::{
+    match_query_against_target, search_catalog, SearchCatalogItem, SearchOptions, SearchResultItem,
+};
 use crate::finance::invoicing::bill::calculate_bill;
 use crate::finance::invoicing::item::LineItemInput;
-use crate::finance::ledger::statement::generate_customer_statement;
 use crate::finance::ledger::entry::{BillEntry, PaymentEntry};
+use crate::finance::ledger::statement::generate_customer_statement;
 use serde::{Deserialize, Serialize};
 
 #[no_mangle]
@@ -384,6 +388,52 @@ pub unsafe extern "C" fn suite_render_invoice_pdf(ptr: *const u8, len: usize) ->
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn suite_render_catalog_qr_label_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::CatalogQrLabelRequest>(slice) {
+        Ok(request) => match crate::documents::pdf::render_catalog_qr_label_pdf(&request) {
+            Ok(pdf_bytes) => {
+                #[derive(Serialize)]
+                struct PdfResponse {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                    label_count: usize,
+                }
+                package_response(&PdfResponse {
+                    success: true,
+                    pdf_base64: bytes_to_base64(&pdf_bytes),
+                    byte_count: pdf_bytes.len(),
+                    label_count: request.labels.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrorResponse {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrorResponse {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(error) => {
+            #[derive(Serialize)]
+            struct ErrorResponse {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrorResponse {
+                success: false,
+                error: error.to_string(),
+            })
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn suite_inspect_image(ptr: *const u8, len: usize) -> *mut u8 {
     let slice = std::slice::from_raw_parts(ptr, len);
     let meta = crate::storage::dimensions::inspect_image_metadata(slice);
@@ -422,11 +472,7 @@ pub unsafe extern "C" fn suite_calculate_fit_dimensions(ptr: *const u8, len: usi
                 crate::storage::wallpaper::FitMode::Cover
             };
             let res = crate::storage::wallpaper::calculate_fit_dimensions(
-                req.orig_w,
-                req.orig_h,
-                req.max_w,
-                req.max_h,
-                mode,
+                req.orig_w, req.orig_h, req.max_w, req.max_h, mode,
             );
             package_response(&res)
         }
@@ -511,12 +557,10 @@ pub unsafe extern "C" fn suite_fuzzy_match_score(ptr: *const u8, len: usize) -> 
             let (score, is_exact) = match_query_against_target(&req.query, &req.target);
             package_response(&FuzzyScoreResponse { score, is_exact })
         }
-        Err(_) => {
-            package_response(&FuzzyScoreResponse {
-                score: 0.0,
-                is_exact: false,
-            })
-        }
+        Err(_) => package_response(&FuzzyScoreResponse {
+            score: 0.0,
+            is_exact: false,
+        }),
     }
 }
 
@@ -560,7 +604,9 @@ pub unsafe extern "C" fn suite_calculate_transition_curve(ptr: *const u8, len: u
     match serde_json::from_slice::<TransitionCurveRequest>(slice) {
         Ok(req) => {
             let factor = crate::storage::wallpaper::calculate_smooth_fade_curve(req.progress);
-            package_response(&TransitionCurveResponse { curve_factor: factor })
+            package_response(&TransitionCurveResponse {
+                curve_factor: factor,
+            })
         }
         Err(_) => package_response(&TransitionCurveResponse { curve_factor: 1.0 }),
     }
@@ -610,8 +656,3 @@ pub unsafe extern "C" fn suite_compute_fingerprint(ptr: *const u8, len: usize) -
         }
     }
 }
-
-
-
-
-

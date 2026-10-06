@@ -342,6 +342,19 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Render monochrome, vector QR label sheets in Rust for catalogue printing.
+   */
+  static renderCatalogQrLabelPdf(labelData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for renderCatalogQrLabelPdf');
+    }
+
+    const res = this.callWasmJson('suite_render_catalog_qr_label_pdf', labelData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_catalog_qr_label_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Inspect raw image file header in <1μs with ZERO buffer decoding.
    * Returns { format, width, height, aspect_ratio, aspect_ratio_value, resolution_label, is_valid }
    */

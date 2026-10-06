@@ -18,6 +18,7 @@ module.exports = function(router, handlers) {
   // PDF Catalog Generation route (MUST come before /:id)
   router.get('/catalog/pdf', handlers.generateCatalogPDF);
   router.post('/catalog/pdf', handlers.generateCatalogPDF);
+  router.post('/catalog/print-assets', handlers.generateCatalogPrintAssets);
   
   // Product routes (general ID-based routes come last)
   router.get('/', handlers.getProducts);
@@ -32,4 +33,3 @@ module.exports = function(router, handlers) {
   
   return router;
 };
-

@@ -17,10 +17,26 @@ pub struct PdfColor {
 }
 
 impl PdfColor {
-    pub const BLACK: Self = Self { r: 0.0, g: 0.0, b: 0.0 };
-    pub const WHITE: Self = Self { r: 1.0, g: 1.0, b: 1.0 };
-    pub const GRAY_BAR: Self = Self { r: 0.768, g: 0.768, b: 0.768 }; // #c4c4c4
-    pub const NAVY_BLUE: Self = Self { r: 0.102, g: 0.137, b: 0.494 }; // #1a237e
+    pub const BLACK: Self = Self {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+    };
+    pub const WHITE: Self = Self {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+    };
+    pub const GRAY_BAR: Self = Self {
+        r: 0.768,
+        g: 0.768,
+        b: 0.768,
+    }; // #c4c4c4
+    pub const NAVY_BLUE: Self = Self {
+        r: 0.102,
+        g: 0.137,
+        b: 0.494,
+    }; // #1a237e
 
     pub fn hex(hex_str: &str) -> Self {
         let s = hex_str.trim().trim_start_matches('#');
@@ -40,6 +56,7 @@ pub struct PdfCanvas {
     pub width: f64,
     pub height: f64,
     stream: String,
+    pages: Vec<String>,
     current_stroke: PdfColor,
     current_fill: PdfColor,
     current_line_width: f64,
@@ -52,22 +69,54 @@ impl PdfCanvas {
             width: 841.89,
             height: 595.28,
             stream: String::with_capacity(16384),
+            pages: Vec::new(),
             current_stroke: PdfColor::BLACK,
             current_fill: PdfColor::BLACK,
             current_line_width: 1.0,
         }
     }
 
+    pub fn new_a4_portrait() -> Self {
+        Self {
+            width: 595.28,
+            height: 841.89,
+            stream: String::with_capacity(16384),
+            pages: Vec::new(),
+            current_stroke: PdfColor::BLACK,
+            current_fill: PdfColor::BLACK,
+            current_line_width: 1.0,
+        }
+    }
+
+    pub fn new_page(&mut self) {
+        self.pages.push(std::mem::take(&mut self.stream));
+        self.current_stroke = PdfColor::BLACK;
+        self.current_fill = PdfColor::BLACK;
+        self.current_line_width = 1.0;
+    }
+
     pub fn set_stroke_color(&mut self, color: PdfColor) {
-        if self.current_stroke.r != color.r || self.current_stroke.g != color.g || self.current_stroke.b != color.b {
-            self.stream.push_str(&format!("{:.3} {:.3} {:.3} RG\n", color.r, color.g, color.b));
+        if self.current_stroke.r != color.r
+            || self.current_stroke.g != color.g
+            || self.current_stroke.b != color.b
+        {
+            self.stream.push_str(&format!(
+                "{:.3} {:.3} {:.3} RG\n",
+                color.r, color.g, color.b
+            ));
             self.current_stroke = color;
         }
     }
 
     pub fn set_fill_color(&mut self, color: PdfColor) {
-        if self.current_fill.r != color.r || self.current_fill.g != color.g || self.current_fill.b != color.b {
-            self.stream.push_str(&format!("{:.3} {:.3} {:.3} rg\n", color.r, color.g, color.b));
+        if self.current_fill.r != color.r
+            || self.current_fill.g != color.g
+            || self.current_fill.b != color.b
+        {
+            self.stream.push_str(&format!(
+                "{:.3} {:.3} {:.3} rg\n",
+                color.r, color.g, color.b
+            ));
             self.current_fill = color;
         }
     }
@@ -80,11 +129,13 @@ impl PdfCanvas {
     }
 
     pub fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
-        self.stream.push_str(&format!("{:.2} {:.2} m {:.2} {:.2} l S\n", x1, y1, x2, y2));
+        self.stream
+            .push_str(&format!("{:.2} {:.2} m {:.2} {:.2} l S\n", x1, y1, x2, y2));
     }
 
     pub fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, stroke: bool, fill: bool) {
-        self.stream.push_str(&format!("{:.2} {:.2} {:.2} {:.2} re ", x, y, w, h));
+        self.stream
+            .push_str(&format!("{:.2} {:.2} {:.2} {:.2} re ", x, y, w, h));
         match (stroke, fill) {
             (true, true) => self.stream.push_str("B\n"),
             (true, false) => self.stream.push_str("s\n"),
@@ -119,12 +170,26 @@ impl PdfCanvas {
         ));
     }
 
-    pub fn draw_centered_string(&mut self, font: PdfFont, size: f64, center_x: f64, y: f64, text: &str) {
+    pub fn draw_centered_string(
+        &mut self,
+        font: PdfFont,
+        size: f64,
+        center_x: f64,
+        y: f64,
+        text: &str,
+    ) {
         let w = self.string_width(font, size, text);
         self.draw_string(font, size, center_x - w / 2.0, y, text);
     }
 
-    pub fn draw_right_string(&mut self, font: PdfFont, size: f64, right_x: f64, y: f64, text: &str) {
+    pub fn draw_right_string(
+        &mut self,
+        font: PdfFont,
+        size: f64,
+        right_x: f64,
+        y: f64,
+        text: &str,
+    ) {
         let w = self.string_width(font, size, text);
         self.draw_string(font, size, right_x - w, y, text);
     }
@@ -139,42 +204,56 @@ impl PdfCanvas {
 
     /// Compile into final valid PDF 1.4 byte buffer
     pub fn build_pdf(self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.stream.len() + 1024);
-        out.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+        let mut page_streams = self.pages;
+        page_streams.push(self.stream);
 
-        let mut offsets = Vec::new();
-
-        // Object 1: Catalog
-        offsets.push(out.len());
-        out.extend_from_slice(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-
-        // Object 2: Pages
-        offsets.push(out.len());
-        out.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-
-        // Object 3: Page
-        offsets.push(out.len());
-        let page_obj = format!(
-            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n",
-            self.width, self.height
+        let mut objects = Vec::<Vec<u8>>::with_capacity(4 + page_streams.len() * 2);
+        objects.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+        let page_object_ids: Vec<usize> =
+            (0..page_streams.len()).map(|index| 5 + index * 2).collect();
+        let kids = page_object_ids
+            .iter()
+            .map(|id| format!("{id} 0 R"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        objects.push(
+            format!(
+                "<< /Type /Pages /Kids [{kids}] /Count {} >>",
+                page_streams.len()
+            )
+            .into_bytes(),
         );
-        out.extend_from_slice(page_obj.as_bytes());
+        objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+        objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec());
 
-        // Object 4: Font F1 (Helvetica)
-        offsets.push(out.len());
-        out.extend_from_slice(b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+        for (index, stream) in page_streams.iter().enumerate() {
+            let page_id = page_object_ids[index];
+            let stream_id = page_id + 1;
+            objects.push(
+                format!(
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {stream_id} 0 R >>",
+                    self.width, self.height
+                )
+                .into_bytes(),
+            );
+            let stream_bytes = stream.as_bytes();
+            let mut stream_object =
+                format!("<< /Length {} >>\nstream\n", stream_bytes.len()).into_bytes();
+            stream_object.extend_from_slice(stream_bytes);
+            stream_object.extend_from_slice(b"\nendstream");
+            objects.push(stream_object);
+        }
 
-        // Object 5: Font F2 (Helvetica-Bold)
-        offsets.push(out.len());
-        out.extend_from_slice(b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
-
-        // Object 6: Content Stream
-        offsets.push(out.len());
-        let stream_bytes = self.stream.as_bytes();
-        let stream_header = format!("6 0 obj\n<< /Length {} >>\nstream\n", stream_bytes.len());
-        out.extend_from_slice(stream_header.as_bytes());
-        out.extend_from_slice(stream_bytes);
-        out.extend_from_slice(b"\nendstream\nendobj\n");
+        let mut out =
+            Vec::with_capacity(page_streams.iter().map(String::len).sum::<usize>() + 1024);
+        out.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+        let mut offsets = Vec::with_capacity(objects.len());
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n", index + 1).as_bytes());
+            out.extend_from_slice(object);
+            out.extend_from_slice(b"\nendobj\n");
+        }
 
         // XRef Table
         let xref_pos = out.len();
@@ -195,6 +274,27 @@ impl PdfCanvas {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{PdfCanvas, PdfFont};
+
+    #[test]
+    fn builds_a_valid_two_page_pdf() {
+        let mut canvas = PdfCanvas::new_a4_portrait();
+        canvas.draw_string(PdfFont::Helvetica, 12.0, 30.0, 800.0, "Page one");
+        canvas.new_page();
+        canvas.draw_string(PdfFont::Helvetica, 12.0, 30.0, 800.0, "Page two");
+        let pdf = String::from_utf8_lossy(&canvas.build_pdf()).into_owned();
+
+        assert!(pdf.starts_with("%PDF-1.4"));
+        assert!(pdf.contains("/Count 2"));
+        assert_eq!(pdf.matches("/Type /Page ").count(), 2);
+        assert!(pdf.contains("Page one"));
+        assert!(pdf.contains("Page two"));
+        assert!(pdf.contains("%%EOF"));
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helvetica Glyph Width Tables (Standard Type 1 font metrics in 1/1000 units)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,7 +309,21 @@ fn char_width(font: PdfFont, c: char) -> f64 {
         PdfFont::Helvetica => match c {
             ' ' | '!' | '\'' | ',' | '.' | '/' | ':' | ';' => 278.0,
             '"' => 355.0,
-            '#' | '$' | '?' | '0'..='9' | 'a' | 'b' | 'd' | 'e' | 'g' | 'h' | 'n' | 'o' | 'p' | 'q' | 'u' => 556.0,
+            '#'
+            | '$'
+            | '?'
+            | '0'..='9'
+            | 'a'
+            | 'b'
+            | 'd'
+            | 'e'
+            | 'g'
+            | 'h'
+            | 'n'
+            | 'o'
+            | 'p'
+            | 'q'
+            | 'u' => 556.0,
             '%' => 889.0,
             '&' => 667.0,
             '(' | ')' | '-' | 'r' => 333.0,

@@ -99,6 +99,8 @@
 | `backend/core/batches/routes.js` | Node backend / core | .js |
 | `backend/core/batches/schema.js` | Node backend / core | .js |
 | `backend/core/billing/calculator.js` | Node backend / core | .js |
+| `backend/core/billing/invoice-ledger-ref.js` | Node backend / core | .js |
+| `backend/core/billing/invoice-ledger-ref.test.js` | Node backend / core | .js |
 | `backend/core/billing/ledger-token.js` | Node backend / core | .js |
 | `backend/core/creditnotes/handlers.js` | Node backend / core | .js |
 | `backend/core/creditnotes/index.js` | Node backend / core | .js |
@@ -115,6 +117,7 @@
 | `backend/core/invoices/routes.js` | Node backend / core | .js |
 | `backend/core/orders/handlers.js` | Node backend / core | .js |
 | `backend/core/orders/index.js` | Node backend / core | .js |
+| `backend/core/orders/invoice-qr-resolver.test.js` | Node backend / core | .js |
 | `backend/core/orders/modules/orders.js` | Node backend / core | .js |
 | `backend/core/orders/routes.js` | Node backend / core | .js |
 | `backend/core/orders/schema.js` | Node backend / core | .js |
@@ -188,6 +191,7 @@
 | `backend/departments/notes/index.js` | Backend department / notes | .js |
 | `backend/departments/notes/native/handlers.js` | Backend department / notes | .js |
 | `backend/departments/notes/native/routes.js` | Backend department / notes | .js |
+| `backend/departments/product-list/engine/catalog-print-assets.test.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/engine/handlers.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/engine/routes.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/index.js` | Backend department / product-list | .js |
@@ -441,6 +445,7 @@
 | `frontend/public/manifest.json` | Workspace / frontend | .json |
 | `frontend/public/scripts/shared/csrf.js` | Workspace / frontend | .js |
 | `frontend/public/service-worker.js` | Workspace / frontend | .js |
+| `frontend/public/shared/vendor/zxing-browser.min.js` | Workspace / frontend | .js |
 | `frontend/scripts/ai-assistant/ai-assistant.js` | Workspace / frontend | .js |
 | `frontend/scripts/app-bar/modules/app-bar.js` | Workspace / frontend | .js |
 | `frontend/scripts/app-bar/modules/app-window.js` | Workspace / frontend | .js |
@@ -468,9 +473,15 @@
 | `frontend/scripts/welcome/modules/logo.js` | Workspace / frontend | .js |
 | `frontend/scripts/welcome/modules/welcome.js` | Workspace / frontend | .js |
 | `frontend/shared/bill-calculator.js` | Workspace / frontend | .js |
+| `frontend/shared/catalog-qr-url.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/catalog-qr-url.test.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/catalog-qr.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/catalog-qr.test.mjs` | Workspace / frontend | .mjs |
 | `frontend/shared/connectivity.css` | Workspace / frontend | .css |
 | `frontend/shared/connectivity.js` | Workspace / frontend | .js |
 | `frontend/shared/core-databus.js` | Workspace / frontend | .js |
+| `frontend/shared/invoice-qr-link.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/invoice-qr-link.test.mjs` | Workspace / frontend | .mjs |
 | `frontend/shared/logger.js` | Workspace / frontend | .js |
 | `frontend/shared/macos-cursor-assets.js` | Workspace / frontend | .js |
 | `frontend/shared/macos-cursor.css` | Workspace / frontend | .css |
@@ -478,6 +489,11 @@
 | `frontend/shared/macos-store.js` | Workspace / frontend | .js |
 | `frontend/shared/notifications.css` | Workspace / frontend | .css |
 | `frontend/shared/notifications.js` | Workspace / frontend | .js |
+| `frontend/shared/qc-quantity.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/qc-quantity.test.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/qr-scan-policy.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/qr-scan-policy.test.mjs` | Workspace / frontend | .mjs |
+| `frontend/shared/qr-scanner.js` | Workspace / frontend | .js |
 | `frontend/shared/screensaver-manager.js` | Workspace / frontend | .js |
 | `frontend/shared/screensaver.css` | Workspace / frontend | .css |
 | `frontend/shared/suite_core_bridge.js` | Workspace / frontend | .js |
@@ -511,6 +527,7 @@
 | `shared/suite_core/src/catalog/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/catalog/search.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/mod.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/catalog_labels.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/invoice.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/writer.rs` | Rust core / src | .rs |

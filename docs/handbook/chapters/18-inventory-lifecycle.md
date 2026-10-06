@@ -10,6 +10,8 @@ The UI's domain model nests `Product` → `ProductVariant` → `ProductBatch` fo
 
 Product-list PDFs refresh the catalog from the API immediately before generating labels and embed stable product, variant, and batch IDs. `VITE_PUBLIC_APP_URL` configures the public HTTPS origin encoded in QR links; local-host printing is blocked unless this is explicitly configured, preventing labels that point to an unreachable development server. Batch links include the human-readable batch number plus stable IDs. The public product page resolves a batch QR through its `sku` product ID and highlights the exact `batch_id`; it must not silently show a sample/fallback product when a QR lookup fails. The PDF API rejects requests without current product-list HTML rather than silently producing a QR-free fallback catalog.
 
+For print-press handoff, Product List also exposes `POST /api/products/catalog/print-assets`. It reads the current catalog from SQLite, reuses the stable product/batch URL builders, and invokes the SuiteCore Rust/WASM renderer for a monochrome vector A4 label-sheet PDF. The SVG + CSV designer ZIP includes one resizable, viewBox-based black-and-white QR SVG per batch (or one product QR when that product has no batches), a stable-ID-to-QR mapping CSV, the Rust PDF, and a print note. The reference PDF uses a 3 × 8 A4 sheet grid and exports are capped at 2,000 labels; actual sticker stock, final label size, safe area, and cut lines are not inferred and must be confirmed with the press. The existing styled, Odia-capable catalogue PDF remains on Puppeteer to preserve its current layout; the Rust path is the dedicated production QR-label export.
+
 Keep catalog IDs stable after labels are printed. Before launch, test generated product and batch QR links on the public hostname, verify deleted/missing IDs fail clearly, and confirm product-list print actions stop rather than print from stale catalog data if the API refresh fails.
 
 ## Catalog Read Path
@@ -30,7 +32,8 @@ On initialization, `ProductListApp` checks the API, then loads products/categori
 | `POST/PUT /variants...` | Variant create/update | Check exact ID and ownership validation |
 | `POST/PUT/DELETE /batches...` | Batch create/update/delete | Check uniqueness and expiry/date validation |
 | `POST /update-mrp` | MRP update | Inspect handler-specific fields |
-| `GET/POST /catalog/pdf` | Catalog PDF generation | Verify data size, output and authorization |
+| `GET/POST /catalog/pdf` | Styled catalogue PDF generation | Verify data size, output and authorization |
+| `POST /catalog/print-assets` | Rust QR-label PDF or SVG/CSV designer ZIP | Verify stable QR URLs, output sizes, and press dimensions |
 | `/public/catalog`, `/public/:sku` | Public catalog lookup | Verify actual Express route precedence and public data projection |
 
 The route file places generic `/:id` handlers before the later `/public/...` handlers. Confirm the public route behavior against Express matching and tests before documenting it as active; avoid assuming a handler declared later receives a request already matched by the generic route.

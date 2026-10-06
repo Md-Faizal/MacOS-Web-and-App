@@ -247,12 +247,15 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: #fafbfc;
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   justify-content: space-between;
   align-items: center;
 }
 
 .product-header-info {
   flex: 1;
+  min-width: 160px;
 }
 
 .product-header-title {
@@ -270,7 +273,16 @@
 
 .product-header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 600px) {
+  .product-header-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
 
 .product-action-btn {

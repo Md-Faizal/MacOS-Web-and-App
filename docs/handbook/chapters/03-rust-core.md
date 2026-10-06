@@ -6,6 +6,8 @@ The shared Rust crate lives at `shared/suite_core/`. Its manifest identifies the
 
 These declarations establish build intent, not that every operation is currently called by every client. Verify a claimed integration by following the bridge/export and its call site before documenting it as active behavior.
 
+The Node Product List press-asset route calls `SuiteCoreBridge.renderCatalogQrLabelPdf`, which invokes the `suite_render_catalog_qr_label_pdf` WebAssembly export. Rebuild `shared/suite_core/target/wasm32-unknown-unknown/release/suite_core.wasm` and publish the matching `frontend/shared/suite_core.wasm` asset when changing this Rust renderer; the Node bridge prefers the checked-in frontend asset. This renderer creates an A4 vector label sheet, while the Product List ZIP packages per-label SVGs and CSV metadata.
+
 ## Build and Test
 
 ```powershell

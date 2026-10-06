@@ -14,6 +14,7 @@ class ProductBatch {
     this.mrp = mrp;
     this.unitsSold = unitsSold;
   }
+
 }
 
 /**
@@ -427,6 +428,71 @@ export class ProductListApp extends AppWindow {
     }
   }
 
+  async exportCatalogQrAssets(format, button) {
+    const generator = new QRGenerator();
+    let baseUrl;
+    try {
+      baseUrl = generator.getBaseUrl();
+    } catch (error) {
+      this.notifications.show(error.message, 'error', 6000);
+      return;
+    }
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Preparing print assets...';
+    try {
+      const freshProducts = await this.getFreshProductsForQrPrint();
+      if (!freshProducts) return;
+      if (freshProducts.length === 0) {
+        this.notifications.show('The refreshed catalog is empty; no QR print assets were generated.', 'error', 6000);
+        return;
+      }
+
+      const response = await fetch('/api/products/catalog/print-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format, baseUrl })
+      });
+      if (!response.ok) {
+        let detail = response.statusText || 'Server error';
+        try {
+          const error = await response.json();
+          detail = error.details || error.error || detail;
+        } catch {
+          // Keep the HTTP status text if the API did not return JSON.
+        }
+        throw new Error(`Server returned ${response.status}: ${detail}`);
+      }
+
+      const blob = await response.blob();
+      const filename = format === 'zip'
+        ? 'UCA_QR_Label_Designer_Pack.zip'
+        : 'UCA_QR_Label_Sheets.pdf';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      this.notifications.show(
+        format === 'zip'
+          ? 'Designer pack downloaded: scalable black-and-white SVG QR labels, CSV mapping, and Rust PDF sheet.'
+          : 'Rust-generated black-and-white QR label PDF downloaded.',
+        'success',
+        6000
+      );
+    } catch (error) {
+      log.error('[Catalog QR Export] Print asset generation failed:', error);
+      this.notifications.show(error.message || 'Unable to generate QR print assets.', 'error', 7000);
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
   deserializeProductFromAPI(apiProduct) {
     const product = new Product(apiProduct.name, apiProduct.category_name || 'Uncategorized', false);
     product.id = apiProduct.id;
@@ -519,6 +585,8 @@ export class ProductListApp extends AppWindow {
           </div>
           <div class="product-header-actions">
             <button class="product-action-btn print-master-catalog-action" style="background-color: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);">🖨️ Print Master Catalog</button>
+            <button class="product-action-btn export-qr-label-pdf-action" style="background-color: #fff; border: 1px solid #111; color: #111;">B&amp;W QR Label PDF</button>
+            <button class="product-action-btn export-qr-designer-pack-action" style="background-color: #fff; border: 1px solid #111; color: #111;">SVG + CSV Designer Pack</button>
             <button class="product-action-btn new-product-action">+ New Product</button>
           </div>
         </div>
@@ -1105,6 +1173,12 @@ export class ProductListApp extends AppWindow {
     if (printMasterBtn) {
       printMasterBtn.addEventListener('click', () => this.printMasterCatalog());
     }
+    this.getContentArea().querySelector('.export-qr-label-pdf-action')?.addEventListener('click', event => {
+      this.exportCatalogQrAssets('pdf', event.currentTarget);
+    });
+    this.getContentArea().querySelector('.export-qr-designer-pack-action')?.addEventListener('click', event => {
+      this.exportCatalogQrAssets('zip', event.currentTarget);
+    });
   }
 
   switchView(viewName) {
