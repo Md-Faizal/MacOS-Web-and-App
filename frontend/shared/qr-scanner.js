@@ -599,6 +599,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     clearTimeout(toastTimeout);
     clearTimeout(trackingTimeout);
     window.removeEventListener('resize', repositionAfterResize);
+    window.removeEventListener('macos-screensaver-activated', onScreensaverActivated);
     controls?.stop();
     stream?.getTracks().forEach(track => track.stop());
     document.removeEventListener('keydown', onKeyDown);
@@ -609,6 +610,8 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     if (activeScannerClose === close) activeScannerClose = null;
   };
   activeScannerClose = close;
+  const onScreensaverActivated = () => close();
+  window.addEventListener('macos-screensaver-activated', onScreensaverActivated);
 
   const onKeyDown = event => {
     if (event.key === 'Escape') close();

@@ -2436,8 +2436,8 @@ class BillEditor {
             </div>
             
             <div class="product-card-details">
-              <div class="product-detail-item">
-                <div class="product-detail-label">Batch</div>
+              <div class="product-detail-item" data-field="batch" role="button" tabindex="0" aria-label="Change batch for ${this.escapeHtml(normalized.name)}" title="Select another available batch" style="cursor: pointer;">
+                <div class="product-detail-label">Batch <span style="font-size: 10px; opacity: .75;">· Change</span></div>
                 <div class="product-detail-value">${normalized.batch}</div>
               </div>
               
@@ -2730,6 +2730,13 @@ class BillEditor {
 
     // Use event delegation for all interactions
     updatedListTable.addEventListener('click', (e) => {
+      const batchField = e.target.closest('.product-detail-item[data-field="batch"]');
+      if (batchField) {
+        e.stopPropagation();
+        this.showBatchSelectorFromProductCard(batchField);
+        return;
+      }
+
       // Check if clicked element is the pack field - only if product has multiple variants
       const packField = e.target.closest('.product-detail-item[data-field="pack"]');
       if (packField && packField.dataset.hasVariants === 'true') {
@@ -2765,8 +2772,184 @@ class BillEditor {
         return;
       }
     });
+    updatedListTable.addEventListener('keydown', e => {
+      const batchField = e.target.closest('.product-detail-item[data-field="batch"]');
+      if (!batchField || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.showBatchSelectorFromProductCard(batchField);
+    });
 
     log.debug('✅ Product list listeners reset');
+  }
+
+  async showBatchSelectorFromProductCard(batchField) {
+    const card = batchField.closest('.product-card');
+    const productId = Number(card?.dataset.productId);
+    const billProduct = this.currentBillProducts.find(item => Number(item.id || item.product_id) === productId);
+    if (!billProduct) {
+      this.showNotification('Could not find this bill item. Refresh the bill and try again.', 'error');
+      return;
+    }
+
+    try {
+      let catalogProduct = (this.cachedProducts || []).find(item =>
+        billProduct.product_id != null && String(item.id) === String(billProduct.product_id)
+      ) || (billProduct.product_id == null
+        ? (this.cachedProducts || []).find(item =>
+          String(item.name || '').trim().toLowerCase() === String(billProduct.name || billProduct.product_name || '').trim().toLowerCase()
+        )
+        : null);
+      if (!catalogProduct) {
+        const searchKey = billProduct.name ?? billProduct.product_name ?? billProduct.product_id;
+        if (!searchKey) {
+          this.showNotification('This bill item has no product identifier to load batch options.', 'warning');
+          return;
+        }
+        const response = await fetch(`/api/products?search=${encodeURIComponent(searchKey)}`);
+        if (!response.ok) throw new Error(`Product catalog request failed (${response.status}).`);
+        const products = this.normalizeProducts(await response.json());
+        catalogProduct = products.find(item =>
+          billProduct.product_id != null && String(item.id) === String(billProduct.product_id)
+        ) || products.find(item =>
+          String(item.name || '').trim().toLowerCase() === String(billProduct.name || billProduct.product_name || '').trim().toLowerCase()
+        );
+      }
+
+      if (!catalogProduct) {
+        this.showNotification('Could not find this product in the catalog. Its batch cannot be changed.', 'warning');
+        return;
+      }
+
+      const variants = Array.isArray(catalogProduct.variants) ? catalogProduct.variants : [];
+      let variant = variants.find(item =>
+        billProduct.variant_id != null && String(item.id) === String(billProduct.variant_id)
+      );
+      const billPackValue = billProduct.pack_value ?? billProduct.pack_size_value;
+      const billPackType = billProduct.pack_type ?? billProduct.pack_size_type ?? '';
+      if (!variant && billPackValue != null) {
+        variant = variants.find(item =>
+          String(item.pack_size_value ?? item.pack_value ?? '').trim() === String(billPackValue).trim() &&
+          String(item.pack_size_type ?? item.pack_type ?? '').trim().toLowerCase() === String(billPackType).trim().toLowerCase()
+        );
+      }
+      if (!variant && billProduct.pack) {
+        const normalizedPack = String(billProduct.pack).replace(/\s+/g, '').toLowerCase();
+        variant = variants.find(item =>
+          `${item.pack_size_value ?? item.pack_value ?? ''}${item.pack_size_type ?? item.pack_type ?? ''}`.replace(/\s+/g, '').toLowerCase() === normalizedPack
+        );
+      }
+      if (!variant && variants.length > 1) {
+        const currentBatch = String(billProduct.batch || billProduct.batch_no || '').trim().toLowerCase();
+        const matchingVariants = variants.filter(item =>
+          (item.batches || []).some(batch =>
+            String(batch.batch_no ?? batch.batchNo ?? '').trim().toLowerCase() === currentBatch
+          )
+        );
+        if (matchingVariants.length === 1) variant = matchingVariants[0];
+      }
+      if (!variant && variants.length === 1) variant = variants[0];
+
+      const batches = variant && Array.isArray(variant.batches)
+        ? variant.batches
+        : (Array.isArray(catalogProduct.batches)
+          ? catalogProduct.batches.filter(item =>
+            billProduct.variant_id == null || item.variant_id == null || String(item.variant_id) === String(billProduct.variant_id)
+          )
+          : []);
+      if (batches.length < 2) {
+        this.showNotification(batches.length ? 'Only one batch is available for this product pack.' : 'No batch options are available for this product pack.', 'info');
+        return;
+      }
+
+      const overlay = document.createElement('div');
+      overlay.className = 'variant-modal-overlay';
+      overlay.id = 'billBatchSelectorModal';
+      overlay.innerHTML = `
+        <div class="variant-modal" role="dialog" aria-modal="true" aria-labelledby="billBatchSelectorTitle">
+          <div class="variant-modal-header">
+            <h3 id="billBatchSelectorTitle">Select batch for ${this.escapeHtml(billProduct.name || billProduct.product_name || 'product')}</h3>
+            <button class="variant-modal-close" type="button" data-close-batch-picker aria-label="Close">×</button>
+          </div>
+          <div class="variant-modal-body"><div class="variant-list" data-batch-options></div></div>
+          <div class="variant-modal-footer">
+            <button class="variant-modal-btn cancel" type="button" data-close-batch-picker>Cancel</button>
+            <button class="variant-modal-btn confirm" type="button" data-apply-batch>✓ Select batch</button>
+          </div>
+        </div>`;
+      const options = overlay.querySelector('[data-batch-options]');
+      batches.forEach((batch, index) => {
+        const batchNo = batch.batch_no ?? batch.batchNo ?? '';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'billBatchOption';
+        radio.id = `bill-batch-option-${index}`;
+        radio.value = String(index);
+        radio.checked = (billProduct.batch_id != null && String(batch.id) === String(billProduct.batch_id)) ||
+          (billProduct.batch_id == null && String(batchNo) === String(billProduct.batch || billProduct.batch_no || ''));
+        radio.className = 'variant-radio';
+
+        const label = document.createElement('label');
+        label.htmlFor = radio.id;
+        label.className = 'variant-batch-label';
+        const name = document.createElement('span');
+        name.className = 'batch-no';
+        name.textContent = batchNo || 'Unnamed batch';
+        const mrp = document.createElement('span');
+        mrp.className = 'batch-mrp';
+        mrp.textContent = `MRP ₹${Number(batch.mrp || 0).toFixed(2)}`;
+        label.append(name, mrp);
+
+        const row = document.createElement('div');
+        row.className = 'variant-batch-item';
+        row.append(radio, label);
+        options.appendChild(row);
+      });
+      this.viewContainer.appendChild(overlay);
+      const closeModal = () => overlay.remove();
+      overlay.querySelectorAll('[data-close-batch-picker]').forEach(button => button.addEventListener('click', closeModal));
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) closeModal();
+      });
+      overlay.querySelector('[data-apply-batch]').addEventListener('click', () => {
+        const selected = overlay.querySelector('input[name="billBatchOption"]:checked');
+        if (!selected) {
+          this.showNotification('Select a batch before continuing.', 'warning');
+          return;
+        }
+        const batch = batches[Number(selected.value)];
+        const oldMrp = Number(billProduct.mrp || 0);
+        const oldRate = Number(billProduct.rate || 0);
+        const nextMrp = Number(batch.mrp || 0);
+        billProduct.batch = batch.batch_no ?? batch.batchNo ?? '';
+        billProduct.batch_no = billProduct.batch;
+        billProduct.batch_id = batch.id ?? null;
+        billProduct.exp = batch.exp_date ?? batch.expiryDate ?? batch.expiry_date ?? '';
+        billProduct.exp_date = billProduct.exp;
+        if (Number.isFinite(nextMrp) && nextMrp > 0) {
+          billProduct.mrp = nextMrp;
+          if (Math.abs(oldRate - oldMrp) < 0.005) billProduct.rate = nextMrp;
+          this.recalculateProductFields(billProduct, 'mrp');
+        }
+        if (variant?.id != null) billProduct.variant_id = variant.id;
+        closeModal();
+        this.renderProductList();
+        this.updateBillSummary();
+      });
+    } catch (error) {
+      log.error('Unable to load batch options for bill item:', error);
+      this.showNotification(error.message || 'Unable to load batch options. Try again.', 'error');
+    }
+  }
+
+  escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[character]);
   }
 
   editProductField(field) {

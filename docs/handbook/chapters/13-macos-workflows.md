@@ -24,6 +24,8 @@ The desktop shell is organized under `frontend/scripts/`; app implementations ar
 
 Confirm which view constructs each child and which instances are retained in `_subviewPanels` before documenting a lifecycle. A keep-alive panel retains DOM state but may need an activation refresh; a hidden component should not be assumed either stale or fresh without tracing its event/data source.
 
+In the new/edit bill item cards, the batch field opens a picker when the selected product pack has multiple catalog batches; selecting a batch updates the bill line's batch identity and MRP. The shared QR scanner closes and stops its camera stream when screensaver activation is signaled.
+
 ## BillingAPI Request Semantics
 
 The inspected `BillingAPI` uses `/api` as its default base and defines static shared maps for GET cache and in-flight requests. The configured default read TTL is three seconds. Identical GETs use the URL as their key and share a pending promise; cached responses can be returned until TTL expires unless `forceRefresh` is set. Mutation requests attempt to invalidate cache keys based on selected endpoint substrings.
