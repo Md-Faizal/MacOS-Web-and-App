@@ -396,10 +396,99 @@ const scannerStyles = `
     color: rgba(255, 255, 255, .58);
     font: 11px/1 system-ui, sans-serif;
   }
+  .qr-scanner-window {
+    width: min(224px, calc(100vw - 28px));
+    height: min(224px, calc(100vw - 28px), calc(100dvh - 28px));
+    min-width: 180px;
+    min-height: 180px;
+    max-width: min(320px, calc(100vw - 20px));
+    max-height: min(320px, calc(100dvh - 20px));
+    aspect-ratio: 1;
+    resize: none;
+  }
+  .qr-scanner-window.qr-scanner-expanded {
+    width: 100vw;
+    height: 100dvh;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    aspect-ratio: auto;
+  }
+  .qr-scanner-video-wrap {
+    inset: 0;
+    border-radius: 27px;
+  }
+  .qr-scanner-expanded .qr-scanner-video-wrap { border-radius: 0; }
+  .qr-code-tracking {
+    position: absolute;
+    z-index: 1;
+    display: none;
+    align-items: flex-start;
+    justify-content: flex-end;
+    border: 2px solid #35e487;
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 0 18px rgba(53, 228, 135, .72);
+    pointer-events: none;
+    transition: left .08s linear, top .08s linear, width .08s linear, height .08s linear, border-color .12s ease, box-shadow .12s ease;
+  }
+  .qr-code-tracking-visible { display: flex; }
+  .qr-code-tracking-failure {
+    border-color: #ff4d5e;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 0 18px rgba(255, 77, 94, .7);
+  }
+  .qr-code-tracking-label {
+    max-width: min(200px, 70vw);
+    overflow: hidden;
+    padding: 3px 6px;
+    border-radius: 0 0 0 6px;
+    background: rgba(8, 12, 14, .82);
+    color: #fff;
+    font: 600 10px/1.25 ui-monospace, SFMono-Regular, Consolas, monospace;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qr-scanner-resize {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    z-index: 3;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 255, 255, .4);
+    border-radius: 7px;
+    background: rgba(8, 12, 14, .55);
+    cursor: nwse-resize;
+    touch-action: none;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity .18s ease, visibility .18s ease;
+  }
+  .qr-scanner-focused .qr-scanner-resize {
+    visibility: visible;
+    opacity: 1;
+  }
+  .qr-scanner-window .qr-scanner-resize {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+  }
+  .qr-scanner-resize::before,
+  .qr-scanner-resize::after {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    content: '';
+    border-right: 2px solid rgba(255, 255, 255, .86);
+    border-bottom: 2px solid rgba(255, 255, 255, .86);
+  }
+  .qr-scanner-resize::before { width: 8px; height: 8px; }
+  .qr-scanner-resize::after { right: 9px; bottom: 9px; width: 4px; height: 4px; }
+  .qr-scanner-expanded .qr-scanner-resize { display: none; }
   @media (max-width: 520px) {
     .qr-scanner-window {
-      width: min(208px, calc(100vw - 28px));
-      height: min(360px, calc(100dvh - 28px));
+      width: min(204px, calc(100vw - 28px));
+      height: min(204px, calc(100vw - 28px), calc(100dvh - 28px));
     }
   }
 `;
@@ -453,6 +542,9 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   popup.innerHTML = `
     <div class="qr-scanner-video-wrap">
       <video class="qr-scanner-video" data-qr-video autoplay playsinline muted></video>
+      <div class="qr-code-tracking" data-qr-tracking aria-hidden="true">
+        <span class="qr-code-tracking-label" data-qr-tracking-label></span>
+      </div>
       <p class="qr-scanner-message" data-qr-message role="status" aria-live="polite" hidden></p>
     </div>
     <section class="qr-scanner-history" aria-label="Scanned items">
@@ -463,6 +555,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       <button type="button" data-qr-expand aria-label="Expand scanner" title="Expand">⤢</button>
       <button type="button" data-qr-close aria-label="Close QR scanner" title="Close">×</button>
     </div>
+    <button class="qr-scanner-resize" type="button" data-qr-resize aria-label="Resize camera preview"></button>
   `;
   document.body.appendChild(popup);
 
@@ -470,6 +563,9 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   const videoWrap = popup.querySelector('.qr-scanner-video-wrap');
   const message = popup.querySelector('[data-qr-message]');
   const historyContainer = popup.querySelector('[data-qr-entries]');
+  const trackingBox = popup.querySelector('[data-qr-tracking]');
+  const trackingLabel = popup.querySelector('[data-qr-tracking-label]');
+  const resizeHandle = popup.querySelector('[data-qr-resize]');
   videoWrap.tabIndex = 0;
   videoWrap.setAttribute('role', 'button');
   videoWrap.setAttribute('aria-label', 'Camera preview. Activate to show scanner controls.');
@@ -487,11 +583,22 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   let expanded = false;
   let suppressClick = false;
   let previousBodyOverflow = '';
+  let trackingTimeout = null;
+  const repositionAfterResize = () => {
+    if (closed || expanded) return;
+    const bounds = popup.getBoundingClientRect();
+    const maxLeft = Math.max(0, window.innerWidth - bounds.width);
+    const maxTop = Math.max(0, window.innerHeight - bounds.height);
+    if (bounds.left > maxLeft) popup.style.left = `${maxLeft}px`;
+    if (bounds.top > maxTop) popup.style.top = `${maxTop}px`;
+  };
 
   const close = () => {
     if (closed) return;
     closed = true;
     clearTimeout(toastTimeout);
+    clearTimeout(trackingTimeout);
+    window.removeEventListener('resize', repositionAfterResize);
     controls?.stop();
     stream?.getTracks().forEach(track => track.stop());
     document.removeEventListener('keydown', onKeyDown);
@@ -584,6 +691,53 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     playScanTone(success);
     showToast(message, success, undoEntry);
   }
+
+  const updateTrackingBox = (result, value, success = null) => {
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    const bounds = videoWrap.getBoundingClientRect();
+    if (!videoWidth || !videoHeight || !bounds.width || !bounds.height) return;
+
+    const points = result?.getResultPoints?.()
+      ?.map(point => ({
+        x: typeof point.getX === 'function' ? point.getX() : point.x,
+        y: typeof point.getY === 'function' ? point.getY() : point.y
+      }))
+      .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y)) || [];
+
+    let left;
+    let top;
+    let width;
+    let height;
+    if (points.length > 0) {
+      const scale = Math.max(bounds.width / videoWidth, bounds.height / videoHeight);
+      const offsetX = (bounds.width - videoWidth * scale) / 2;
+      const offsetY = (bounds.height - videoHeight * scale) / 2;
+      const xs = points.map(point => point.x * scale + offsetX);
+      const ys = points.map(point => point.y * scale + offsetY);
+      const padding = Math.max(8, Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.12);
+      left = Math.max(0, Math.min(...xs) - padding);
+      top = Math.max(0, Math.min(...ys) - padding);
+      width = Math.min(bounds.width - left, Math.max(36, Math.max(...xs) - Math.min(...xs) + padding * 2));
+      height = Math.min(bounds.height - top, Math.max(36, Math.max(...ys) - Math.min(...ys) + padding * 2));
+    } else {
+      width = bounds.width * 0.48;
+      height = bounds.height * 0.48;
+      left = (bounds.width - width) / 2;
+      top = (bounds.height - height) / 2;
+    }
+
+    trackingBox.style.left = `${left}px`;
+    trackingBox.style.top = `${top}px`;
+    trackingBox.style.width = `${width}px`;
+    trackingBox.style.height = `${height}px`;
+    trackingLabel.textContent = value;
+    trackingLabel.title = value;
+    trackingBox.classList.toggle('qr-code-tracking-failure', success === false);
+    trackingBox.classList.add('qr-code-tracking-visible');
+    clearTimeout(trackingTimeout);
+    trackingTimeout = setTimeout(() => trackingBox.classList.remove('qr-code-tracking-visible'), 2500);
+  };
 
   const onKeyDownBound = onKeyDown;
   popup.querySelector('[data-qr-close]').addEventListener('click', close);
@@ -678,6 +832,35 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
     videoWrap.addEventListener('pointercancel', stop);
   });
 
+  resizeHandle.addEventListener('pointerdown', event => {
+    if (expanded) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startSize = popup.getBoundingClientRect().width;
+    resizeHandle.setPointerCapture(event.pointerId);
+
+    const resize = moveEvent => {
+      if (moveEvent.pointerId !== event.pointerId) return;
+      const maxSize = Math.max(180, Math.min(320, window.innerWidth - 20, window.innerHeight - 20));
+      const nextSize = Math.max(180, Math.min(maxSize, startSize + Math.max(moveEvent.clientX - startX, moveEvent.clientY - startY)));
+      popup.style.width = `${nextSize}px`;
+      popup.style.height = `${nextSize}px`;
+    };
+    const stopResize = stopEvent => {
+      if (stopEvent.pointerId !== event.pointerId) return;
+      resizeHandle.removeEventListener('pointermove', resize);
+      resizeHandle.removeEventListener('pointerup', stopResize);
+      resizeHandle.removeEventListener('pointercancel', stopResize);
+    };
+    resizeHandle.addEventListener('pointermove', resize);
+    resizeHandle.addEventListener('pointerup', stopResize);
+    resizeHandle.addEventListener('pointercancel', stopResize);
+  });
+
+  window.addEventListener('resize', repositionAfterResize);
+
   function showCameraError(error) {
     console.error('[QR Scanner] Camera startup failed:', error);
     if (closed) return;
@@ -744,6 +927,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
 
           const value = result.getText().trim();
           if (!value) return;
+          updateTrackingBox(result, value);
           lastSeenAt = Date.now();
           if (value === lastValue) return;
           lastValue = value;
@@ -752,6 +936,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
             const response = await onScan(value);
             const success = response?.success !== false;
             const message = typeof response === 'string' ? response : response?.message;
+            updateTrackingBox(result, response?.label || value, success);
 
             if (success) {
               const entry = response?.undo ? {
@@ -773,6 +958,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
           } catch (error) {
             console.error('[QR Scanner] Scan handling failed:', error);
             lastValue = null;
+            updateTrackingBox(result, value, false);
             showFeedback(error?.message || 'Could not add the scanned item.', false);
           } finally {
             processing = false;

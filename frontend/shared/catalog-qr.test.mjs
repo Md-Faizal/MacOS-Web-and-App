@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCatalogQr, resolveCatalogQr } from './catalog-qr.mjs';
+import {
+  catalogQrFailureMessage,
+  diagnoseCatalogQr,
+  parseCatalogQr,
+  resolveCatalogQr
+} from './catalog-qr.mjs';
 
 const catalog = [{
   id: 42,
@@ -66,4 +71,17 @@ test('rejects unrelated URLs and ambiguous batch labels', () => {
   assert.equal(parseCatalogQr('https://shop.example/login'), null);
   assert.equal(resolveCatalogQr(catalog, 'https://shop.example/public/product/unknown'), null);
   assert.equal(resolveCatalogQr([...catalog, { ...catalog[0], id: 43 }], 'https://shop.example/public/batch/BATCH-A'), null);
+});
+
+test('explains why a scanned product or batch QR cannot be resolved', () => {
+  assert.equal(
+    diagnoseCatalogQr([...catalog, { ...catalog[0], id: 43 }], 'https://shop.example/public/batch/BATCH-A').reason,
+    'ambiguous_batch'
+  );
+  assert.equal(
+    diagnoseCatalogQr(catalog, 'https://shop.example/public/product/unknown').reason,
+    'not_found'
+  );
+  assert.match(catalogQrFailureMessage('ambiguous_batch'), /shared by multiple products.*Reprint/i);
+  assert.match(catalogQrFailureMessage('not_found'), /Refresh the catalog/);
 });

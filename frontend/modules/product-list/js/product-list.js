@@ -1540,6 +1540,9 @@ export class ProductListApp extends AppWindow {
     if (data.variants) {
       data.variants.forEach(vData => {
         const variant = new ProductVariant(vData.packSize);
+        variant.id = vData.id;
+        variant.pack_size_value = vData.pack_size_value;
+        variant.pack_size_type = vData.pack_size_type;
         if (vData.batches) {
           vData.batches.forEach(bData => {
             const batch = new ProductBatch(
@@ -1549,6 +1552,8 @@ export class ProductListApp extends AppWindow {
               bData.mrp,
               bData.unitsSold
             );
+            batch.id = bData.id;
+            batch.variant_id = bData.variant_id ?? variant.id;
             variant.addBatch(batch);
           });
         }

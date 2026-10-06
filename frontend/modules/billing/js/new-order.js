@@ -1,4 +1,4 @@
-import { resolveCatalogQr } from '../../../shared/catalog-qr.mjs';
+import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/catalog-qr.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
@@ -2319,10 +2319,11 @@ class OrdersView {
   async addCatalogQrToOrder(value) {
     if (!this.products.length) await this.loadCustomersAndProducts();
 
-    const match = resolveCatalogQr(this.products, value);
+    const { match, reason } = diagnoseCatalogQr(this.products, value);
     if (!match) {
-      this.showNotification('QR not recognized in the product catalog. Check the product or batch label.', 'warning');
-      return { success: false, message: 'QR does not match the loaded catalog. Older batch tags may need reprinting.' };
+      const message = catalogQrFailureMessage(reason);
+      this.showNotification(message, 'warning');
+      return { success: false, message };
     }
 
     if (match.type === 'batch') {

@@ -50,23 +50,31 @@ function sameId(left, right) {
 }
 
 export function resolveCatalogQr(products, value) {
+  return diagnoseCatalogQr(products, value).match;
+}
+
+export function diagnoseCatalogQr(products, value) {
   const parsed = typeof value === 'string' ? parseCatalogQr(value) : value;
-  if (!parsed || !Array.isArray(products)) return null;
+  if (!parsed) return { match: null, reason: 'invalid' };
+  if (!Array.isArray(products) || products.length === 0) {
+    return { match: null, reason: 'catalog_unavailable' };
+  }
 
   if (parsed.type === 'product') {
     const exactId = products.find(product => sameId(product?.id, parsed.identifier));
-    if (exactId) return { type: 'product', product: exactId };
+    if (exactId) return { match: { type: 'product', product: exactId }, reason: null };
 
     const identifier = normalized(parsed.identifier);
     const matches = products.filter(product =>
       [product?.sku, product?.sku_code, product?.product_code]
         .some(candidate => normalized(candidate) === identifier)
     );
-    if (matches.length !== 1) return null;
-    return { type: 'product', product: matches[0] };
+    if (matches.length > 1) return { match: null, reason: 'ambiguous' };
+    if (matches.length === 0) return { match: null, reason: 'not_found' };
+    return { match: { type: 'product', product: matches[0] }, reason: null };
   }
 
-  if (parsed.type !== 'batch') return null;
+  if (parsed.type !== 'batch') return { match: null, reason: 'invalid' };
   const batchNumber = normalized(parsed.identifier);
   const matches = [];
 
@@ -95,5 +103,22 @@ export function resolveCatalogQr(products, value) {
     }
   }
 
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length > 1) return { match: null, reason: 'ambiguous_batch' };
+  if (matches.length === 0) return { match: null, reason: 'not_found' };
+  return { match: matches[0], reason: null };
+}
+
+export function catalogQrFailureMessage(reason) {
+  switch (reason) {
+    case 'catalog_unavailable':
+      return 'The product catalog is not loaded. Refresh the catalog and scan again.';
+    case 'ambiguous_batch':
+      return 'This batch QR contains only a batch number shared by multiple products. Reprint that batch label to include its product, variant, and batch IDs.';
+    case 'ambiguous':
+      return 'This product code matches multiple catalog entries. Use a product QR with a unique product ID.';
+    case 'invalid':
+      return 'This QR does not contain a supported product or batch catalog link.';
+    default:
+      return 'QR decoded, but its product or batch was not found in the loaded catalog. Refresh the catalog; reprint only if this is a legacy batch label without IDs.';
+  }
 }
