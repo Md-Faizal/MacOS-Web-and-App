@@ -894,3 +894,153 @@
     letter-spacing: 1px;
   }
 }
+
+/* Floating camera preview used by the billing label scanner */
+#visionAssistModalOverlay.ai-camera-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  display: block;
+  background: transparent;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: background .22s ease, backdrop-filter .22s ease;
+}
+
+#visionAssistModalOverlay.ai-camera-overlay.expanded {
+  background: rgba(8, 11, 15, .48);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  pointer-events: auto;
+}
+
+#visionScannerContainer.ai-camera-window {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 1;
+  width: min(228px, calc(100vw - 28px));
+  height: min(390px, calc(100dvh - 28px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, .12);
+  box-shadow: 0 20px 58px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .35);
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  pointer-events: auto;
+  touch-action: none;
+  transition: width .25s ease, height .25s ease, border-radius .25s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+#visionScannerContainer.ai-camera-window.focused .ai-camera-controls {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+#visionScannerContainer.ai-camera-window.expanded {
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  background: #050607;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#visionCameraFeed.ai-camera-feed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: grab;
+  touch-action: none;
+}
+
+#visionCameraFeed.ai-camera-feed:active { cursor: grabbing; }
+
+.ai-camera-controls {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 35;
+  display: flex;
+  gap: 10px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-5px);
+  transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
+}
+
+.ai-camera-controls button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .48);
+  border-radius: 50%;
+  background: rgba(20, 24, 28, .46);
+  color: #fff;
+  font: 800 20px/1 system-ui, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+.ai-camera-status {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 12;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .24);
+  border-radius: 14px;
+  background: rgba(12, 15, 19, .66);
+  color: #fff;
+  font: 12px/1.45 system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.ai-camera-status[hidden] { display: none; }
+
+#visionScannerContainer.ai-camera-window.scan-error {
+  border-color: rgba(255, 77, 94, .95);
+  box-shadow: 0 0 0 3px rgba(255, 77, 94, .32), 0 20px 58px rgba(0, 0, 0, .42);
+}
+
+#visionScannerContainer.ai-camera-window:has(.ai-scan-matrix-overlay.active) {
+  border-color: rgba(74, 222, 128, .95);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, .25), 0 20px 58px rgba(0, 0, 0, .42);
+}
+
+#visionScannerContainer .ai-result-overlay {
+  z-index: 40;
+  padding: max(64px, env(safe-area-inset-top)) clamp(16px, 5vw, 40px) max(24px, env(safe-area-inset-bottom));
+}
+
+#visionScannerContainer .ai-result-close {
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+}
+
+@media (max-width: 520px) {
+  #visionScannerContainer.ai-camera-window {
+    width: min(208px, calc(100vw - 28px));
+    height: min(360px, calc(100dvh - 28px));
+  }
+
+  #visionScannerContainer.ai-camera-window.expanded {
+    width: 100vw;
+    height: 100dvh;
+  }
+}

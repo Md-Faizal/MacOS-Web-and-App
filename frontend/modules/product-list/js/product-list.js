@@ -3625,7 +3625,7 @@ export class ProductListApp extends AppWindow {
             <div class="qr-batch-row">
         `;
         for (const batch of variant.batches) {
-          const qrUrl = generator.generateBatchURL(batch.batchNo);
+          const qrUrl = generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id);
           const qrImage = await generator.generateQRCodeDataURL(qrUrl, 'medium');
           
           catalogHtml += `
@@ -3747,7 +3747,7 @@ export class ProductListApp extends AppWindow {
           <div class="qr-batch-row">
       `;
       for (const batch of variant.batches) {
-        const qrUrl = generator.generateBatchURL(batch.batchNo);
+        const qrUrl = generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id);
         const qrImage = await generator.generateQRCodeDataURL(qrUrl, 'medium');
         
         catalogHtml += `
@@ -3806,7 +3806,7 @@ export class ProductListApp extends AppWindow {
     const watermarkHTML = ``;
     const bgPatternSVG = `<div class="qr-neo-grid"></div>`;
 
-    const qrUrl = generator.generateBatchURL(batch.batchNo);
+    const qrUrl = generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id);
     const [qrSmall, qrMedium, qrLarge] = await Promise.all([
       generator.generateQRCodeDataURL(qrUrl, 'small'),
       generator.generateQRCodeDataURL(qrUrl, 'medium'),

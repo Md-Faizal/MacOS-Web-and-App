@@ -248,9 +248,12 @@ class BillEditor {
                 </div>
                 <div class="form-group">
                   <label>Customer Name</label>
-                  <input type="text" id="customerName" list="contactsList" class="form-input" placeholder="Enter customer name">
-                  <datalist id="contactsList"></datalist>
-                  <div id="customerOrdersContainer" style="display: none; margin-top: 5px;"></div>
+                  <div class="bill-customer-actions">
+                    <input type="text" id="customerName" list="billCustomerDatalist" class="form-input" placeholder="Enter customer name">
+                    <datalist id="billCustomerDatalist"></datalist>
+                    <div id="customerOrdersContainer" class="bill-customer-orders" style="display: none;"></div>
+                    <button type="button" id="scanQrProductBtn" class="btn bill-customer-scan-btn">▦ Scan QR</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -337,7 +340,6 @@ class BillEditor {
 
               <div class="form-actions" style="flex-wrap:wrap;">
                 <button id="addProductBtn" class="btn btn-primary">+ Add Product</button>
-                <button type="button" id="scanQrProductBtn" class="btn btn-secondary">▦ Scan Product QR</button>
               </div>
             </div>
 
@@ -538,7 +540,7 @@ class BillEditor {
   }
 
   async populateContactsList() {
-    const datalist = document.getElementById('contactsList');
+    const datalist = document.getElementById('billCustomerDatalist');
     if (!datalist) return;
     datalist.innerHTML = '';
 
@@ -750,7 +752,7 @@ class BillEditor {
     const match = resolveCatalogQr(this.cachedProducts, value);
     if (!match) {
       this.showNotification('QR not recognized in the product catalog. Check the product or batch label.', 'warning');
-      return 'QR not found. Try another product or batch label.';
+      return { success: false, message: 'QR does not match the loaded product catalog. Older batch tags may need reprinting.' };
     }
 
     let selected = match;
@@ -802,6 +804,11 @@ class BillEditor {
     productNameInput.value = product.name || '';
     this.currentProduct = {
       ...product,
+      pack_size_value: selectedVariant?.pack_size_value ?? product.pack_size_value,
+      pack_size_type: selectedVariant?.pack_size_type ?? product.pack_size_type,
+      pack_value: selectedVariant?.pack_size_value ?? product.pack_value,
+      batch_no: selectedBatch?.batch_no ?? selectedBatch?.batchNo ?? product.batch_no,
+      mrp: selectedBatch?.mrp ?? product.mrp,
       variant_id: selectedVariant?.id ?? null,
       batch_id: selectedBatch?.id ?? null
     };
@@ -814,12 +821,54 @@ class BillEditor {
     document.getElementById('productQty').value = '1';
     if (!Number.parseFloat(document.getElementById('productMRP').value)) {
       this.showNotification('Product found, but it has no price. Review the item before adding it.', 'warning');
-      return { message: 'Product found. Enter a price and add it from the bill form.', close: true };
+      return { success: false, message: 'Product found, but its catalog entry has no MRP. Add the price in the bill form.' };
     }
+
+    const batchNo = selectedBatch?.batch_no ?? selectedBatch?.batchNo ?? '';
+    const sameLine = line => {
+      const productMatches = line.product_id != null && product.id != null
+        ? String(line.product_id) === String(product.id)
+        : String(line.name || '').trim().toLowerCase() === String(product.name || '').trim().toLowerCase();
+      const lineVariantId = line.variant_id == null || line.variant_id === '' ? null : String(line.variant_id);
+      const scanVariantId = selectedVariant?.id == null ? null : String(selectedVariant.id);
+      const variantMatches = !lineVariantId || !scanVariantId || lineVariantId === scanVariantId;
+      const lineBatchId = line.batch_id == null || line.batch_id === '' ? null : String(line.batch_id);
+      const scanBatchId = selectedBatch?.id == null ? null : String(selectedBatch.id);
+      const batchMatches = lineBatchId && scanBatchId
+        ? lineBatchId === scanBatchId
+        : String(line.batch || '').trim().toLowerCase() === String(batchNo).trim().toLowerCase();
+      return productMatches && variantMatches && batchMatches;
+    };
+    const previousLine = this.currentBillProducts.find(sameLine) || null;
+    const previousQty = previousLine ? Number(previousLine.qty || 0) : 0;
+    const previousFree = previousLine?.free;
 
     await this.addProductToBill(null, false, true);
     this.showNotification(`✓ Scanned ${product.name}`, 'success');
-    return `Added ${product.name}. Scan another label to add more.`;
+    this.clearProductForm();
+    const addedLine = previousLine || this.currentBillProducts.find(sameLine);
+    if (!addedLine || (previousLine && Number(addedLine.qty || 0) === previousQty)) {
+      return { success: false, message: 'The item was not added. Check the product price and try again.' };
+    }
+
+    return {
+      success: true,
+      label: `${product.name}${batchNo ? ` · ${batchNo}` : ''}`,
+      message: `Added ${product.name}. Scan another label or undo this item.`,
+      undo: () => {
+        const currentIndex = this.currentBillProducts.indexOf(addedLine);
+        if (currentIndex < 0) return false;
+        if (previousLine) {
+          addedLine.qty = previousQty;
+          addedLine.free = previousFree;
+        } else {
+          this.currentBillProducts.splice(currentIndex, 1);
+        }
+        this.renderProductList();
+        this.updateBillSummary();
+        return true;
+      }
+    };
   }
 
   calculateProductPriceRange(product) {
@@ -1501,8 +1550,8 @@ class BillEditor {
           
           if (orders.length > 0) {
             container.innerHTML = `
-              <button type="button" id="viewCustomerOrdersBtn" class="view-orders-badge" style="width: 100%; margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 12px;">
-                <span style="font-size: 18px;">📋</span> View ${orders.length} Orders for this Customer
+              <button type="button" id="viewCustomerOrdersBtn" class="view-orders-badge">
+                <span style="font-size: 18px;">📋</span> View ${orders.length} Orders
               </button>
             `;
             container.style.display = 'block';

@@ -1,7 +1,7 @@
 /**
  * AI Vision Service
  * Provides a global API for other apps to request camera scans and AI detection.
- * Uses a full-screen overlay modal as requested by the user.
+ * Uses a draggable camera preview with automatic catalog matching.
  */
 class AIVisionService {
   constructor() {
@@ -10,6 +10,13 @@ class AIVisionService {
     this.autoCommitEnabled = localStorage.getItem('ai_vision_autocommit_enabled') === 'true';
     this.currentResolve = null;
     this.currentReject = null;
+    this.autoScanActive = false;
+    this.autoScanTimer = null;
+    this.scanStatusTimer = null;
+    this.scanAbortController = null;
+    this.isScanning = false;
+    this.expanded = false;
+    this.previousBodyOverflow = '';
   }
 
   /**
@@ -19,6 +26,11 @@ class AIVisionService {
    */
   requestScan(options = {}) {
     return new Promise((resolve, reject) => {
+      if (document.getElementById('visionAssistModalOverlay')) {
+        const previousReject = this.currentReject;
+        this.close();
+        previousReject?.(new Error('Scan replaced by a newer request'));
+      }
       this.mode = options.mode || 'pos';
       this.currentResolve = resolve;
       this.currentReject = reject;
@@ -53,67 +65,30 @@ class AIVisionService {
   createModalDOM() {
     const overlay = document.createElement('div');
     overlay.id = 'visionAssistModalOverlay';
-    // Using a full screen overlay modal as requested by user
-    overlay.style.cssText = `
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.9); backdrop-filter: blur(8px);
-      z-index: 2147483647; display: flex; align-items: center; justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
-    `;
+    overlay.className = 'ai-camera-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'false');
+    overlay.setAttribute('aria-label', 'AI product label scanner');
 
     overlay.innerHTML = `
-      <div style="position: relative; width: 100%; height: 100%; max-width: 600px; max-height: 850px; background: #000; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
-        
-        <!-- Header Controls -->
-        <div style="position: absolute; top: 0; left: 0; right: 0; padding: 16px 24px; z-index: 15; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px;">
-              <input type="checkbox" id="aiVisionAutoCommitCheck" ${this.autoCommitEnabled ? 'checked' : ''} style="cursor: pointer;" />
-              <span>Auto-Apply (>90%)</span>
-            </label>
-          </div>
-          <button id="closeVisionModalBtn" style="background: rgba(0,0,0,0.5); border: none; color: #fff; font-size: 16px; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">✕</button>
-        </div>
-
-        <!-- Scanner Container -->
-        <div class="ai-scanner-container" id="visionScannerContainer" style="flex: 1;">
-          <video id="visionCameraFeed" class="ai-camera-feed" autoplay playsinline muted></video>
+      <div class="ai-camera-window" id="visionScannerContainer">
+          <video id="visionCameraFeed" class="ai-camera-feed" autoplay playsinline muted aria-label="Camera preview"></video>
           <canvas id="visionSnapshotCanvas" style="display: none;"></canvas>
-          
-          <!-- Focus Ring -->
-          <div class="ai-focus-ring" id="visionFocusRing"></div>
-
-          <!-- Scanning matrix animation (Hidden until scan triggers) -->
+          <div class="ai-camera-status" id="visionCameraStatus" role="status" aria-live="polite" hidden></div>
           <div class="ai-scan-matrix-overlay" id="visionScanMatrixOverlay"></div>
-          
-          <!-- Sweeping laser line -->
           <div class="ai-scanner-sweeper" id="visionScannerSweeper"></div>
-
-          <!-- Floating Controls -->
-          <div class="ai-scanner-controls" style="top: 80px;">
-            <button class="ai-float-btn" id="visionBtnFlashlight" title="Toggle Flashlight">🔦</button>
-            <button class="ai-float-btn" id="visionBtnZoom" title="Toggle Zoom">🔍</button>
+          <div class="ai-camera-controls">
+            <button type="button" id="expandVisionModalBtn" aria-label="Expand camera" title="Expand">⤢</button>
+            <button type="button" id="closeVisionModalBtn" aria-label="Close camera" title="Close">×</button>
           </div>
-
-          <!-- Scan Trigger Button -->
-          <div class="ai-scan-trigger-wrapper">
-            <button class="ai-scan-trigger" id="captureVisionScanBtn" title="Tap to Scan">
-              <div class="ai-scan-trigger-inner"></div>
-            </button>
-          </div>
-
-          <!-- Result Overlay -->
           <div class="ai-result-overlay" id="visionResultOverlay" style="background: rgba(30,30,30,0.95); backdrop-filter: blur(10px);">
             <div class="ai-result-close" id="visionResultCloseBtn">✕</div>
             <div class="ai-result-header" style="color: #fff;">
               <span id="visionResultIcon">✨</span> AI Analysis
             </div>
             <div id="visionAnalysisState" style="color: #fff; font-size: 14px; line-height: 1.5; padding-bottom: 30px;">
-              <!-- Results rendered here -->
             </div>
           </div>
-        </div>
-
       </div>
     `;
 
@@ -123,125 +98,237 @@ class AIVisionService {
   bindEvents() {
     const closeBtn = document.getElementById('closeVisionModalBtn');
     const overlay = document.getElementById('visionAssistModalOverlay');
-    const captureBtn = document.getElementById('captureVisionScanBtn');
-    const autoCommitCheck = document.getElementById('aiVisionAutoCommitCheck');
     const video = document.getElementById('visionCameraFeed');
-    const focusRing = document.getElementById('visionFocusRing');
-    const btnFlashlight = document.getElementById('visionBtnFlashlight');
-    const btnZoom = document.getElementById('visionBtnZoom');
+    const cameraWindow = document.getElementById('visionScannerContainer');
+    const expandBtn = document.getElementById('expandVisionModalBtn');
+    const status = document.getElementById('visionCameraStatus');
     const resultCloseBtn = document.getElementById('visionResultCloseBtn');
 
     closeBtn?.addEventListener('click', () => {
+      const reject = this.currentReject;
+      this.currentReject = null;
+      this.currentResolve = null;
       this.close();
-      if (this.currentReject) this.currentReject(new Error('User cancelled scan'));
-    });
-    
-    autoCommitCheck?.addEventListener('change', (e) => {
-      this.autoCommitEnabled = e.target.checked;
-      localStorage.setItem('ai_vision_autocommit_enabled', this.autoCommitEnabled);
+      reject?.(new Error('User cancelled scan'));
     });
 
-    overlay?.addEventListener('click', (e) => {
-      if (e.target.id === 'visionAssistModalOverlay') {
-        this.close();
-        if (this.currentReject) this.currentReject(new Error('User cancelled scan'));
-      }
+    expandBtn?.addEventListener('click', () => {
+      this.setExpanded(!this.expanded);
     });
 
-    // Click to focus
-    if (video && focusRing) {
-      video.addEventListener('click', (e) => {
-        if (this.isScanning) return;
-        const rect = video.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
-        focusRing.style.left = `${x}px`;
-        focusRing.style.top = `${y}px`;
-        focusRing.classList.remove('fade-out');
-        focusRing.classList.add('active');
-        
-        setTimeout(() => {
-          focusRing.classList.remove('active');
-          focusRing.classList.add('fade-out');
-        }, 800);
-      });
-    }
+    const cancelScan = () => {
+      const reject = this.currentReject;
+      this.currentReject = null;
+      this.currentResolve = null;
+      this.close();
+      reject?.(new Error('User cancelled scan'));
+    };
+    overlay?.addEventListener('click', event => {
+      if (this.expanded && event.target === overlay) cancelScan();
+    });
+    overlay?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') cancelScan();
+    });
 
-    // Flashlight Toggle
-    if (btnFlashlight) {
-      btnFlashlight.addEventListener('click', async () => {
-        if (!this.track) return;
-        try {
-          const capabilities = this.track.getCapabilities();
-          if (capabilities.torch) {
-            this.torchOn = !this.torchOn;
-            await this.track.applyConstraints({
-              advanced: [{ torch: this.torchOn }]
-            });
-            btnFlashlight.classList.toggle('active', this.torchOn);
-          }
-        } catch (err) {}
-      });
-    }
-
-    // Zoom Toggle
-    let zoomLevel = 1;
-    if (btnZoom) {
-      btnZoom.addEventListener('click', async () => {
-        if (!this.track) return;
-        try {
-          const capabilities = this.track.getCapabilities();
-          if (capabilities.zoom) {
-            zoomLevel = zoomLevel >= capabilities.zoom.max ? capabilities.zoom.min : zoomLevel + 1;
-            await this.track.applyConstraints({
-              advanced: [{ zoom: zoomLevel }]
-            });
-            btnZoom.classList.toggle('active', zoomLevel > capabilities.zoom.min);
-          } else {
-            zoomLevel = zoomLevel > 1 ? 1 : 1.5;
-            if (video) video.style.transform = `scale(${zoomLevel})`;
-            btnZoom.classList.toggle('active', zoomLevel > 1);
-          }
-        } catch (err) {
-          zoomLevel = zoomLevel > 1 ? 1 : 1.5;
-          if (video) video.style.transform = `scale(${zoomLevel})`;
-          btnZoom.classList.toggle('active', zoomLevel > 1);
+    if (video && cameraWindow) {
+      video.addEventListener('click', () => {
+        if (video.dataset.dragged) {
+          delete video.dataset.dragged;
+          return;
         }
+        if (this.isScanning) return;
+        if (status && !status.hidden && status.dataset.retry === 'true') {
+          cameraWindow.classList.add('focused');
+          this.startCamera();
+          return;
+        }
+        cameraWindow.classList.toggle('focused');
       });
-    }
+      video.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        cameraWindow.classList.toggle('focused');
+      });
 
-    captureBtn?.addEventListener('click', () => {
-      if (this.isScanning) return;
-      this.captureAndAnalyze();
-    });
+      let dragOrigin = null;
+      let dragged = false;
+      video.addEventListener('pointerdown', event => {
+        if (this.expanded || event.button > 0) return;
+        const bounds = cameraWindow.getBoundingClientRect();
+        dragOrigin = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          offsetX: event.clientX - bounds.left,
+          offsetY: event.clientY - bounds.top
+        };
+        dragged = false;
+        video.setPointerCapture(event.pointerId);
+        cameraWindow.style.left = `${bounds.left}px`;
+        cameraWindow.style.top = `${bounds.top}px`;
+        cameraWindow.style.right = 'auto';
+        cameraWindow.style.bottom = 'auto';
+      });
+      video.addEventListener('pointermove', event => {
+        if (!dragOrigin || event.pointerId !== dragOrigin.pointerId) return;
+        if (Math.abs(event.clientX - dragOrigin.startX) > 6 || Math.abs(event.clientY - dragOrigin.startY) > 6) dragged = true;
+        if (!dragged) return;
+        const maxLeft = Math.max(0, window.innerWidth - cameraWindow.offsetWidth);
+        const maxTop = Math.max(0, window.innerHeight - cameraWindow.offsetHeight);
+        cameraWindow.style.left = `${Math.max(0, Math.min(maxLeft, event.clientX - dragOrigin.offsetX))}px`;
+        cameraWindow.style.top = `${Math.max(0, Math.min(maxTop, event.clientY - dragOrigin.offsetY))}px`;
+      });
+      const stopDragging = event => {
+        if (!dragOrigin || event.pointerId !== dragOrigin.pointerId) return;
+        dragOrigin = null;
+        if (dragged) {
+          video.dataset.dragged = 'true';
+          setTimeout(() => delete video.dataset.dragged, 0);
+        }
+      };
+      video.addEventListener('pointerup', stopDragging);
+      video.addEventListener('pointercancel', stopDragging);
+    }
 
     resultCloseBtn?.addEventListener('click', () => {
       const resultOverlay = document.getElementById('visionResultOverlay');
       if (resultOverlay) resultOverlay.classList.remove('active');
       if (video) video.classList.remove('blur');
+      this.autoScanActive = true;
+      this.scheduleAutoScan(3000);
     });
   }
 
+  setExpanded(expanded) {
+    const overlay = document.getElementById('visionAssistModalOverlay');
+    const cameraWindow = document.getElementById('visionScannerContainer');
+    const expandBtn = document.getElementById('expandVisionModalBtn');
+    if (!overlay || !cameraWindow || !expandBtn || this.expanded === expanded) return;
+
+    this.expanded = expanded;
+    if (expanded) {
+      const bounds = cameraWindow.getBoundingClientRect();
+      cameraWindow.dataset.restoreLeft = `${bounds.left}px`;
+      cameraWindow.dataset.restoreTop = `${bounds.top}px`;
+      cameraWindow.style.left = '';
+      cameraWindow.style.top = '';
+      cameraWindow.style.right = '';
+      cameraWindow.style.bottom = '';
+      this.previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      overlay.classList.add('expanded');
+      cameraWindow.classList.add('expanded');
+      overlay.setAttribute('aria-modal', 'true');
+      expandBtn.textContent = '⤡';
+      expandBtn.setAttribute('aria-label', 'Minimize camera');
+      expandBtn.title = 'Minimize';
+    } else {
+      overlay.classList.remove('expanded');
+      cameraWindow.classList.remove('expanded');
+      overlay.setAttribute('aria-modal', 'false');
+      document.body.style.overflow = this.previousBodyOverflow;
+      cameraWindow.style.left = cameraWindow.dataset.restoreLeft;
+      cameraWindow.style.top = cameraWindow.dataset.restoreTop;
+      cameraWindow.style.right = 'auto';
+      cameraWindow.style.bottom = 'auto';
+      expandBtn.textContent = '⤢';
+      expandBtn.setAttribute('aria-label', 'Expand camera');
+      expandBtn.title = 'Expand';
+    }
+  }
+
+  scheduleAutoScan(delay = 3000) {
+    clearTimeout(this.autoScanTimer);
+    if (!this.autoScanActive || this.isScanning) return;
+    this.autoScanTimer = setTimeout(() => {
+      this.autoScanTimer = null;
+      this.captureAndAnalyze();
+    }, delay);
+  }
+
+  showCameraStatus(text, { retry = false, error = false, duration = 1800 } = {}) {
+    const status = document.getElementById('visionCameraStatus');
+    const cameraWindow = document.getElementById('visionScannerContainer');
+    if (!status || !cameraWindow) return;
+    clearTimeout(this.scanStatusTimer);
+    status.textContent = text;
+    status.dataset.retry = String(retry);
+    status.hidden = false;
+    cameraWindow.classList.toggle('scan-error', error);
+    if (!retry && duration > 0) {
+      this.scanStatusTimer = setTimeout(() => {
+        status.hidden = true;
+        cameraWindow.classList.remove('scan-error');
+      }, duration);
+    }
+  }
+
   async startCamera() {
+    const status = document.getElementById('visionCameraStatus');
+    this.autoScanActive = false;
+    clearTimeout(this.autoScanTimer);
+    if (status) status.hidden = true;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException('Camera access requires HTTPS or localhost.', 'SecurityError');
+      }
+      this.stream?.getTracks().forEach(track => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
       });
-      const videoEl = document.getElementById('visionCameraFeed');
-      if (videoEl) {
-        videoEl.srcObject = this.stream;
+      if (!document.getElementById('visionAssistModalOverlay')) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
       }
-      if (this.stream.getVideoTracks().length > 0) {
-        this.track = this.stream.getVideoTracks()[0];
+      this.stream = stream;
+      const video = document.getElementById('visionCameraFeed');
+      if (!video) throw new Error('The camera preview is unavailable.');
+      video.srcObject = stream;
+      this.track = stream.getVideoTracks()[0] || null;
+      await new Promise((resolve, reject) => {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          resolve();
+          return;
+        }
+        const onLoaded = () => {
+          video.removeEventListener('error', onError);
+          resolve();
+        };
+        const onError = () => {
+          video.removeEventListener('loadeddata', onLoaded);
+          reject(new Error('The camera preview could not be started.'));
+        };
+        video.addEventListener('loadeddata', onLoaded, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+      if (!this.stream || !document.getElementById('visionAssistModalOverlay')) {
+        stream.getTracks().forEach(track => track.stop());
+        this.stream = null;
+        return;
       }
-    } catch (err) {
-      console.error('[Vision Camera Error]:', err);
-      // Let it stay black screen with controls gracefully
+      this.autoScanActive = true;
+      this.showCameraStatus('Camera ready. Hold a product label in view.', { duration: 2200 });
+      this.scheduleAutoScan(600);
+    } catch (error) {
+      console.error('[Vision Camera Error]:', error);
+      this.stream?.getTracks().forEach(track => track.stop());
+      this.stream = null;
+      this.track = null;
+      const retry = window.isSecureContext && Boolean(navigator.mediaDevices?.getUserMedia);
+      const message = !window.isSecureContext
+        ? 'Camera access requires HTTPS or localhost.'
+        : error?.name === 'NotAllowedError' || error?.name === 'SecurityError'
+          ? 'Camera access is blocked. Allow camera access for this site, then tap here to retry.'
+        : error?.name === 'NotFoundError'
+          ? 'No camera was found. Connect a camera, then tap here to retry.'
+          : error?.message || 'Unable to start the camera. Tap here to retry.';
+      this.showCameraStatus(message, { retry, error: true, duration: 0 });
     }
   }
 
   async captureAndAnalyze() {
+    if (this.isScanning || !this.autoScanActive) return;
     this.isScanning = true;
     const video = document.getElementById('visionCameraFeed');
     const canvas = document.getElementById('visionSnapshotCanvas');
@@ -250,85 +337,80 @@ class AIVisionService {
     const sweeper = document.getElementById('visionScannerSweeper');
     const resultOverlay = document.getElementById('visionResultOverlay');
 
-    if (!video || !canvas || !stateEl) {
+    if (!video || !canvas || !stateEl || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       this.isScanning = false;
+      this.scheduleAutoScan();
       return;
     }
 
-    // Trigger animations
     video.classList.add('blur');
     matrixOverlay.classList.add('active');
     sweeper.classList.add('active');
     matrixOverlay.innerHTML = '';
-
     const lines = [
-      "INITIALIZING VISION NEURAL NET...",
-      "CAPTURING HIGH-RES FRAME...",
-      "EXTRACTING TEXT (OCR)...",
-      "SENDING TO GEMINI 2.5 FLASH..."
+      'CAPTURING PRODUCT LABEL…',
+      'READING PRODUCT DETAILS…',
+      'CHECKING CATALOG MATCH…'
     ];
-
-    for (let i = 0; i < lines.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      const el = document.createElement('div');
-      el.className = 'ai-scan-line';
-      el.textContent = `> ${lines[i]}`;
-      matrixOverlay.appendChild(el);
-    }
-
-    const width = 800;
-    const scale = Math.min(1, width / (video.videoWidth || 800));
-    const finalWidth = (video.videoWidth || 800) * scale;
-    const finalHeight = (video.videoHeight || 600) * scale;
-
-    canvas.width = finalWidth;
-    canvas.height = finalHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, finalWidth, finalHeight);
-
-    const base64Image = canvas.toDataURL('image/jpeg', 0.8);
-
+    let matched = false;
     try {
+      for (const line of lines) {
+        await new Promise(resolve => setTimeout(resolve, 180));
+        if (!this.autoScanActive || !video.isConnected) return;
+        const el = document.createElement('div');
+        el.className = 'ai-scan-line';
+        el.textContent = line;
+        matrixOverlay.appendChild(el);
+      }
+
+      const width = 800;
+      const scale = Math.min(1, width / (video.videoWidth || 800));
+      const finalWidth = (video.videoWidth || 800) * scale;
+      const finalHeight = (video.videoHeight || 600) * scale;
+      if (!this.autoScanActive || !video.isConnected) return;
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Unable to capture the camera frame.');
+      context.drawImage(video, 0, 0, finalWidth, finalHeight);
+      const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+      this.scanAbortController = new AbortController();
       const response = await fetch('/api/ai/vision/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: base64Image,
-          mode: this.mode
-        })
+        body: JSON.stringify({ image: base64Image, mode: this.mode }),
+        signal: this.scanAbortController.signal
       });
-
+      this.scanAbortController = null;
+      if (!response.ok) throw new Error(`Vision request failed (${response.status}).`);
       const resData = await response.json();
-      
-      // Add success lines
-      const el1 = document.createElement('div'); el1.className = 'ai-scan-line'; el1.textContent = `> CROSS-REFERENCING KNOWLEDGE BASE...`; matrixOverlay.appendChild(el1);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const el2 = document.createElement('div'); el2.className = 'ai-scan-line'; el2.textContent = `> PROCESSING COMPLETE.`; matrixOverlay.appendChild(el2);
-      await new Promise(resolve => setTimeout(resolve, 400));
-      
+      if (!resData.success || !resData.data) throw new Error(resData.error || 'Failed to identify product.');
+
+      matched = Boolean(resData.data.match_found);
       matrixOverlay.classList.remove('active');
       sweeper.classList.remove('active');
-
-      if (resData.success && resData.data) {
+      if (matched) {
+        this.autoScanActive = false;
+        document.getElementById('visionScannerContainer')?.classList.add('focused');
+        this.setExpanded(true);
         this.renderResult(resData.data, base64Image);
         resultOverlay.classList.add('active');
       } else {
-        throw new Error(resData.error || 'Failed to identify product');
+        this.showCameraStatus('No catalog match yet. Keeping the label in view…', { duration: 2200 });
       }
-    } catch (err) {
-      console.error('[Vision Scan Error]:', err);
+    } catch (error) {
+      if (error?.name !== 'AbortError') console.error('[Vision Scan Error]:', error);
       matrixOverlay.classList.remove('active');
       sweeper.classList.remove('active');
-      
-      stateEl.innerHTML = `
-        <div style="padding: 20px; color: #ff6b6b; font-size: 13px; background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); border-radius: 8px;">
-          ❌ Vision Recognition Error: ${err.message}
-        </div>
-      `;
-      resultOverlay.classList.add('active');
+      if (error?.name !== 'AbortError') {
+        this.showCameraStatus('Could not read that frame. Retrying…', { error: true, duration: 2200 });
+      }
+    } finally {
+      this.scanAbortController = null;
+      video.classList.remove('blur');
+      this.isScanning = false;
+      if (!matched && this.autoScanActive) this.scheduleAutoScan(3000);
     }
-    
-    this.isScanning = false;
   }
 
   renderResult(data, base64Image) {
@@ -444,20 +526,31 @@ class AIVisionService {
   }
 
   handleApply(data) {
-    if (this.currentResolve) {
-      this.currentResolve(data);
-    }
+    const resolve = this.currentResolve;
+    this.currentResolve = null;
+    this.currentReject = null;
     this.close();
+    resolve?.(data);
     if (typeof window.showNotification === 'function') {
       window.showNotification(`⚡ Applied: ${data.product_name}`, 'success');
     }
   }
 
   close() {
+    const wasExpanded = this.expanded;
+    this.autoScanActive = false;
+    this.expanded = false;
+    clearTimeout(this.autoScanTimer);
+    clearTimeout(this.scanStatusTimer);
+    this.scanAbortController?.abort();
+    this.scanAbortController = null;
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
       this.stream = null;
     }
+    this.track = null;
+    if (wasExpanded) document.body.style.overflow = this.previousBodyOverflow;
+    this.previousBodyOverflow = '';
     this.removeExisting();
   }
 }

@@ -1,4 +1,5 @@
 let zxingLoadPromise;
+let activeScannerClose = null;
 
 function loadZXingBrowser() {
   if (window.ZXingBrowser?.BrowserMultiFormatReader) {
@@ -29,57 +30,653 @@ function loadZXingBrowser() {
   return zxingLoadPromise;
 }
 
+const scannerStyles = `
+  .qr-scanner-window {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2147483644;
+    width: min(340px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #101214;
+    color: #fff;
+    border: 2px solid #667085;
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .5);
+    font: 13px/1.4 system-ui, sans-serif;
+    transition: width .2s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .qr-scanner-window.qr-scanner-expanded {
+    width: min(540px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+  }
+  .qr-scanner-window.qr-scan-success {
+    border-color: #31d17c;
+    box-shadow: 0 0 0 3px rgba(49, 209, 124, .28), 0 16px 48px rgba(0, 0, 0, .5);
+  }
+  .qr-scanner-window.qr-scan-failure {
+    border-color: #ff4d5e;
+    box-shadow: 0 0 0 3px rgba(255, 77, 94, .3), 0 16px 48px rgba(0, 0, 0, .5);
+  }
+  .qr-scanner-header {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px 8px 14px;
+    background: #1c2024;
+    border-bottom: 1px solid #353b41;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+  }
+  .qr-scanner-header:active { cursor: grabbing; }
+  .qr-scanner-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .qr-scanner-window button {
+    min-width: 36px;
+    min-height: 36px;
+    border: 1px solid #59616a;
+    border-radius: 9px;
+    background: #292f35;
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .qr-scanner-window button:hover { background: #394149; }
+  .qr-scanner-close { font-size: 20px !important; }
+  .qr-scanner-video-wrap {
+    position: relative;
+    flex: 0 0 auto;
+    overflow: hidden;
+    background: #050606;
+    aspect-ratio: 16 / 9;
+  }
+  .qr-scanner-video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .qr-scanner-frame {
+    position: absolute;
+    inset: 16% 22%;
+    border: 2px solid rgba(74, 222, 128, .95);
+    border-radius: 14px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .13);
+    pointer-events: none;
+  }
+  .qr-scanner-status {
+    margin: 0;
+    padding: 8px 12px;
+    min-height: 36px;
+    color: #d2d7dc;
+    font-size: 12px;
+  }
+  .qr-scanner-retry {
+    display: none;
+    margin: 0 12px 10px;
+    padding: 8px 12px;
+    background: #ffea00 !important;
+    color: #111 !important;
+    border-color: #ffea00 !important;
+  }
+  .qr-scanner-history {
+    display: none;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    border-top: 1px solid #353b41;
+  }
+  .qr-scanner-expanded .qr-scanner-history { display: block; }
+  .qr-scanner-history-heading {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 10px 12px;
+    background: #171a1d;
+    color: #bdc5cc;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .qr-scan-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid #282d32;
+  }
+  .qr-scan-entry-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 650;
+  }
+  .qr-scan-undone { color: #aab2ba; text-decoration: line-through; }
+  .qr-scan-undo {
+    min-width: auto !important;
+    min-height: 32px !important;
+    padding: 4px 9px;
+    color: #111 !important;
+    background: #ffea00 !important;
+    border-color: #ffea00 !important;
+  }
+  .qr-scan-toast {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: 50%;
+    z-index: 2147483645;
+    width: min(430px, calc(100vw - 24px));
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border: 2px solid #31d17c;
+    border-radius: 12px;
+    background: #101a14;
+    color: #fff;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .4);
+    transform: translate(-50%, calc(-100% - 18px));
+    opacity: 0;
+    transition: transform .2s ease, opacity .2s ease;
+  }
+  .qr-scan-toast-visible { transform: translate(-50%, 0); opacity: 1; }
+  .qr-scan-toast-failure {
+    border-color: #ff4d5e;
+    background: #241114;
+  }
+  .qr-scan-toast-message { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+  .qr-scan-toast-undo {
+    min-height: 34px;
+    padding: 4px 10px;
+    border: 1px solid #ffea00;
+    border-radius: 8px;
+    background: #ffea00;
+    color: #111;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  @media (max-width: 520px) {
+    .qr-scanner-window {
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      width: min(300px, calc(100vw - 20px));
+    }
+    .qr-scanner-window.qr-scanner-expanded {
+      width: calc(100vw - 20px);
+    }
+  }
+  .qr-scanner-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483642;
+    background: rgba(7, 11, 15, .42);
+    backdrop-filter: blur(18px) saturate(125%);
+    -webkit-backdrop-filter: blur(18px) saturate(125%);
+  }
+  .qr-scanner-window {
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    width: min(228px, calc(100vw - 28px));
+    height: min(390px, calc(100dvh - 28px));
+    max-height: none;
+    display: block;
+    padding: 5px;
+    border: 1px solid rgba(255, 255, 255, .32);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, .12);
+    box-shadow: 0 20px 58px rgba(0, 0, 0, .42), inset 0 1px 0 rgba(255, 255, 255, .35);
+    backdrop-filter: blur(30px) saturate(150%);
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+    transition: width .25s ease, height .25s ease, border-radius .25s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .qr-scanner-window.qr-scanner-expanded {
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    border-radius: 0;
+    background: #050607;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .qr-scanner-window.qr-scan-success {
+    border-color: rgba(49, 209, 124, .92);
+    box-shadow: 0 0 0 3px rgba(49, 209, 124, .32), 0 20px 58px rgba(0, 0, 0, .42);
+  }
+  .qr-scanner-window.qr-scan-failure {
+    border-color: rgba(255, 77, 94, .95);
+    box-shadow: 0 0 0 3px rgba(255, 77, 94, .34), 0 20px 58px rgba(0, 0, 0, .42);
+  }
+  .qr-scanner-header,
+  .qr-scanner-status,
+  .qr-scanner-retry {
+    display: none !important;
+  }
+  .qr-scanner-video-wrap {
+    position: absolute;
+    inset: 5px;
+    overflow: hidden;
+    border-radius: 23px;
+    background: #050607;
+    aspect-ratio: auto;
+    touch-action: none;
+    cursor: grab;
+  }
+  .qr-scanner-expanded .qr-scanner-video-wrap {
+    inset: 0;
+    border-radius: 0;
+  }
+  .qr-scanner-video-wrap:active { cursor: grabbing; }
+  .qr-scanner-controls {
+    position: absolute;
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 2;
+    display: flex;
+    gap: 10px;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-5px);
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .qr-scanner-focused .qr-scanner-controls {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .qr-scanner-controls button {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, .48);
+    border-radius: 50%;
+    background: rgba(20, 24, 28, .46);
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+  }
+  .qr-scanner-message {
+    position: absolute;
+    inset: 50% 16px auto;
+    z-index: 1;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 14px;
+    background: rgba(10, 12, 15, .62);
+    color: #fff;
+    font: 13px/1.45 system-ui, sans-serif;
+    text-align: center;
+    transform: translateY(-50%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .qr-scanner-message[hidden] { display: none; }
+  .qr-scanner-history {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 1;
+    display: none;
+    flex-direction: column;
+    max-height: min(36dvh, 320px);
+    overflow: hidden;
+    border-top: 1px solid rgba(255, 255, 255, .25);
+    background: rgba(9, 13, 17, .58);
+    color: #fff;
+    backdrop-filter: blur(22px) saturate(135%);
+    -webkit-backdrop-filter: blur(22px) saturate(135%);
+  }
+  .qr-scanner-expanded .qr-scanner-history { display: flex; }
+  .qr-scanner-history-heading {
+    margin: 0;
+    padding: 10px 14px;
+    color: rgba(255, 255, 255, .72);
+    font: 700 11px/1.3 system-ui, sans-serif;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .qr-scan-entries {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .qr-scan-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-top: 1px solid rgba(255, 255, 255, .1);
+    font: 13px/1.35 system-ui, sans-serif;
+  }
+  .qr-scan-entry-name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .qr-scan-undone { color: rgba(255, 255, 255, .48); text-decoration: line-through; }
+  .qr-scan-undo {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 32px !important;
+    padding: 4px 10px !important;
+    border-radius: 9px !important;
+    background: rgba(255, 255, 255, .17) !important;
+    border-color: rgba(255, 255, 255, .3) !important;
+    color: #fff !important;
+    font: 700 12px/1 system-ui, sans-serif !important;
+  }
+  .qr-scan-undone-label {
+    color: rgba(255, 255, 255, .58);
+    font: 11px/1 system-ui, sans-serif;
+  }
+  @media (max-width: 520px) {
+    .qr-scanner-window {
+      width: min(208px, calc(100vw - 28px));
+      height: min(360px, calc(100dvh - 28px));
+    }
+  }
+`;
+
+function ensureScannerStyles() {
+  if (document.getElementById('qr-scanner-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'qr-scanner-styles';
+  style.textContent = scannerStyles;
+  document.head.appendChild(style);
+}
+
+function playScanTone(success) {
+  const AudioContextType = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextType) return;
+
+  try {
+    const context = new AudioContextType();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = success ? 880 : 220;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + (success ? 0.15 : 0.24));
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + (success ? 0.16 : 0.25));
+    oscillator.onended = () => context.close();
+  } catch (error) {
+    console.warn('[QR Scanner] Unable to play scan tone:', error);
+  }
+}
+
 export function openQrScanner({ onScan, title = 'Scan product QR' }) {
   if (typeof onScan !== 'function') {
     throw new TypeError('QR scanner requires an onScan callback.');
   }
 
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483644;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif;';
-  overlay.innerHTML = `
-    <section role="dialog" aria-modal="true" aria-label="${title}" style="position:relative;width:min(560px,100%);background:#fff;color:#111;border:3px solid #000;border-radius:12px;box-shadow:8px 8px 0 #000;padding:20px;">
-      <button type="button" aria-label="Close scanner" data-qr-close style="position:absolute;right:12px;top:10px;width:36px;height:36px;border:2px solid #000;background:#ffea00;font-size:22px;font-weight:800;cursor:pointer;">×</button>
-      <h2 style="margin:0 44px 8px 0;font-size:18px;font-weight:900;">${title}</h2>
-      <p style="margin:0 0 14px;color:#555;font-size:13px;">Point the rear camera at a product or batch QR label. Each scan adds one item; move the label out of frame and scan again to increase quantity.</p>
-      <div style="position:relative;overflow:hidden;background:#111;border:2px solid #000;border-radius:8px;min-height:220px;">
-        <video data-qr-video autoplay playsinline muted style="display:block;width:100%;max-height:60vh;object-fit:cover;"></video>
-        <div style="pointer-events:none;position:absolute;inset:18% 14%;border:2px solid #ffea00;box-shadow:0 0 0 999px rgba(0,0,0,.16);"></div>
-      </div>
-      <p data-qr-status role="status" aria-live="polite" style="min-height:20px;margin:12px 0 0;font-size:13px;font-weight:700;">Starting camera…</p>
-      <button type="button" data-qr-retry style="display:none;margin-top:8px;padding:9px 12px;border:2px solid #000;background:#ffea00;font-weight:800;cursor:pointer;">Retry camera access</button>
-    </section>
-  `;
-  document.body.appendChild(overlay);
+  ensureScannerStyles();
+  activeScannerClose?.();
+  document.getElementById('qr-scan-toast')?.remove();
 
-  const video = overlay.querySelector('[data-qr-video]');
-  const status = overlay.querySelector('[data-qr-status]');
-  const closeButton = overlay.querySelector('[data-qr-close]');
-  const retryButton = overlay.querySelector('[data-qr-retry]');
+  const popup = document.createElement('section');
+  popup.id = 'qr-scanner-window';
+  popup.className = 'qr-scanner-window';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-modal', 'false');
+  popup.setAttribute('aria-label', title);
+  popup.innerHTML = `
+    <div class="qr-scanner-video-wrap">
+      <video class="qr-scanner-video" data-qr-video autoplay playsinline muted></video>
+      <p class="qr-scanner-message" data-qr-message role="status" aria-live="polite" hidden></p>
+    </div>
+    <section class="qr-scanner-history" aria-label="Scanned items">
+      <h2 class="qr-scanner-history-heading">Scanned items</h2>
+      <div class="qr-scan-entries" data-qr-entries></div>
+    </section>
+    <div class="qr-scanner-controls">
+      <button type="button" data-qr-expand aria-label="Expand scanner" title="Expand">⤢</button>
+      <button type="button" data-qr-close aria-label="Close QR scanner" title="Close">×</button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+
+  const video = popup.querySelector('[data-qr-video]');
+  const videoWrap = popup.querySelector('.qr-scanner-video-wrap');
+  const message = popup.querySelector('[data-qr-message]');
+  const historyContainer = popup.querySelector('[data-qr-entries]');
+  videoWrap.tabIndex = 0;
+  videoWrap.setAttribute('role', 'button');
+  videoWrap.setAttribute('aria-label', 'Camera preview. Activate to show scanner controls.');
+  const expandButton = popup.querySelector('[data-qr-expand]');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'qr-scanner-backdrop';
+  const entries = [];
   let controls = null;
   let stream = null;
   let closed = false;
   let processing = false;
   let lastValue = null;
   let lastSeenAt = 0;
+  let toastTimeout = null;
+  let expanded = false;
+  let suppressClick = false;
+  let previousBodyOverflow = '';
 
   const close = () => {
     if (closed) return;
     closed = true;
+    clearTimeout(toastTimeout);
     controls?.stop();
     stream?.getTracks().forEach(track => track.stop());
     document.removeEventListener('keydown', onKeyDown);
-    overlay.remove();
+    if (expanded) document.body.style.overflow = previousBodyOverflow;
+    backdrop.remove();
+    document.getElementById('qr-scan-toast')?.remove();
+    popup.remove();
+    if (activeScannerClose === close) activeScannerClose = null;
   };
+  activeScannerClose = close;
 
   const onKeyDown = event => {
     if (event.key === 'Escape') close();
   };
-  closeButton.addEventListener('click', close);
-  retryButton.addEventListener('click', () => startCamera());
-  overlay.addEventListener('click', event => {
-    if (event.target === overlay) close();
+
+  const showToast = (message, success, undoEntry = null) => {
+    let toast = document.getElementById('qr-scan-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'qr-scan-toast';
+      toast.className = 'qr-scan-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.innerHTML = '<span class="qr-scan-toast-message" data-qr-toast-message></span><button type="button" class="qr-scan-toast-undo" data-qr-toast-undo style="display:none">Undo</button>';
+      document.body.appendChild(toast);
+      toast.querySelector('[data-qr-toast-undo]').addEventListener('click', async () => {
+        const current = toast._undoEntry;
+        if (current) await undoEntry(current);
+      });
+    }
+
+    toast.classList.toggle('qr-scan-toast-failure', !success);
+    toast.querySelector('[data-qr-toast-message]').textContent = message;
+    const undoButton = toast.querySelector('[data-qr-toast-undo]');
+    undoButton.style.display = undoEntry && !undoEntry.undone ? 'inline-block' : 'none';
+    toast._undoEntry = undoEntry && !undoEntry.undone ? undoEntry : null;
+    toast.classList.add('qr-scan-toast-visible');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('qr-scan-toast-visible'), 5000);
+  };
+
+  const renderHistory = () => {
+    historyContainer.replaceChildren();
+    entries.forEach(entry => {
+      const row = document.createElement('div');
+      row.className = 'qr-scan-entry';
+      const label = document.createElement('span');
+      label.className = `qr-scan-entry-name${entry.undone ? ' qr-scan-undone' : ''}`;
+      label.textContent = entry.label;
+      row.appendChild(label);
+
+      if (entry.undone) {
+        const undoneLabel = document.createElement('span');
+        undoneLabel.className = 'qr-scan-undone-label';
+        undoneLabel.textContent = 'Undone';
+        row.appendChild(undoneLabel);
+      } else {
+        const undoButton = document.createElement('button');
+        undoButton.type = 'button';
+        undoButton.className = 'qr-scan-undo';
+        undoButton.textContent = 'Undo';
+        undoButton.addEventListener('click', () => undoEntry(entry));
+        row.appendChild(undoButton);
+      }
+      historyContainer.appendChild(row);
+    });
+    historyContainer.scrollTop = historyContainer.scrollHeight;
+  };
+
+  const undoEntry = async entry => {
+    if (!entry?.undo || entry.undone) return;
+    try {
+      const undone = await entry.undo();
+      if (undone === false) throw new Error('This scanned item is no longer available to undo.');
+      entry.undone = true;
+      renderHistory();
+      showToast(`Undid ${entry.label}`, true);
+      popup.classList.remove('qr-scan-success', 'qr-scan-failure');
+      playScanTone(true);
+    } catch (error) {
+      console.error('[QR Scanner] Undo failed:', error);
+      showFeedback(error?.message || 'Unable to undo this scan.', false);
+    }
+  };
+
+  function showFeedback(message, success, undoEntry = null) {
+    popup.classList.remove('qr-scan-success', 'qr-scan-failure');
+    void popup.offsetWidth;
+    popup.classList.add(success ? 'qr-scan-success' : 'qr-scan-failure');
+    playScanTone(success);
+    showToast(message, success, undoEntry);
+  }
+
+  const onKeyDownBound = onKeyDown;
+  popup.querySelector('[data-qr-close]').addEventListener('click', close);
+  expandButton.addEventListener('click', () => {
+    if (!expanded) {
+      const bounds = popup.getBoundingClientRect();
+      popup.dataset.restoreLeft = `${bounds.left}px`;
+      popup.dataset.restoreTop = `${bounds.top}px`;
+      popup.dataset.restoreRight = 'auto';
+      popup.dataset.restoreBottom = 'auto';
+      popup.style.left = '';
+      popup.style.top = '';
+      popup.style.right = '';
+      popup.style.bottom = '';
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.body.appendChild(backdrop);
+      expanded = true;
+      popup.classList.add('qr-scanner-expanded');
+      popup.setAttribute('aria-modal', 'true');
+      expandButton.textContent = '⤡';
+      expandButton.setAttribute('aria-label', 'Minimize scanner');
+      expandButton.title = 'Minimize';
+    } else {
+      expanded = false;
+      popup.classList.remove('qr-scanner-expanded');
+      popup.setAttribute('aria-modal', 'false');
+      document.body.style.overflow = previousBodyOverflow;
+      backdrop.remove();
+      popup.style.left = popup.dataset.restoreLeft;
+      popup.style.top = popup.dataset.restoreTop;
+      popup.style.right = popup.dataset.restoreRight;
+      popup.style.bottom = popup.dataset.restoreBottom;
+      expandButton.textContent = '⤢';
+      expandButton.setAttribute('aria-label', 'Expand scanner');
+      expandButton.title = 'Expand';
+    }
   });
-  document.addEventListener('keydown', onKeyDown);
+  popup.addEventListener('click', event => {
+    if (event.target.closest('button')) return;
+    if (event.target.closest('.qr-scanner-history')) return;
+    if (suppressClick) {
+      suppressClick = false;
+      return;
+    }
+    if (!message.hidden) {
+      if (event.target === message) startCamera();
+      else popup.classList.add('qr-scanner-focused');
+      return;
+    }
+    popup.classList.toggle('qr-scanner-focused');
+  });
+  videoWrap.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    if (!message.hidden) startCamera();
+    else popup.classList.toggle('qr-scanner-focused');
+  });
+  document.addEventListener('keydown', onKeyDownBound);
+
+  videoWrap.addEventListener('pointerdown', event => {
+    if (expanded || event.button > 0) return;
+    const bounds = popup.getBoundingClientRect();
+    const offsetX = event.clientX - bounds.left;
+    const offsetY = event.clientY - bounds.top;
+    let dragged = false;
+    videoWrap.setPointerCapture(event.pointerId);
+    popup.style.left = `${bounds.left}px`;
+    popup.style.top = `${bounds.top}px`;
+    popup.style.right = 'auto';
+    popup.style.bottom = 'auto';
+
+    const move = moveEvent => {
+      if (moveEvent.pointerId !== event.pointerId) return;
+      if (Math.abs(moveEvent.clientX - event.clientX) > 6 || Math.abs(moveEvent.clientY - event.clientY) > 6) {
+        dragged = true;
+      }
+      const maxLeft = Math.max(0, window.innerWidth - popup.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - popup.offsetHeight);
+      popup.style.left = `${Math.max(0, Math.min(maxLeft, moveEvent.clientX - offsetX))}px`;
+      popup.style.top = `${Math.max(0, Math.min(maxTop, moveEvent.clientY - offsetY))}px`;
+    };
+    const stop = stopEvent => {
+      if (stopEvent.pointerId !== event.pointerId) return;
+      videoWrap.removeEventListener('pointermove', move);
+      videoWrap.removeEventListener('pointerup', stop);
+      videoWrap.removeEventListener('pointercancel', stop);
+      if (dragged) suppressClick = true;
+    };
+    videoWrap.addEventListener('pointermove', move);
+    videoWrap.addEventListener('pointerup', stop);
+    videoWrap.addEventListener('pointercancel', stop);
+  });
 
   function showCameraError(error) {
     console.error('[QR Scanner] Camera startup failed:', error);
@@ -92,29 +689,24 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       console.warn('[QR Scanner] Unable to inspect camera Permissions-Policy:', policyError);
     }
 
-    retryButton.style.display = 'none';
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      status.textContent = 'Camera requires HTTPS or localhost. Open this app over a secure connection.';
+      message.textContent = 'Camera requires HTTPS or localhost. Open this app over a secure connection.';
     } else if (!cameraAllowedByPolicy) {
-      status.textContent = 'This page is blocked from using the camera by the server Permissions-Policy.';
+      message.textContent = 'This page is blocked from using the camera by the server Permissions-Policy.';
     } else if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
-      status.textContent = 'Camera permission is blocked. Allow camera access for this site in browser site settings, then retry.';
-      retryButton.style.display = 'inline-block';
+      message.textContent = 'Camera permission is blocked. Allow camera access for this site, then tap here to retry.';
     } else if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
-      status.textContent = 'No camera was found. Connect or enable a camera, then retry.';
-      retryButton.style.display = 'inline-block';
+      message.textContent = 'No camera was found. Connect or enable a camera, then tap here to retry.';
     } else if (error?.name === 'NotReadableError' || error?.name === 'TrackStartError') {
-      status.textContent = 'The camera is busy or unavailable. Close other camera apps and retry.';
-      retryButton.style.display = 'inline-block';
+      message.textContent = 'The camera is busy or unavailable. Close other camera apps, then tap here to retry.';
     } else {
-      status.textContent = error?.message || 'Unable to start the camera. Check browser camera permission and retry.';
-      retryButton.style.display = 'inline-block';
+      message.textContent = error?.message || 'Unable to start the camera. Check browser camera permission, then tap here to retry.';
     }
+    message.hidden = false;
   }
 
   async function startCamera() {
-    retryButton.style.display = 'none';
-    status.textContent = 'Requesting camera permission…';
+    message.hidden = true;
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
         throw new DOMException('Camera access requires HTTPS or localhost.', 'SecurityError');
@@ -136,6 +728,7 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
       const { BrowserMultiFormatReader } = await loadZXingBrowser();
       if (closed) {
         stream.getTracks().forEach(track => track.stop());
+        stream = null;
         return;
       }
       const reader = new BrowserMultiFormatReader();
@@ -155,22 +748,38 @@ export function openQrScanner({ onScan, title = 'Scan product QR' }) {
           if (value === lastValue) return;
           lastValue = value;
           processing = true;
-          status.textContent = 'QR found. Adding item…';
           try {
             const response = await onScan(value);
+            const success = response?.success !== false;
             const message = typeof response === 'string' ? response : response?.message;
-            if (!closed) status.textContent = message || 'Item scanned. Point at the next label.';
+
+            if (success) {
+              const entry = response?.undo ? {
+                label: response.label || message || 'Scanned product',
+                undo: response.undo,
+                undone: false
+              } : null;
+              if (entry) {
+                entries.push(entry);
+                renderHistory();
+              }
+              showFeedback(message || 'Item scanned.', true, entry);
+            } else {
+              lastValue = null;
+              showFeedback(message || 'QR could not be matched to a product.', false);
+            }
+
             if (response?.close) close();
           } catch (error) {
             console.error('[QR Scanner] Scan handling failed:', error);
-            if (!closed) status.textContent = error?.message || 'Could not add the scanned item.';
+            lastValue = null;
+            showFeedback(error?.message || 'Could not add the scanned item.', false);
           } finally {
             processing = false;
           }
         }
       );
       if (closed) controls.stop();
-      else status.textContent = 'Camera ready. Align a product or batch QR inside the frame.';
     } catch (error) {
       stream?.getTracks().forEach(track => track.stop());
       stream = null;

@@ -119,6 +119,78 @@
   gap: 6px;
 }
 
+.bill-customer-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.bill-customer-actions > .form-input,
+.bill-customer-actions > .input-clear-wrapper {
+  width: 100%;
+}
+
+datalist#billCustomerDatalist {
+  display: none !important;
+}
+
+.bill-customer-orders {
+  width: 100%;
+}
+
+.bill-customer-orders .view-orders-badge,
+.bill-customer-actions .bill-customer-scan-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font: 750 12px/1.2 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.bill-customer-orders .view-orders-badge {
+  border: 1px solid #52677c;
+  background: #26384a;
+  color: #f4f8fc;
+}
+
+.bill-customer-orders .view-orders-badge:hover {
+  background: #314b63;
+  border-color: #718ca6;
+}
+
+.bill-customer-actions .bill-customer-scan-btn {
+  flex: 0 0 auto;
+  border: 1px solid #34d399;
+  background: linear-gradient(135deg, #047857, #059669);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(4, 120, 87, .28);
+}
+
+.bill-customer-actions .bill-customer-scan-btn:hover {
+  background: linear-gradient(135deg, #059669, #10b981);
+  border-color: #6ee7b7;
+  box-shadow: 0 4px 14px rgba(4, 120, 87, .4);
+  transform: translateY(-1px);
+}
+
+.bill-customer-actions .bill-customer-scan-btn:focus-visible,
+.bill-customer-orders .view-orders-badge:focus-visible {
+  outline: 3px solid rgba(110, 231, 183, .8);
+  outline-offset: 2px;
+}
+
 .form-group label {
   font-size: 11px;
   font-weight: 700;
@@ -877,7 +949,23 @@
 }
 
 @media (max-width: 768px) {
+  .billing-view-container:has(.bill-form-wrapper) {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  .billing-subview-panel:has(.bill-form-wrapper) {
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
+  }
+
   .bill-form-wrapper {
+    height: auto;
+    min-height: 100%;
     overflow: visible;
   }
 
@@ -977,6 +1065,12 @@
     gap: 0;
     overflow: visible;
     flex: none;
+  }
+
+  .bill-customer-actions .bill-customer-scan-btn {
+    font-size: 10px;
+    min-height: 40px;
+    padding: 9px 12px;
   }
 
   .bill-form-panel {
@@ -1966,5 +2060,3 @@
   color: white;
   border-color: rgba(255, 255, 255, 0.2);
 }
-
-

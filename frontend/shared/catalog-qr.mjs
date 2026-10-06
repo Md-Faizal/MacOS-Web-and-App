@@ -25,7 +25,13 @@ export function parseCatalogQr(value) {
     return { type: 'product', identifier: segments[publicIndex + 2] };
   }
   if (resource === 'batch' && segments[publicIndex + 2]) {
-    return { type: 'batch', identifier: segments[publicIndex + 2] };
+    return {
+      type: 'batch',
+      identifier: segments[publicIndex + 2],
+      productId: url.searchParams.get('sku') || url.searchParams.get('product_id'),
+      variantId: url.searchParams.get('variant_id'),
+      batchId: url.searchParams.get('batch_id') || url.searchParams.get('batch')
+    };
   }
   if (resource && resource !== 'catalog') {
     return { type: 'product', identifier: segments[publicIndex + 1] };
@@ -65,11 +71,14 @@ export function resolveCatalogQr(products, value) {
   const matches = [];
 
   for (const product of products) {
+    if (parsed.productId && !sameId(product?.id, parsed.productId)) continue;
     const variants = Array.isArray(product?.variants) ? product.variants : [];
     for (const variant of variants) {
+      if (parsed.variantId && !sameId(variant?.id, parsed.variantId)) continue;
       const batches = Array.isArray(variant?.batches) ? variant.batches : [];
       for (const batch of batches) {
-        if (normalized(batch?.batch_no ?? batch?.batchNo) === batchNumber) {
+        const batchIdMatches = parsed.batchId && sameId(batch?.id, parsed.batchId);
+        if (batchIdMatches || (!parsed.batchId && normalized(batch?.batch_no ?? batch?.batchNo) === batchNumber)) {
           matches.push({ type: 'batch', product, variant, batch });
         }
       }
@@ -77,7 +86,8 @@ export function resolveCatalogQr(products, value) {
 
     const batches = Array.isArray(product?.batches) ? product.batches : [];
     for (const batch of batches) {
-      if (normalized(batch?.batch_no ?? batch?.batchNo) !== batchNumber) continue;
+      const batchIdMatches = parsed.batchId && sameId(batch?.id, parsed.batchId);
+      if (!batchIdMatches && (parsed.batchId || normalized(batch?.batch_no ?? batch?.batchNo) !== batchNumber)) continue;
       const variant = variants.find(candidate => sameId(candidate.id, batch.variant_id));
       if (!matches.some(match => sameId(match.batch?.id, batch.id) && sameId(match.product?.id, product.id))) {
         matches.push({ type: 'batch', product, variant: variant || null, batch });

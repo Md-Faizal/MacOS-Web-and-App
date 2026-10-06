@@ -2322,12 +2322,17 @@ class OrdersView {
     const match = resolveCatalogQr(this.products, value);
     if (!match) {
       this.showNotification('QR not recognized in the product catalog. Check the product or batch label.', 'warning');
-      return 'QR not found. Try another product or batch label.';
+      return { success: false, message: 'QR does not match the loaded catalog. Older batch tags may need reprinting.' };
     }
 
     if (match.type === 'batch') {
-      this.addProductToOrder(match.product, match.variant?.id, match.batch.id);
-      return `Added ${match.product.name}, batch ${match.batch.batch_no || match.batch.batchNo || ''}. Scan another label.`;
+      const added = this.addProductToOrder(match.product, match.variant?.id, match.batch.id);
+      return {
+        success: true,
+        label: `${match.product.name} · ${match.batch.batch_no || match.batch.batchNo || ''}`,
+        message: `Added ${match.product.name}. Scan another label or undo this item.`,
+        undo: added.undo
+      };
     }
 
     const product = match.product;
@@ -2341,11 +2346,18 @@ class OrdersView {
 
     if (variants.length > 1 || catalogBatches.length > 1) {
       this.handleAddProduct(product);
-      return { message: 'Choose the product pack or batch to add it.', close: true };
+      return { success: true, message: 'Choose the product pack or batch to add it.', close: true };
     }
 
-    this.handleAddProduct(product);
-    return `Added ${product.name}. Scan another label.`;
+    const variant = variants[0] || null;
+    const batch = variant?.batches?.[0] || product.batches?.[0] || null;
+    const added = this.addProductToOrder(product, variant?.id, batch?.id);
+    return {
+      success: true,
+      label: `${product.name}${batch?.batch_no ? ` · ${batch.batch_no}` : ''}`,
+      message: `Added ${product.name}. Scan another label or undo this item.`,
+      undo: added.undo
+    };
   }
 
   handleAddProduct(product) {
@@ -2562,10 +2574,20 @@ class OrdersView {
     );
     
     if (existing) {
+      const previousQty = Number(existing.qty || 0);
       existing.qty++;
       this.showNotification(`✓ ${product.name} quantity increased`, 'success');
+      this.renderStage1Items();
+      return {
+        undo: () => {
+          if (!this.currentOrderData.items.includes(existing)) return false;
+          existing.qty = previousQty;
+          this.renderStage1Items();
+          return true;
+        }
+      };
     } else {
-      this.currentOrderData.items.push({
+      const item = {
         product_id: product.id,
         product_name: product.name,
         variant_id: finalVariantId,
@@ -2576,11 +2598,20 @@ class OrdersView {
         mrp: batch?.mrp || price,
         price: price,
         qty: 1
-      });
+      };
+      this.currentOrderData.items.push(item);
       this.showNotification(`✓ ${product.name} added`, 'success');
+      this.renderStage1Items();
+      return {
+        undo: () => {
+          const itemIndex = this.currentOrderData.items.indexOf(item);
+          if (itemIndex < 0) return false;
+          this.currentOrderData.items.splice(itemIndex, 1);
+          this.renderStage1Items();
+          return true;
+        }
+      };
     }
-    
-    this.renderStage1Items();
   }
 
   populateProductsList() {

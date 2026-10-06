@@ -22,7 +22,10 @@ test('parses product and batch URLs used by generated catalog tags', () => {
   });
   assert.deepEqual(parseCatalogQr('https://shop.example/public/batch/BATCH-A'), {
     type: 'batch',
-    identifier: 'BATCH-A'
+    identifier: 'BATCH-A',
+    productId: null,
+    variantId: null,
+    batchId: null
   });
 });
 
@@ -34,6 +37,29 @@ test('resolves product IDs, SKUs, and batch numbers against the loaded catalog',
   assert.equal(resolvedBatch.product, catalog[0]);
   assert.equal(resolvedBatch.variant, catalog[0].variants[0]);
   assert.equal(resolvedBatch.batch, catalog[0].variants[0].batches[0]);
+});
+
+test('uses embedded product, variant, and batch IDs when batch labels repeat', () => {
+  const duplicateLabel = {
+    ...catalog[0],
+    id: 43,
+    variants: [{
+      id: 8,
+      pack_size_value: '20',
+      pack_size_type: 'TAB',
+      batches: [{ id: 10, variant_id: 8, batch_no: 'BATCH-A', mrp: 22.5 }]
+    }],
+    batches: [{ id: 10, variant_id: 8, batch_no: 'BATCH-A', mrp: 22.5 }]
+  };
+
+  const result = resolveCatalogQr(
+    [...catalog, duplicateLabel],
+    'https://shop.example/public/batch/BATCH-A?sku=43&variant_id=8&batch_id=10'
+  );
+
+  assert.equal(result.product, duplicateLabel);
+  assert.equal(result.variant, duplicateLabel.variants[0]);
+  assert.equal(result.batch, duplicateLabel.variants[0].batches[0]);
 });
 
 test('rejects unrelated URLs and ambiguous batch labels', () => {
