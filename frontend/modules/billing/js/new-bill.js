@@ -845,34 +845,45 @@ class BillEditor {
     };
     const previousLine = this.currentBillProducts.find(sameLine) || null;
     const previousQty = previousLine ? Number(previousLine.qty || 0) : 0;
-    const previousFree = previousLine?.free;
-
-    await this.addProductToBill(null, false, true);
+    const addResult = await this.addProductToBill(null, false, true);
     this.showNotification(`✓ Scanned ${product.name}`, 'success');
     this.clearProductForm();
-    const addedLine = previousLine || this.currentBillProducts.find(sameLine);
+    const addedLine = addResult?.line || previousLine || this.currentBillProducts.find(sameLine);
     if (!addedLine || (previousLine && Number(addedLine.qty || 0) === previousQty)) {
       return { success: false, message: 'The item was not added. Check the product price and try again.' };
     }
+    const originalIndex = Math.max(0, this.currentBillProducts.indexOf(addedLine));
+    const adjustQuantity = delta => {
+      let index = this.currentBillProducts.indexOf(addedLine);
+      const currentQuantity = index < 0 ? 0 : Math.max(0, Number(addedLine.qty) || 0);
+      const nextQuantity = Math.max(0, parseFloat((currentQuantity + delta).toFixed(2)));
+      if (delta < 0 && index < 0) return false;
+      if (delta > 0 && index < 0) {
+        this.currentBillProducts.splice(Math.min(originalIndex, this.currentBillProducts.length), 0, addedLine);
+        index = this.currentBillProducts.indexOf(addedLine);
+      }
+      if (nextQuantity === 0) {
+        if (index >= 0) this.currentBillProducts.splice(index, 1);
+      } else {
+        addedLine.qty = nextQuantity;
+        addedLine.free = this.calculateFreeItems(addedLine.qty, addedLine.scheme);
+      }
+      this.renderProductList();
+      this.updateBillSummary();
+      return true;
+    };
 
     return {
       success: true,
       label: `${product.name}${batchNo ? ` · ${batchNo}` : ''}`,
       historyKey: JSON.stringify(['bill', product.id, selectedVariant?.id ?? null, selectedBatch?.id ?? batchNo ?? null]),
       message: `Added ${product.name}. Scan another label or undo this item.`,
-      undo: () => {
-        const currentIndex = this.currentBillProducts.indexOf(addedLine);
-        if (currentIndex < 0) return false;
-        if (previousLine) {
-          addedLine.qty = previousQty;
-          addedLine.free = previousFree;
-        } else {
-          this.currentBillProducts.splice(currentIndex, 1);
-        }
-        this.renderProductList();
-        this.updateBillSummary();
-        return true;
-      }
+      getQuantity: () => this.currentBillProducts.includes(addedLine)
+        ? Math.max(0, Number(addedLine.qty) || 0)
+        : 0,
+      minQuantity: 0,
+      adjustQuantity,
+      undo: () => adjustQuantity(-1)
     };
   }
 
@@ -2244,8 +2255,9 @@ class BillEditor {
 
     if (existingProductIndex !== -1) {
       if (incrementDuplicate) {
+        const existingProduct = this.currentBillProducts[existingProductIndex];
         this.mergeProductQuantity(existingProductIndex, product.qty);
-        return;
+        return { line: existingProduct, addedQty: product.qty };
       }
       // Product already exists - show modal
       this.showDuplicateProductModal(product, existingProductIndex);
@@ -2265,6 +2277,7 @@ class BillEditor {
       this.renderProductList();
       this.updateBillSummary();
     }
+    return { line: product, addedQty: product.qty };
   }
 
   showDuplicateProductModal(newProduct, existingProductIndex) {
@@ -2350,6 +2363,7 @@ class BillEditor {
     this.clearProductForm();
     this.renderProductList();
     this.updateBillSummary();
+    return existingProduct;
   }
 
   clearProductForm() {

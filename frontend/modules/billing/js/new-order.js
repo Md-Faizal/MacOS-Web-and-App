@@ -2312,7 +2312,7 @@ class OrdersView {
         label: `${match.product.name} · ${match.batch.batch_no || match.batch.batchNo || ''}`,
         historyKey: JSON.stringify(['order', match.product.id, match.variant?.id ?? null, match.batch.id]),
         message: `Added ${match.product.name}. Scan another label or undo this item.`,
-        undo: added.undo
+        ...added
       };
     }
 
@@ -2338,7 +2338,7 @@ class OrdersView {
       label: `${product.name}${batch?.batch_no ? ` · ${batch.batch_no}` : ''}`,
       historyKey: JSON.stringify(['order', product.id, variant?.id ?? null, batch?.id ?? null]),
       message: `Added ${product.name}. Scan another label or undo this item.`,
-      undo: added.undo
+      ...added
     };
   }
 
@@ -2556,18 +2556,10 @@ class OrdersView {
     );
     
     if (existing) {
-      const previousQty = Number(existing.qty || 0);
       existing.qty++;
       this.showNotification(`✓ ${product.name} quantity increased`, 'success');
       this.renderStage1Items();
-      return {
-        undo: () => {
-          if (!this.currentOrderData.items.includes(existing)) return false;
-          existing.qty = previousQty;
-          this.renderStage1Items();
-          return true;
-        }
-      };
+      return this.createOrderQuantityControls(existing);
     } else {
       const item = {
         product_id: product.id,
@@ -2584,16 +2576,37 @@ class OrdersView {
       this.currentOrderData.items.push(item);
       this.showNotification(`✓ ${product.name} added`, 'success');
       this.renderStage1Items();
-      return {
-        undo: () => {
-          const itemIndex = this.currentOrderData.items.indexOf(item);
-          if (itemIndex < 0) return false;
-          this.currentOrderData.items.splice(itemIndex, 1);
-          this.renderStage1Items();
-          return true;
-        }
-      };
+      return this.createOrderQuantityControls(item);
     }
+  }
+
+  createOrderQuantityControls(item) {
+    const items = this.currentOrderData.items;
+    const originalIndex = Math.max(0, items.indexOf(item));
+    const adjustQuantity = delta => {
+      let index = items.indexOf(item);
+      const currentQuantity = index < 0 ? 0 : Math.max(0, Number(item.qty) || 0);
+      const nextQuantity = Math.max(0, currentQuantity + delta);
+      if (delta < 0 && index < 0) return false;
+      if (delta > 0 && index < 0) {
+        items.splice(Math.min(originalIndex, items.length), 0, item);
+        index = items.indexOf(item);
+      }
+      if (nextQuantity === 0) {
+        if (index >= 0) items.splice(index, 1);
+      } else {
+        item.qty = nextQuantity;
+      }
+      this.renderStage1Items();
+      return true;
+    };
+
+    return {
+      getQuantity: () => items.includes(item) ? Math.max(0, Number(item.qty) || 0) : 0,
+      minQuantity: 0,
+      adjustQuantity,
+      undo: () => adjustQuantity(-1)
+    };
   }
 
   populateProductsList() {
@@ -3077,11 +3090,20 @@ class OrdersView {
       label,
       historyKey: JSON.stringify(['order-qc', item.product_id, item.variant_id ?? null, item.batch_id ?? null]),
       message: `QC received ${nextQuantity}/${expectedQuantity} ${productLabel}.`,
+      getQuantity: () => Math.max(0, Number(item.received_quantity) || 0),
+      getExpectedQuantity: () => Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0),
+      minQuantity: 0,
+      adjustQuantity: delta => {
+        if (!this.currentOrderData.items.includes(item)) return false;
+        const current = Math.max(0, Number(item.received_quantity) || 0);
+        const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+        const next = Math.min(expected, Math.max(0, current + delta));
+        return this.setQcReceivedQuantity(container, index, next) !== null;
+      },
       undo: () => {
         if (!this.currentOrderData.items.includes(item)) return false;
-        const current = Number(qtyInput.value || 0) || 0;
-        this.setQcReceivedQuantity(container, index, Math.max(0, current - 1));
-        return true;
+        const current = Math.max(0, Number(item.received_quantity) || 0);
+        return this.setQcReceivedQuantity(container, index, Math.max(0, current - 1)) !== null;
       }
     };
   }

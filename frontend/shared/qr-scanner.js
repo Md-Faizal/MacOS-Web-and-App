@@ -176,13 +176,33 @@ const scannerStyles = `
   }
   .qr-scan-quantity {
     flex: 0 0 auto;
-    padding: 4px 7px;
-    border-radius: 999px;
-    background: rgba(74, 222, 128, .14);
-    color: #4ade80;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
     font-size: 11px;
     font-weight: 750;
     font-variant-numeric: tabular-nums;
+  }
+  .qr-scan-quantity button {
+    width: 30px;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    padding: 0;
+    border-radius: 8px;
+    background: #292f35;
+    color: #fff;
+  }
+  .qr-scan-quantity button:disabled { opacity: .4; }
+  .qr-scan-quantity-value {
+    min-width: 56px;
+    text-align: center;
+    color: #fff;
+  }
+  .qr-scan-quantity-label {
+    color: rgba(255, 255, 255, .68);
+    font-size: 10px;
+    font-weight: 650;
   }
   .qr-scan-undone { color: #aab2ba; text-decoration: line-through; }
   .qr-scan-undo {
@@ -408,8 +428,24 @@ const scannerStyles = `
     overflow-wrap: anywhere;
   }
   .qr-scan-quantity {
-    background: rgba(74, 222, 128, .16);
-    color: #86efac;
+    gap: 4px;
+  }
+  .qr-scan-quantity button {
+    width: 36px;
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+  .qr-scan-quantity-value { min-width: 64px; }
+  .qr-scan-quantity-label { font-size: 11px; }
+  @media (max-width: 560px) {
+    .qr-scan-entry { gap: 6px; padding: 8px; }
+    .qr-scan-quantity { gap: 3px; }
+    .qr-scan-quantity button {
+      width: 32px;
+      min-width: 32px !important;
+      min-height: 34px !important;
+    }
+    .qr-scan-quantity-value { min-width: 48px; }
   }
   .qr-scan-undone { color: rgba(255, 255, 255, .48); text-decoration: line-through; }
   .qr-scan-undo {
@@ -688,44 +724,70 @@ export function openQrScanner({ onScan, title = 'Scan product QR', history = [] 
       const key = entry.historyKey == null ? `entry-${index}` : String(entry.historyKey);
       let group = groups.get(key);
       if (!group) {
-        group = { label: entry.label, entries: [] };
+        group = { label: entry.label, entries: [], latest: entry };
         groups.set(key, group);
       }
       group.entries.push(entry);
+      group.latest = entry;
     });
 
     groups.forEach(group => {
       const row = document.createElement('div');
       row.className = 'qr-scan-entry';
       const label = document.createElement('span');
-      const activeEntries = group.entries.filter(entry => !entry.undone);
-      label.className = `qr-scan-entry-name${activeEntries.length ? '' : ' qr-scan-undone'}`;
+      const item = group.latest;
+      const quantity = Number(item.getQuantity?.() ?? 0);
+      const expected = item.getExpectedQuantity ? Number(item.getExpectedQuantity()) : null;
+      label.className = `qr-scan-entry-name${quantity <= 0 ? ' qr-scan-undone' : ''}`;
       label.textContent = group.label;
       row.appendChild(label);
 
-      if (activeEntries.length) {
-        const quantity = document.createElement('span');
-        quantity.className = 'qr-scan-quantity';
-        quantity.textContent = `Qty +${activeEntries.length}`;
-        quantity.setAttribute('aria-label', `${activeEntries.length} unit${activeEntries.length === 1 ? '' : 's'} added by scanning`);
-        row.appendChild(quantity);
+      if (typeof item.adjustQuantity === 'function') {
+        const selector = document.createElement('div');
+        selector.className = 'qr-scan-quantity';
+        const decrement = document.createElement('button');
+        decrement.type = 'button';
+        decrement.textContent = '−';
+        decrement.setAttribute('aria-label', `Decrease ${group.label} quantity`);
+        decrement.disabled = quantity <= Number(item.minQuantity ?? 0);
+        decrement.addEventListener('click', () => adjustEntryQuantity(item, -1));
 
-        const undoButton = document.createElement('button');
-        undoButton.type = 'button';
-        undoButton.className = 'qr-scan-undo';
-        undoButton.textContent = 'Undo 1';
-        undoButton.setAttribute('aria-label', `Undo one scan of ${group.label}`);
-        undoButton.addEventListener('click', () => undoEntry(activeEntries[activeEntries.length - 1]));
-        row.appendChild(undoButton);
-      } else {
-        const undoneLabel = document.createElement('span');
-        undoneLabel.className = 'qr-scan-undone-label';
-        undoneLabel.textContent = 'Undone';
-        row.appendChild(undoneLabel);
+        const value = document.createElement('span');
+        value.className = 'qr-scan-quantity-value';
+        value.textContent = expected === null
+          ? `Qty ${quantity}`
+          : `Received ${quantity} / Expected ${expected}`;
+        value.setAttribute('aria-label', expected === null
+          ? `Quantity ${quantity}`
+          : `Received ${quantity} of ${expected}`);
+
+        const increment = document.createElement('button');
+        increment.type = 'button';
+        increment.textContent = '+';
+        increment.setAttribute('aria-label', `Increase ${group.label} quantity`);
+        increment.disabled = expected !== null && quantity >= expected;
+        increment.addEventListener('click', () => adjustEntryQuantity(item, 1));
+
+        selector.append(decrement, value, increment);
+        row.appendChild(selector);
       }
       historyContainer.appendChild(row);
     });
     historyContainer.scrollTop = historyContainer.scrollHeight;
+  };
+
+  const adjustEntryQuantity = async (entry, delta) => {
+    try {
+      const adjusted = await entry.adjustQuantity(delta);
+      if (adjusted === false) {
+        showFeedback('Quantity could not be changed; check the current line and its limits.', false);
+        return;
+      }
+      renderHistory();
+    } catch (error) {
+      console.error('[QR Scanner] Quantity adjustment failed:', error);
+      showFeedback(error?.message || 'Unable to change the item quantity.', false);
+    }
   };
 
   const undoEntry = async entry => {
@@ -1044,6 +1106,10 @@ export function openQrScanner({ onScan, title = 'Scan product QR', history = [] 
               const entry = response?.undo ? {
                 label: response.label || message || 'Scanned product',
                 historyKey: response.historyKey,
+                getQuantity: response.getQuantity,
+                getExpectedQuantity: response.getExpectedQuantity,
+                minQuantity: response.minQuantity,
+                adjustQuantity: response.adjustQuantity,
                 undo: response.undo,
                 undone: false
               } : null;
