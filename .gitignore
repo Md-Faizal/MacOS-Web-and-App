@@ -49,6 +49,9 @@ android/.kotlin/
 Thumbs.db
 desktop.ini
 
+# ─── Local editor settings ───
+.vscode/settings.json
+
 # ─── Python ───
 __pycache__/
 *.pyc
@@ -60,4 +63,3 @@ __pycache__/
 # ─── Rust ───
 target/
 **/target/
-
