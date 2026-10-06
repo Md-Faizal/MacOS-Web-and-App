@@ -804,6 +804,11 @@ def draw_back_page(c, invoice_data, width, height, left_margin, right_margin, to
     else:
         customer_id = invoice_data.get('customer_id') or invoice_data.get('i_customer_id') or 3
         portal_url = f"{portal_base}/customer-ledger.html?id={customer_id}"
+    invoice_ledger_ref = invoice_data.get('invoice_ledger_ref')
+    if invoice_ledger_ref:
+        from urllib.parse import urlencode
+        separator = '&' if '?' in portal_url else '?'
+        portal_url += f"{separator}{urlencode({'r': invoice_ledger_ref})}"
     
     try:
         w_p = qr.QrCodeWidget(portal_url, barFillColor=colors.HexColor('#0f172a'), barStrokeColor=colors.HexColor('#0f172a'))
@@ -1111,6 +1116,7 @@ def fetch_invoice_data(db_path, invoice_no):
             # Schema with invoices table and contacts table
             invoice_query = """
                 SELECT 
+                    i.id as invoice_id,
                     i.invoice_no, 
                     COALESCE(i.invoice_date, i.created_at) as invoice_date, 
                     i.due_date, 
@@ -1226,6 +1232,7 @@ if __name__ == "__main__":
     parser.add_argument("--out", required=True, help="Output PDF file path")
     parser.add_argument("--duplex", default=None, help="Override duplex printing (true/false)")
     parser.add_argument("--mode", default="print", help="Mode: print or export")
+    parser.add_argument("--ledger-ref", default=None, help="Encrypted invoice reference for the customer-ledger QR")
     
     args = parser.parse_args()
  
@@ -1236,6 +1243,7 @@ if __name__ == "__main__":
     if args.duplex is not None:
         invoice_data['duplex_print'] = args.duplex.lower() in ('true', '1', 'yes')
     invoice_data['export_mode'] = args.mode.lower() == 'export'
+    invoice_data['invoice_ledger_ref'] = args.ledger_ref
     
     # Generate PDF
     try:

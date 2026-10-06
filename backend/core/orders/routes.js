@@ -1,4 +1,5 @@
 module.exports = function(router, handlers) {
+  router.post('/resolve-invoice-qr', handlers.resolveInvoiceQr);
   router.post('/', handlers.createOrder);
   router.get('/', handlers.getOrders);
   router.get('/next-number', handlers.getNextOrderNumber);

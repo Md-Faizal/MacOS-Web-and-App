@@ -1,5 +1,6 @@
 const createActivityLogger = require('../audit/activity-logger');
 const dataBus = require('../sync/data-bus');
+const { decryptInvoiceLedgerReference } = require('../billing/invoice-ledger-ref');
 
 module.exports = function(db) {
   const activityLogger = createActivityLogger(db);
@@ -54,6 +55,59 @@ module.exports = function(db) {
   }
 
   return {
+    resolveInvoiceQr: (req, res) => {
+      const { reference, ledgerToken, customerId } = req.body || {};
+      if (
+        typeof reference !== 'string' || reference.length > 160 ||
+        typeof ledgerToken !== 'string' || ledgerToken.length > 160 ||
+        !customerId
+      ) {
+        return res.status(400).json({ error: 'A ledger QR reference and customer are required.' });
+      }
+
+      let decoded;
+      try {
+        decoded = decryptInvoiceLedgerReference(reference);
+      } catch (error) {
+        return res.status(400).json({ error: 'This invoice QR reference is invalid or expired.' });
+      }
+
+      if (String(decoded.customerId) !== String(customerId)) {
+        return res.status(404).json({ error: 'This invoice QR belongs to a different customer.' });
+      }
+
+      try {
+        const invoice = db.prepare(`
+          SELECT i.id, i.customer_id, i.invoice_no,
+                 COALESCE(i.invoice_date, i.created_at) AS invoice_date,
+                 COALESCE(i.grand_total, i.total_amount, 0) AS grand_total
+          FROM invoices i
+          JOIN contacts c ON c.id = i.customer_id
+          WHERE i.id = ? AND i.customer_id = ? AND c.ledger_token = ?
+        `).get(decoded.invoiceId, decoded.customerId, ledgerToken);
+
+        if (!invoice) {
+          return res.status(404).json({ error: 'The invoice QR does not match this customer ledger.' });
+        }
+        if (!isCustomerAccessible(req, invoice.customer_id)) {
+          return res.status(403).json({ error: 'Access denied to this invoice.' });
+        }
+
+        return res.json({
+          success: true,
+          invoice: {
+            id: invoice.id,
+            invoice_no: invoice.invoice_no,
+            invoice_date: invoice.invoice_date,
+            grand_total: Number(invoice.grand_total || 0)
+          }
+        });
+      } catch (error) {
+        console.error('[Orders] Unable to resolve invoice QR:', error);
+        return res.status(500).json({ error: 'Unable to resolve this invoice QR.' });
+      }
+    },
+
     createOrder: async (req, res) => {
       const {
         customer_id,

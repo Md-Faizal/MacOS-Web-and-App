@@ -1,4 +1,5 @@
 import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/catalog-qr.mjs';
+import { parseInvoiceQrLink } from '../../../shared/invoice-qr-link.mjs';
 import { clampQcReceivedQuantity, incrementQcReceivedQuantity } from '../../../shared/qc-quantity.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 
@@ -564,6 +565,7 @@ class OrdersView {
     
     // Invoice Dropdown State (Stage 3)
     this.allCustomerInvoices = [];
+    this.selectedOrderInvoice = null;
     this.invoiceSelectedIndex = -1;
     this.isInvoiceDropdownOpen = false;
   }
@@ -1723,6 +1725,8 @@ class OrdersView {
 
   async createNewOrder(customerId, customerName) {
     this.qrScanHistory = [];
+    this.selectedOrderInvoice = null;
+    this.allCustomerInvoices = [];
     const orderId = 'ORD-' + Date.now();
     const orderDate = new Date();
     let orderNumber = `ORD-${String(orderDate.getFullYear()).slice(-2)}xxxx`; // Fallback placeholder
@@ -1770,6 +1774,8 @@ class OrdersView {
     const order = this.orders.find(o => String(o.id) === String(orderId));
     if (order) {
       this.qrScanHistory = [];
+      this.selectedOrderInvoice = null;
+      this.allCustomerInvoices = [];
       this.currentOrderData = { ...order };
       this.currentOrderId = String(orderId);
       this.currentStage = order.current_stage || 'stage1';
@@ -1829,6 +1835,8 @@ class OrdersView {
       if (res.ok) {
         const order = await res.json();
         this.qrScanHistory = [];
+        this.selectedOrderInvoice = null;
+        this.allCustomerInvoices = [];
         
         // Normalize items to use consistent property names (qty, price)
         const items = (order.items || []).map(item => {
@@ -3111,17 +3119,14 @@ class OrdersView {
   // ===== STAGE 3: DELIVERY & BILL =====
   async getCustomerInvoices(customerId) {
     try {
-      const res = await fetch(`/api/billing?customer_id=${customerId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const invoices = data.data || [];
-        // Return invoices sorted by most recent first
-        return invoices.sort((a, b) => new Date(b.created_at || b.bill_date || 0) - new Date(a.created_at || a.bill_date || 0));
-      }
-      return [];
+      const res = await fetch(`/api/billing?customer_id=${encodeURIComponent(customerId)}`);
+      if (!res.ok) throw new Error(`Unable to load customer invoices (${res.status}).`);
+      const data = await res.json();
+      if (!Array.isArray(data?.data)) throw new Error('The customer invoice list returned an invalid response.');
+      return data.data.sort((a, b) => new Date(b.created_at || b.bill_date || 0) - new Date(a.created_at || a.bill_date || 0));
     } catch (error) {
       log.error('Error fetching invoices:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -3248,7 +3253,104 @@ class OrdersView {
       input.value = invNo;
     }
     this.currentOrderData.bill_reference = invNo;
+    this.selectedOrderInvoice = invoice;
+    this.renderLinkedInvoiceSummary();
     this.hideInvoiceDropdown();
+  }
+
+  renderLinkedInvoiceSummary() {
+    const summary = document.getElementById('linkedInvoiceSummary');
+    if (!summary) return;
+    summary.replaceChildren();
+    const invoice = this.selectedOrderInvoice;
+    if (!invoice) {
+      summary.textContent = this.currentOrderData?.bill_reference
+        ? `Linked reference: ${this.currentOrderData.bill_reference}`
+        : 'No invoice linked yet.';
+      return;
+    }
+
+    const label = document.createElement('span');
+    const number = invoice.invoice_no || invoice.id;
+    const amount = Number(invoice.grand_total ?? invoice.total_amount ?? invoice.amount ?? 0);
+    label.textContent = `Linked invoice ${number} · ${new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR'
+    }).format(amount)}`;
+    summary.appendChild(label);
+
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.textContent = 'Export invoice PDF';
+    exportButton.addEventListener('click', () => {
+      if (!this.billingApp?.exportBill) {
+        this.showNotification('Invoice PDF export is unavailable in this view.', 'error');
+        return;
+      }
+      this.billingApp.exportBill(number);
+    });
+    summary.appendChild(exportButton);
+  }
+
+  async linkOrderInvoiceFromQr(value) {
+    const parsed = parseInvoiceQrLink(value, window.location.origin);
+
+    const customerId = String(this.currentOrderData?.customer_id ?? '');
+    if (!customerId) return { success: false, message: 'The order has no customer to match this invoice against.' };
+
+    let invoices = this.allCustomerInvoices;
+    if (!invoices.length) {
+      invoices = await this.getCustomerInvoices(customerId);
+      this.allCustomerInvoices = invoices;
+    }
+
+    let invoice;
+    if (!parsed || parsed.type === 'payment') {
+      const invoiceNo = parsed?.invoiceNo || value.trim();
+      invoice = invoices.find(candidate =>
+        String(candidate.invoice_no || '').trim().toLowerCase() === invoiceNo.toLowerCase()
+      );
+      if (!invoice) {
+        return {
+          success: false,
+          message: 'No matching invoice was found for this customer. Enter its invoice number or scan its QR again.'
+        };
+      }
+    } else {
+      const response = await fetch('/api/billing/orders/resolve-invoice-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference: parsed.reference,
+          ledgerToken: parsed.ledgerToken,
+          customerId
+        })
+      });
+      let result;
+      try {
+        result = await response.json();
+      } catch (error) {
+        throw new Error(`Invoice QR resolution returned an invalid response (${response.status}).`);
+      }
+      if (!response.ok || result?.success !== true || !result.invoice) {
+        throw new Error(result?.error || 'The invoice QR could not be linked to this order.');
+      }
+      invoice = result.invoice;
+      if (!invoices.some(candidate => String(candidate.id) === String(invoice.id))) {
+        return {
+          success: false,
+          message: 'This invoice is not in the current customer’s invoice list. Refresh invoices and try again.'
+        };
+      }
+    }
+
+    this.selectInvoiceFromDropdown(invoice);
+    return {
+      success: true,
+      label: `Invoice ${invoice.invoice_no || invoice.id}`,
+      message: `Linked invoice ${invoice.invoice_no || invoice.id} to this order.`,
+      close: true
+    };
   }
 
   hideInvoiceDropdown() {
@@ -3303,12 +3405,30 @@ class OrdersView {
                   <div id="invoiceDropdown" class="search-dropdown-container"></div>
                 </div>
               </div>
+            </div>
+            <div id="linkedInvoiceSummary" role="status" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:-8px 0 16px; padding:10px 12px; background:#f8fafc; border:1px solid #dbe2ea; border-radius:6px; font-size:12px;"></div>
+            <div style="margin-bottom:20px; padding:12px; border:1px solid #dbe2ea; border-radius:6px; background:#f8fafc;">
+              <label for="invoiceQrReferenceInput" style="display:block; font-size:11px; font-weight:700; margin-bottom:8px;">LINK AN INVOICE FROM ITS QR</label>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input id="invoiceQrReferenceInput" type="text" placeholder="Type invoice number or paste its QR link" autocomplete="off" style="flex:1 1 260px; min-width:0; padding:10px; border:1px solid #cbd5e1; border-radius:4px;" />
+                <button type="button" id="stage3QrScanBtn" style="padding:9px 14px; background:#ffea00; color:#111; border:1px solid #d4b800; border-radius:4px; font-weight:700; cursor:pointer;">▦ SCAN QR</button>
+                <button type="button" id="stage3LinkQrBtn" style="padding:9px 14px; background:#1f2937; color:#fff; border:1px solid #1f2937; border-radius:4px; font-weight:700; cursor:pointer;">LINK</button>
+              </div>
+              <small style="display:block; margin-top:7px; color:#64748b;">Scan or paste the portal/payment QR, or type an invoice number. Older payment QRs link using their invoice note.</small>
             </div>`;
 
     // Fetch invoices for this customer and setup searchable dropdown
     const customerId = this.currentOrderData.customer_id;
     this.getCustomerInvoices(customerId).then(invoices => {
       this.allCustomerInvoices = invoices;
+      const existingReference = String(this.currentOrderData?.bill_reference || '').trim().toLowerCase();
+      const linkedInvoice = invoices.find(invoice =>
+        String(invoice.invoice_no || invoice.id || '').trim().toLowerCase() === existingReference
+      );
+      if (linkedInvoice) {
+        this.selectedOrderInvoice = linkedInvoice;
+        this.renderLinkedInvoiceSummary();
+      }
       
       const input = document.getElementById('billRefInput');
       if (input) {
@@ -3318,11 +3438,36 @@ class OrdersView {
           if (this.allCustomerInvoices.length > 0) {
             this.renderInvoiceDropdown(this.allCustomerInvoices);
           }
+        }).catch(error => {
+          log.error('[NewOrder] Unable to load invoices for Stage 3:', error);
+          this.showNotification(error?.message || 'Unable to load customer invoices.', 'error');
         });
         input.addEventListener('blur', () => {
           setTimeout(() => this.hideInvoiceDropdown(), 200);
           this.currentOrderData.bill_reference = input.value;
+          if (!this.selectedOrderInvoice || String(this.selectedOrderInvoice.invoice_no || this.selectedOrderInvoice.id) !== input.value) {
+            this.selectedOrderInvoice = null;
+            this.renderLinkedInvoiceSummary();
+          }
         });
+      }
+    });
+    this.renderLinkedInvoiceSummary();
+
+    document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
+      openQrScanner({
+        title: 'Scan invoice QR to link order',
+        onScan: value => this.linkOrderInvoiceFromQr(value)
+      });
+    });
+    document.getElementById('stage3LinkQrBtn')?.addEventListener('click', async () => {
+      const value = document.getElementById('invoiceQrReferenceInput')?.value || '';
+      try {
+        const result = await this.linkOrderInvoiceFromQr(value);
+        this.showNotification(result.message || 'Invoice QR could not be linked.', result.success ? 'success' : 'warning');
+      } catch (error) {
+        log.error('[NewOrder] Invoice QR linking failed:', error);
+        this.showNotification(error?.message || 'Unable to link this invoice QR.', 'error');
       }
     });
 
@@ -3745,7 +3890,7 @@ class OrdersView {
       if (qcNotesArea) this.currentOrderData.qc_notes = qcNotesArea.value;
     } else if (this.currentStage === 'stage3') {
       const deliveryDateInput = document.getElementById('deliveryDate');
-      const billRefSelect = document.getElementById('billRef');
+      const billRefInput = document.getElementById('billRefInput');
 
       if (deliveryDateInput && isFinalizing) {
         const dateVal = deliveryDateInput.value;
@@ -3760,7 +3905,7 @@ class OrdersView {
         }
         this.currentOrderData.delivery_date = dDate.toISOString();
       }
-      if (billRefSelect) this.currentOrderData.bill_reference = billRefSelect.value;
+      if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
       
       
       // Update the total amount explicitly based on billing sum (received quantity)
