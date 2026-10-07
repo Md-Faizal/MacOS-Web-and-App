@@ -1,5 +1,5 @@
 /// Indian currency numbering and words conversion (Lakhs and Crores)
-/// Bit-for-bit parity with invoice-generator.py
+/// Native implementation for invoice PDF generation
 
 const UNITS: [&str; 20] = [
     "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",

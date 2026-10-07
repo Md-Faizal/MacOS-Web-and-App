@@ -19,6 +19,18 @@ cargo metadata --manifest-path shared/suite_core/Cargo.toml --locked --format-ve
 
 The test and dependency graph are defined by `shared/suite_core/tests/`, `Cargo.toml`, and `Cargo.lock`. For a specific target, install that target using rustup and follow the bridge's build configuration; do not assume a host `cargo test` proves a WASM or Android build.
 
+## Local Invoice PDF Renderer
+
+The Rust invoice renderer can write a PDF from an `InvoiceRenderData` JSON payload without involving the WASM bridge:
+
+```powershell
+cargo run --manifest-path shared/suite_core/Cargo.toml --example render_invoice_json -- input.json invoice-rust.pdf
+```
+
+This renders an A4 landscape invoice, splits invoices with more than 29 rows into 29-row landscape pages with the identical single-page layout structure, and appends an A4 portrait duplex page with payment and customer-ledger QR codes when `duplex_print` is true. Continuation sheets replace the authority signature with `continued on page no:x`, carry forward cumulative calculation summaries across pages, and place the authority signature with no page number on the final invoice sheet. Missing `duplex_print` defaults to true. The JSON may include `app_settings`, `customer_ledger_token`, `customer_id`, and `invoice_ledger_ref` to populate the QR content and bank details. Compare the output with the Python renderer for print/export modes and representative short and long invoices before considering a production switch.
+
+The pure Rust PDF writer currently emits uncompressed page content streams, so its output can be larger than ReportLab's compressed PDFs, especially when vector QR modules are drawn as individual rectangles.
+
 ## Integration Surfaces
 
 | Consumer | Evidence to inspect |

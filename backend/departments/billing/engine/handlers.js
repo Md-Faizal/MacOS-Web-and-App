@@ -77,63 +77,123 @@ function getScriptsPath(scriptName) {
   return path.join(__dirname, '../../../../tools/python', scriptName);
 }
 
-// Generate QR-complete invoice PDFs with the ReportLab renderer.
+// Generate QR-complete invoice PDFs using native Rust SuiteCore WebAssembly engine.
 function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
   try {
     if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
     const pdfPath = path.join(tempDir, `invoice-${invoiceNo}-${Date.now()}.pdf`);
+
+    const SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for invoice generation.');
+    }
+
     const Database = require('better-sqlite3');
     const invoiceDb = new Database(dbPath);
-    let invoiceLedgerRef;
+
+    let renderData;
     try {
-      const invoice = invoiceDb.prepare(`
-        SELECT id, customer_id
-        FROM invoices
-        WHERE invoice_no = ? OR CAST(id AS TEXT) = ?
-      `).get(invoiceNo, invoiceNo);
-      if (!invoice) throw new Error(`Invoice not found: ${invoiceNo}`);
-      const ledgerToken = getOrCreateCustomerLedgerToken(invoiceDb, invoice.customer_id);
+      const invRow = invoiceDb.prepare(`
+        SELECT 
+          i.id,
+          i.invoice_no, 
+          COALESCE(i.invoice_date, i.created_at) as invoice_date, 
+          i.due_date, 
+          '' as lr_no,
+          COALESCE(i.invoice_date, i.created_at) as lr_date,
+          c.name as party_name, 
+          COALESCE(c.address, '') as address, 
+          COALESCE(c.phone, '') as phone, 
+          COALESCE(c.licence_no, '') as licence_no, 
+          COALESCE(c.pan, '') as pan, 
+          COALESCE(c.gstin, '') as gstin,
+          c.id as customer_id,
+          c.ledger_token as customer_ledger_token,
+          i.customer_id as i_customer_id,
+          i.total_amount, 
+          i.total_discount, 
+          (i.total_gst * 0.5) as total_sgst, 
+          (i.total_gst * 0.5) as total_cgst, 
+          i.round_off, 
+          i.grand_total,
+          i.previous_due
+        FROM invoices i
+        JOIN contacts c ON i.customer_id = c.id
+        WHERE i.invoice_no = ? OR i.id = ? OR CAST(i.id AS TEXT) = ?
+      `).get(String(invoiceNo), Number(invoiceNo) || 0, String(invoiceNo));
+
+      if (!invRow) throw new Error(`Invoice not found: ${invoiceNo}`);
+
+      const ledgerToken = getOrCreateCustomerLedgerToken(invoiceDb, invRow.customer_id);
       if (!ledgerToken) throw new Error('Unable to create a customer ledger access token for this invoice.');
-      invoiceLedgerRef = encryptInvoiceLedgerReference(invoice.customer_id, invoice.id);
+      const invoiceLedgerRef = encryptInvoiceLedgerReference(invRow.customer_id, invRow.id);
+
+      const items = invoiceDb.prepare(`
+        SELECT 
+          p.name, 
+          COALESCE(p.classification, '30049011') as hsn, 
+          '' as mfg, 
+          COALESCE(CAST(CAST(ii.pack_value AS REAL) AS INTEGER) || ' ' || ii.pack_type, '') as pack, 
+          ii.batch_no, 
+          ii.exp_date, 
+          ii.qty, 
+          ii.free,
+          ii.mrp, 
+          ii.rate, 
+          ii.amount, 
+          ii.discount_1_percent as dis1, 
+          ii.discount_2_percent as dis2,
+          (ii.gst_percent / 2.0) as sgst_per, 
+          ii.sgst_amount as sgst_val,
+          (ii.gst_percent / 2.0) as cgst_per, 
+          ii.cgst_amount as cgst_val,
+          ii.final_amount as final_amt,
+          0 as is_gold
+        FROM invoice_items ii
+        JOIN products p ON ii.product_id = p.id
+        WHERE ii.invoice_id = ?
+        ORDER BY ii.id ASC
+      `).all(invRow.id);
+
+      const app_settings = {};
+      try {
+        const rows = invoiceDb.prepare('SELECT setting_key, setting_value FROM app_settings').all();
+        for (const r of rows) {
+          if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
+        }
+      } catch (e) {
+        // app_settings optional fallback
+      }
+
+      let duplexPrint = true;
+      if (duplex !== null && duplex !== undefined && duplex !== '') {
+        duplexPrint = String(duplex).toLowerCase() === 'true' || String(duplex).toLowerCase() === '1' || String(duplex).toLowerCase() === 'yes';
+      } else if (app_settings['invoice_duplex_print'] !== undefined) {
+        duplexPrint = String(app_settings['invoice_duplex_print']).toLowerCase() === 'true' || String(app_settings['invoice_duplex_print']).toLowerCase() === '1' || String(app_settings['invoice_duplex_print']).toLowerCase() === 'yes';
+      }
+
+      const exportMode = String(mode).toLowerCase() === 'export';
+
+      renderData = {
+        ...invRow,
+        products: items || [],
+        duplex_print: duplexPrint,
+        export_mode: exportMode,
+        app_settings,
+        customer_ledger_token: ledgerToken,
+        invoice_ledger_ref: invoiceLedgerRef,
+      };
     } finally {
       invoiceDb.close();
     }
 
-    // The Rust invoice renderer currently omits the duplex payment and portal QR panels.
-    // Keep invoice printing/export on the QR-capable generator until both renderers have parity.
+    const res = SuiteCoreBridge.renderInvoicePdf(renderData);
+    if (!res || !res.success || !res.pdf_base64) {
+      throw new Error(`Rust invoice rendering failed: ${res ? res.error : 'Unknown error'}`);
+    }
 
-    const pythonScript = getScriptsPath('invoice-generator.py');
-    
-    if (!fs.existsSync(pythonScript)) {
-      throw new Error(`Python script not found at: ${pythonScript}`);
-    }
-    
-    // Call Python script with error capture
-    let cmd = `${PYTHON_CMD} "${pythonScript}" --db "${dbPath}" --invoice "${invoiceNo}" --out "${pdfPath}" --mode "${mode}" --ledger-ref "${invoiceLedgerRef}"`;
-
-    if (duplex !== null && duplex !== undefined && duplex !== '') {
-      cmd += ` --duplex "${duplex}"`;
-    }
-    let output, error;
-    
-    try {
-      output = execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    } catch (execError) {
-      error = execError;
-      const stderr = execError.stderr ? execError.stderr.toString() : '';
-      const stdout = execError.stdout ? execError.stdout.toString() : '';
-      console.error(`Python script error - exit code ${execError.status}:`);
-      console.error('STDERR:', stderr);
-      console.error('STDOUT:', stdout);
-      console.error('Command:', cmd);
-      throw new Error(`Python execution failed (${execError.status}): ${stderr || stdout || execError.message}`);
-    }
-    
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(`PDF file was not created at ${pdfPath}. Script output: ${output}`);
-    }
-    
+    fs.writeFileSync(pdfPath, Buffer.from(res.pdf_base64, 'base64'));
     return pdfPath;
   } catch (error) {
     console.error(`PDF generation failed: ${error.message}`);
@@ -141,42 +201,149 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
   }
 }
 
-// Helper to call Python payment/credit note generator
+// Generate Payment Receipt & Credit Note PDFs using native Rust SuiteCore WebAssembly engine.
 function generatePaymentPDF(dbPath, paymentId) {
   try {
+    if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
     const pdfPath = path.join(tempDir, `payment-${paymentId}-${Date.now()}.pdf`);
-    const pythonScript = getScriptsPath('payment-credit-note-generator.py');
-    
-    // Verify files exist
-    if (!fs.existsSync(dbPath)) {
-      throw new Error(`Database not found at: ${dbPath}`);
+
+    const SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for payment PDF generation.');
     }
-    if (!fs.existsSync(pythonScript)) {
-      throw new Error(`Python script not found at: ${pythonScript}`);
-    }
-    
-    // Call Python script with error capture
-    const cmd = `${PYTHON_CMD} "${pythonScript}" --db "${dbPath}" --payment "${paymentId}" --out "${pdfPath}"`;
-    let output, error;
-    
+
+    const Database = require('better-sqlite3');
+    const db = new Database(dbPath, { readonly: true });
+
+    let renderData;
     try {
-      output = execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    } catch (execError) {
-      error = execError;
-      const stderr = execError.stderr ? execError.stderr.toString() : '';
-      const stdout = execError.stdout ? execError.stdout.toString() : '';
-      console.error(`Python script error - exit code ${execError.status}:`);
-      console.error('STDERR:', stderr);
-      console.error('STDOUT:', stdout);
-      console.error('Command:', cmd);
-      throw new Error(`Python execution failed (${execError.status}): ${stderr || stdout || execError.message}`);
+      const payment = db.prepare(`
+        SELECT 
+          p.id,
+          p.customer_id,
+          p.type,
+          p.amount,
+          p.credit_amount,
+          p.payment_medium,
+          p.reference_number,
+          COALESCE(p.payment_date, p.created_at) as payment_date,
+          p.invoice_id,
+          p.notes,
+          p.reason,
+          c.name as customer_name,
+          COALESCE(c.gstin, '') as customer_gstin,
+          COALESCE(c.licence_no, '') as customer_licence_no,
+          COALESCE(c.pan, '') as customer_pan,
+          COALESCE(c.phone, '') as customer_phone,
+          COALESCE(c.address, '') as customer_address,
+          c.ledger_token as customer_ledger_token
+        FROM payments p
+        LEFT JOIN contacts c ON p.customer_id = c.id
+        WHERE p.id = ? OR CAST(p.id AS TEXT) = ?
+      `).get(paymentId, String(paymentId));
+
+      if (!payment) throw new Error(`Payment not found: ${paymentId}`);
+
+      let linked_invoice_no = null;
+      let linked_invoice_amount = null;
+      if (payment.invoice_id) {
+        try {
+          const inv = db.prepare('SELECT invoice_no, grand_total FROM invoices WHERE id = ?').get(payment.invoice_id);
+          if (inv) {
+            linked_invoice_no = inv.invoice_no;
+            linked_invoice_amount = inv.grand_total;
+          }
+        } catch (_) {}
+      }
+
+      let current_outstanding_due = null;
+      let account_status = null;
+      let aging_days = null;
+      let due_percentage = null;
+      if (payment.customer_id) {
+        try {
+          const invSum = db.prepare('SELECT COALESCE(SUM(grand_total), 0) as total FROM invoices WHERE customer_id = ?').get(payment.customer_id);
+          const paySum = db.prepare(`
+            SELECT 
+              COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0) as payments,
+              COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as credits
+            FROM payments WHERE customer_id = ?
+          `).get(payment.customer_id);
+          const debit = (invSum && invSum.total) || 0;
+          const credit = ((paySum && paySum.payments) || 0) + ((paySum && paySum.credits) || 0);
+          const due = debit - credit;
+          current_outstanding_due = due;
+          account_status = due > 0 ? 'DUE' : (due < 0 ? 'ADVANCE' : 'SETTLED');
+
+          if (due > 0) {
+            const oldestInv = db.prepare(`
+              SELECT CAST(ROUND(julianday('now') - julianday(COALESCE(due_date, invoice_date, created_at))) AS INTEGER) as days
+              FROM invoices
+              WHERE customer_id = ?
+              ORDER BY COALESCE(due_date, invoice_date, created_at) ASC
+              LIMIT 1
+            `).get(payment.customer_id);
+            if (oldestInv && oldestInv.days != null) {
+              aging_days = Math.max(0, Number(oldestInv.days));
+            }
+            if (debit > 0) {
+              due_percentage = Math.min(100, Math.max(0, (due / debit) * 100));
+            }
+          } else {
+            aging_days = 0;
+            due_percentage = 0;
+          }
+        } catch (_) {}
+      }
+
+      const app_settings = {};
+      try {
+        const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
+        for (const r of rows) {
+          if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
+        }
+      } catch (_) {}
+
+      const isCreditNote = payment.type === 'CREDIT_NOTE';
+      const voucher_type = isCreditNote ? 'credit_note' : 'payment_receipt';
+      const amount = isCreditNote ? (Number(payment.credit_amount) || 0) : (Number(payment.amount) || 0);
+      const payment_method = payment.payment_medium || (isCreditNote ? 'Credit Adjustment' : 'Cash');
+      const remarks = (payment.notes || payment.reason || '').trim() || null;
+
+      renderData = {
+        voucher_type,
+        reference_number: payment.reference_number || (isCreditNote ? `CREDIT-${payment.id}` : `PAY-${payment.id}`),
+        payment_date: payment.payment_date || new Date().toISOString().slice(0, 10),
+        customer_name: payment.customer_name || 'N/A',
+        customer_gstin: payment.customer_gstin,
+        customer_licence_no: payment.customer_licence_no,
+        customer_pan: payment.customer_pan,
+        customer_phone: payment.customer_phone,
+        customer_address: payment.customer_address,
+        amount,
+        payment_method,
+        linked_invoice_no,
+        linked_invoice_amount,
+        current_outstanding_due,
+        account_status,
+        aging_days,
+        due_percentage,
+        remarks,
+        customer_ledger_token: payment.customer_ledger_token,
+        customer_id: payment.customer_id,
+        app_settings,
+      };
+    } finally {
+      db.close();
     }
-    
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(`PDF file was not created at ${pdfPath}. Script output: ${output}`);
+
+    const res = SuiteCoreBridge.renderPaymentPdf(renderData);
+    if (!res || !res.success || !res.pdf_base64) {
+      throw new Error(`Rust payment voucher rendering failed: ${res ? res.error : 'Unknown error'}`);
     }
-    
+
+    fs.writeFileSync(pdfPath, Buffer.from(res.pdf_base64, 'base64'));
     return pdfPath;
   } catch (error) {
     console.error(`Payment PDF generation failed: ${error.message}`);
@@ -184,44 +351,80 @@ function generatePaymentPDF(dbPath, paymentId) {
   }
 }
 
-// Generate opening balance PDF using Python script
+// Generate opening balance PDF using native Rust SuiteCore WebAssembly engine.
 function generateOpeningBalancePDF(dbPath, customerName) {
   try {
+    if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
-    // Sanitize customer name: replace all special characters (/, \, :, *, ?, ", <, >, |) with hyphen
     const sanitizedName = customerName.replace(/[\s\/\\:*?"<>|]+/g, '-');
     const pdfPath = path.join(tempDir, `opening-balance-${sanitizedName}-${Date.now()}.pdf`);
-    const pythonScript = getScriptsPath('payment-credit-note-generator.py');
-    
-    // Verify files exist
-    if (!fs.existsSync(dbPath)) {
-      throw new Error(`Database not found at: ${dbPath}`);
+
+    const SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for opening balance PDF generation.');
     }
-    if (!fs.existsSync(pythonScript)) {
-      throw new Error(`Python script not found at: ${pythonScript}`);
-    }
-    
-    // Call Python script with error capture
-    const cmd = `${PYTHON_CMD} "${pythonScript}" --db "${dbPath}" --opening-balance "${customerName}" --out "${pdfPath}"`;
-    let output, error;
-    
+
+    const Database = require('better-sqlite3');
+    const db = new Database(dbPath, { readonly: true });
+
+    let renderData;
     try {
-      output = execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    } catch (execError) {
-      error = execError;
-      const stderr = execError.stderr ? execError.stderr.toString() : '';
-      const stdout = execError.stdout ? execError.stdout.toString() : '';
-      console.error(`Python script error - exit code ${execError.status}:`);
-      console.error('STDERR:', stderr);
-      console.error('STDOUT:', stdout);
-      console.error('Command:', cmd);
-      throw new Error(`Python execution failed (${execError.status}): ${stderr || stdout || execError.message}`);
+      const contact = db.prepare(`
+        SELECT 
+          id, name, opening_balance,
+          COALESCE(gstin, '') as gstin,
+          COALESCE(licence_no, '') as licence_no,
+          COALESCE(pan, '') as pan,
+          COALESCE(phone, '') as phone,
+          COALESCE(address, '') as address,
+          ledger_token
+        FROM contacts
+        WHERE name = ?
+      `).get(customerName);
+
+      if (!contact) throw new Error(`Customer not found: ${customerName}`);
+
+      const app_settings = {};
+      try {
+        const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
+        for (const r of rows) {
+          if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
+        }
+      } catch (_) {}
+
+      renderData = {
+        voucher_type: 'opening_balance',
+        reference_number: 'OPENING-BALANCE',
+        payment_date: new Date().toISOString().slice(0, 10),
+        customer_name: contact.name,
+        customer_gstin: contact.gstin,
+        customer_licence_no: contact.licence_no,
+        customer_pan: contact.pan,
+        customer_phone: contact.phone,
+        customer_address: contact.address,
+        amount: Number(contact.opening_balance) || 0,
+        payment_method: 'Carryover Balance',
+        linked_invoice_no: null,
+        linked_invoice_amount: null,
+        current_outstanding_due: Number(contact.opening_balance) || 0,
+        account_status: 'CARRYOVER',
+        aging_days: 0,
+        due_percentage: 100.0,
+        remarks: 'Opening ledger balance carried over to system.',
+        customer_ledger_token: contact.ledger_token,
+        customer_id: contact.id,
+        app_settings,
+      };
+    } finally {
+      db.close();
     }
-    
-    if (!fs.existsSync(pdfPath)) {
-      throw new Error(`PDF file was not created at ${pdfPath}. Script output: ${output}`);
+
+    const res = SuiteCoreBridge.renderPaymentPdf(renderData);
+    if (!res || !res.success || !res.pdf_base64) {
+      throw new Error(`Rust opening balance rendering failed: ${res ? res.error : 'Unknown error'}`);
     }
-    
+
+    fs.writeFileSync(pdfPath, Buffer.from(res.pdf_base64, 'base64'));
     return pdfPath;
   } catch (error) {
     console.error(`Opening balance PDF generation failed: ${error.message}`);
@@ -1883,7 +2086,7 @@ module.exports = function(db) {
           }
         }
         
-        // Generate PDF using Python script
+        // Generate PDF using native Rust SuiteCore engine
         const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'print');
         console.log('PDF generated:', pdfPath);
         
@@ -1969,7 +2172,7 @@ module.exports = function(db) {
           }
         }
         
-        // Generate PDF using Python script in export mode
+        // Generate PDF using native Rust SuiteCore engine in export mode
         const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'export');
         console.log('PDF generated (export mode):', pdfPath);
         

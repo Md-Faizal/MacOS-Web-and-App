@@ -342,6 +342,23 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Render modern, minimalist Payment Receipt, Credit Note, or Opening Balance PDF in Rust (<5ms).
+   * Returns { success, pdf_base64, byte_count }
+   * @param {Object} paymentData - Payment voucher render data
+   */
+  static renderPaymentPdf(paymentData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for renderPaymentPdf');
+    }
+
+    const res = this.callWasmJson('suite_render_payment_pdf', paymentData);
+    if (res && res.success && res.pdf_base64) {
+      return res;
+    }
+    throw new Error(`[SuiteCoreBridge] suite_render_payment_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Render monochrome, vector QR label sheets in Rust for catalogue printing.
    */
   static renderCatalogQrLabelPdf(labelData) {

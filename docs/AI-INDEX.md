@@ -56,6 +56,7 @@ These are repository ownership boundaries, not a claim that every app shares one
 | Trace browser/mobile login, refresh, device revocation, or WebAuthn | `docs/handbook/chapters/26-auth-sessions.md` | Auth route, session service, cookies/bearer client and audit/revocation paths |
 | Change Rust behavior or cross-language payload | `docs/handbook/chapters/03-rust-core.md` | Rust implementation/test, export/bridge, exact caller, target build configuration |
 | Trace Rust module ownership, FFI, or platform build support | `docs/handbook/chapters/21-rust-module-map.md` | `lib.rs`, feature/target config, FFI wrapper, actual caller and target test |
+| Benchmark PDF renderer resources on primary/backup VMs | `docs/operations/pdf-rendering-vm-benchmark-handoff.md` | Confirm SSH alias targets and production status; inspect current renderer call paths and get approval before load tests or deployment |
 | Change MacOS browser UI | `docs/handbook/chapters/04-web-frontends.md` | `frontend/` component/module, styles, event/state source, API client and browser entry page |
 | Trace billing cache/events or invoice UI lifecycle | `docs/handbook/chapters/13-macos-workflows.md` | `BillingAPI`, view activation, API route, invalidation and subscriber |
 | Review invoice creation, numbering, or partial-write behavior | `docs/handbook/chapters/16-invoice-lifecycle.md` | Browser submit, billing route/handler, calculator, SQL writes, broadcasts and failure tests |

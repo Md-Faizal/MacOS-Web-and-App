@@ -1,9 +1,13 @@
-use suite_core::analytics::aging::{calculate_customer_aging, calculate_receivables_aging, UnpaidBillItem};
+use suite_core::analytics::aging::{
+    calculate_customer_aging, calculate_receivables_aging, UnpaidBillItem,
+};
 use suite_core::analytics::kpi::calculate_executive_kpis;
 use suite_core::catalog::expiry::check_batch_expiry;
 use suite_core::ffi::fast_path::calc_line_item_fast;
 use suite_core::finance::invoicing::bill::calculate_bill;
-use suite_core::finance::invoicing::item::{calculate_free_scheme_units, LineItemCalculated, LineItemInput};
+use suite_core::finance::invoicing::item::{
+    calculate_free_scheme_units, LineItemCalculated, LineItemInput,
+};
 use suite_core::finance::ledger::entry::{BillEntry, PaymentEntry};
 use suite_core::finance::ledger::statement::generate_customer_statement;
 use suite_core::sales::orders::{calculate_order_fulfillment, OrderItemInput, OrderStage};
@@ -238,14 +242,12 @@ fn test_executive_kpis() {
 
 #[test]
 fn test_order_fulfillment() {
-    let items = vec![
-        OrderItemInput {
-            product_id: Some("p1".to_string()),
-            ordered_qty: 10.0,
-            received_qty: Some(8.0),
-            unit_price: 50.0,
-        },
-    ];
+    let items = vec![OrderItemInput {
+        product_id: Some("p1".to_string()),
+        ordered_qty: 10.0,
+        received_qty: Some(8.0),
+        unit_price: 50.0,
+    }];
 
     let draft = calculate_order_fulfillment(&items, OrderStage::Draft);
     assert_eq!(draft.total_ordered_qty, 10.0);
@@ -274,20 +276,15 @@ fn test_batch_expiry() {
 #[test]
 fn test_fast_path_c_abi() {
     let mut out = [0.0f64; 7];
-    let res = unsafe {
-        calc_line_item_fast(
-            100.0, 2.0, 10.0, 0.0, 18.0, 0,
-            out.as_mut_ptr(),
-        )
-    };
+    let res = unsafe { calc_line_item_fast(100.0, 2.0, 10.0, 0.0, 18.0, 0, out.as_mut_ptr()) };
     assert_eq!(res, 0);
     assert_eq!(out[0], 200.0); // amount
-    assert_eq!(out[1], 20.0);  // disc1
-    assert_eq!(out[2], 0.0);   // disc2
+    assert_eq!(out[1], 20.0); // disc1
+    assert_eq!(out[2], 0.0); // disc2
     assert_eq!(out[3], 32.40); // gst (18% of 180 = 32.40)
     assert_eq!(out[4], 16.20); // sgst
     assert_eq!(out[5], 16.20); // cgst
-    assert_eq!(out[6], 212.40);// final
+    assert_eq!(out[6], 212.40); // final
 }
 
 #[test]
@@ -507,7 +504,10 @@ fn test_ledger_cryptographic_hash_chain_and_tamper_detection() {
     let tampered_report = verify_ledger_chain(&chain, None);
     assert!(!tampered_report.is_valid);
     assert_eq!(tampered_report.tampered_index, Some(1));
-    assert_eq!(tampered_report.tampered_entry_id, Some("tx_002".to_string()));
+    assert_eq!(
+        tampered_report.tampered_entry_id,
+        Some("tx_002".to_string())
+    );
 }
 
 #[test]
@@ -575,13 +575,20 @@ fn test_native_invoice_pdf_generation() {
         grand_total: 1490.0,
         previous_due: 0.0,
         products: vec![item1],
+        duplex_print: false,
+        export_mode: false,
+        app_settings: Default::default(),
+        customer_ledger_token: None,
+        invoice_ledger_ref: None,
+        customer_id: None,
+        i_customer_id: None,
         bank_account_holder: Some("MD FAIZAL".to_string()),
         bank_account_number: Some("50100673684509".to_string()),
         bank_ifsc: Some("HDFC0000236".to_string()),
         bank_branch: Some("CUTTACK - ODISHA".to_string()),
     };
 
-    let pdf_bytes = render_invoice_pdf(&data);
+    let pdf_bytes = render_invoice_pdf(&data).expect("invoice PDF should render");
 
     // Validate standard PDF structure
     assert!(pdf_bytes.starts_with(b"%PDF-1.4"));
@@ -594,20 +601,62 @@ fn test_native_invoice_pdf_generation() {
     assert!(pdf_str.contains("PARACETAMOL 500MG TAB"));
     assert!(pdf_str.contains("APOLLO PHARMACY BHUBANESWAR"));
     assert!(pdf_str.contains("Rs. One Thousand Four Hundred and Ninety Only"));
+    assert!(pdf_str.contains("Bills not paid due date will attract 24% interest."));
+    assert!(pdf_str.contains("Authorised Signatory"));
+    assert!(!pdf_str.contains("Bank: HDFC Bank"));
+
+    let mut long_invoice = data.clone();
+    let template_item = long_invoice.products[0].clone();
+    long_invoice.products = (0..100).map(|_| template_item.clone()).collect();
+    long_invoice.total_amount *= 100.0;
+    long_invoice.total_discount *= 100.0;
+    long_invoice.total_sgst *= 100.0;
+    long_invoice.total_cgst *= 100.0;
+    long_invoice.round_off *= 100.0;
+    long_invoice.grand_total *= 100.0;
+    long_invoice.duplex_print = true;
+    let long_pdf = render_invoice_pdf(&long_invoice).expect("long invoice PDF should render");
+    let long_pdf_str = String::from_utf8_lossy(&long_pdf);
+    assert_eq!(long_pdf_str.matches("PARACETAMOL 500MG TAB").count(), 100);
+    assert_eq!(long_pdf_str.matches("/Type /Page ").count(), 5);
+    assert_eq!(
+        long_pdf_str
+            .matches("/MediaBox [0 0 841.89 595.28]")
+            .count(),
+        4
+    );
+    assert_eq!(
+        long_pdf_str
+            .matches("/MediaBox [0 0 595.28 841.89]")
+            .count(),
+        1
+    );
+    assert!(long_pdf_str.contains("CONTINUED ON PAGE: 2"));
+    assert!(long_pdf_str.contains("CONTINUED ON PAGE: 3"));
+    assert!(long_pdf_str.contains("CONTINUED ON PAGE: 4"));
+    assert!(long_pdf_str.contains("Authorised Signatory"));
+    assert!(long_pdf_str.contains("Grand Total"));
+    assert!(long_pdf_str.contains("BANK TRANSFER DETAILS"));
+    assert!(long_pdf_str.contains("CUSTOMER PORTAL"));
+    assert!(long_pdf_str.contains("UPI: 7749089400@hdfc"));
+    assert!(long_pdf_str.contains("(01) Tj"));
+    assert!(long_pdf_str.contains("(02) Tj"));
 }
 
 #[test]
 fn test_image_header_and_dimensions() {
-    use suite_core::storage::dimensions::{inspect_image_metadata, parse_image_dimensions, ImageFormat};
+    use suite_core::storage::dimensions::{
+        inspect_image_metadata, parse_image_dimensions, ImageFormat,
+    };
 
     // 1. Mock 4K PNG Header (3840 x 2160)
     let png_header = vec![
         0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-        0x00, 0x00, 0x00, 0x0D,                         // IHDR chunk length = 13
-        b'I', b'H', b'D', b'R',                         // "IHDR"
-        0x00, 0x00, 0x0F, 0x00,                         // Width = 3840 (0x0F00)
-        0x00, 0x00, 0x08, 0x70,                         // Height = 2160 (0x0870)
-        0x08, 0x06, 0x00, 0x00, 0x00,                   // Bit depth, color type, etc.
+        0x00, 0x00, 0x00, 0x0D, // IHDR chunk length = 13
+        b'I', b'H', b'D', b'R', // "IHDR"
+        0x00, 0x00, 0x0F, 0x00, // Width = 3840 (0x0F00)
+        0x00, 0x00, 0x08, 0x70, // Height = 2160 (0x0870)
+        0x08, 0x06, 0x00, 0x00, 0x00, // Bit depth, color type, etc.
     ];
     let (fmt, w, h) = parse_image_dimensions(&png_header).expect("Should parse PNG dimensions");
     assert_eq!(fmt, ImageFormat::Png);
@@ -625,16 +674,17 @@ fn test_image_header_and_dimensions() {
     // 2. Mock 1080p JPEG Header (1920 x 1080)
     let jpeg_header = vec![
         0xFF, 0xD8, 0xFF, 0xE0, // SOI + APP0 marker
-        0x00, 0x10,             // APP0 length = 16
-        b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00,
-        0xFF, 0xC0,             // SOF0 marker
-        0x00, 0x11,             // Length = 17
-        0x08,                   // Precision = 8
-        0x04, 0x38,             // Height = 1080 (0x0438)
-        0x07, 0x80,             // Width = 1920 (0x0780)
+        0x00, 0x10, // APP0 length = 16
+        b'J', b'F', b'I', b'F', 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF,
+        0xC0, // SOF0 marker
+        0x00, 0x11, // Length = 17
+        0x08, // Precision = 8
+        0x04, 0x38, // Height = 1080 (0x0438)
+        0x07, 0x80, // Width = 1920 (0x0780)
         0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
     ];
-    let (j_fmt, j_w, j_h) = parse_image_dimensions(&jpeg_header).expect("Should parse JPEG dimensions");
+    let (j_fmt, j_w, j_h) =
+        parse_image_dimensions(&jpeg_header).expect("Should parse JPEG dimensions");
     assert_eq!(j_fmt, ImageFormat::Jpeg);
     assert_eq!(j_w, 1920);
     assert_eq!(j_h, 1080);
@@ -646,12 +696,12 @@ fn test_image_header_and_dimensions() {
 
     // 3. Mock GIF Header (800 x 600)
     let gif_header = vec![
-        b'G', b'I', b'F', b'8', b'9', b'a',
-        0x20, 0x03, // Width = 800 (0x0320)
+        b'G', b'I', b'F', b'8', b'9', b'a', 0x20, 0x03, // Width = 800 (0x0320)
         0x58, 0x02, // Height = 600 (0x0258)
         0x70, 0x00, 0x00,
     ];
-    let (g_fmt, g_w, g_h) = parse_image_dimensions(&gif_header).expect("Should parse GIF dimensions");
+    let (g_fmt, g_w, g_h) =
+        parse_image_dimensions(&gif_header).expect("Should parse GIF dimensions");
     assert_eq!(g_fmt, ImageFormat::Gif);
     assert_eq!(g_w, 800);
     assert_eq!(g_h, 600);
@@ -661,9 +711,7 @@ fn test_image_header_and_dimensions() {
 
 #[test]
 fn test_wallpaper_asset_scan_and_fit() {
-    use suite_core::storage::wallpaper::{
-        calculate_fit_dimensions, scan_wallpaper_asset, FitMode,
-    };
+    use suite_core::storage::wallpaper::{calculate_fit_dimensions, scan_wallpaper_asset, FitMode};
 
     // Test thumbnail cover fit: 3840x2160 -> fit inside 480x270
     let fit_cover = calculate_fit_dimensions(3840, 2160, 480, 270, FitMode::Cover);
@@ -677,10 +725,8 @@ fn test_wallpaper_asset_scan_and_fit() {
 
     // Test full wallpaper scan on mock 4K PNG
     let png_4k = vec![
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-        0x00, 0x00, 0x00, 0x0D,
-        b'I', b'H', b'D', b'R',
-        0x00, 0x00, 0x0F, 0x00, // 3840
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, b'I', b'H', b'D',
+        b'R', 0x00, 0x00, 0x0F, 0x00, // 3840
         0x00, 0x00, 0x08, 0x70, // 2160
         0x08, 0x06, 0x00, 0x00, 0x00,
     ];
@@ -694,11 +740,9 @@ fn test_wallpaper_asset_scan_and_fit() {
 
 #[test]
 fn test_pharmaceutical_fuzzy_search_and_typo_tolerance() {
-    use suite_core::catalog::search::{
-        search_catalog, SearchCatalogItem, SearchOptions,
-    };
     use serde_json::json;
     use std::collections::HashMap;
+    use suite_core::catalog::search::{search_catalog, SearchCatalogItem, SearchOptions};
 
     let catalog = vec![
         SearchCatalogItem {
@@ -778,7 +822,10 @@ fn test_pharmaceutical_fuzzy_search_and_typo_tolerance() {
 
     // 2. Vowel substitution typo: "paracitamol"
     let r2 = search_catalog("paracitamol", &catalog, &opts);
-    assert!(!r2.is_empty(), "Should find Paracetamol with vowel substitution");
+    assert!(
+        !r2.is_empty(),
+        "Should find Paracetamol with vowel substitution"
+    );
     assert_eq!(r2[0].item.name, "Paracetamol 500mg Tablets");
 
     // 3. Multi-token inverted order: "650 dolo"
@@ -798,7 +845,10 @@ fn test_pharmaceutical_fuzzy_search_and_typo_tolerance() {
 
     // 6. Generic/classification search: "amoxycillin"
     let r6 = search_catalog("amoxycillin", &catalog, &opts);
-    assert!(!r6.is_empty(), "Classification amoxycillin should match Augmentin or Amoxicillin");
+    assert!(
+        !r6.is_empty(),
+        "Classification amoxycillin should match Augmentin or Amoxicillin"
+    );
 
     // 7. Typo in Cetirizine: "cetrizine"
     let r7 = search_catalog("cetrizine", &catalog, &opts);
@@ -806,6 +856,53 @@ fn test_pharmaceutical_fuzzy_search_and_typo_tolerance() {
     assert_eq!(r7[0].item.name, "Cetirizine 10mg Tablets");
 }
 
+#[test]
+fn test_payment_voucher_and_credit_note_generation() {
+    use suite_core::documents::pdf::{render_payment_voucher_pdf, PaymentVoucherRenderData, VoucherType};
+    use std::collections::HashMap;
 
+    let voucher = PaymentVoucherRenderData {
+        voucher_type: VoucherType::PaymentReceipt,
+        reference_number: "PAY-260042".to_string(),
+        payment_date: "2026-10-07".to_string(),
+        customer_name: "Mahaveer Medical Hall".to_string(),
+        customer_gstin: "21AABCM1234D1Z2".to_string(),
+        customer_licence_no: "20B-1122, 21B-3344".to_string(),
+        customer_pan: "AABCM1234D".to_string(),
+        customer_phone: "9437112233".to_string(),
+        customer_address: "Court Road, Aska, Ganjam".to_string(),
+        amount: 8750.50,
+        payment_method: "UPI (HDFC Bank)".to_string(),
+        linked_invoice_no: Some("GST-260012".to_string()),
+        linked_invoice_amount: Some(8750.50),
+        current_outstanding_due: Some(0.0),
+        account_status: Some("SETTLED".to_string()),
+        aging_days: Some(0),
+        due_percentage: Some(0.0),
+        remarks: Some("Settlement of Bill GST-260012 via GPay".to_string()),
+        customer_ledger_token: Some("ledger_sec_tok_99".to_string()),
+        customer_id: Some(15),
+        app_settings: HashMap::new(),
+    };
 
+    let pdf_bytes = render_payment_voucher_pdf(&voucher).expect("Must generate payment voucher PDF");
+    assert!(pdf_bytes.starts_with(b"%PDF-1.4"));
+    let pdf_str = String::from_utf8_lossy(&pdf_bytes);
+
+    assert!(pdf_str.contains("UTKAL CHEMICAL AUSHADHALAYA"));
+    assert!(pdf_str.contains("PAYMENT RECEIPT"));
+    assert!(pdf_str.contains("PAY-260042"));
+    assert!(pdf_str.contains("Mahaveer Medical Hall"));
+    assert!(pdf_str.contains("UPI"));
+    assert!(pdf_str.contains("HDFC BANK"));
+    assert!(pdf_str.contains("Bill #GST-260012"));
+    assert!(pdf_str.contains("SETTLED"));
+    assert!(pdf_str.contains("CUSTOMER / RECEIVER SIGNATURE"));
+    assert!(pdf_str.contains("Authorised Signatory"));
+
+    // Ensure zero MARG branding or filler words
+    assert!(!pdf_str.contains("MARG"));
+    assert!(!pdf_str.contains("9437026823"));
+    assert!(!pdf_str.contains("computer-generated document"));
+}
 
