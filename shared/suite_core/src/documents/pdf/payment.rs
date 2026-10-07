@@ -19,6 +19,17 @@ impl Default for VoucherType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DueBillItem {
+    pub invoice_no: String,
+    #[serde(default)]
+    pub date: String,
+    pub amount: f64,
+    pub due_amount: f64,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentVoucherRenderData {
     #[serde(default)]
     pub voucher_type: VoucherType,
@@ -56,6 +67,12 @@ pub struct PaymentVoucherRenderData {
     pub aging_days: Option<i64>,
     #[serde(default)]
     pub due_percentage: Option<f64>,
+
+    // Pending Dues & Bills Breakdown
+    #[serde(default)]
+    pub export_mode: bool,
+    #[serde(default)]
+    pub due_bills: Vec<DueBillItem>,
 
     // Operational Notes
     #[serde(default)]
@@ -139,6 +156,51 @@ fn truncate_text(text: &str, max_len: usize) -> String {
         truncated.push_str("...");
         truncated
     }
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn make_payment_uri(data: &PaymentVoucherRenderData, due_amt: f64) -> String {
+    let settings = &data.app_settings;
+    let mut uri = settings
+        .get("payment_upi_id")
+        .cloned()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "7749089400@hdfc".to_string());
+    let comp_name = settings
+        .get("company_name")
+        .map(String::as_str)
+        .unwrap_or("Utkal Chemical Aushadhalaya");
+    if !uri.starts_with("upi://") {
+        uri = format!(
+            "upi://pay?pa={}&pn={}",
+            percent_encode(&uri),
+            percent_encode(comp_name)
+        );
+    }
+    if !uri.contains("?cu=") && !uri.contains("&cu=") {
+        uri.push_str("&cu=INR");
+    }
+    if due_amt > 0.01 && !uri.contains("?am=") && !uri.contains("&am=") {
+        uri.push_str(&format!("&am={:.2}", due_amt));
+    }
+    if !uri.contains("?tn=") && !uri.contains("&tn=") {
+        let note = format!("Dues Settl: Ref {}", data.reference_number);
+        let note: String = note.chars().take(50).collect();
+        uri.push_str("&tn=");
+        uri.push_str(&percent_encode(&note));
+    }
+    uri
 }
 
 pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec<u8>, String> {
@@ -373,10 +435,23 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
 
     let draw_key_value = |canvas: &mut PdfCanvas, x: f64, y: f64, key: &str, value: &str, is_bold: bool| {
         canvas.set_fill_color(PdfColor::hex("#64748b"));
-        canvas.draw_string(PdfFont::HelveticaBold, 7.5, x, y, key);
+        canvas.draw_string(PdfFont::HelveticaBold, 7.0, x, y, key);
         canvas.set_fill_color(PdfColor::hex("#0f172a"));
         let font = if is_bold { PdfFont::HelveticaBold } else { PdfFont::Helvetica };
-        canvas.draw_string(font, 8.5, x + 76.0, y, value);
+        let char_len = value.chars().count();
+        let (font_sz, offset_x) = if char_len > 40 {
+            (6.5, 66.0)
+        } else if char_len > 28 {
+            (7.5, 68.0)
+        } else {
+            (8.5, 72.0)
+        };
+        let safe_val = if char_len > 55 {
+            truncate_text(value, 55)
+        } else {
+            value.to_string()
+        };
+        canvas.draw_string(font, font_sz, x + offset_x, y, &safe_val);
     };
 
     draw_key_value(
@@ -384,7 +459,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         left_card_x + 12.0,
         row_y,
         "PARTY NAME",
-        &truncate_text(&data.customer_name, 26),
+        &truncate_text(&data.customer_name, 35),
         true,
     );
 
@@ -402,7 +477,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     } else {
         "N/A"
     };
-    draw_key_value(&mut canvas, left_card_x + 12.0, row_y, "D.L. NUMBER", &truncate_text(dl_val, 25), false);
+    draw_key_value(&mut canvas, left_card_x + 12.0, row_y, "D.L. NUMBER", &truncate_text(dl_val, 32), false);
 
     row_y -= row_spacing;
     let phone_val = if !data.customer_phone.trim().is_empty() {
@@ -423,7 +498,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         left_card_x + 12.0,
         row_y,
         "ADDRESS",
-        &truncate_text(addr_val, 28),
+        &truncate_text(addr_val, 35),
         false,
     );
 
@@ -480,10 +555,19 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     right_row_y -= row_spacing;
     let linked_bill_val = match &data.linked_invoice_no {
         Some(inv) if !inv.trim().is_empty() => {
+            let inv_clean = inv.trim();
             if let Some(amt) = data.linked_invoice_amount {
-                format!("Bill #{inv} (Rs. {})", format_money(amt))
+                if inv_clean.to_ascii_uppercase().starts_with("BILL") {
+                    format!("{inv_clean} (Rs. {})", format_money(amt))
+                } else {
+                    format!("Bill #{inv_clean} (Rs. {})", format_money(amt))
+                }
             } else {
-                format!("Bill #{inv}")
+                if inv_clean.to_ascii_uppercase().starts_with("BILL") {
+                    inv_clean.to_string()
+                } else {
+                    format!("Bill #{inv_clean}")
+                }
             }
         }
         _ => "General Account Credit".to_string(),
@@ -493,7 +577,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         right_card_x + 12.0,
         right_row_y,
         "ALLOCATION",
-        &truncate_text(&linked_bill_val, 25),
+        &linked_bill_val,
         false,
     );
 
@@ -510,7 +594,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         right_card_x + 12.0,
         right_row_y,
         "BALANCE DUE",
-        &truncate_text(&due_val, 25),
+        &due_val,
         due_bold,
     );
 
@@ -622,7 +706,10 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         }
     }
 
-    // 6. ONLINE LEDGER STATEMENT QR CARD (Zero Fluff, purely functional)
+    // 6. ONLINE LEDGER STATEMENT & QUICK PAY UPI QR (Zero Fluff, purely functional)
+    let outstanding_due = data.current_outstanding_due.unwrap_or(0.0);
+    let has_dues = outstanding_due > 0.01 || !data.due_bills.is_empty();
+
     let portal_url = data
         .app_settings
         .get("portal_base_url")
@@ -641,7 +728,165 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         None
     };
 
-    if let Some(url) = qr_link {
+    if has_dues {
+        // A. PENDING INVOICES & OUTSTANDING DUES CARD
+        let bills_to_show = if data.due_bills.is_empty() {
+            1
+        } else {
+            data.due_bills.len().min(3)
+        };
+        let row_h = 14.0;
+        let bills_card_h = 22.0 + 15.0 + (bills_to_show as f64 * row_h) + 6.0;
+        let bills_card_y = current_y - bills_card_h;
+
+        // Card frame
+        canvas.set_fill_color(PdfColor::WHITE);
+        canvas.set_stroke_color(PdfColor::hex("#cbd5e1"));
+        canvas.set_line_width(0.75);
+        canvas.round_rect(left_margin, bills_card_y, content_width, bills_card_h, 4.0, true, true);
+
+        // Amber left indicator
+        canvas.set_fill_color(PdfColor::hex("#f59e0b"));
+        canvas.round_rect(left_margin, bills_card_y, 3.5, bills_card_h, 1.5, false, true);
+
+        // Header Strip (amber tint)
+        canvas.set_fill_color(PdfColor::hex("#fffbeb"));
+        canvas.round_rect(left_margin, bills_card_y + bills_card_h - 22.0, content_width, 22.0, 4.0, false, true);
+        canvas.rect(left_margin, bills_card_y + bills_card_h - 22.0, content_width, 6.0, false, true);
+        canvas.set_stroke_color(PdfColor::hex("#fde68a"));
+        canvas.line(left_margin, bills_card_y + bills_card_h - 22.0, left_margin + content_width, bills_card_y + bills_card_h - 22.0);
+
+        canvas.set_fill_color(PdfColor::hex("#92400e"));
+        canvas.draw_spaced_string(
+            PdfFont::HelveticaBold,
+            7.5,
+            left_margin + 12.0,
+            bills_card_y + bills_card_h - 14.5,
+            "PENDING INVOICES & OUTSTANDING DUES BREAKDOWN",
+            0.4,
+        );
+
+        let due_summary_tag = format!("TOTAL DUE: Rs. {}", format_money(outstanding_due));
+        canvas.draw_right_string(
+            PdfFont::HelveticaBold,
+            7.5,
+            left_margin + content_width - 12.0,
+            bills_card_y + bills_card_h - 14.5,
+            &due_summary_tag,
+        );
+
+        // Column Headers
+        let col_y = bills_card_y + bills_card_h - 33.0;
+        canvas.set_fill_color(PdfColor::hex("#64748b"));
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 12.0, col_y, "INVOICE / BILL #");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 145.0, col_y, "DATE");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 225.0, col_y, "BILL AMOUNT");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 325.0, col_y, "BALANCE DUE");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 430.0, col_y, "STATUS");
+
+        // Subtle divider under col headers
+        canvas.set_stroke_color(PdfColor::hex("#f1f5f9"));
+        canvas.line(left_margin + 10.0, col_y - 3.0, left_margin + content_width - 10.0, col_y - 3.0);
+
+        let mut item_y = col_y - 13.0;
+        if data.due_bills.is_empty() {
+            canvas.set_fill_color(PdfColor::hex("#0f172a"));
+            canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 12.0, item_y, "Opening Balance / Ledger Carryover");
+            canvas.set_fill_color(PdfColor::hex("#64748b"));
+            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 145.0, item_y, "-");
+            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 225.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
+            canvas.set_fill_color(PdfColor::hex("#b45309"));
+            canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 325.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
+            canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 430.0, item_y, "DUE");
+        } else {
+            for bill in data.due_bills.iter().take(3) {
+                canvas.set_fill_color(PdfColor::hex("#0f172a"));
+                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 12.0, item_y, &truncate_text(&bill.invoice_no, 22));
+                canvas.set_fill_color(PdfColor::hex("#64748b"));
+                let d_str = format_date(&bill.date);
+                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 145.0, item_y, if d_str.is_empty() { "-" } else { &d_str });
+                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 225.0, item_y, &format!("Rs. {}", format_money(bill.amount)));
+                canvas.set_fill_color(PdfColor::hex("#b45309"));
+                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 325.0, item_y, &format!("Rs. {}", format_money(bill.due_amount)));
+                let st = bill.status.as_deref().unwrap_or("PENDING");
+                let st_color = if st.eq_ignore_ascii_case("PARTIAL") { PdfColor::hex("#2563eb") } else { PdfColor::hex("#d97706") };
+                canvas.set_fill_color(st_color);
+                canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 430.0, item_y, st);
+
+                item_y -= row_h;
+            }
+        }
+
+        current_y = bills_card_y - 10.0;
+
+        // B. DUAL ACTION ROW: LEDGER PORTAL (LEFT) + QUICK UPI PAYMENT (RIGHT)
+        let dual_card_h = 70.0;
+        let dual_card_y = current_y - dual_card_h;
+        let col_gap = 10.0;
+        let half_w = (content_width - col_gap) / 2.0;
+
+        // B1. LEFT CARD: Customer Ledger Portal
+        canvas.set_fill_color(PdfColor::hex("#f8fafc"));
+        canvas.set_stroke_color(PdfColor::hex("#e2e8f0"));
+        canvas.set_line_width(0.75);
+        canvas.round_rect(left_margin, dual_card_y, half_w, dual_card_h, 4.0, true, true);
+
+        // Blue accent bar
+        canvas.set_fill_color(PdfColor::hex("#3b82f6"));
+        canvas.round_rect(left_margin, dual_card_y, 3.0, dual_card_h, 1.5, false, true);
+
+        let qr_sz = 48.0;
+        let l_qr_x = left_margin + 9.0;
+        let l_qr_y = dual_card_y + (dual_card_h - qr_sz) / 2.0;
+        let portal_display_url = qr_link.clone().unwrap_or_else(|| portal_url.clone());
+        let _ = draw_qr(&mut canvas, &portal_display_url, l_qr_x, l_qr_y, qr_sz);
+
+        let l_text_x = l_qr_x + qr_sz + 10.0;
+        canvas.set_fill_color(PdfColor::hex("#0f172a"));
+        canvas.draw_string(PdfFont::HelveticaBold, 8.0, l_text_x, dual_card_y + dual_card_h - 18.0, "ONLINE CUSTOMER LEDGER");
+        canvas.set_fill_color(PdfColor::hex("#64748b"));
+        canvas.draw_string(PdfFont::Helvetica, 6.5, l_text_x, dual_card_y + dual_card_h - 30.0, "Scan to verify & view complete running");
+        canvas.draw_string(PdfFont::Helvetica, 6.5, l_text_x, dual_card_y + dual_card_h - 40.0, "balance statement and payment history.");
+        canvas.set_fill_color(PdfColor::hex("#2563eb"));
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, l_text_x, dual_card_y + 12.0, &truncate_text(&portal_display_url, 30));
+
+        // B2. RIGHT CARD: Quick Pay via UPI
+        let r_card_x = left_margin + half_w + col_gap;
+        canvas.set_fill_color(PdfColor::hex("#f8fafc"));
+        canvas.set_stroke_color(PdfColor::hex("#cbd5e1"));
+        canvas.set_line_width(0.75);
+        canvas.round_rect(r_card_x, dual_card_y, half_w, dual_card_h, 4.0, true, true);
+
+        // Emerald accent bar
+        canvas.set_fill_color(PdfColor::hex("#10b981"));
+        canvas.round_rect(r_card_x, dual_card_y, 3.0, dual_card_h, 1.5, false, true);
+
+        let r_qr_x = r_card_x + 9.0;
+        let r_qr_y = dual_card_y + (dual_card_h - qr_sz) / 2.0;
+        let pay_uri = make_payment_uri(data, outstanding_due);
+        let _ = draw_qr(&mut canvas, &pay_uri, r_qr_x, r_qr_y, qr_sz);
+
+        let r_text_x = r_qr_x + qr_sz + 10.0;
+        canvas.set_fill_color(PdfColor::hex("#065f46"));
+        canvas.draw_spaced_string(PdfFont::HelveticaBold, 7.5, r_text_x, dual_card_y + dual_card_h - 17.0, "QUICK SETTLEMENT (UPI)", 0.3);
+        canvas.set_fill_color(PdfColor::hex("#0f172a"));
+        canvas.draw_string(PdfFont::HelveticaBold, 8.5, r_text_x, dual_card_y + dual_card_h - 30.0, &format!("Pay Due: Rs. {}", format_money(outstanding_due)));
+
+        if data.export_mode {
+            let btn_w = 92.0;
+            let btn_h = 13.0;
+            let btn_y = dual_card_y + 10.0;
+            canvas.set_fill_color(PdfColor::hex("#0f172a"));
+            canvas.round_rect(r_text_x, btn_y, btn_w, btn_h, 3.0, false, true);
+            canvas.set_fill_color(PdfColor::WHITE);
+            canvas.draw_centered_string(PdfFont::HelveticaBold, 6.5, r_text_x + btn_w / 2.0, btn_y + 3.5, "⚡ PAY VIA UPI APP");
+        } else {
+            canvas.set_fill_color(PdfColor::hex("#475569"));
+            canvas.draw_string(PdfFont::Helvetica, 6.5, r_text_x, dual_card_y + 12.0, "Scan with GPay / PhonePe / Paytm");
+        }
+
+        let _ = dual_card_y;
+    } else if let Some(url) = qr_link {
         let qr_card_h = 76.0;
         let qr_card_y = current_y - qr_card_h;
 
@@ -821,6 +1066,8 @@ pub mod tests {
             remarks: Some("Part payment towards April invoices.".to_string()),
             customer_ledger_token: Some("token_123456789".to_string()),
             customer_id: Some(12),
+            export_mode: false,
+            due_bills: Vec::new(),
             app_settings: HashMap::new(),
         };
 
@@ -862,6 +1109,8 @@ pub mod tests {
             account_status: None,
             aging_days: None,
             due_percentage: None,
+            export_mode: false,
+            due_bills: Vec::new(),
             remarks: None,
             customer_ledger_token: None,
             customer_id: None,
@@ -891,6 +1140,8 @@ pub mod tests {
             account_status: None,
             aging_days: None,
             due_percentage: None,
+            export_mode: false,
+            due_bills: Vec::new(),
             remarks: None,
             customer_ledger_token: None,
             customer_id: None,
@@ -928,6 +1179,8 @@ pub mod tests {
             account_status: Some("SETTLED".to_string()),
             aging_days: Some(0),
             due_percentage: Some(0.0),
+            export_mode: false,
+            due_bills: Vec::new(),
             remarks: Some("Settlement of bill".to_string()),
             customer_ledger_token: None,
             customer_id: Some(15),
@@ -943,5 +1196,76 @@ pub mod tests {
         // Autogenerated digital voucher disclaimer
         assert!(pdf_str.contains("AUTHENTICATED DIGITAL VOUCHER  •  NO PHYSICAL SIGNATURE REQUIRED"));
         assert!(pdf_str.contains("CGST Rule 46 Proviso & Information Technology Act, 2000"));
+    }
+
+    #[test]
+    fn test_payment_untruncated_allocation_and_due_bills_qr() {
+        let mut app_settings = HashMap::new();
+        app_settings.insert("payment_upi_id".to_string(), "7749089400@hdfc".to_string());
+        app_settings.insert("portal_base_url".to_string(), "https://mac.faizal.uk".to_string());
+
+        let due_bills = vec![
+            DueBillItem {
+                invoice_no: "GST-2026-00042".to_string(),
+                date: "2026-09-15".to_string(),
+                amount: 4500.0,
+                due_amount: 1490.0,
+                status: Some("PARTIAL".to_string()),
+            },
+            DueBillItem {
+                invoice_no: "GST-2026-00055".to_string(),
+                date: "2026-09-28".to_string(),
+                amount: 3200.0,
+                due_amount: 3200.0,
+                status: Some("PENDING".to_string()),
+            },
+        ];
+
+        let data = PaymentVoucherRenderData {
+            voucher_type: VoucherType::PaymentReceipt,
+            reference_number: "PAY-2026-0099".to_string(),
+            payment_date: "2026-10-07".to_string(),
+            customer_name: "SHREE GANESH PHARMACEUTICALS".to_string(),
+            customer_gstin: "21ABCDE1234F1Z5".to_string(),
+            customer_licence_no: "DL-112233".to_string(),
+            customer_pan: "ABCDE1234F".to_string(),
+            customer_phone: "9988776655".to_string(),
+            customer_address: "STATION ROAD, BERHAMPUR".to_string(),
+            amount: 5000.0,
+            payment_method: "IMPS / Online Transfer".to_string(),
+            // Test long allocation string - must NOT be truncated to 25 chars
+            linked_invoice_no: Some("GST-2026-00042".to_string()),
+            linked_invoice_amount: Some(4500.0),
+            current_outstanding_due: Some(4690.0),
+            account_status: Some("DUE".to_string()),
+            aging_days: Some(22),
+            due_percentage: Some(60.9),
+            export_mode: true,
+            due_bills,
+            remarks: Some("Payment towards pending invoices".to_string()),
+            customer_ledger_token: Some("sec_ledger_token_88".to_string()),
+            customer_id: Some(42),
+            app_settings,
+        };
+
+        let bytes = render_payment_voucher_pdf(&data).expect("Must render payment PDF with dues");
+        let pdf_str = String::from_utf8_lossy(&bytes);
+
+        // Verification of untruncated allocation
+        assert!(pdf_str.contains("Bill #GST-2026-00042 \\(Rs. 4,500.00\\)"));
+
+        // Verification of pending bills table and dues
+        assert!(pdf_str.contains("PENDING INVOICES & OUTSTANDING DUES BREAKDOWN"));
+        assert!(pdf_str.contains("GST-2026-00042"));
+        assert!(pdf_str.contains("GST-2026-00055"));
+        assert!(pdf_str.contains("Rs. 1,490.00"));
+        assert!(pdf_str.contains("Rs. 3,200.00"));
+        assert!(pdf_str.contains("TOTAL DUE: Rs. 4,690.00"));
+
+        // Verification of dual QR (Ledger portal & Quick Pay UPI QR)
+        assert!(pdf_str.contains("ONLINE CUSTOMER LEDGER"));
+        assert!(pdf_str.contains("QUICK SETTLEMENT \\(UPI\\)"));
+        assert!(pdf_str.contains("Pay Due: Rs. 4,690.00"));
+        assert!(pdf_str.contains("⚡ PAY VIA UPI APP"));
     }
 }

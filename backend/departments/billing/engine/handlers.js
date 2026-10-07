@@ -202,7 +202,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
 }
 
 // Generate Payment Receipt & Credit Note PDFs using native Rust SuiteCore WebAssembly engine.
-function generatePaymentPDF(dbPath, paymentId) {
+function generatePaymentPDF(dbPath, paymentId, options = {}) {
   try {
     if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
@@ -212,6 +212,8 @@ function generatePaymentPDF(dbPath, paymentId) {
     if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
       throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for payment PDF generation.');
     }
+
+    const exportMode = options && options.export_mode !== undefined ? Boolean(options.export_mode) : true;
 
     const Database = require('better-sqlite3');
     const db = new Database(dbPath, { readonly: true });
@@ -257,12 +259,62 @@ function generatePaymentPDF(dbPath, paymentId) {
         } catch (_) {}
       }
 
+      // Authoritative Ledger Statement Calculation (matches Customer Ledger exactly)
       let current_outstanding_due = null;
       let account_status = null;
       let aging_days = null;
       let due_percentage = null;
+      let due_bills = [];
+
       if (payment.customer_id) {
         try {
+          const calculator = require('../../../core/billing/calculator');
+          const statement = calculator.calculateCustomerStatement(db, payment.customer_id);
+          if (statement && statement.success) {
+            const currentDue = Number(statement.customer?.current_due ?? statement.summary?.current_due ?? 0);
+            current_outstanding_due = currentDue;
+            account_status = currentDue > 0.01 ? 'DUE' : (currentDue < -0.01 ? 'ADVANCE' : 'SETTLED');
+
+            // Extract unsettled bills with remaining amounts
+            const rawBills = statement.bills || [];
+            due_bills = rawBills
+              .filter(b => !b.settled && Number(b.remaining_amount || 0) > 0.01)
+              .sort((a, b) => new Date(a.invoice_date || a.created_at) - new Date(b.invoice_date || b.created_at))
+              .map(b => ({
+                invoice_no: b.invoice_no || `BILL-${b.id}`,
+                date: b.invoice_date ? String(b.invoice_date).slice(0, 10) : '',
+                amount: Number(b.amount || b.grand_total || 0),
+                due_amount: Number(b.remaining_amount || 0),
+                status: b.status || (Number(b.remaining_amount || 0) < Number(b.amount || b.grand_total || 0) ? 'PARTIAL' : 'UNPAID')
+              }));
+
+            // Aging days from overdue bills or oldest unsettled bill
+            if (due_bills.length > 0) {
+              const maxOverdue = Math.max(...rawBills.filter(b => !b.settled).map(b => Number(b.days_overdue || b.settlement_days || 0)), 0);
+              aging_days = Math.max(0, maxOverdue);
+            } else {
+              aging_days = 0;
+            }
+
+            const totalPurchases = Number(statement.summary?.total_purchases || 0);
+            if (totalPurchases > 0 && currentDue > 0) {
+              due_percentage = Math.min(100, Math.max(0, (currentDue / totalPurchases) * 100));
+            } else {
+              due_percentage = 0;
+            }
+
+            // If linked_invoice_no is not explicitly set, see if notes mention an invoice
+            if (!linked_invoice_no && payment.notes) {
+              const match = payment.notes.match(/(?:INV(?:OICE)?|BILL)[#\s:-]*([A-Z0-9\/-]+)/i);
+              if (match) {
+                linked_invoice_no = match[1];
+              }
+            }
+          }
+        } catch (calcErr) {
+          console.warn('[Billing] Fallback statement calculation for payment PDF:', calcErr.message);
+          const contact = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(payment.customer_id);
+          const opBal = Number((contact && contact.opening_balance) || 0);
           const invSum = db.prepare('SELECT COALESCE(SUM(grand_total), 0) as total FROM invoices WHERE customer_id = ?').get(payment.customer_id);
           const paySum = db.prepare(`
             SELECT 
@@ -270,31 +322,14 @@ function generatePaymentPDF(dbPath, paymentId) {
               COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as credits
             FROM payments WHERE customer_id = ?
           `).get(payment.customer_id);
-          const debit = (invSum && invSum.total) || 0;
+          const debit = opBal + ((invSum && invSum.total) || 0);
           const credit = ((paySum && paySum.payments) || 0) + ((paySum && paySum.credits) || 0);
           const due = debit - credit;
           current_outstanding_due = due;
-          account_status = due > 0 ? 'DUE' : (due < 0 ? 'ADVANCE' : 'SETTLED');
-
-          if (due > 0) {
-            const oldestInv = db.prepare(`
-              SELECT CAST(ROUND(julianday('now') - julianday(COALESCE(due_date, invoice_date, created_at))) AS INTEGER) as days
-              FROM invoices
-              WHERE customer_id = ?
-              ORDER BY COALESCE(due_date, invoice_date, created_at) ASC
-              LIMIT 1
-            `).get(payment.customer_id);
-            if (oldestInv && oldestInv.days != null) {
-              aging_days = Math.max(0, Number(oldestInv.days));
-            }
-            if (debit > 0) {
-              due_percentage = Math.min(100, Math.max(0, (due / debit) * 100));
-            }
-          } else {
-            aging_days = 0;
-            due_percentage = 0;
-          }
-        } catch (_) {}
+          account_status = due > 0.01 ? 'DUE' : (due < -0.01 ? 'ADVANCE' : 'SETTLED');
+          aging_days = 0;
+          due_percentage = 0;
+        }
       }
 
       const app_settings = {};
@@ -329,6 +364,8 @@ function generatePaymentPDF(dbPath, paymentId) {
         account_status,
         aging_days,
         due_percentage,
+        export_mode: exportMode,
+        due_bills,
         remarks,
         customer_ledger_token: payment.customer_ledger_token,
         customer_id: payment.customer_id,
@@ -352,7 +389,7 @@ function generatePaymentPDF(dbPath, paymentId) {
 }
 
 // Generate opening balance PDF using native Rust SuiteCore WebAssembly engine.
-function generateOpeningBalancePDF(dbPath, customerName) {
+function generateOpeningBalancePDF(dbPath, customerName, options = {}) {
   try {
     if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
@@ -363,6 +400,8 @@ function generateOpeningBalancePDF(dbPath, customerName) {
     if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
       throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for opening balance PDF generation.');
     }
+
+    const exportMode = options && options.export_mode !== undefined ? Boolean(options.export_mode) : true;
 
     const Database = require('better-sqlite3');
     const db = new Database(dbPath, { readonly: true });
@@ -410,6 +449,8 @@ function generateOpeningBalancePDF(dbPath, customerName) {
         account_status: 'CARRYOVER',
         aging_days: 0,
         due_percentage: 100.0,
+        export_mode: exportMode,
+        due_bills: [],
         remarks: 'Opening ledger balance carried over to system.',
         customer_ledger_token: contact.ledger_token,
         customer_id: contact.id,
@@ -2333,7 +2374,7 @@ module.exports = function(db) {
 
         const dbPath = getDatabasePath();
         
-        const pdfPath = generatePaymentPDF(dbPath, paymentId);
+        const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: true });
         const pdfBuffer = fs.readFileSync(pdfPath);
         
         const isCreditNote = paymentRecord && paymentRecord.type === 'CREDIT_NOTE';
@@ -2396,7 +2437,7 @@ module.exports = function(db) {
 
         const dbPath = getDatabasePath();
         
-        const pdfPath = generatePaymentPDF(dbPath, paymentId);
+        const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: true });
         const jpgPath = convertPDFToJPG(pdfPath);
         const jpgBuffer = fs.readFileSync(jpgPath);
         
@@ -2440,7 +2481,7 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
+        const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: true });
         const jpgPath = convertPDFToJPG(pdfPath);
         const jpgBuffer = fs.readFileSync(jpgPath);
         res.setHeader('Content-Type', 'image/jpeg');
@@ -2476,7 +2517,7 @@ module.exports = function(db) {
 
         const dbPath = getDatabasePath();
         
-        const pdfPath = generatePaymentPDF(dbPath, paymentId);
+        const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: false });
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
         const isCreditNote = paymentRecord && paymentRecord.type === 'CREDIT_NOTE';
@@ -2538,7 +2579,7 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
+        const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: true });
         const pdfBuffer = fs.readFileSync(pdfPath);
         
         const dateStr = contactRecord ? contactRecord.created_at : null;
@@ -2573,7 +2614,7 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        const pdfPath = generateOpeningBalancePDF(dbPath, customerName);
+        const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: false });
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
         

@@ -882,6 +882,8 @@ fn test_payment_voucher_and_credit_note_generation() {
         remarks: Some("Settlement of Bill GST-260012 via GPay".to_string()),
         customer_ledger_token: Some("ledger_sec_tok_99".to_string()),
         customer_id: Some(15),
+        export_mode: false,
+        due_bills: Vec::new(),
         app_settings: HashMap::new(),
     };
 
@@ -895,7 +897,7 @@ fn test_payment_voucher_and_credit_note_generation() {
     assert!(pdf_str.contains("Mahaveer Medical Hall"));
     assert!(pdf_str.contains("UPI"));
     assert!(pdf_str.contains("HDFC BANK"));
-    assert!(pdf_str.contains("Bill #GST-260012"));
+    assert!(pdf_str.contains("Bill #GST-260012 \\(Rs. 8,750.50\\)"));
     assert!(pdf_str.contains("SETTLED"));
     assert!(pdf_str.contains("CUSTOMER / RECEIVER SIGNATURE"));
     assert!(pdf_str.contains("Authorised Signatory"));
