@@ -27,6 +27,8 @@ pub struct DueBillItem {
     pub due_amount: f64,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
+    pub days_overdue: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +71,12 @@ pub struct PaymentVoucherRenderData {
     pub due_percentage: Option<f64>,
     #[serde(default)]
     pub settlement_percentage: Option<f64>,
+    #[serde(default)]
+    pub total_billed_amount: Option<f64>,
+    #[serde(default)]
+    pub total_settled_amount: Option<f64>,
+    #[serde(default)]
+    pub overdue_since_date: Option<String>,
 
     // Pending Dues & Bills Breakdown
     #[serde(default)]
@@ -590,18 +598,36 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     let due_amt = data.current_outstanding_due.unwrap_or(0.0);
     let aging = data.aging_days.unwrap_or(0);
 
-    // Aging severity color and status text
+    // Aging severity color and actual date value (replaces arbitrary date range)
     let (due_color, aging_status_text) = if due_amt <= 0.001 {
-        (PdfColor::hex("#10b981"), "SETTLED") // Emerald Green
-    } else if aging <= 30 {
-        (
-            PdfColor::hex("#2563eb"), // Indigo / Blue
-            if aging == 0 { "CURRENT" } else { "0-30 DAYS OVERDUE" },
-        )
-    } else if aging <= 60 {
-        (PdfColor::hex("#d97706"), "31-60 DAYS OVERDUE") // Amber Warning
+        (PdfColor::hex("#10b981"), "SETTLED".to_string()) // Emerald Green
     } else {
-        (PdfColor::hex("#dc2626"), "60+ DAYS OVERDUE") // Crimson Alert
+        let color = if aging <= 30 {
+            PdfColor::hex("#2563eb") // Indigo / Blue
+        } else if aging <= 60 {
+            PdfColor::hex("#d97706") // Amber Warning
+        } else {
+            PdfColor::hex("#dc2626") // Crimson Alert
+        };
+
+        // Determine actual date value for aging
+        let date_val = data
+            .overdue_since_date
+            .as_deref()
+            .or_else(|| data.due_bills.first().map(|b| b.date.as_str()))
+            .filter(|d| !d.trim().is_empty());
+
+        let text = match date_val {
+            Some(d) => format!("SINCE {}", format_date(d)),
+            None => {
+                if aging == 0 {
+                    "CURRENT".to_string()
+                } else {
+                    format!("{aging} DAYS OVERDUE")
+                }
+            }
+        };
+        (color, text)
     };
 
     right_row_y -= row_spacing;
@@ -625,20 +651,38 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         Some(due_color),
     );
 
-    // Amount Settlement Out of 100 in the Progress Bar
-    let settlement_pct: f64 = if due_amt <= 0.001 {
-        100.0
-    } else if let Some(sp) = data.settlement_percentage {
-        sp.clamp(0.0, 100.0)
-    } else if let Some(dp) = data.due_percentage {
-        (100.0 - dp).clamp(0.0, 100.0)
+    // Amount Settlement in Progress Bar: show amounts (e.g. 990 out of 1000) instead of %
+    let total_billed_amt = data.total_billed_amount.unwrap_or_else(|| {
+        if let Some(alloc_amt) = data.linked_invoice_amount {
+            alloc_amt
+        } else if due_amt > 0.001 {
+            due_amt + data.amount
+        } else {
+            data.amount
+        }
+    });
+
+    let total_settled_amt = data.total_settled_amount.unwrap_or_else(|| {
+        if due_amt <= 0.001 {
+            total_billed_amt
+        } else if total_billed_amt >= due_amt {
+            total_billed_amt - due_amt
+        } else if let Some(sp) = data.settlement_percentage {
+            total_billed_amt * (sp / 100.0)
+        } else {
+            data.amount
+        }
+    });
+
+    let fill_ratio = if total_billed_amt > 0.001 {
+        (total_settled_amt / total_billed_amt).clamp(0.0, 1.0)
+    } else if due_amt <= 0.001 {
+        1.0
     } else {
         0.0
     };
 
-    let fill_ratio = (settlement_pct / 100.0).clamp(0.0, 1.0);
-
-    let (bar_color, track_color) = if settlement_pct >= 99.9 || due_amt <= 0.001 {
+    let (bar_color, track_color) = if fill_ratio >= 0.999 || due_amt <= 0.001 {
         (PdfColor::hex("#10b981"), PdfColor::hex("#ecfdf5")) // Emerald
     } else if aging <= 30 {
         (PdfColor::hex("#2563eb"), PdfColor::hex("#eff6ff")) // Indigo
@@ -652,11 +696,15 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     let bar_width = col_w - 24.0;
     let bar_height = 6.0;
 
-    // Settlement label
-    let settlement_label = if due_amt <= 0.001 {
-        "AMOUNT SETTLEMENT: 100% OF 100".to_string()
+    // Settlement label with actual amounts: "SETTLEMENT: Rs. 990.00 OUT OF Rs. 1,000.00"
+    let settlement_label = if due_amt <= 0.001 && total_billed_amt <= 0.001 {
+        "SETTLEMENT: FULLY SETTLED".to_string()
     } else {
-        format!("AMOUNT SETTLEMENT: {:.1}% OF 100", settlement_pct)
+        format!(
+            "SETTLEMENT: Rs. {} OUT OF Rs. {}",
+            format_money(total_settled_amt),
+            format_money(total_billed_amt)
+        )
     };
 
     canvas.set_fill_color(bar_color);
@@ -676,7 +724,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     canvas.round_rect(right_card_x + 12.0, bar_box_y, bar_width, bar_height, 3.0, true, true);
 
     // Active fill
-    let active_w = if settlement_pct > 0.0 { (bar_width * fill_ratio).max(4.0) } else { 0.0 };
+    let active_w = if fill_ratio > 0.0 { (bar_width * fill_ratio).max(4.0) } else { 0.0 };
     if active_w > 0.0 {
         canvas.set_fill_color(bar_color);
         canvas.round_rect(right_card_x + 12.0, bar_box_y, active_w, bar_height, 3.0, false, true);
@@ -792,14 +840,15 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
             &due_summary_tag,
         );
 
-        // Column Headers
+        // Column Headers (including AGING with days passed)
         let col_y = bills_card_y + bills_card_h - 33.0;
         canvas.set_fill_color(PdfColor::hex("#64748b"));
         canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 12.0, col_y, "INVOICE / BILL #");
-        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 145.0, col_y, "DATE");
-        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 225.0, col_y, "BILL AMOUNT");
-        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 325.0, col_y, "BALANCE DUE");
-        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 430.0, col_y, "STATUS");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 125.0, col_y, "DATE");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 195.0, col_y, "AGING");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 265.0, col_y, "BILL AMOUNT");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 355.0, col_y, "BALANCE DUE");
+        canvas.draw_string(PdfFont::HelveticaBold, 6.5, left_margin + 440.0, col_y, "STATUS");
 
         // Subtle divider under col headers
         canvas.set_stroke_color(PdfColor::hex("#f1f5f9"));
@@ -810,25 +859,41 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
             canvas.set_fill_color(PdfColor::hex("#0f172a"));
             canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 12.0, item_y, "Opening Balance / Ledger Carryover");
             canvas.set_fill_color(PdfColor::hex("#64748b"));
-            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 145.0, item_y, "-");
-            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 225.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
+            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 125.0, item_y, "-");
+            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 195.0, item_y, "-");
+            canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 265.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
             canvas.set_fill_color(PdfColor::hex("#b45309"));
-            canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 325.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
-            canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 430.0, item_y, "DUE");
+            canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 355.0, item_y, &format!("Rs. {}", format_money(outstanding_due)));
+            canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 440.0, item_y, "DUE");
         } else {
             for bill in data.due_bills.iter().take(3) {
                 canvas.set_fill_color(PdfColor::hex("#0f172a"));
-                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 12.0, item_y, &truncate_text(&bill.invoice_no, 22));
+                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 12.0, item_y, &truncate_text(&bill.invoice_no, 18));
                 canvas.set_fill_color(PdfColor::hex("#64748b"));
                 let d_str = format_date(&bill.date);
-                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 145.0, item_y, if d_str.is_empty() { "-" } else { &d_str });
-                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 225.0, item_y, &format!("Rs. {}", format_money(bill.amount)));
+                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 125.0, item_y, if d_str.is_empty() { "-" } else { &d_str });
+
+                // Days passed since bill date with aging severity color
+                let days_passed = bill.days_overdue.unwrap_or(0);
+                let aging_color = if days_passed <= 30 {
+                    PdfColor::hex("#2563eb") // Indigo / Blue (0-30 days)
+                } else if days_passed <= 60 {
+                    PdfColor::hex("#d97706") // Amber Warning (31-60 days)
+                } else {
+                    PdfColor::hex("#dc2626") // Crimson Alert (>60 days)
+                };
+                let aging_str = format!("{days_passed} DAYS");
+                canvas.set_fill_color(aging_color);
+                canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 195.0, item_y, &aging_str);
+
+                canvas.set_fill_color(PdfColor::hex("#64748b"));
+                canvas.draw_string(PdfFont::Helvetica, 7.0, left_margin + 265.0, item_y, &format!("Rs. {}", format_money(bill.amount)));
                 canvas.set_fill_color(PdfColor::hex("#b45309"));
-                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 325.0, item_y, &format!("Rs. {}", format_money(bill.due_amount)));
+                canvas.draw_string(PdfFont::HelveticaBold, 7.5, left_margin + 355.0, item_y, &format!("Rs. {}", format_money(bill.due_amount)));
                 let st = bill.status.as_deref().unwrap_or("PENDING");
                 let st_color = if st.eq_ignore_ascii_case("PARTIAL") { PdfColor::hex("#2563eb") } else { PdfColor::hex("#d97706") };
                 canvas.set_fill_color(st_color);
-                canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 430.0, item_y, st);
+                canvas.draw_string(PdfFont::HelveticaBold, 7.0, left_margin + 440.0, item_y, st);
 
                 item_y -= row_h;
             }
@@ -1101,6 +1166,9 @@ pub mod tests {
             aging_days: Some(15),
             due_percentage: Some(23.8),
             settlement_percentage: Some(76.2),
+            total_billed_amount: None,
+            total_settled_amount: None,
+            overdue_since_date: None,
             remarks: Some("Part payment towards April invoices.".to_string()),
             customer_ledger_token: Some("token_123456789".to_string()),
             customer_id: Some(12),
@@ -1148,6 +1216,9 @@ pub mod tests {
             aging_days: None,
             due_percentage: None,
             settlement_percentage: None,
+            total_billed_amount: None,
+            total_settled_amount: None,
+            overdue_since_date: None,
             export_mode: false,
             due_bills: Vec::new(),
             remarks: None,
@@ -1180,6 +1251,9 @@ pub mod tests {
             aging_days: None,
             due_percentage: None,
             settlement_percentage: None,
+            total_billed_amount: None,
+            total_settled_amount: None,
+            overdue_since_date: None,
             export_mode: false,
             due_bills: Vec::new(),
             remarks: None,
@@ -1220,6 +1294,9 @@ pub mod tests {
             aging_days: Some(0),
             due_percentage: Some(0.0),
             settlement_percentage: Some(100.0),
+            total_billed_amount: None,
+            total_settled_amount: None,
+            overdue_since_date: None,
             export_mode: false,
             due_bills: Vec::new(),
             remarks: Some("Settlement of bill".to_string()),
@@ -1252,6 +1329,7 @@ pub mod tests {
                 amount: 4500.0,
                 due_amount: 1490.0,
                 status: Some("PARTIAL".to_string()),
+                days_overdue: Some(22),
             },
             DueBillItem {
                 invoice_no: "GST-2026-00055".to_string(),
@@ -1259,6 +1337,7 @@ pub mod tests {
                 amount: 3200.0,
                 due_amount: 3200.0,
                 status: Some("PENDING".to_string()),
+                days_overdue: Some(9),
             },
         ];
 
@@ -1282,6 +1361,9 @@ pub mod tests {
             aging_days: Some(22),
             due_percentage: Some(60.9),
             settlement_percentage: Some(39.1),
+            total_billed_amount: Some(10000.0),
+            total_settled_amount: Some(5310.0),
+            overdue_since_date: Some("2026-09-15".to_string()),
             export_mode: true,
             due_bills,
             remarks: Some("Payment towards pending invoices".to_string()),
@@ -1310,13 +1392,18 @@ pub mod tests {
         assert!(pdf_str.contains("Pay Due: Rs. 4,690.00"));
         assert!(pdf_str.contains("⚡ PAY VIA UPI APP"));
 
-        // Verification of amount settlement progress bar out of 100
-        assert!(pdf_str.contains("AMOUNT SETTLEMENT: 39.1% OF 100"));
+        // Verification of amount settlement progress bar with actual amounts
+        assert!(pdf_str.contains("SETTLEMENT: Rs. 5,310.00 OUT OF Rs. 10,000.00"));
 
         // Verification of untruncated ledger link
         assert!(pdf_str.contains("https://mac.faizal.uk/ledger/sec_ledger_token_88"));
 
-        // Verification of balance due with aging severity tag
-        assert!(pdf_str.contains("Rs. 4,690.00 \\(DUE • 0-30 DAYS OVERDUE\\)"));
+        // Verification of balance due with actual date value
+        assert!(pdf_str.contains("Rs. 4,690.00 \\(DUE • SINCE 15-09-2026\\)"));
+
+        // Verification of AGING column in pending invoices table with days passed
+        assert!(pdf_str.contains("AGING"));
+        assert!(pdf_str.contains("22 DAYS"));
+        assert!(pdf_str.contains("9 DAYS"));
     }
 }

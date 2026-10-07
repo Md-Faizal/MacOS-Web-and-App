@@ -265,6 +265,9 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
       let aging_days = null;
       let due_percentage = null;
       let settlement_percentage = null;
+      let total_billed_amount = null;
+      let total_settled_amount = null;
+      let overdue_since_date = null;
       let due_bills = [];
 
       if (payment.customer_id) {
@@ -276,18 +279,31 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
             current_outstanding_due = currentDue;
             account_status = currentDue > 0.01 ? 'DUE' : (currentDue < -0.01 ? 'ADVANCE' : 'SETTLED');
 
-            // Extract unsettled bills with remaining amounts
+            // Extract unsettled bills with remaining amounts and days passed
             const rawBills = statement.bills || [];
             due_bills = rawBills
               .filter(b => !b.settled && Number(b.remaining_amount || 0) > 0.01)
               .sort((a, b) => new Date(a.invoice_date || a.created_at) - new Date(b.invoice_date || b.created_at))
-              .map(b => ({
-                invoice_no: b.invoice_no || `BILL-${b.id}`,
-                date: b.invoice_date ? String(b.invoice_date).slice(0, 10) : '',
-                amount: Number(b.amount || b.grand_total || 0),
-                due_amount: Number(b.remaining_amount || 0),
-                status: b.status || (Number(b.remaining_amount || 0) < Number(b.amount || b.grand_total || 0) ? 'PARTIAL' : 'UNPAID')
-              }));
+              .map(b => {
+                const bDate = b.invoice_date ? String(b.invoice_date).slice(0, 10) : '';
+                let daysPassed = Number(b.days_overdue || b.settlement_days || 0);
+                if (!daysPassed && bDate) {
+                  const diffMs = Date.now() - new Date(bDate).getTime();
+                  daysPassed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+                }
+                return {
+                  invoice_no: b.invoice_no || `BILL-${b.id}`,
+                  date: bDate,
+                  amount: Number(b.amount || b.grand_total || 0),
+                  due_amount: Number(b.remaining_amount || 0),
+                  status: b.status || (Number(b.remaining_amount || 0) < Number(b.amount || b.grand_total || 0) ? 'PARTIAL' : 'UNPAID'),
+                  days_overdue: daysPassed,
+                };
+              });
+
+            if (due_bills.length > 0) {
+              overdue_since_date = due_bills[0].date;
+            }
 
             // Aging days from overdue bills or oldest unsettled bill
             if (due_bills.length > 0) {
@@ -298,6 +314,10 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
             }
 
             const totalPurchases = Number(statement.summary?.total_purchases || 0);
+            const totalSettled = Number(statement.summary?.total_settled ?? statement.summary?.total_paid ?? (totalPurchases - currentDue));
+            total_billed_amount = totalPurchases > 0 ? totalPurchases : (linked_invoice_amount || amount);
+            total_settled_amount = Math.max(0, totalSettled);
+
             if (totalPurchases > 0 && currentDue > 0) {
               due_percentage = Math.min(100, Math.max(0, (currentDue / totalPurchases) * 100));
             } else {
@@ -339,6 +359,8 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
           aging_days = 0;
           due_percentage = 0;
           settlement_percentage = due <= 0.001 ? 100.0 : 0.0;
+          total_billed_amount = debit > 0 ? debit : amount;
+          total_settled_amount = credit;
         }
       }
 
@@ -375,6 +397,9 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
         aging_days,
         due_percentage,
         settlement_percentage,
+        total_billed_amount,
+        total_settled_amount,
+        overdue_since_date,
         export_mode: exportMode,
         due_bills,
         remarks,

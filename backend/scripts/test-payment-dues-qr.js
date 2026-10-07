@@ -30,6 +30,10 @@ async function run() {
     account_status: 'DUE',
     aging_days: 18,
     due_percentage: 40.8,
+    settlement_percentage: 59.2,
+    total_billed_amount: 8450.0,
+    total_settled_amount: 5000.0,
+    overdue_since_date: '2026-09-10',
     export_mode: true,
     due_bills: [
       {
@@ -37,14 +41,16 @@ async function run() {
         date: '2026-09-10',
         amount: 2500.0,
         due_amount: 1450.0,
-        status: 'PARTIAL'
+        status: 'PARTIAL',
+        days_overdue: 27
       },
       {
         invoice_no: 'GST-2026-00040',
         date: '2026-09-22',
         amount: 2000.0,
         due_amount: 2000.0,
-        status: 'UNPAID'
+        status: 'UNPAID',
+        days_overdue: 15
       }
     ],
     remarks: 'Settlement towards pending bills',
@@ -74,17 +80,17 @@ async function run() {
   }
   console.log('✓ Allocation text is untruncated: Bill #GST-2026-00042 (Rs. 5,000.00)');
 
-  // Verify Balance Due is rendered with aging severity tag
-  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE • 0-30 DAYS OVERDUE\\)')) {
+  // Verify Balance Due is rendered with actual overdue date value
+  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE • SINCE 10-09-2026\\)')) {
     throw new Error('FAILED: Balance Due formatting incorrect');
   }
-  console.log('✓ Balance due text is colored & formatted with aging severity: Rs. 3,450.00 (DUE • 0-30 DAYS OVERDUE)');
+  console.log('✓ Balance due text is colored & formatted with actual overdue date: Rs. 3,450.00 (DUE • SINCE 10-09-2026)');
 
-  // Verify Amount Settlement out of 100 Progress Bar
-  if (!pdfStr.includes('AMOUNT SETTLEMENT: 59.2% OF 100')) {
+  // Verify Amount Settlement Progress Bar shows actual amounts (e.g. 5000 out of 8450)
+  if (!pdfStr.includes('SETTLEMENT: Rs. 5,000.00 OUT OF Rs. 8,450.00')) {
     throw new Error('FAILED: Settlement progress bar missing or incorrect');
   }
-  console.log('✓ Amount Settlement progress bar rendered: AMOUNT SETTLEMENT: 59.2% OF 100');
+  console.log('✓ Amount Settlement progress bar rendered: SETTLEMENT: Rs. 5,000.00 OUT OF Rs. 8,450.00');
 
   // Verify Untruncated Ledger Link
   if (!pdfStr.includes('https://mac.faizal.uk/ledger/test_ledger_token_xyz')) {
@@ -92,7 +98,7 @@ async function run() {
   }
   console.log('✓ Ledger link is untruncated: https://mac.faizal.uk/ledger/test_ledger_token_xyz');
 
-  // Verify Pending Invoices Card
+  // Verify Pending Invoices Card with AGING days
   if (!pdfStr.includes('PENDING INVOICES & OUTSTANDING DUES BREAKDOWN')) {
     throw new Error('FAILED: Pending Invoices card header missing');
   }
@@ -102,7 +108,10 @@ async function run() {
   if (!pdfStr.includes('TOTAL DUE: Rs. 3,450.00')) {
     throw new Error('FAILED: Total due summary missing');
   }
-  console.log('✓ Pending Invoices table rendered with GST-2026-00039 and GST-2026-00040');
+  if (!pdfStr.includes('AGING') || !pdfStr.includes('27 DAYS') || !pdfStr.includes('15 DAYS')) {
+    throw new Error('FAILED: AGING days passed missing from pending invoices table');
+  }
+  console.log('✓ Pending Invoices table rendered with AGING days (27 DAYS, 15 DAYS) and due amounts');
 
   // Verify Dual QR Section
   if (!pdfStr.includes('ONLINE CUSTOMER LEDGER')) {
@@ -143,7 +152,62 @@ async function run() {
   }
   console.log('✓ Settled account renders clean single Ledger portal card without dues breakdown');
 
-  console.log('\nALL PAYMENT PDF PARITY & FEATURE CHECKS PASSED PERFECTLY!');
+  // Test 4: Invoice Toggle: Classic Authority Signature & No Payment QR
+  const testInvoiceClassic = {
+    invoice_no: 'GST-2026-0099',
+    invoice_date: '2026-10-07',
+    party_name: 'Mahaveer Medical Store',
+    address: 'Main Market, Cuttack',
+    phone: '9437112233',
+    licence_no: '20B-1122',
+    pan: 'AABCM1234D',
+    gstin: '21AABCM1234D1Z2',
+    total_amount: 3000.0,
+    total_discount: 0.0,
+    total_sgst: 180.0,
+    total_cgst: 180.0,
+    round_off: 0.0,
+    grand_total: 3360.0,
+    previous_due: 4200.0,
+    products: [{
+      name: 'CALPOL 650MG',
+      pack: '15T',
+      hsn: '30049011',
+      mfg: 'GSK',
+      batch_no: 'B22',
+      exp_date: '12/28',
+      qty: 10,
+      free: 0,
+      rate: 300.0,
+      mrp: 350.0,
+      dis1: 0.0,
+      dis2: 0.0,
+      sgst_per: 6.0,
+      sgst_val: 18.0,
+      cgst_per: 6.0,
+      cgst_val: 18.0,
+      amount: 3000.0,
+      final_amt: 3360.0,
+      is_gold: false
+    }],
+    duplex_print: false,
+    export_mode: false,
+    app_settings: {
+      invoice_authority_sign_no_qr: 'true',
+      company_name: 'UTKAL CHEMICAL AUSHADHALAYA'
+    }
+  };
+  const invRes = SuiteCoreBridge.renderInvoicePdf(testInvoiceClassic);
+  const invPdfStr = Buffer.from(invRes.pdf_base64, 'base64').toString('utf8');
+  if (!invPdfStr.includes('Authorised Signatory')) {
+    throw new Error('FAILED: Invoice classic mode missing Authorised Signatory');
+  }
+  if (invPdfStr.includes('OUTSTANDING DUES & QUICK PAY')) {
+    throw new Error('FAILED: Invoice classic mode should NOT show payment QR/dues widget');
+  }
+  console.log('✓ Invoice classic mode toggle correctly renders Authorised Signatory without payment QR');
+
+  console.log('\nALL PAYMENT & INVOICE PARITY CHECKS PASSED PERFECTLY!');
 }
 
 run().catch(err => {
