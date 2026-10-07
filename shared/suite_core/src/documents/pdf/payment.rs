@@ -598,7 +598,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     let due_amt = data.current_outstanding_due.unwrap_or(0.0);
     let aging = data.aging_days.unwrap_or(0);
 
-    // Aging severity color and actual date value (replaces arbitrary date range)
+    // Aging severity color and days overdue (simply show the number of days)
     let (due_color, aging_status_text) = if due_amt <= 0.001 {
         (PdfColor::hex("#10b981"), "SETTLED".to_string()) // Emerald Green
     } else {
@@ -610,22 +610,10 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
             PdfColor::hex("#dc2626") // Crimson Alert
         };
 
-        // Determine actual date value for aging
-        let date_val = data
-            .overdue_since_date
-            .as_deref()
-            .or_else(|| data.due_bills.first().map(|b| b.date.as_str()))
-            .filter(|d| !d.trim().is_empty());
-
-        let text = match date_val {
-            Some(d) => format!("SINCE {}", format_date(d)),
-            None => {
-                if aging == 0 {
-                    "CURRENT".to_string()
-                } else {
-                    format!("{aging} DAYS OVERDUE")
-                }
-            }
+        let text = if aging == 1 {
+            "1 DAY".to_string()
+        } else {
+            format!("{aging} DAYS")
         };
         (color, text)
     };
@@ -696,30 +684,30 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     let bar_width = col_w - 24.0;
     let bar_height = 6.0;
 
-    // Settlement label with active cycle gamification amounts
+    // Settlement label with active cycle gamification amounts (concise to never overflow the card box)
     let settlement_label = if due_amt <= 0.001 {
         format!(
-            "CURRENT CYCLE: 100% CLEARED (Rs. {} / Rs. {})",
+            "SETTLED: Rs. {} OF Rs. {}",
             format_money(total_settled_amt),
             format_money(total_billed_amt)
         )
     } else {
         format!(
-            "ACTIVE DUES SETTLEMENT: Rs. {} OF Rs. {} (Rs. {} REMAINING)",
+            "SETTLEMENT: Rs. {} OF Rs. {}",
             format_money(total_settled_amt),
-            format_money(total_billed_amt),
-            format_money(due_amt)
+            format_money(total_billed_amt)
         )
     };
 
+    let font_size = if settlement_label.len() > 42 { 5.8 } else { 6.2 };
     canvas.set_fill_color(bar_color);
     canvas.draw_spaced_string(
         PdfFont::HelveticaBold,
-        6.5,
+        font_size,
         right_card_x + 12.0,
-        bar_box_y + 10.0,
+        bar_box_y + 9.5,
         &settlement_label,
-        0.3,
+        0.1,
     );
 
     // Track background
@@ -1421,7 +1409,7 @@ pub mod tests {
         assert!(pdf_str.contains("⚡ PAY VIA UPI APP"));
 
         // Verification of amount settlement progress bar with active cycle gamification
-        assert!(pdf_str.contains("ACTIVE DUES SETTLEMENT: Rs. 5,310.00 OF Rs. 10,000.00 \\(Rs. 4,690.00 REMAINING\\)"));
+        assert!(pdf_str.contains("SETTLEMENT: Rs. 5,310.00 OF Rs. 10,000.00"));
 
         // Verification of courteous customer appreciation note
         assert!(pdf_str.contains("Thank you for your prompt payment! We look forward to serving you again."));
@@ -1429,8 +1417,8 @@ pub mod tests {
         // Verification of untruncated ledger link
         assert!(pdf_str.contains("https://mac.faizal.uk/ledger/sec_ledger_token_88"));
 
-        // Verification of balance due with actual date value
-        assert!(pdf_str.contains("Rs. 4,690.00 \\(DUE • SINCE 15-09-2026\\)"));
+        // Verification of balance due with days overdue
+        assert!(pdf_str.contains("Rs. 4,690.00 \\(DUE • 22 DAYS\\)"));
 
         // Verification of AGING column in pending invoices table with days passed
         assert!(pdf_str.contains("AGING"));

@@ -80,17 +80,17 @@ async function run() {
   }
   console.log('✓ Allocation text is untruncated: Bill #GST-2026-00042 (Rs. 5,000.00)');
 
-  // Verify Balance Due is rendered with actual overdue date value
-  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE • SINCE 10-09-2026\\)')) {
+  // Verify Balance Due is rendered with days overdue
+  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE • 18 DAYS\\)')) {
     throw new Error('FAILED: Balance Due formatting incorrect');
   }
-  console.log('✓ Balance due text is colored & formatted with actual overdue date: Rs. 3,450.00 (DUE • SINCE 10-09-2026)');
+  console.log('✓ Balance due text is colored & formatted with number of days: Rs. 3,450.00 (DUE • 18 DAYS)');
 
-  // Verify Amount Settlement Progress Bar shows active cycle gamification amounts
-  if (!pdfStr.includes('ACTIVE DUES SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00 \\(Rs. 3,450.00 REMAINING\\)')) {
+  // Verify Amount Settlement Progress Bar shows concise active cycle gamification amounts
+  if (!pdfStr.includes('SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00')) {
     throw new Error('FAILED: Settlement progress bar missing or incorrect');
   }
-  console.log('✓ Amount Settlement progress bar rendered active cycle gamification: ACTIVE DUES SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00 (Rs. 3,450.00 REMAINING)');
+  console.log('✓ Amount Settlement progress bar rendered concise active cycle gamification: SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00');
 
   // Verify Courteous Customer Appreciation Note
   if (!pdfStr.includes('Thank you for your prompt payment! We look forward to serving you again.')) {
