@@ -74,11 +74,23 @@ async function run() {
   }
   console.log('✓ Allocation text is untruncated: Bill #GST-2026-00042 (Rs. 5,000.00)');
 
-  // Verify Balance Due is rendered with status tag
-  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE\\)')) {
+  // Verify Balance Due is rendered with aging severity tag
+  if (!pdfStr.includes('Rs. 3,450.00 \\(DUE • 0-30 DAYS OVERDUE\\)')) {
     throw new Error('FAILED: Balance Due formatting incorrect');
   }
-  console.log('✓ Balance due text is untruncated: Rs. 3,450.00 (DUE)');
+  console.log('✓ Balance due text is colored & formatted with aging severity: Rs. 3,450.00 (DUE • 0-30 DAYS OVERDUE)');
+
+  // Verify Amount Settlement out of 100 Progress Bar
+  if (!pdfStr.includes('AMOUNT SETTLEMENT: 59.2% OF 100')) {
+    throw new Error('FAILED: Settlement progress bar missing or incorrect');
+  }
+  console.log('✓ Amount Settlement progress bar rendered: AMOUNT SETTLEMENT: 59.2% OF 100');
+
+  // Verify Untruncated Ledger Link
+  if (!pdfStr.includes('https://mac.faizal.uk/ledger/test_ledger_token_xyz')) {
+    throw new Error('FAILED: Ledger link was truncated!');
+  }
+  console.log('✓ Ledger link is untruncated: https://mac.faizal.uk/ledger/test_ledger_token_xyz');
 
   // Verify Pending Invoices Card
   if (!pdfStr.includes('PENDING INVOICES & OUTSTANDING DUES BREAKDOWN')) {

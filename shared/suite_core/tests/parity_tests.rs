@@ -879,6 +879,7 @@ fn test_payment_voucher_and_credit_note_generation() {
         account_status: Some("SETTLED".to_string()),
         aging_days: Some(0),
         due_percentage: Some(0.0),
+        settlement_percentage: Some(100.0),
         remarks: Some("Settlement of Bill GST-260012 via GPay".to_string()),
         customer_ledger_token: Some("ledger_sec_tok_99".to_string()),
         customer_id: Some(15),

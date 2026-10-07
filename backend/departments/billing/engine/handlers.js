@@ -264,6 +264,7 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
       let account_status = null;
       let aging_days = null;
       let due_percentage = null;
+      let settlement_percentage = null;
       let due_bills = [];
 
       if (payment.customer_id) {
@@ -303,6 +304,14 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
               due_percentage = 0;
             }
 
+            if (statement.summary?.paid_percent != null) {
+              settlement_percentage = Math.max(0, Math.min(100, Number(Number(statement.summary.paid_percent).toFixed(1))));
+            } else if (currentDue <= 0.001) {
+              settlement_percentage = 100.0;
+            } else if (due_percentage != null) {
+              settlement_percentage = Math.max(0, Math.min(100, Number((100.0 - due_percentage).toFixed(1))));
+            }
+
             // If linked_invoice_no is not explicitly set, see if notes mention an invoice
             if (!linked_invoice_no && payment.notes) {
               const match = payment.notes.match(/(?:INV(?:OICE)?|BILL)[#\s:-]*([A-Z0-9\/-]+)/i);
@@ -329,6 +338,7 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
           account_status = due > 0.01 ? 'DUE' : (due < -0.01 ? 'ADVANCE' : 'SETTLED');
           aging_days = 0;
           due_percentage = 0;
+          settlement_percentage = due <= 0.001 ? 100.0 : 0.0;
         }
       }
 
@@ -364,6 +374,7 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
         account_status,
         aging_days,
         due_percentage,
+        settlement_percentage,
         export_mode: exportMode,
         due_bills,
         remarks,
@@ -449,6 +460,7 @@ function generateOpeningBalancePDF(dbPath, customerName, options = {}) {
         account_status: 'CARRYOVER',
         aging_days: 0,
         due_percentage: 100.0,
+        settlement_percentage: 0.0,
         export_mode: exportMode,
         due_bills: [],
         remarks: 'Opening ledger balance carried over to system.',
