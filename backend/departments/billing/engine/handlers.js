@@ -247,6 +247,12 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
 
       if (!payment) throw new Error(`Payment not found: ${paymentId}`);
 
+      const isCreditNote = payment.type === 'CREDIT_NOTE';
+      const voucher_type = isCreditNote ? 'credit_note' : 'payment_receipt';
+      const amount = isCreditNote ? (Number(payment.credit_amount) || 0) : (Number(payment.amount) || 0);
+      const payment_method = payment.payment_medium || (isCreditNote ? 'Credit Adjustment' : 'Cash');
+      const remarks = (payment.notes || payment.reason || '').trim() || null;
+
       let linked_invoice_no = null;
       let linked_invoice_amount = null;
       if (payment.invoice_id) {
@@ -374,12 +380,6 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
           if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
         }
       } catch (_) {}
-
-      const isCreditNote = payment.type === 'CREDIT_NOTE';
-      const voucher_type = isCreditNote ? 'credit_note' : 'payment_receipt';
-      const amount = isCreditNote ? (Number(payment.credit_amount) || 0) : (Number(payment.amount) || 0);
-      const payment_method = payment.payment_medium || (isCreditNote ? 'Credit Adjustment' : 'Cash');
-      const remarks = (payment.notes || payment.reason || '').trim() || null;
 
       renderData = {
         voucher_type,

@@ -452,18 +452,20 @@ export class BillingApp extends AppWindow {
     this.checkBackendConnection();
   }
 
-  showNotification(message, type = 'info', duration = 3000) {
+  showNotification(message, type = 'info', duration = null) {
+    const isError = type === 'error' || type === 'critical';
+    const finalDuration = typeof duration === 'number' ? duration : (isError ? 8000 : 3500);
     if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
       return window.MacOSNotificationManager.notify({
         app: 'Billing',
         title: 'Billing',
         message: message,
         type: type,
-        duration: duration
+        duration: finalDuration
       });
     }
     if (typeof window !== 'undefined' && window.showNotification) {
-      return window.showNotification(message, type, { app: 'Billing', title: 'Billing', duration: duration });
+      return window.showNotification(message, type, { app: 'Billing', title: 'Billing', duration: finalDuration });
     }
   }
 
@@ -2663,14 +2665,7 @@ export class BillingApp extends AppWindow {
       if (loadingEl) loadingEl.remove();
 
       log.error('PDF Preview Error:', error);
-      const errorId = 'pdf-preview-error-' + Date.now();
-      const errorDiv = document.createElement('div');
-      errorDiv.id = errorId;
-      this.showNotification(`✗ Error: ${error.message}`, 'error');
-      setTimeout(() => {
-        const el = document.getElementById(errorId);
-        if (el) el.remove();
-      }, 5000);
+      this.showNotification(`✗ Error: ${error.message}`, 'error', 8000);
     }
   }
 
@@ -2780,14 +2775,7 @@ export class BillingApp extends AppWindow {
       if (loadingEl) loadingEl.remove();
 
       log.error('Payment PDF Export Error:', error);
-      const errorId = 'pdf-error-' + Date.now();
-      const errorDiv = document.createElement('div');
-      errorDiv.id = errorId;
-      this.showNotification(`✗ Error: ${error.message}`, 'error');
-      setTimeout(() => {
-        const el = document.getElementById(errorId);
-        if (el) el.remove();
-      }, 5000);
+      this.showNotification(`✗ Error: ${error.message}`, 'error', 8000);
     }
   }
 
@@ -2970,14 +2958,7 @@ export class BillingApp extends AppWindow {
       if (loadingEl) loadingEl.remove();
 
       log.error('Payment PDF Preview Error:', error);
-      const errorId = 'pdf-preview-error-' + Date.now();
-      const errorDiv = document.createElement('div');
-      errorDiv.id = errorId;
-      this.showNotification(`✗ Error: ${error.message}`, 'error');
-      setTimeout(() => {
-        const el = document.getElementById(errorId);
-        if (el) el.remove();
-      }, 5000);
+      this.showNotification(`✗ Error: ${error.message}`, 'error', 8000);
     }
   }
 

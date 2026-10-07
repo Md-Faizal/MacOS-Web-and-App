@@ -6,20 +6,26 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class LedgerView {
-    showNotification(message, type = 'info') {
+  showNotification(message, type = 'info', options = {}) {
+    const isError = type === 'error' || type === 'critical';
+    const opts = typeof options === 'object' && options !== null ? options : {};
+    const duration = opts.duration || (isError ? 8000 : 3500);
+
     if (this.billingApp?.showNotification) {
-      return this.billingApp.showNotification(message, type);
+      return this.billingApp.showNotification(message, type, duration);
     }
     if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
       return window.MacOSNotificationManager.notify({
         app: 'Billing',
-        title: 'Ledger',
+        title: opts.title || 'Ledger',
         message: message,
-        type: type
+        type: type,
+        duration: duration,
+        ...opts
       });
     }
     if (typeof window !== 'undefined' && window.showNotification) {
-      return window.showNotification(message, type, { app: 'Billing', title: 'Ledger' });
+      return window.showNotification(message, type, { app: 'Billing', title: opts.title || 'Ledger', duration: duration, ...opts });
     }
   }
 
@@ -2794,16 +2800,11 @@ class LedgerView {
       if (loadingEl) loadingEl.remove();
 
       log.error('Document View Error:', error);
-      const errorId = 'document-view-error-' + Date.now();
-      const errorDiv = document.createElement('div');
-      errorDiv.id = errorId;
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#f44336;color:white;padding:16px;border-radius:4px;z-index:9999;font-weight:600;font-family:"Courier New",monospace;';
-      errorDiv.textContent = `✗ Error: ${error.message}`;
-      document.body.appendChild(errorDiv);
-      setTimeout(() => {
-        const el = document.getElementById(errorId);
-        if (el) el.remove();
-      }, 5000);
+      this.showNotification(`✗ Error: ${error.message}`, 'error', {
+        title: 'Document Preview Error',
+        copyText: error.message,
+        duration: 8000
+      });
     }
   }
 

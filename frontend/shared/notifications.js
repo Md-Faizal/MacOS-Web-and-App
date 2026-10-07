@@ -277,17 +277,28 @@
       this.setupContainer();
 
       let options = {};
-      if (typeof rawOptions === 'string') {
+      if (rawOptions instanceof Error) {
+        options = {
+          message: rawOptions.message || String(rawOptions),
+          title: rawOptions.name || 'Error',
+          type: 'error',
+          error: rawOptions,
+          copyText: rawOptions.stack || rawOptions.message
+        };
+      } else if (typeof rawOptions === 'string') {
         options = { message: rawOptions, title: 'Notification', type: 'info' };
-      } else {
+      } else if (typeof rawOptions === 'object' && rawOptions !== null) {
         options = { ...rawOptions };
       }
 
       const type = options.type || 'info';
-      const title = options.title || (type.charAt(0).toUpperCase() + type.slice(1));
+      const isError = type === 'error' || type === 'critical';
+      const title = options.title !== undefined ? options.title : (type.charAt(0).toUpperCase() + type.slice(1));
       const message = options.message || '';
       const appName = options.app || 'System';
-      const duration = typeof options.duration === 'number' ? options.duration : 4000;
+      const duration = typeof options.duration === 'number' 
+        ? options.duration 
+        : (isError ? 8000 : 4000);
       const sound = options.sound !== false;
 
       const appKey = appName.toLowerCase().replace(/\s+/g, '-');
@@ -401,18 +412,69 @@
       toast.appendChild(header);
       toast.appendChild(body);
 
-      // Optional action buttons
-      if (Array.isArray(options.actions) && options.actions.length > 0) {
+      // Action buttons & Automatic Error Copy Button
+      const actions = Array.isArray(options.actions) ? [...options.actions] : [];
+      const showCopyButton = (options.copyable !== false && isError) || Boolean(options.copyable) || Boolean(options.copyText);
+
+      if (showCopyButton && !actions.some(a => a && a.isCopyAction)) {
+        const textToCopy = options.copyText || options.error?.stack || options.error?.message || (title && title !== 'Error' && title !== 'Notification' ? `${title}: ${message}` : message);
+        actions.push({
+          isCopyAction: true,
+          label: '📋 Copy Error',
+          className: 'toast-btn-copy',
+          preventDismiss: true,
+          onClick: (_toastEl, btnEl) => {
+            const onSuccess = () => {
+              if (btnEl) {
+                btnEl.textContent = '✓ Copied';
+                btnEl.classList.add('copied');
+                setTimeout(() => {
+                  if (btnEl) {
+                    btnEl.textContent = '📋 Copy Error';
+                    btnEl.classList.remove('copied');
+                  }
+                }, 2000);
+              }
+            };
+
+            const fallbackCopy = (text) => {
+              try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                onSuccess();
+              } catch (_) {}
+            };
+
+            if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(textToCopy).then(onSuccess).catch(() => fallbackCopy(textToCopy));
+            } else {
+              fallbackCopy(textToCopy);
+            }
+          }
+        });
+      }
+
+      if (actions.length > 0) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'toast-actions';
-        options.actions.forEach(action => {
+        actions.forEach(action => {
           const btn = document.createElement('button');
-          btn.className = `toast-action-btn ${action.primary ? 'primary' : ''}`;
+          btn.type = 'button';
+          btn.className = `toast-action-btn ${action.primary ? 'primary' : ''} ${action.className || ''}`.trim();
           btn.textContent = action.label;
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (typeof action.onClick === 'function') action.onClick();
-            dismissToast();
+            if (typeof action.onClick === 'function') action.onClick(toast, btn);
+            if (!action.preventDismiss) {
+              dismissToast();
+            }
           });
           actionsDiv.appendChild(btn);
         });
@@ -662,24 +724,68 @@
    * - showNotification("Title", "Message text", "info")
    * - showNotification({ title, message, type, ... })
    */
-  global.showNotification = function(arg1, arg2, arg3) {
+  global.showNotification = function(arg1, arg2, arg3, arg4) {
+    if (arg1 instanceof Error) {
+      const opts = (typeof arg2 === 'object' && arg2 !== null) ? arg2 : {};
+      return manager.notify({
+        title: opts.title || arg1.name || 'Error',
+        message: opts.message || arg1.message || String(arg1),
+        type: opts.type || 'error',
+        error: arg1,
+        copyText: arg1.stack || arg1.message,
+        ...opts
+      });
+    }
+
     if (typeof arg1 === 'object' && arg1 !== null) {
       return manager.notify(arg1);
     }
 
-    if (typeof arg1 === 'string' && typeof arg2 === 'string' && typeof arg3 === 'string') {
-      return manager.notify({ title: arg1, message: arg2, type: arg3 });
-    }
-
-    if (typeof arg1 === 'string' && typeof arg2 === 'string') {
-      const isKnownType = ['info', 'success', 'warning', 'error', 'critical'].includes(arg2.toLowerCase());
-      if (isKnownType) {
-        return manager.notify({ title: '', message: arg1, type: arg2.toLowerCase() });
-      }
-      return manager.notify({ title: arg1, message: arg2, type: 'info' });
-    }
-
     if (typeof arg1 === 'string') {
+      // 4-argument call: showNotification(title, message, type, options)
+      if (typeof arg2 === 'string' && typeof arg3 === 'string') {
+        const extraOpts = (typeof arg4 === 'object' && arg4 !== null) ? arg4 : {};
+        return manager.notify({
+          title: arg1,
+          message: arg2,
+          type: arg3.toLowerCase(),
+          ...extraOpts
+        });
+      }
+
+      // 3-argument call with options object: showNotification(message, type, options)
+      if (typeof arg2 === 'string' && typeof arg3 === 'object' && arg3 !== null) {
+        return manager.notify({
+          title: arg3.title || '',
+          message: arg1,
+          type: arg2.toLowerCase(),
+          ...arg3
+        });
+      }
+
+      // 3-argument string call: showNotification(title, message, type)
+      if (typeof arg2 === 'string' && typeof arg3 === 'string') {
+        return manager.notify({ title: arg1, message: arg2, type: arg3.toLowerCase() });
+      }
+
+      // 2-argument call: showNotification(message, type) OR showNotification(title, message)
+      if (typeof arg2 === 'string') {
+        const isKnownType = ['info', 'success', 'warning', 'error', 'critical'].includes(arg2.toLowerCase());
+        if (isKnownType) {
+          return manager.notify({ title: '', message: arg1, type: arg2.toLowerCase() });
+        }
+        return manager.notify({ title: arg1, message: arg2, type: 'info' });
+      }
+
+      // 2-argument call: showNotification(message, options)
+      if (typeof arg2 === 'object' && arg2 !== null) {
+        return manager.notify({
+          message: arg1,
+          ...arg2
+        });
+      }
+
+      // 1-argument string: showNotification(message)
       return manager.notify({ message: arg1, type: 'info' });
     }
 
