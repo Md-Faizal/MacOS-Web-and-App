@@ -313,23 +313,24 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
               aging_days = 0;
             }
 
-            const totalPurchases = Number(statement.summary?.total_purchases || 0);
-            const totalSettled = Number(statement.summary?.total_settled ?? statement.summary?.total_paid ?? (totalPurchases - currentDue));
-            total_billed_amount = totalPurchases > 0 ? totalPurchases : (linked_invoice_amount || amount);
-            total_settled_amount = Math.max(0, totalSettled);
+            // Active cycle settlement: Current payment + remaining due (gamifies active debt clearance)
+            const pmtAmt = amount > 0 ? amount : 0;
+            const activeCycleTotal = currentDue > 0.001 ? Number((pmtAmt + currentDue).toFixed(2)) : pmtAmt;
+            total_billed_amount = activeCycleTotal > 0 ? activeCycleTotal : pmtAmt;
+            total_settled_amount = pmtAmt;
 
-            if (totalPurchases > 0 && currentDue > 0) {
-              due_percentage = Math.min(100, Math.max(0, (currentDue / totalPurchases) * 100));
+            if (activeCycleTotal > 0 && currentDue > 0) {
+              due_percentage = Math.min(100, Math.max(0, (currentDue / activeCycleTotal) * 100));
             } else {
               due_percentage = 0;
             }
 
-            if (statement.summary?.paid_percent != null) {
-              settlement_percentage = Math.max(0, Math.min(100, Number(Number(statement.summary.paid_percent).toFixed(1))));
-            } else if (currentDue <= 0.001) {
+            if (currentDue <= 0.001) {
               settlement_percentage = 100.0;
-            } else if (due_percentage != null) {
-              settlement_percentage = Math.max(0, Math.min(100, Number((100.0 - due_percentage).toFixed(1))));
+            } else if (activeCycleTotal > 0) {
+              settlement_percentage = Math.max(0, Math.min(100, Number(((pmtAmt / activeCycleTotal) * 100).toFixed(1))));
+            } else {
+              settlement_percentage = 0.0;
             }
 
             // If linked_invoice_no is not explicitly set, see if notes mention an invoice
@@ -357,10 +358,12 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
           current_outstanding_due = due;
           account_status = due > 0.01 ? 'DUE' : (due < -0.01 ? 'ADVANCE' : 'SETTLED');
           aging_days = 0;
-          due_percentage = 0;
-          settlement_percentage = due <= 0.001 ? 100.0 : 0.0;
-          total_billed_amount = debit > 0 ? debit : amount;
-          total_settled_amount = credit;
+          const pmtAmt = amount > 0 ? amount : 0;
+          const activeCycleTotal = due > 0.01 ? Number((pmtAmt + due).toFixed(2)) : pmtAmt;
+          total_billed_amount = activeCycleTotal > 0 ? activeCycleTotal : pmtAmt;
+          total_settled_amount = pmtAmt;
+          due_percentage = activeCycleTotal > 0 && due > 0 ? Math.min(100, Math.max(0, (due / activeCycleTotal) * 100)) : 0;
+          settlement_percentage = due <= 0.001 ? 100.0 : (activeCycleTotal > 0 ? Number(((pmtAmt / activeCycleTotal) * 100).toFixed(1)) : 0.0);
         }
       }
 

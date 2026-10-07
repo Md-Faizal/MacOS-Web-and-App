@@ -86,11 +86,17 @@ async function run() {
   }
   console.log('✓ Balance due text is colored & formatted with actual overdue date: Rs. 3,450.00 (DUE • SINCE 10-09-2026)');
 
-  // Verify Amount Settlement Progress Bar shows actual amounts (e.g. 5000 out of 8450)
-  if (!pdfStr.includes('SETTLEMENT: Rs. 5,000.00 OUT OF Rs. 8,450.00')) {
+  // Verify Amount Settlement Progress Bar shows active cycle gamification amounts
+  if (!pdfStr.includes('ACTIVE DUES SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00 \\(Rs. 3,450.00 REMAINING\\)')) {
     throw new Error('FAILED: Settlement progress bar missing or incorrect');
   }
-  console.log('✓ Amount Settlement progress bar rendered: SETTLEMENT: Rs. 5,000.00 OUT OF Rs. 8,450.00');
+  console.log('✓ Amount Settlement progress bar rendered active cycle gamification: ACTIVE DUES SETTLEMENT: Rs. 5,000.00 OF Rs. 8,450.00 (Rs. 3,450.00 REMAINING)');
+
+  // Verify Courteous Customer Appreciation Note
+  if (!pdfStr.includes('Thank you for your prompt payment! We look forward to serving you again.')) {
+    throw new Error('FAILED: Customer thank you note missing');
+  }
+  console.log('✓ Customer appreciation note rendered: "Thank you for your prompt payment! We look forward to serving you again."');
 
   // Verify Untruncated Ledger Link
   if (!pdfStr.includes('https://mac.faizal.uk/ledger/test_ledger_token_xyz')) {

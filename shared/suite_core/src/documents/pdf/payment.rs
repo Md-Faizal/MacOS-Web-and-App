@@ -696,14 +696,19 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     let bar_width = col_w - 24.0;
     let bar_height = 6.0;
 
-    // Settlement label with actual amounts: "SETTLEMENT: Rs. 990.00 OUT OF Rs. 1,000.00"
-    let settlement_label = if due_amt <= 0.001 && total_billed_amt <= 0.001 {
-        "SETTLEMENT: FULLY SETTLED".to_string()
-    } else {
+    // Settlement label with active cycle gamification amounts
+    let settlement_label = if due_amt <= 0.001 {
         format!(
-            "SETTLEMENT: Rs. {} OUT OF Rs. {}",
+            "CURRENT CYCLE: 100% CLEARED (Rs. {} / Rs. {})",
             format_money(total_settled_amt),
             format_money(total_billed_amt)
+        )
+    } else {
+        format!(
+            "ACTIVE DUES SETTLEMENT: Rs. {} OF Rs. {} (Rs. {} REMAINING)",
+            format_money(total_settled_amt),
+            format_money(total_billed_amt),
+            format_money(due_amt)
         )
     };
 
@@ -1116,8 +1121,31 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         );
     }
 
-    // 8. AUDIT FOOTER (Minimal hairline, zero MARG attribution)
+    // 8. AUDIT FOOTER & APPRECIATION NOTE
     let footer_line_y = 48.0;
+
+    // 7b. COURTESY & APPRECIATION NOTE
+    let thank_you_text = match data.voucher_type {
+        VoucherType::CreditNote => {
+            "We value your business. This credit adjustment has been credited to your running account."
+        }
+        _ if due_amt <= 0.001 => {
+            "Thank you for your business! Your account is fully settled and in excellent standing."
+        }
+        _ => {
+            "Thank you for your prompt payment! We look forward to serving you again."
+        }
+    };
+    canvas.set_fill_color(PdfColor::hex("#475569"));
+    canvas.draw_centered_spaced_string(
+        PdfFont::HelveticaBold,
+        7.5,
+        page_width / 2.0,
+        footer_line_y + 14.0,
+        thank_you_text,
+        0.2,
+    );
+
     canvas.set_stroke_color(PdfColor::hex("#e2e8f0"));
     canvas.set_line_width(0.5);
     canvas.line(left_margin, footer_line_y, left_margin + content_width, footer_line_y);
@@ -1392,8 +1420,11 @@ pub mod tests {
         assert!(pdf_str.contains("Pay Due: Rs. 4,690.00"));
         assert!(pdf_str.contains("⚡ PAY VIA UPI APP"));
 
-        // Verification of amount settlement progress bar with actual amounts
-        assert!(pdf_str.contains("SETTLEMENT: Rs. 5,310.00 OUT OF Rs. 10,000.00"));
+        // Verification of amount settlement progress bar with active cycle gamification
+        assert!(pdf_str.contains("ACTIVE DUES SETTLEMENT: Rs. 5,310.00 OF Rs. 10,000.00 \\(Rs. 4,690.00 REMAINING\\)"));
+
+        // Verification of courteous customer appreciation note
+        assert!(pdf_str.contains("Thank you for your prompt payment! We look forward to serving you again."));
 
         // Verification of untruncated ledger link
         assert!(pdf_str.contains("https://mac.faizal.uk/ledger/sec_ledger_token_88"));
