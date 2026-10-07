@@ -11,6 +11,14 @@ export class BillingSettingsComponent {
         this.saving = false;
         this.defaultSettings = {
             invoice_duplex_print: 'true',
+            company_name: 'UTKAL CHEMICAL AUSHADHALAYA',
+            company_gstin: '21AIDPF4446J1ZL',
+            company_pan: 'AIDPF4446J',
+            company_phone: '06822273304 / 943933330',
+            company_address_factory: 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+            company_address_office: 'D1, Basera Complex, Dumduma, BBSR - 751019',
+            invoice_show_dues_widget: 'true',
+            invoice_auto_sign_disclaimer: 'true',
             payment_qr_image: '',
             payment_upi_id: '7749089400@hdfc',
             portal_base_url: 'https://mac.faizal.uk',
@@ -36,9 +44,17 @@ export class BillingSettingsComponent {
         }
 
         const isDuplex = String(this.settings.invoice_duplex_print ?? 'true').toLowerCase() === 'true';
+        const showDuesWidget = String(this.settings.invoice_show_dues_widget ?? 'true').toLowerCase() === 'true';
+        const autoSign = String(this.settings.invoice_auto_sign_disclaimer ?? 'true').toLowerCase() === 'true';
         const showMmid = String(this.settings.bank_show_mmid ?? 'true').toLowerCase() === 'true';
         const currentAccountType = this.settings.bank_account_type || 'Savings Account';
         const hasCustomQr = Boolean(this.settings.payment_qr_image);
+        const companyName = this.settings.company_name || 'UTKAL CHEMICAL AUSHADHALAYA';
+        const companyGstin = this.settings.company_gstin || '21AIDPF4446J1ZL';
+        const companyPan = this.settings.company_pan || 'AIDPF4446J';
+        const companyPhone = this.settings.company_phone || '06822273304 / 943933330';
+        const factoryAddr = this.settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110';
+        const officeAddr = this.settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019';
 
         this.container.innerHTML = `
             <div class="billing-settings-root appearance-page-root">
@@ -61,13 +77,25 @@ export class BillingSettingsComponent {
                     </div>
                 </div>
 
-                <!-- 1. Duplex Printing Options -->
+                <!-- 1. Document & Printing Options -->
                 <div class="billing-card">
-                    <div class="billing-row-toggle">
-                        <div class="billing-row-left">
+                    <div class="billing-card-header">
+                        <div>
                             <div class="billing-card-title">
                                 <span>📄</span>
-                                <span>2-Page Duplex Printing (Front & Back)</span>
+                                <span>Document Layout & Printing Options</span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                Configure page structure, duplex print modes, pending due widgets, and signature policies for invoices and receipts.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Duplex Print Toggle -->
+                    <div class="billing-row-toggle" style="margin-top: 4px;">
+                        <div class="billing-row-left">
+                            <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
+                                2-Page Duplex Printing (Front & Back)
                             </div>
                             <div class="billing-card-subtitle">
                                 Formats exported & printed invoice PDFs into 2 pages: Front for billing line items, Back for payment QR & bank account settlement details.
@@ -79,9 +107,96 @@ export class BillingSettingsComponent {
                             </button>
                         </div>
                     </div>
+
+                    <!-- Pending Dues Widget Toggle -->
+                    <div class="billing-row-toggle" style="margin-top: 14px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
+                        <div class="billing-row-left">
+                            <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
+                                <span>Pending Bills / Dues Widget with Quick-Pay QR</span>
+                                <span id="duesWidgetTag" class="billing-badge-tag ${showDuesWidget ? 'active' : 'inactive'}">
+                                    ${showDuesWidget ? 'ENABLED' : 'DISABLED'}
+                                </span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                When a customer has unpaid balance, renders a compact due summary + dynamic UPI QR in the free space below the bill. Shows interactive 'Pay via App' if exported as digital PDF, and scan instruction if printed.
+                            </div>
+                        </div>
+                        <div>
+                            <button id="toggleShowDuesWidget" class="toggle-switch ${showDuesWidget ? 'active' : ''}" type="button" aria-label="Toggle Pending Dues Widget">
+                                <div class="toggle-switch-knob"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Computer Generated / Auto-Sign Toggle -->
+                    <div class="billing-row-toggle" style="margin-top: 14px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
+                        <div class="billing-row-left">
+                            <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
+                                <span>Autogenerated Document Notice (Omit Manual Signature)</span>
+                                <span id="autoSignTag" class="billing-badge-tag ${autoSign ? 'active' : 'inactive'}">
+                                    ${autoSign ? 'RULE 46 COMPLIANT' : 'MANUAL SIGNATURE'}
+                                </span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                Under GST Rule 46 Proviso & IT Act 2000, computer-generated documents do not require physical signatures. Replaces blank signature lines with an authenticated electronic document statement and frees up space for dues/payment widgets.
+                            </div>
+                        </div>
+                        <div>
+                            <button id="toggleAutoSign" class="toggle-switch ${autoSign ? 'active' : ''}" type="button" aria-label="Toggle Autogenerated Document Notice">
+                                <div class="toggle-switch-knob"></div>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- 2. Bank Account Details & Customizability -->
+                <!-- 2. Company Profile & Tax Identifiers -->
+                <div class="billing-card">
+                    <div class="billing-card-header">
+                        <div>
+                            <div class="billing-card-title">
+                                <span>🏢</span>
+                                <span>Company Business Profile & Tax Identifiers</span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                Printed across all Invoice, Payment Receipt, and Credit Note PDF headers. Changes here apply immediately to all generated documents.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="billing-grid-2">
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyName">Company Legal / Trade Name</label>
+                            <input type="text" id="settingCompanyName" class="billing-input" value="${this.escapeHtml(companyName)}" placeholder="e.g. UTKAL CHEMICAL AUSHADHALAYA" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyPhone">Contact Phone Number(s)</label>
+                            <input type="text" id="settingCompanyPhone" class="billing-input" value="${this.escapeHtml(companyPhone)}" placeholder="e.g. 06822273304 / 943933330" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyGstin">GSTIN Number (15 Characters)</label>
+                            <input type="text" id="settingCompanyGstin" class="billing-input" value="${this.escapeHtml(companyGstin)}" placeholder="e.g. 21AIDPF4446J1ZL" style="text-transform: uppercase; font-family: monospace;" maxlength="15" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyPan">PAN Number (10 Characters)</label>
+                            <input type="text" id="settingCompanyPan" class="billing-input" value="${this.escapeHtml(companyPan)}" placeholder="e.g. AIDPF4446J" style="text-transform: uppercase; font-family: monospace;" maxlength="10" />
+                        </div>
+
+                        <div class="billing-field-group" style="grid-column: span 2;">
+                            <label class="billing-label" for="settingCompanyFactAddr">Factory / Registered Production Address</label>
+                            <input type="text" id="settingCompanyFactAddr" class="billing-input" value="${this.escapeHtml(factoryAddr)}" placeholder="e.g. Binaba Marg, Aska, Ganjam, Odisha - 761110" />
+                        </div>
+
+                        <div class="billing-field-group" style="grid-column: span 2;">
+                            <label class="billing-label" for="settingCompanyOfficeAddr">Office / Correspondence Address</label>
+                            <input type="text" id="settingCompanyOfficeAddr" class="billing-input" value="${this.escapeHtml(officeAddr)}" placeholder="e.g. D1, Basera Complex, Dumduma, BBSR - 751019" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Bank Account Details & Customizability -->
                 <div class="billing-card">
                     <div class="billing-card-header">
                         <div>
@@ -234,6 +349,14 @@ export class BillingSettingsComponent {
                         <table class="billing-preview-table">
                             <tbody>
                                 <tr>
+                                    <td>Company Name:</td>
+                                    <td id="previewCompanyName" style="font-weight: 600; color: #60a5fa;">${this.escapeHtml(companyName)}</td>
+                                </tr>
+                                <tr>
+                                    <td>GSTIN & PAN:</td>
+                                    <td id="previewGstinPan" style="font-family: monospace;">${this.escapeHtml(companyGstin)} / ${this.escapeHtml(companyPan)}</td>
+                                </tr>
+                                <tr>
                                     <td>Account Holder:</td>
                                     <td id="previewHolder">${this.escapeHtml(this.settings.bank_account_holder || 'MD  FAIZAL')}</td>
                                 </tr>
@@ -326,6 +449,62 @@ export class BillingSettingsComponent {
                 }
             });
         }
+
+        // 1b. Pending Dues Widget Toggle
+        const toggleDuesBtn = this.container.querySelector('#toggleShowDuesWidget');
+        const duesWidgetTag = this.container.querySelector('#duesWidgetTag');
+        if (toggleDuesBtn) {
+            toggleDuesBtn.addEventListener('click', () => {
+                const isActive = toggleDuesBtn.classList.contains('active');
+                if (isActive) {
+                    toggleDuesBtn.classList.remove('active');
+                    this.settings.invoice_show_dues_widget = 'false';
+                    if (duesWidgetTag) {
+                        duesWidgetTag.className = 'billing-badge-tag inactive';
+                        duesWidgetTag.textContent = 'DISABLED';
+                    }
+                } else {
+                    toggleDuesBtn.classList.add('active');
+                    this.settings.invoice_show_dues_widget = 'true';
+                    if (duesWidgetTag) {
+                        duesWidgetTag.className = 'billing-badge-tag active';
+                        duesWidgetTag.textContent = 'ENABLED';
+                    }
+                }
+            });
+        }
+
+        // 1c. Computer-Generated Disclaimer / Auto-Sign Toggle
+        const toggleAutoSignBtn = this.container.querySelector('#toggleAutoSign');
+        const autoSignTag = this.container.querySelector('#autoSignTag');
+        if (toggleAutoSignBtn) {
+            toggleAutoSignBtn.addEventListener('click', () => {
+                const isActive = toggleAutoSignBtn.classList.contains('active');
+                if (isActive) {
+                    toggleAutoSignBtn.classList.remove('active');
+                    this.settings.invoice_auto_sign_disclaimer = 'false';
+                    if (autoSignTag) {
+                        autoSignTag.className = 'billing-badge-tag inactive';
+                        autoSignTag.textContent = 'MANUAL SIGNATURE';
+                    }
+                } else {
+                    toggleAutoSignBtn.classList.add('active');
+                    this.settings.invoice_auto_sign_disclaimer = 'true';
+                    if (autoSignTag) {
+                        autoSignTag.className = 'billing-badge-tag active';
+                        autoSignTag.textContent = 'RULE 46 COMPLIANT';
+                    }
+                }
+            });
+        }
+
+        // 1d. Company Tax Identifiers Real-time Sync
+        ['#settingCompanyName', '#settingCompanyGstin', '#settingCompanyPan'].forEach(sel => {
+            const el = this.container.querySelector(sel);
+            if (el) {
+                el.addEventListener('input', () => this.updateLivePreview());
+            }
+        });
 
         // 2. MMID Toggle
         const toggleMmidBtn = this.container.querySelector('#toggleShowMmid');
@@ -494,6 +673,8 @@ export class BillingSettingsComponent {
     }
 
     updateLivePreview() {
+        const compNameEl = this.container.querySelector('#previewCompanyName');
+        const gstinPanEl = this.container.querySelector('#previewGstinPan');
         const holderEl = this.container.querySelector('#previewHolder');
         const numberEl = this.container.querySelector('#previewNumber');
         const ifscEl = this.container.querySelector('#previewIfsc');
@@ -502,6 +683,9 @@ export class BillingSettingsComponent {
         const typeEl = this.container.querySelector('#previewType');
         const upiEl = this.container.querySelector('#previewUpi');
 
+        const compNameVal = this.container.querySelector('#settingCompanyName')?.value || 'UTKAL CHEMICAL AUSHADHALAYA';
+        const gstinVal = (this.container.querySelector('#settingCompanyGstin')?.value || '21AIDPF4446J1ZL').toUpperCase();
+        const panVal = (this.container.querySelector('#settingCompanyPan')?.value || 'AIDPF4446J').toUpperCase();
         const holderVal = this.container.querySelector('#settingBankHolder')?.value || 'MD  FAIZAL';
         const numberVal = this.container.querySelector('#settingBankNumber')?.value || '50100673684509';
         const ifscVal = (this.container.querySelector('#settingBankIfsc')?.value || 'HDFC0000236').toUpperCase();
@@ -510,6 +694,8 @@ export class BillingSettingsComponent {
         const typeVal = this.container.querySelector('#settingBankType')?.value || 'Savings Account';
         const upiVal = this.container.querySelector('#settingUpiId')?.value || '7749089400@hdfc';
 
+        if (compNameEl) compNameEl.textContent = compNameVal;
+        if (gstinPanEl) gstinPanEl.textContent = `${gstinVal} / ${panVal}`;
         if (holderEl) holderEl.textContent = holderVal;
         if (numberEl) numberEl.textContent = numberVal;
         if (ifscEl) ifscEl.textContent = ifscVal;
@@ -527,11 +713,21 @@ export class BillingSettingsComponent {
         });
 
         const isDuplex = this.container.querySelector('#toggleDuplexPrint')?.classList.contains('active') ? 'true' : 'false';
+        const showDuesWidget = this.container.querySelector('#toggleShowDuesWidget')?.classList.contains('active') ? 'true' : 'false';
+        const autoSign = this.container.querySelector('#toggleAutoSign')?.classList.contains('active') ? 'true' : 'false';
         const showMmid = this.container.querySelector('#toggleShowMmid')?.classList.contains('active') ? 'true' : 'false';
 
         const newSettings = {
             ...this.settings,
             invoice_duplex_print: isDuplex,
+            invoice_show_dues_widget: showDuesWidget,
+            invoice_auto_sign_disclaimer: autoSign,
+            company_name: this.container.querySelector('#settingCompanyName')?.value?.trim() || 'UTKAL CHEMICAL AUSHADHALAYA',
+            company_phone: this.container.querySelector('#settingCompanyPhone')?.value?.trim() || '',
+            company_gstin: (this.container.querySelector('#settingCompanyGstin')?.value?.trim() || '21AIDPF4446J1ZL').toUpperCase(),
+            company_pan: (this.container.querySelector('#settingCompanyPan')?.value?.trim() || 'AIDPF4446J').toUpperCase(),
+            company_address_factory: this.container.querySelector('#settingCompanyFactAddr')?.value?.trim() || '',
+            company_address_office: this.container.querySelector('#settingCompanyOfficeAddr')?.value?.trim() || '',
             bank_show_mmid: showMmid,
             payment_upi_id: this.container.querySelector('#settingUpiId')?.value || '',
             portal_base_url: this.container.querySelector('#settingPortalUrl')?.value || '',

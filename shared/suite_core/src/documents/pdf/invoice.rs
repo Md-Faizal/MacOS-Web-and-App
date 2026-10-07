@@ -88,10 +88,15 @@ fn make_payment_uri(data: &InvoiceRenderData) -> String {
         .cloned()
         .filter(|value| !value.is_empty())
         .unwrap_or_else(default_upi_id);
+    let comp_name = settings
+        .get("company_name")
+        .map(String::as_str)
+        .unwrap_or("Utkal Chemical Aushadhalaya");
     if !uri.starts_with("upi://") {
         uri = format!(
-            "upi://pay?pa={}&pn=Utkal%20Chemical%20Aushadhalaya",
-            percent_encode(&uri)
+            "upi://pay?pa={}&pn={}",
+            percent_encode(&uri),
+            percent_encode(comp_name)
         );
     }
     if !uri.contains("?cu=") && !uri.contains("&cu=") {
@@ -925,13 +930,44 @@ fn render_invoice_sheet(
     canvas.rect(right_x, header_y, right_w, header_height, true, false);
 
     // Left: Company Info
+    let company_name = data
+        .app_settings
+        .get("company_name")
+        .map(String::as_str)
+        .unwrap_or("UTKAL CHEMICAL AUSHADHALAYA");
+    let comp_fact_add = data
+        .app_settings
+        .get("company_address_factory")
+        .map(String::as_str)
+        .unwrap_or("Binaba Marg, Aska, Ganjam, Pin.761110");
+    let comp_office_add = data
+        .app_settings
+        .get("company_address_office")
+        .map(String::as_str)
+        .unwrap_or("D1, Basera Comple,Dumduma,BBSR");
+    let comp_phone = data
+        .app_settings
+        .get("company_phone")
+        .map(String::as_str)
+        .unwrap_or("06822273304 / 943933330");
+    let comp_gstin = data
+        .app_settings
+        .get("company_gstin")
+        .map(String::as_str)
+        .unwrap_or("21AIDPF4446J1ZL");
+    let comp_pan = data
+        .app_settings
+        .get("company_pan")
+        .map(String::as_str)
+        .unwrap_or("AIDPF4446J");
+
     canvas.set_fill_color(PdfColor::NAVY_BLUE);
     canvas.draw_string(
         PdfFont::HelveticaBold,
         13.0,
         left_margin + mm_to_pt(2.0),
         header_y + header_height - mm_to_pt(5.0),
-        "UTKAL CHEMICAL AUSHADHALAYA",
+        company_name,
     );
     canvas.set_fill_color(PdfColor::BLACK);
     canvas.draw_string(
@@ -939,21 +975,21 @@ fn render_invoice_sheet(
         7.5,
         left_margin + mm_to_pt(2.0),
         header_y + header_height - mm_to_pt(11.0),
-        "FACT ADD::Binaba Marg, Aska, Ganjam, Pin.761110",
+        &format!("FACT ADD::{}", comp_fact_add),
     );
     canvas.draw_string(
         PdfFont::Helvetica,
         7.5,
         left_margin + mm_to_pt(2.0),
         header_y + header_height - mm_to_pt(15.0),
-        "COMP ADD::D1, Basera Comple,Dumduma,BBSR",
+        &format!("COMP ADD::{}", comp_office_add),
     );
     canvas.draw_string(
         PdfFont::Helvetica,
         7.5,
         left_margin + mm_to_pt(2.0),
         header_y + header_height - mm_to_pt(19.0),
-        "PIN CODE::751019     Phone : 06822273304 / 943933330",
+        &format!("Phone : {}", comp_phone),
     );
     canvas.set_fill_color(PdfColor::NAVY_BLUE);
     canvas.draw_string(
@@ -961,7 +997,7 @@ fn render_invoice_sheet(
         7.5,
         left_margin + mm_to_pt(2.0),
         header_y + header_height - mm_to_pt(23.0),
-        "GSTIN : 21BOCPM8229J2ZWPAN :",
+        &format!("GSTIN : {}     PAN : {}", comp_gstin, comp_pan),
     );
 
     // Center: Title
@@ -1562,22 +1598,147 @@ fn render_invoice_sheet(
         dash_x += 4.0;
     }
 
-    // Bottom-right: Signature vs Continuation
+    // Pending Dues & Quick Pay Widget (rendered if customer has previous unpaid dues)
+    let show_dues_widget = bool_from_settings(&data.app_settings, "invoice_show_dues_widget", true);
+    if is_final_page && show_dues_widget && data.previous_due > 0.01 {
+        let total_due = data.grand_total + data.previous_due;
+        let widget_x = left_margin + 10.0 + max_note_width + 12.0;
+        let widget_y = bottom_margin + 4.0;
+        let widget_w = 265.0;
+        let widget_h = (y5 - bottom_margin - 8.0).max(56.0);
+
+        // Subtle background card
+        canvas.set_fill_color(PdfColor::hex("#f8fafc"));
+        canvas.set_stroke_color(PdfColor::hex("#cbd5e1"));
+        canvas.set_line_width(0.75);
+        canvas.round_rect(widget_x, widget_y, widget_w, widget_h, 4.0, true, true);
+
+        // Amber accent vertical indicator on the left
+        canvas.set_fill_color(PdfColor::hex("#f59e0b"));
+        canvas.round_rect(widget_x, widget_y, 3.5, widget_h, 1.5, false, true);
+
+        // Dynamic UPI QR Code
+        let qr_size = 46.0;
+        let qr_x = widget_x + 9.0;
+        let qr_y = widget_y + (widget_h - qr_size) / 2.0;
+        let pay_uri = make_payment_uri(data);
+        let _ = draw_qr(canvas, &pay_uri, qr_x, qr_y, qr_size);
+
+        // Information text beside QR
+        let text_x = qr_x + qr_size + 10.0;
+        canvas.set_fill_color(PdfColor::hex("#b45309"));
+        canvas.draw_spaced_string(
+            PdfFont::HelveticaBold,
+            7.0,
+            text_x,
+            widget_y + widget_h - 13.0,
+            "OUTSTANDING DUES & QUICK PAY",
+            0.3,
+        );
+
+        canvas.set_fill_color(PdfColor::hex("#64748b"));
+        canvas.draw_string(
+            PdfFont::Helvetica,
+            7.0,
+            text_x,
+            widget_y + widget_h - 24.0,
+            &format!(
+                "Prev Due: Rs. {}  |  Bill: Rs. {}",
+                format_money(data.previous_due),
+                format_money(data.grand_total)
+            ),
+        );
+
+        canvas.set_fill_color(PdfColor::hex("#0f172a"));
+        canvas.draw_string(
+            PdfFont::HelveticaBold,
+            8.5,
+            text_x,
+            widget_y + widget_h - 37.0,
+            &format!("Total Due: Rs. {}", format_money(total_due)),
+        );
+
+        // Export mode: clickable app button vs Print mode: scan instruction
+        if data.export_mode {
+            let btn_w = 88.0;
+            let btn_h = 13.0;
+            let btn_y = widget_y + 5.0;
+            canvas.set_fill_color(PdfColor::hex("#0f172a"));
+            canvas.round_rect(text_x, btn_y, btn_w, btn_h, 3.0, false, true);
+            canvas.set_fill_color(PdfColor::WHITE);
+            canvas.draw_centered_string(
+                PdfFont::HelveticaBold,
+                6.5,
+                text_x + btn_w / 2.0,
+                btn_y + 3.5,
+                "⚡ PAY VIA UPI APP",
+            );
+        } else {
+            canvas.set_fill_color(PdfColor::hex("#475569"));
+            canvas.draw_string(
+                PdfFont::Helvetica,
+                6.5,
+                text_x,
+                widget_y + 6.0,
+                "Scan with GPay / PhonePe / Paytm",
+            );
+        }
+    }
+
+    // Bottom-right: Signature vs Continuation vs Autogenerated Disclaimer
+    let auto_sign = bool_from_settings(&data.app_settings, "invoice_auto_sign_disclaimer", false);
+    let comp_sign_name = data
+        .app_settings
+        .get("company_name")
+        .map(String::as_str)
+        .unwrap_or("UTKAL CHEMICAL AUSHADHALAYA");
+
     if is_final_page {
-        canvas.draw_right_string(
-            PdfFont::HelveticaBold,
-            9.0,
-            width - right_margin - 10.0,
-            y5 - 15.0,
-            "FOR  UTKAL CHEMICAL AUSHADHALAYA",
-        );
-        canvas.draw_right_string(
-            PdfFont::HelveticaBold,
-            9.0,
-            width - right_margin - 10.0,
-            bottom_margin + 10.0,
-            "Authorised Signatory",
-        );
+        if auto_sign {
+            canvas.draw_right_string(
+                PdfFont::HelveticaBold,
+                8.5,
+                width - right_margin - 10.0,
+                y5 - 15.0,
+                &format!("FOR  {}", comp_sign_name.to_ascii_uppercase()),
+            );
+            canvas.draw_right_string(
+                PdfFont::HelveticaBold,
+                7.5,
+                width - right_margin - 10.0,
+                y5 - 28.0,
+                "COMPUTER GENERATED TAX INVOICE",
+            );
+            canvas.draw_right_string(
+                PdfFont::Helvetica,
+                7.0,
+                width - right_margin - 10.0,
+                y5 - 39.0,
+                "Authenticated Document • No Signature Required",
+            );
+            canvas.draw_right_string(
+                PdfFont::Helvetica,
+                6.0,
+                width - right_margin - 10.0,
+                y5 - 49.0,
+                "(CGST Rule 46 Proviso & Information Technology Act)",
+            );
+        } else {
+            canvas.draw_right_string(
+                PdfFont::HelveticaBold,
+                9.0,
+                width - right_margin - 10.0,
+                y5 - 15.0,
+                &format!("FOR  {}", comp_sign_name.to_ascii_uppercase()),
+            );
+            canvas.draw_right_string(
+                PdfFont::HelveticaBold,
+                9.0,
+                width - right_margin - 10.0,
+                bottom_margin + 10.0,
+                "Authorised Signatory",
+            );
+        }
     } else {
         canvas.draw_right_string(
             PdfFont::HelveticaBold,
@@ -1746,6 +1907,64 @@ mod tests {
         assert!(pdf_str.contains("(01) Tj"));
         assert!(pdf_str.contains("(02) Tj"));
         assert!(pdf_str.contains("PAY VIA UPI APP"));
+    }
+
+    #[test]
+    fn test_invoice_with_dues_widget_and_auto_sign_disclaimer() {
+        let mut app_settings = HashMap::new();
+        app_settings.insert("company_gstin".to_string(), "21AIDPF4446J1ZL".to_string());
+        app_settings.insert("company_pan".to_string(), "AIDPF4446J".to_string());
+        app_settings.insert("invoice_show_dues_widget".to_string(), "true".to_string());
+        app_settings.insert("invoice_auto_sign_disclaimer".to_string(), "true".to_string());
+
+        let invoice_data = InvoiceRenderData {
+            invoice_no: "GST-2026-99".to_string(),
+            invoice_date: Some("2026-10-07".to_string()),
+            due_date: None,
+            lr_no: None,
+            lr_date: None,
+            party_name: "SHREE GANESH PHARMA".to_string(),
+            address: "CUTTACK ROAD, BBSR".to_string(),
+            phone: "9439123456".to_string(),
+            licence_no: "DL-1234".to_string(),
+            pan: "BCDEF2345G".to_string(),
+            gstin: "21BCDEF2345G1Z9".to_string(),
+            total_amount: 1500.0,
+            total_discount: 50.0,
+            total_sgst: 87.0,
+            total_cgst: 87.0,
+            round_off: 0.0,
+            grand_total: 1624.0,
+            previous_due: 4500.0,
+            products: vec![create_sample_item(1, 1500.0)],
+            duplex_print: false,
+            export_mode: true,
+            app_settings,
+            customer_ledger_token: None,
+            invoice_ledger_ref: None,
+            customer_id: Some(42),
+            i_customer_id: None,
+            bank_account_holder: None,
+            bank_account_number: None,
+            bank_ifsc: None,
+            bank_branch: None,
+        };
+
+        let pdf = render_invoice_pdf(&invoice_data).expect("Must render invoice with dues widget");
+        let pdf_str = String::from_utf8_lossy(&pdf);
+
+        // Dynamic GST and PAN
+        assert!(pdf_str.contains("GSTIN : 21AIDPF4446J1ZL     PAN : AIDPF4446J"));
+
+        // Dues widget with quick pay QR & app button
+        assert!(pdf_str.contains("OUTSTANDING DUES & QUICK PAY"));
+        assert!(pdf_str.contains("Total Due: Rs. 6,124.00"));
+        assert!(pdf_str.contains("PAY VIA UPI APP"));
+
+        // Computer generated document disclaimer
+        assert!(pdf_str.contains("COMPUTER GENERATED TAX INVOICE"));
+        assert!(pdf_str.contains("Authenticated Document • No Signature Required"));
+        assert!(pdf_str.contains("CGST Rule 46 Proviso & Information Technology Act"));
     }
 }
 

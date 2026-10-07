@@ -2697,6 +2697,14 @@ module.exports = function(db) {
 
         const defaults = {
           'invoice_duplex_print': 'true',
+          'company_name': 'UTKAL CHEMICAL AUSHADHALAYA',
+          'company_gstin': '21AIDPF4446J1ZL',
+          'company_pan': 'AIDPF4446J',
+          'company_phone': '06822273304 / 943933330',
+          'company_address_factory': 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+          'company_address_office': 'D1, Basera Complex, Dumduma, BBSR - 751019',
+          'invoice_show_dues_widget': 'true',
+          'invoice_auto_sign_disclaimer': 'true',
           'payment_qr_image': '',
           'payment_upi_id': '7749089400@hdfc',
           'bank_account_holder': 'MD  FAIZAL',
