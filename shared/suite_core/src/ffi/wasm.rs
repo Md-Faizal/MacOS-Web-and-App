@@ -491,6 +491,52 @@ pub unsafe extern "C" fn suite_render_catalog_qr_label_pdf(ptr: *const u8, len: 
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn suite_render_catalog_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::CatalogRenderData>(slice) {
+        Ok(request) => match crate::documents::pdf::render_catalog_pdf(&request) {
+            Ok(pdf_bytes) => {
+                #[derive(Serialize)]
+                struct PdfResponse {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                    product_count: usize,
+                }
+                package_response(&PdfResponse {
+                    success: true,
+                    pdf_base64: bytes_to_base64(&pdf_bytes),
+                    byte_count: pdf_bytes.len(),
+                    product_count: request.products.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrorResponse {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrorResponse {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(error) => {
+            #[derive(Serialize)]
+            struct ErrorResponse {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrorResponse {
+                success: false,
+                error: format!("Failed to parse catalog render payload: {}", error),
+            })
+        }
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn suite_inspect_image(ptr: *const u8, len: usize) -> *mut u8 {
     let slice = std::slice::from_raw_parts(ptr, len);
     let meta = crate::storage::dimensions::inspect_image_metadata(slice);

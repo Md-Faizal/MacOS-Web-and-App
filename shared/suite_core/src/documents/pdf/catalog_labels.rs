@@ -9,6 +9,8 @@ const LABEL_ROWS: usize = 8;
 pub struct CatalogQrLabel {
     pub product_id: String,
     pub product_name: String,
+    #[serde(default, alias = "category_name")]
+    pub category: String,
     #[serde(default)]
     pub variant: String,
     #[serde(default)]
@@ -34,6 +36,62 @@ fn printable_ascii(value: &str, max_chars: usize, fallback: &str) -> String {
     } else {
         result
     }
+}
+
+fn wrap_text(canvas: &PdfCanvas, font: PdfFont, size: f64, text: &str, max_width: f64, max_lines: usize) -> Vec<String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    for word in words {
+        let test_line = if current_line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{} {}", current_line, word)
+        };
+
+        if canvas.string_width(font, size, &test_line) <= max_width {
+            current_line = test_line;
+        } else {
+            if !current_line.is_empty() {
+                lines.push(std::mem::take(&mut current_line));
+                if lines.len() >= max_lines {
+                    break;
+                }
+            }
+            if canvas.string_width(font, size, word) > max_width {
+                let mut chunk = String::new();
+                for c in word.chars() {
+                    let mut candidate = chunk.clone();
+                    candidate.push(c);
+                    if canvas.string_width(font, size, &candidate) <= max_width {
+                        chunk = candidate;
+                    } else {
+                        if !chunk.is_empty() {
+                            lines.push(std::mem::take(&mut chunk));
+                            if lines.len() >= max_lines {
+                                break;
+                            }
+                        }
+                        chunk = c.to_string();
+                    }
+                }
+                current_line = chunk;
+            } else {
+                current_line = word.to_string();
+            }
+        }
+    }
+
+    if !current_line.is_empty() && lines.len() < max_lines {
+        lines.push(current_line);
+    }
+
+    lines
 }
 
 fn validate_labels(labels: &[CatalogQrLabel]) -> Result<(), String> {
@@ -111,53 +169,108 @@ pub fn render_catalog_qr_label_pdf(request: &CatalogQrLabelRequest) -> Result<Ve
         let x = margin + column as f64 * (cell_width + gap);
         let y = canvas.height - margin - (row + 1) as f64 * cell_height - row as f64 * gap;
 
+        // Label outer boundary line
         canvas.set_stroke_color(PdfColor::BLACK);
         canvas.set_line_width(0.45);
         canvas.rect(x, y, cell_width, cell_height, true, false);
 
+        // QR code on left side of cell
         let qr_side = cell_height - 18.0;
         draw_qr(&mut canvas, &label.qr_rows, x + 4.0, y + 9.0, qr_side);
 
-        let text_x = x + qr_side + 9.0;
-        let text_right = x + cell_width - 5.0;
-        let available_chars = ((text_right - text_x) / 4.2).floor().max(8.0) as usize;
-        let product_fallback = format!("PRODUCT {}", label.product_id);
-        let product_name = printable_ascii(&label.product_name, available_chars, &product_fallback);
-        let variant = printable_ascii(&label.variant, available_chars, "PACK");
-        let batch_no = printable_ascii(&label.batch_no, available_chars, "BATCH");
+        // Text content on right side of cell
+        let text_x = x + qr_side + 8.0;
+        let text_right = x + cell_width - 4.0;
+        let max_text_width = (text_right - text_x).max(20.0);
 
+        let clean_product_name = printable_ascii(&label.product_name, 120, &format!("PRODUCT {}", label.product_id));
+        let clean_category = printable_ascii(&label.category, 40, "");
+        let clean_variant = printable_ascii(&label.variant, 40, "");
+        let clean_batch_no = printable_ascii(&label.batch_no, 40, "");
+
+        let has_category = !clean_category.trim().is_empty();
+        let mut cur_y = y + cell_height - 10.0;
+
+        // 1. Hierarchy: CATEGORY (subtle uppercase indicator)
+        if has_category {
+            canvas.set_fill_color(PdfColor::hex("#475569"));
+            let cat_display = if clean_category.len() > 18 {
+                format!("{:.16}..", clean_category)
+            } else {
+                clean_category.to_uppercase()
+            };
+            canvas.draw_spaced_string(
+                PdfFont::HelveticaBold,
+                5.2,
+                text_x,
+                cur_y,
+                &cat_display,
+                0.3,
+            );
+            cur_y -= 8.5;
+        }
+
+        // 2. Hierarchy: PRODUCT NAME (Bold, dynamically wrapped so long names never clip)
         canvas.set_fill_color(PdfColor::BLACK);
-        canvas.draw_string(
-            PdfFont::HelveticaBold,
-            7.5,
-            text_x,
-            y + cell_height - 18.0,
-            &product_name,
-        );
-        if !label.batch_no.trim().is_empty() {
+        let name_font_size = if clean_product_name.len() > 35 { 6.2 } else { 7.0 };
+        let name_line_height = if name_font_size < 6.5 { 7.4 } else { 8.2 };
+        let name_lines = wrap_text(&canvas, PdfFont::HelveticaBold, name_font_size, &clean_product_name, max_text_width, 2);
+
+        for line in &name_lines {
             canvas.draw_string(
-                PdfFont::Helvetica,
-                6.5,
+                PdfFont::HelveticaBold,
+                name_font_size,
                 text_x,
-                y + cell_height - 30.0,
-                &format!("Batch: {batch_no}"),
+                cur_y,
+                line,
             );
+            cur_y -= name_line_height;
         }
-        if !label.variant.trim().is_empty() {
-            canvas.draw_string(
-                PdfFont::Helvetica,
-                6.5,
-                text_x,
-                y + cell_height - 41.0,
-                &format!("Pack: {variant}"),
-            );
+
+        // Slight breathing space between product title and variant/batch details
+        cur_y -= 1.5;
+
+        // 3. Hierarchy: VARIANT / PACK SIZE
+        if !clean_variant.trim().is_empty() {
+            canvas.set_fill_color(PdfColor::hex("#1e293b"));
+            let variant_text = format!("Pack: {clean_variant}");
+            let lines = wrap_text(&canvas, PdfFont::Helvetica, 6.0, &variant_text, max_text_width, 1);
+            if let Some(first_line) = lines.first() {
+                canvas.draw_string(
+                    PdfFont::Helvetica,
+                    6.0,
+                    text_x,
+                    cur_y,
+                    first_line,
+                );
+                cur_y -= 7.8;
+            }
         }
+
+        // 4. Hierarchy: BATCH NUMBER
+        if !clean_batch_no.trim().is_empty() {
+            canvas.set_fill_color(PdfColor::hex("#1e293b"));
+            let batch_text = format!("Batch: {clean_batch_no}");
+            let lines = wrap_text(&canvas, PdfFont::Helvetica, 6.0, &batch_text, max_text_width, 1);
+            if let Some(first_line) = lines.first() {
+                canvas.draw_string(
+                    PdfFont::Helvetica,
+                    6.0,
+                    text_x,
+                    cur_y,
+                    first_line,
+                );
+            }
+        }
+
+        // 5. Hierarchy: MRP (Firmly anchored at bottom)
         if let Some(mrp) = label.mrp {
+            canvas.set_fill_color(PdfColor::BLACK);
             canvas.draw_string(
                 PdfFont::HelveticaBold,
                 7.5,
                 text_x,
-                y + 13.0,
+                y + 10.5,
                 &format!("MRP: {:.2}", mrp),
             );
         }
@@ -174,6 +287,7 @@ mod tests {
         CatalogQrLabel {
             product_id: index.to_string(),
             product_name: format!("Product {index}"),
+            category: "General Care".to_string(),
             variant: "100 ml".to_string(),
             batch_no: format!("B-{index}"),
             mrp: Some(20.5),
@@ -194,6 +308,28 @@ mod tests {
         assert!(pdf.contains("Batch: B-25"));
         assert!(pdf.contains("MRP: 20.50"));
         assert!(pdf.contains("%%EOF"));
+    }
+
+    #[test]
+    fn renders_long_product_names_without_clipping() {
+        let long_label = CatalogQrLabel {
+            product_id: "99".to_string(),
+            product_name: "Amoxicillin and Potassium Clavulanate Tablets IP 625mg Fast Relief".to_string(),
+            category: "Antibiotics".to_string(),
+            variant: "10x10 Strips".to_string(),
+            batch_no: "BATCH-LONG-99".to_string(),
+            mrp: Some(199.99),
+            qr_rows: vec!["1".repeat(21); 21],
+        };
+        let request = CatalogQrLabelRequest {
+            labels: vec![long_label],
+        };
+        let pdf = render_catalog_qr_label_pdf(&request).unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(pdf.starts_with("%PDF-1.4"));
+        assert!(pdf.contains("Amoxicillin"));
+        assert!(pdf.contains("ANTIBIOTICS"));
+        assert!(pdf.contains("Pack: 10x10 Strips"));
     }
 
     #[test]

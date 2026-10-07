@@ -3363,7 +3363,7 @@ export class ProductListApp extends AppWindow {
     };
   }
 
-  async _triggerPrint(htmlContent, defaultFilename = 'UCA_Master_Catalog.pdf') {
+  async _triggerPrint(htmlContent, defaultFilename = 'UCA_Master_Catalog.pdf', catalogData = null) {
     const modal = this.createPdfProgressModal({
       title: 'Export Product Catalog',
       subtitle: 'Select whether to download the PDF or open print mode'
@@ -3382,99 +3382,62 @@ export class ProductListApp extends AppWindow {
     }
 
     // Show progress tracking
-    modal.renderProgressState('Compiling layout & elements...', 20);
+    modal.renderProgressState('Rendering high-resolution vector PDF in Rust...', 45);
 
-    // Process TOC boundary positioning inside temporary DOM node
-    const printContainer = document.createElement('div');
-    printContainer.className = 'qr-print-container';
-    printContainer.innerHTML = htmlContent;
-    document.body.appendChild(printContainer);
-    
-    try { await document.fonts.ready; } catch(e) { /* fallback */ }
-
-    const popularSection = printContainer.querySelector('.qr-popular-section');
-    if (popularSection) {
-      const tocPage = popularSection.closest('.qr-toc-page');
-      if (tocPage) {
-        printContainer.style.cssText = 'display:block !important; position:absolute; left:-9999px; top:0; width:210mm;';
-        popularSection.style.display = 'none';
-        void tocPage.offsetHeight;
-
-        const marker = printContainer.querySelector('#toc-end-marker');
-        const measureDiv = document.createElement('div');
-        measureDiv.style.height = '297mm';
-        document.body.appendChild(measureDiv);
-        const pageHeightPx = measureDiv.getBoundingClientRect().height;
-        document.body.removeChild(measureDiv);
-        
-        const tocEndPixel = marker.offsetTop;
-        const spaceUsedOnCurrentPage = tocEndPixel % pageHeightPx;
-        const maxAllowedHeight = pageHeightPx - spaceUsedOnCurrentPage - 110;
-        
-        if (maxAllowedHeight >= 100) {
-          popularSection.style.display = '';
-          popularSection.style.height = 'auto';
-          popularSection.style.maxHeight = Math.floor(maxAllowedHeight) + 'px';
-          popularSection.style.overflow = 'hidden';
-          
-          const grid = popularSection.querySelector('.qr-popular-grid');
-          if (grid) {
-            const sectionRect = popularSection.getBoundingClientRect();
-            const chips = grid.querySelectorAll('.qr-popular-chip');
-            chips.forEach(chip => {
-              chip.style.display = '';
-              if (chip.getBoundingClientRect().bottom > sectionRect.bottom - 8) {
-                chip.style.display = 'none';
-              }
-            });
-          }
-        } else {
-          popularSection.style.display = 'none';
-        }
-        
-        tocPage.style.minHeight = '';
-        printContainer.style.cssText = '';
-      }
-    }
-
-    const processedHtml = printContainer.innerHTML;
-    document.body.removeChild(printContainer);
-
-    modal.updateProgress('Rendering A4 document via Backend Engine...', 55);
-
-    // Call Backend API to generate PDF via Puppeteer
     try {
-      const response = await fetch('/api/products/catalog/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          html: processedHtml,
-          action: userChoice,
-          filename: defaultFilename
-        })
-      });
+      let blobUrl = null;
 
-      if (!response.ok) {
-        let errDetail = '';
+      // 1. Instant client-side Rust WebAssembly execution (<15ms)
+      if (catalogData && typeof SuiteCoreBridge !== 'undefined' && SuiteCoreBridge.isWasmLoaded() && typeof SuiteCoreBridge.renderCatalogPdf === 'function') {
         try {
-          const errData = await response.json();
-          errDetail = errData.details || errData.error || response.statusText;
-        } catch (e) {
-          errDetail = response.statusText || 'Internal Error';
+          const res = SuiteCoreBridge.renderCatalogPdf(catalogData);
+          if (res && res.success && res.pdf_base64) {
+            const binaryString = atob(res.pdf_base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+            blobUrl = URL.createObjectURL(pdfBlob);
+          }
+        } catch (wasmErr) {
+          log.warn('[ProductList] Browser WASM catalog render fallback to server:', wasmErr);
         }
-        throw new Error(`Server returned ${response.status}: ${errDetail}`);
       }
 
-      modal.updateProgress('Finalizing PDF binary file...', 90);
+      // 2. Server Rust Engine fetch
+      if (!blobUrl) {
+        modal.updateProgress('Compiling catalog via Backend Rust Engine...', 65);
+        const response = await fetch('/api/products/catalog/pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            catalog_data: catalogData,
+            html: htmlContent,
+            action: userChoice,
+            filename: defaultFilename
+          })
+        });
 
-      const arrayBuffer = await response.arrayBuffer();
-      const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
-      const blobUrl = URL.createObjectURL(pdfBlob);
+        if (!response.ok) {
+          let errDetail = '';
+          try {
+            const errData = await response.json();
+            errDetail = errData.details || errData.error || response.statusText;
+          } catch (e) {
+            errDetail = response.statusText || 'Internal Error';
+          }
+          throw new Error(`Server returned ${response.status}: ${errDetail}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
+        blobUrl = URL.createObjectURL(pdfBlob);
+      }
 
       modal.updateProgress('Complete!', 100);
 
       if (userChoice === 'download') {
-        // Show completed state with download button and trigger automated click
         modal.renderCompleteState({
           isDownload: true,
           blobUrl,
@@ -3517,24 +3480,9 @@ export class ProductListApp extends AppWindow {
       }
     } catch (err) {
       log.warn('[Catalog Export] Backend PDF generation failed:', err);
-      
-      if (userChoice === 'download') {
-        // DO NOT call window.print() on download failure! Show clean error message in modal.
-        modal.renderErrorState(`Failed to generate PDF download: ${err.message || 'Server error'}. Please try again.`, () => {
-          modal.destroy();
-        });
-      } else {
-        // Local print fallback only for print choice
+      modal.renderErrorState(`Failed to generate PDF: ${err.message || 'Server error'}. Please try again.`, () => {
         modal.destroy();
-        const fallbackContainer = document.createElement('div');
-        fallbackContainer.className = 'qr-print-container';
-        fallbackContainer.innerHTML = processedHtml;
-        document.body.appendChild(fallbackContainer);
-        setTimeout(() => {
-          window.print();
-          document.body.removeChild(fallbackContainer);
-        }, 300);
-      }
+      });
     }
   }
 
@@ -3783,7 +3731,34 @@ export class ProductListApp extends AppWindow {
         <span class="footer-right">Generated ${generatedAt}</span>
       </div>
     `;
-    this._triggerPrint(catalogHtml, 'UCA_Master_Catalog.pdf');
+
+    const catalogRenderData = {
+      catalog_type: 'master',
+      title: 'UCA Product Catalog',
+      subtitle: 'QR Code Price List & Master Reference',
+      base_url: generator.getBaseUrl(),
+      generated_at: generatedAt,
+      products: sortedProducts.map(p => ({
+        product_id: String(p.id),
+        product_name: p.name,
+        odia_name: p.odia_name || null,
+        category: p.category || 'Uncategorized',
+        is_gold: p.isGold === true || (p.classification && String(p.classification).trim().toLowerCase() === 'gold'),
+        variants: p.variants.map(v => ({
+          variant_id: v.id ? String(v.id) : null,
+          pack_size: v.packSize || 'Standard',
+          batches: v.batches.map(b => ({
+            batch_id: b.id ? String(b.id) : null,
+            batch_no: b.batchNo,
+            mrp: Number(b.mrp || 0),
+            mfg_date: this._formatDateHumanReadable(b.mfgDate),
+            expiry_date: this._formatDateHumanReadable(b.expiryDate),
+            qr_url: generator.generateBatchURL(b.batchNo, p.id, v.id, b.id)
+          }))
+        }))
+      }))
+    };
+    this._triggerPrint(catalogHtml, 'UCA_Master_Catalog.pdf', catalogRenderData);
   }
 
   async printProductCatalog(productId) {
@@ -3909,7 +3884,34 @@ export class ProductListApp extends AppWindow {
       </div>
     `;
     const cleanProductName = product.name.replace(/[^a-zA-Z0-9]/g, '_');
-    this._triggerPrint(catalogHtml, `UCA_Product_${cleanProductName}.pdf`);
+
+    const catalogRenderData = {
+      catalog_type: 'product',
+      title: `Product Specification - ${product.name}`,
+      subtitle: `${product.category} · Master Specification`,
+      base_url: generator.getBaseUrl(),
+      generated_at: generatedAt,
+      products: [{
+        product_id: String(product.id),
+        product_name: product.name,
+        odia_name: product.odia_name || null,
+        category: product.category || 'Uncategorized',
+        is_gold: isGoldProduct,
+        variants: product.variants.map(v => ({
+          variant_id: v.id ? String(v.id) : null,
+          pack_size: v.packSize || 'Standard',
+          batches: v.batches.map(b => ({
+            batch_id: b.id ? String(b.id) : null,
+            batch_no: b.batchNo,
+            mrp: Number(b.mrp || 0),
+            mfg_date: this._formatDateHumanReadable(b.mfgDate),
+            expiry_date: this._formatDateHumanReadable(b.expiryDate),
+            qr_url: generator.generateBatchURL(b.batchNo, product.id, v.id, b.id)
+          }))
+        }))
+      }]
+    };
+    this._triggerPrint(catalogHtml, `UCA_Product_${cleanProductName}.pdf`, catalogRenderData);
   }
 
   async printBatchQR(productId, packSize, batchNo, batchId = null, variantId = null) {
@@ -4035,7 +4037,24 @@ export class ProductListApp extends AppWindow {
       </div>
     `;
     const cleanBatchNo = batchNo.replace(/[^a-zA-Z0-9]/g, '_');
-    this._triggerPrint(catalogHtml, `UCA_Batch_${cleanBatchNo}_QR.pdf`);
+
+    const catalogRenderData = {
+      catalog_type: 'batch',
+      base_url: generator.getBaseUrl(),
+      generated_at: generatedAt,
+      products: [],
+      single_batch: {
+        product_id: String(product.id),
+        product_name: product.name,
+        pack_size: variant.packSize || 'Standard',
+        batch_no: batch.batchNo,
+        mrp: Number(batch.mrp || 0),
+        mfg_date: this._formatDateHumanReadable(batch.mfgDate),
+        expiry_date: this._formatDateHumanReadable(batch.expiryDate),
+        qr_url: generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id)
+      }
+    };
+    this._triggerPrint(catalogHtml, `UCA_Batch_${cleanBatchNo}_QR.pdf`, catalogRenderData);
   }
 
 

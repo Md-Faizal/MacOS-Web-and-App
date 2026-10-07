@@ -1023,28 +1023,99 @@ module.exports = function(db) {
     // ============= PDF CATALOG GENERATION =============
     generateCatalogPDF: async (req, res) => {
       try {
-        let generatePDFFromHTML;
-        try {
-          generatePDFFromHTML = require('../../../core/products/pdf-generator').generatePDFFromHTML;
-        } catch (e1) {
-          try {
-            generatePDFFromHTML = require('../../../core/products/pdf-generator').generatePDFFromHTML;
-          } catch (e2) {
-            const path = require('path');
-            generatePDFFromHTML = require(path.join(process.cwd(), 'backend/core/products/pdf-generator')).generatePDFFromHTML;
-          }
-        }
-
         const action = req.body?.action || req.query?.action || 'download';
         const filename = req.body?.filename || 'UCA_Product_Catalog.pdf';
-        const htmlContent = req.body?.html;
-        if (typeof htmlContent !== 'string' || !htmlContent.trim()) {
-          return res.status(400).json({
-            error: 'PDF generation requires current product-list HTML with stable QR labels. Generate the PDF from Product List.'
-          });
+
+        if (!SuiteCoreBridge || typeof SuiteCoreBridge.renderCatalogPdf !== 'function') {
+          throw new Error('The Rust SuiteCore renderer is unavailable. Rebuild and deploy suite_core.wasm before generating catalog PDFs.');
         }
 
-        const pdfBuffer = await generatePDFFromHTML(htmlContent);
+        let catalogData = req.body?.catalog_data;
+        if (!catalogData) {
+          const prodCols = db.prepare('PRAGMA table_info(products)').all().map(c => c.name);
+          const hasClassification = prodCols.includes('classification');
+          const hasCreatedAt = prodCols.includes('created_at');
+          const hasUpdatedAt = prodCols.includes('updated_at');
+
+          const productRows = db.prepare(`
+            SELECT p.id AS product_id, p.name AS product_name, p.odia_name,
+                   ${hasClassification ? 'p.classification' : "NULL AS classification"},
+                   ${hasCreatedAt ? 'p.created_at' : "NULL AS created_at"},
+                   ${hasUpdatedAt ? 'p.updated_at' : "NULL AS updated_at"},
+                   c.name AS category_name, v.id AS variant_id,
+                   v.pack_size_value, v.pack_size_type,
+                   b.id AS batch_id, b.batch_no, b.mrp, b.mfg_date, b.exp_date
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN variants v ON v.product_id = p.id
+            LEFT JOIN batches b ON b.variant_id = v.id
+            ORDER BY 
+              p.name COLLATE NOCASE ASC,
+              p.id ASC,
+              v.pack_size_value ASC,
+              v.pack_size_type ASC,
+              v.id ASC,
+              b.batch_no COLLATE NOCASE ASC,
+              b.id ASC
+          `).all();
+
+          const productsMap = new Map();
+          for (const row of productRows) {
+            let prod = productsMap.get(row.product_id);
+            if (!prod) {
+              prod = {
+                product_id: String(row.product_id),
+                product_name: String(row.product_name || ''),
+                odia_name: row.odia_name || null,
+                category: String(row.category_name || 'Uncategorized'),
+                is_gold: String(row.classification || '').toLowerCase() === 'gold',
+                created_at: row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : null,
+                updated_at: row.updated_at ? new Date(row.updated_at).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : null,
+                variants: []
+              };
+              productsMap.set(row.product_id, prod);
+            }
+
+            if (row.variant_id) {
+              const packSize = `${row.pack_size_value || ''} ${row.pack_size_type || ''}`.trim() || 'Standard';
+              let variant = prod.variants.find(v => v.variant_id === String(row.variant_id));
+              if (!variant) {
+                variant = {
+                  variant_id: String(row.variant_id),
+                  pack_size: packSize,
+                  batches: []
+                };
+                prod.variants.push(variant);
+              }
+
+              if (row.batch_id) {
+                variant.batches.push({
+                  batch_id: String(row.batch_id),
+                  batch_no: String(row.batch_no || ''),
+                  mrp: Number(row.mrp || 0),
+                  mfg_date: row.mfg_date ? String(row.mfg_date) : null,
+                  expiry_date: row.exp_date ? String(row.exp_date) : null
+                });
+              }
+            }
+          }
+
+          catalogData = {
+            catalog_type: 'master',
+            title: 'UCA Product Catalog',
+            subtitle: 'QR Code Price List & Master Reference',
+            base_url: req.body?.baseUrl || 'https://catalog.uca',
+            generated_at: new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' }),
+            products: Array.from(productsMap.values())
+          };
+        }
+
+        const renderedPdf = SuiteCoreBridge.renderCatalogPdf(catalogData);
+        if (!renderedPdf || !renderedPdf.success || !renderedPdf.pdf_base64) {
+          throw new Error(`Rust catalog rendering failed: ${renderedPdf ? renderedPdf.error : 'Unknown error'}`);
+        }
+
+        const pdfBuffer = Buffer.from(renderedPdf.pdf_base64, 'base64');
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdfBuffer.length);
@@ -1090,7 +1161,15 @@ module.exports = function(db) {
           LEFT JOIN categories c ON c.id = p.category_id
           LEFT JOIN variants v ON v.product_id = p.id
           LEFT JOIN batches b ON b.variant_id = v.id
-          ORDER BY p.name COLLATE NOCASE, p.id, v.id, b.batch_no COLLATE NOCASE
+          ORDER BY 
+            COALESCE(c.name, 'Uncategorized') COLLATE NOCASE ASC,
+            p.name COLLATE NOCASE ASC,
+            p.id ASC,
+            v.pack_size_value ASC,
+            v.pack_size_type ASC,
+            v.id ASC,
+            b.batch_no COLLATE NOCASE ASC,
+            b.id ASC
         `).all();
 
         if (productRows.length === 0) {
@@ -1104,6 +1183,16 @@ module.exports = function(db) {
             .map(row => String(row.product_id))
         );
         const productOnlyLabels = new Set();
+        const usedSvgFilenames = new Set();
+
+        const sanitizeFilenamePart = str => {
+          return String(str || '')
+            .trim()
+            .replace(/[^\w\s.-]/g, '')
+            .replace(/\s+/g, '_')
+            .replace(/_+/g, '_');
+        };
+
         for (const row of productRows) {
           const productId = String(row.product_id);
           let qrUrl;
@@ -1132,21 +1221,37 @@ module.exports = function(db) {
             ? ''
             : `${row.pack_size_value || ''} ${row.pack_size_type || ''}`.trim();
           const qrRows = qrRowsFromUrl(qrUrl);
+
+          const cleanProd = sanitizeFilenamePart(row.product_name) || `Product_${productId}`;
+          const cleanBatch = sanitizeFilenamePart(row.batch_no) || `Batch_${row.batch_id}`;
+          const cleanPack = sanitizeFilenamePart(safeVariant);
+
+          let baseSvgName = type === 'batch'
+            ? (cleanPack ? `${cleanProd}_${cleanPack}_Batch_${cleanBatch}` : `${cleanProd}_Batch_${cleanBatch}`)
+            : cleanProd;
+
+          let svgFile = `qrs/${baseSvgName}.svg`;
+          let counter = 1;
+          while (usedSvgFilenames.has(svgFile.toLowerCase())) {
+            counter++;
+            svgFile = `qrs/${baseSvgName}_${counter}.svg`;
+          }
+          usedSvgFilenames.add(svgFile.toLowerCase());
+
           const label = {
             type,
             product_id: productId,
             product_name: String(row.product_name || ''),
+            category: String(row.category_name || ''),
             variant_id: row.variant_id === null || row.variant_id === undefined ? '' : String(row.variant_id),
             variant: safeVariant,
             batch_id: row.batch_id === null || row.batch_id === undefined ? '' : String(row.batch_id),
             batch_no: row.batch_no === null || row.batch_no === undefined ? '' : String(row.batch_no),
             mrp: row.mrp === null || row.mrp === undefined ? null : Number(row.mrp),
             qr_url: qrUrl,
-            qr_rows: qrRows
+            qr_rows: qrRows,
+            svg_file: svgFile
           };
-          label.svg_file = type === 'batch'
-            ? `qrs/product-${productId}-batch-${label.batch_id}.svg`
-            : `qrs/product-${productId}.svg`;
           labels.push(label);
         }
 

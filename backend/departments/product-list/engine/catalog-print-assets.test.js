@@ -182,9 +182,9 @@ test('packages PDF and scalable QR SVG files into the designer ZIP', async () =>
     assert.ok(entries.has('UCA_QR_Label_Sheets.pdf'));
     assert.ok(entries.has('labels.csv'));
     assert.ok(entries.has('README.txt'));
-    assert.ok(entries.has('qrs/product-10-batch-1000.svg'));
-    assert.ok(entries.has('qrs/product-20.svg'));
-    const batchSvg = entries.get('qrs/product-10-batch-1000.svg').toString('utf8');
+    assert.ok(entries.has('qrs/Product_With_Batch_100_ml_Batch_B-10.svg'));
+    assert.ok(entries.has('qrs/Product_Without_Batch.svg'));
+    const batchSvg = entries.get('qrs/Product_With_Batch_100_ml_Batch_B-10.svg').toString('utf8');
     assert.match(batchSvg, /viewBox="0 0 \d+ \d+"/);
     assert.match(batchSvg, /<path d="M/);
     assert.match(batchSvg, /fill="#000"/);

@@ -52,6 +52,18 @@ impl PdfColor {
     }
 }
 
+/// A clickable URI link annotation rectangle on a page.
+#[derive(Debug, Clone)]
+pub struct LinkAnnotation {
+    /// Bottom-left x in PDF user space (points from bottom)
+    pub x: f64,
+    /// Bottom-left y in PDF user space
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub url: String,
+}
+
 pub struct PdfCanvas {
     pub width: f64,
     pub height: f64,
@@ -60,12 +72,15 @@ pub struct PdfCanvas {
     current_stroke: PdfColor,
     current_fill: PdfColor,
     current_line_width: f64,
+    /// Annotations for the *current* (in-progress) page
+    current_annots: Vec<LinkAnnotation>,
 }
 
 struct PdfPage {
     stream: String,
     width: f64,
     height: f64,
+    annots: Vec<LinkAnnotation>,
 }
 
 impl PdfCanvas {
@@ -79,6 +94,7 @@ impl PdfCanvas {
             current_stroke: PdfColor::BLACK,
             current_fill: PdfColor::BLACK,
             current_line_width: 1.0,
+            current_annots: Vec::new(),
         }
     }
 
@@ -91,6 +107,7 @@ impl PdfCanvas {
             current_stroke: PdfColor::BLACK,
             current_fill: PdfColor::BLACK,
             current_line_width: 1.0,
+            current_annots: Vec::new(),
         }
     }
 
@@ -99,10 +116,25 @@ impl PdfCanvas {
             stream: std::mem::take(&mut self.stream),
             width: self.width,
             height: self.height,
+            annots: std::mem::take(&mut self.current_annots),
         });
         self.current_stroke = PdfColor::BLACK;
         self.current_fill = PdfColor::BLACK;
         self.current_line_width = 1.0;
+    }
+
+    /// Add a clickable URI rectangle to the current page.
+    /// `x`, `y` are bottom-left in PDF coordinate space (origin = bottom-left of page).
+    pub fn add_link_annotation(&mut self, x: f64, y: f64, width: f64, height: f64, url: &str) {
+        if !url.trim().is_empty() {
+            self.current_annots.push(LinkAnnotation {
+                x,
+                y,
+                width,
+                height,
+                url: url.to_string(),
+            });
+        }
     }
 
     pub fn new_page_with_size(&mut self, width: f64, height: f64) {
@@ -220,6 +252,20 @@ impl PdfCanvas {
         self.curve_to(cx - k, cy + r, cx - r, cy + k, cx - r, cy);
         self.curve_to(cx - r, cy - k, cx - k, cy - r, cx, cy - r);
         self.curve_to(cx + k, cy - r, cx + r, cy - k, cx + r, cy);
+        self.close_path();
+        match (stroke, fill) {
+            (true, true) => self.fill_and_stroke(),
+            (true, false) => self.stroke(),
+            (false, true) => self.fill(),
+            (false, false) => {}
+        }
+    }
+
+    pub fn diamond(&mut self, cx: f64, cy: f64, r: f64, stroke: bool, fill: bool) {
+        self.move_to(cx, cy + r);
+        self.line_to(cx + r, cy);
+        self.line_to(cx, cy - r);
+        self.line_to(cx - r, cy);
         self.close_path();
         match (stroke, fill) {
             (true, true) => self.fill_and_stroke(),
@@ -362,6 +408,44 @@ impl PdfCanvas {
         self.draw_spaced_string(font, size, right_x - w, y, text, spacing);
     }
 
+    /// Draws bilingual text using Plus Jakarta Sans ExtraBold (/F3) for Latin and Noto Sans Oriya Bold (/F4) for Odia
+    pub fn draw_bilingual_string(&mut self, font_size: f64, x: f64, y: f64, text: &str) {
+        let chunks = crate::documents::pdf::font::segment_and_shape(text);
+        if chunks.is_empty() {
+            return;
+        }
+        self.stream.push_str(&format!("% {}\n", text.replace(['\r', '\n'], " ")));
+        self.stream.push_str("BT\n");
+        self.stream.push_str(&format!(
+            "{:.3} {:.3} {:.3} rg\n",
+            self.current_fill.r, self.current_fill.g, self.current_fill.b
+        ));
+        self.stream.push_str(&format!("{:.2} {:.2} Td\n", x, y));
+        for chunk in chunks {
+            self.stream.push_str(&format!("/F{} {:.2} Tf\n", chunk.font_number, font_size));
+            self.stream.push_str(&format!("<{}> Tj\n", chunk.hex_gids));
+        }
+        self.stream.push_str("ET\n");
+    }
+
+    pub fn draw_centered_bilingual_string(&mut self, font_size: f64, cx: f64, y: f64, text: &str) {
+        let w = self.bilingual_string_width(font_size, text);
+        self.draw_bilingual_string(font_size, cx - w / 2.0, y, text);
+    }
+
+    pub fn draw_right_bilingual_string(&mut self, font_size: f64, right_x: f64, y: f64, text: &str) {
+        let w = self.bilingual_string_width(font_size, text);
+        self.draw_bilingual_string(font_size, right_x - w, y, text);
+    }
+
+    pub fn bilingual_string_width(&self, font_size: f64, text: &str) -> f64 {
+        crate::documents::pdf::font::measure_bilingual_width(font_size, text)
+    }
+
+    pub fn wrap_bilingual_text(&self, font_size: f64, text: &str, max_width: f64) -> Vec<String> {
+        crate::documents::pdf::font::wrap_bilingual_text(font_size, text, max_width)
+    }
+
     pub fn draw_centered_string(
         &mut self,
         font: PdfFont,
@@ -394,33 +478,178 @@ impl PdfCanvas {
         (total_units * size) / 1000.0
     }
 
+    /// Word-wrap `text` into lines that fit within `max_width` points.
+    /// Returns the lines as owned Strings.
+    pub fn wrap_text(&self, font: PdfFont, size: f64, text: &str, max_width: f64) -> Vec<String> {
+        let mut lines: Vec<String> = Vec::new();
+        let space_w = self.string_width(font, size, " ");
+        for paragraph in text.split('\n') {
+            let words: Vec<&str> = paragraph.split_whitespace().collect();
+            if words.is_empty() {
+                lines.push(String::new());
+                continue;
+            }
+            let mut current = String::new();
+            let mut current_w = 0.0_f64;
+            for word in words {
+                let word_w = self.string_width(font, size, word);
+                if current.is_empty() {
+                    current.push_str(word);
+                    current_w = word_w;
+                } else if current_w + space_w + word_w <= max_width {
+                    current.push(' ');
+                    current.push_str(word);
+                    current_w += space_w + word_w;
+                } else {
+                    lines.push(current.clone());
+                    current = word.to_string();
+                    current_w = word_w;
+                }
+            }
+            if !current.is_empty() {
+                lines.push(current);
+            }
+        }
+        lines
+    }
+
+    /// Draw word-wrapped text, drawing each line at `line_height` spacing downward.
+    /// Returns the total height consumed (number_of_lines * line_height).
+    pub fn draw_wrapped_string(
+        &mut self,
+        font: PdfFont,
+        size: f64,
+        x: f64,
+        y: f64,
+        max_width: f64,
+        line_height: f64,
+        text: &str,
+    ) -> f64 {
+        let lines = self.wrap_text(font, size, text, max_width);
+        let count = lines.len() as f64;
+        for (i, line) in lines.into_iter().enumerate() {
+            // lines go downward in PDF space means decreasing y
+            let ly = y - i as f64 * line_height;
+            self.draw_string(font, size, x, ly, &line);
+        }
+        count * line_height
+    }
+
     /// Compile into final valid PDF 1.4 byte buffer
-    pub fn build_pdf(self) -> Vec<u8> {
-        let mut page_streams = self.pages;
-        page_streams.push(PdfPage {
+    pub fn build_pdf(mut self) -> Vec<u8> {
+        // Flush the last in-progress page
+        self.pages.push(PdfPage {
             stream: self.stream,
             width: self.width,
             height: self.height,
+            annots: self.current_annots,
         });
 
-        let mut objects = Vec::<Vec<u8>>::with_capacity(4 + page_streams.len() * 2);
+        // ── Phase 1: collect all annotation objects first so we know their IDs ──
+        // Object layout:
+        //   1 = Catalog
+        //   2 = Pages
+        //   3 = Font F1 (Helvetica)
+        //   4 = Font F2 (Helvetica-Bold)
+        //   5..9 = Font F3 (Plus Jakarta Sans ExtraBold: Type 0, CIDFont, FontDescriptor, FontFile2, ToUnicode)
+        //   10..14 = Font F4 (Noto Sans Oriya Bold: Type 0, CIDFont, FontDescriptor, FontFile2, ToUnicode)
+        //   15, 17, 19, … = Page objects
+        //   16, 18, 20, … = Content stream objects
+        //   After all pages: annotation objects
+        let num_pages = self.pages.len();
+        let first_page_obj = 15_usize;
+        // annotation objects start after all page+stream pairs
+        let annot_base_id = first_page_obj + num_pages * 2;
+
+        // Pre-compute annotation object IDs per page
+        let mut annot_ids_per_page: Vec<Vec<usize>> = Vec::with_capacity(num_pages);
+        let mut next_annot_id = annot_base_id;
+        for page in &self.pages {
+            let ids: Vec<usize> = (0..page.annots.len())
+                .map(|_| { let id = next_annot_id; next_annot_id += 1; id })
+                .collect();
+            annot_ids_per_page.push(ids);
+        }
+
+        // ── Phase 2: build PDF object list ──
+        let mut objects = Vec::<Vec<u8>>::with_capacity(14 + num_pages * 2 + next_annot_id - annot_base_id);
+
+        // Obj 1: Catalog
         objects.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+
+        // Obj 2: Pages
         let page_object_ids: Vec<usize> =
-            (0..page_streams.len()).map(|index| 5 + index * 2).collect();
+            (0..num_pages).map(|i| first_page_obj + i * 2).collect();
         let kids = page_object_ids
             .iter()
             .map(|id| format!("{id} 0 R"))
             .collect::<Vec<_>>()
             .join(" ");
         objects.push(
-            format!(
-                "<< /Type /Pages /Kids [{kids}] /Count {} >>",
-                page_streams.len()
-            )
-            .into_bytes(),
+            format!("<< /Type /Pages /Kids [{kids}] /Count {num_pages} >>")
+                .into_bytes(),
         );
+
+        // Obj 3 & 4: Type 1 Fonts
         objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
         objects.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_vec());
+
+        // Obj 5..9 & 10..14: Embedded TrueType Fonts (F3: Latin ExtraBold, F4: Odia Bold)
+        let latin_font = crate::documents::pdf::font::EmbeddedTrueType::parse("PlusJakartaSans", crate::documents::pdf::font::LATIN_FONT_BYTES);
+        let odia_font = crate::documents::pdf::font::EmbeddedTrueType::parse("NotoSansOriya", crate::documents::pdf::font::ODIA_FONT_BYTES);
+
+        fn add_true_type_font_objects(objects: &mut Vec<Vec<u8>>, font: &crate::documents::pdf::font::EmbeddedTrueType, base_id: usize) {
+            let cid_font_id = base_id + 1;
+            let descriptor_id = base_id + 2;
+            let font_file_id = base_id + 3;
+            let to_unicode_id = base_id + 4;
+
+            // Type 0 Font
+            objects.push(
+                format!(
+                    "<< /Type /Font /Subtype /Type0 /BaseFont /{} /Encoding /Identity-H /DescendantFonts [{} 0 R] /ToUnicode {} 0 R >>",
+                    font.postscript_name, cid_font_id, to_unicode_id
+                ).into_bytes()
+            );
+
+            // CIDFont
+            let mut widths_str = String::from("/W [ 0 [ ");
+            for w in &font.widths {
+                widths_str.push_str(&format!("{} ", w));
+            }
+            widths_str.push_str("] ]");
+
+            objects.push(
+                format!(
+                    "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {} 0 R /CIDToGIDMap /Identity /DW 1000 {} >>",
+                    font.postscript_name, descriptor_id, widths_str
+                ).into_bytes()
+            );
+
+            // FontDescriptor
+            objects.push(
+                format!(
+                    "<< /Type /FontDescriptor /FontName /{} /Flags 32 /FontBBox [{} {} {} {}] /ItalicAngle 0 /Ascent {} /Descent {} /CapHeight {} /StemV 120 /FontFile2 {} 0 R >>",
+                    font.postscript_name, font.bbox[0], font.bbox[1], font.bbox[2], font.bbox[3], font.ascent, font.descent, font.cap_height, font_file_id
+                ).into_bytes()
+            );
+
+            // FontFile2
+            let mut ff_obj = format!("<< /Length {} /Length1 {} >>\nstream\n", font.font_data.len(), font.font_data.len()).into_bytes();
+            ff_obj.extend_from_slice(font.font_data);
+            ff_obj.extend_from_slice(b"\nendstream");
+            objects.push(ff_obj);
+
+            // ToUnicode
+            let cmap_bytes = font.to_unicode_cmap.as_bytes();
+            let mut tu_obj = format!("<< /Length {} >>\nstream\n", cmap_bytes.len()).into_bytes();
+            tu_obj.extend_from_slice(cmap_bytes);
+            tu_obj.extend_from_slice(b"\nendstream");
+            objects.push(tu_obj);
+        }
+
+        add_true_type_font_objects(&mut objects, &latin_font, 5);
+        add_true_type_font_objects(&mut objects, &odia_font, 10);
 
         let ext_gstate = "<< \
             /GS_a12 << /Type /ExtGState /ca 0.12 /CA 0.12 >> \
@@ -432,17 +661,31 @@ impl PdfCanvas {
             /GS_a100 << /Type /ExtGState /ca 1.00 /CA 1.00 >> \
         >>";
 
-        for (index, stream) in page_streams.iter().enumerate() {
+        // Page + Stream objects (obj 15/16, 17/18, …)
+        for (index, page) in self.pages.iter().enumerate() {
             let page_id = page_object_ids[index];
             let stream_id = page_id + 1;
+
+            // Build /Annots entry
+            let annots_entry = if annot_ids_per_page[index].is_empty() {
+                String::new()
+            } else {
+                let refs = annot_ids_per_page[index]
+                    .iter()
+                    .map(|id| format!("{id} 0 R"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!(" /Annots [{refs}]")
+            };
+
             objects.push(
                 format!(
-                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState {ext_gstate} >> /Contents {stream_id} 0 R >>",
-                    stream.width, stream.height
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 10 0 R >> /ExtGState {ext_gstate} >> /Contents {stream_id} 0 R{annots_entry} >>",
+                    page.width, page.height
                 )
                 .into_bytes(),
             );
-            let stream_bytes = stream.stream.as_bytes();
+            let stream_bytes = page.stream.as_bytes();
             let mut stream_object =
                 format!("<< /Length {} >>\nstream\n", stream_bytes.len()).into_bytes();
             stream_object.extend_from_slice(stream_bytes);
@@ -450,12 +693,26 @@ impl PdfCanvas {
             objects.push(stream_object);
         }
 
+        // Annotation objects (URI /Link)
+        for (page_idx, page) in self.pages.iter().enumerate() {
+            for annot in &page.annots {
+                // Escape URL: parentheses must be escaped inside PDF literal strings
+                let escaped_url = annot.url.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)");
+                let obj = format!(
+                    "<< /Type /Annot /Subtype /Link /Rect [{:.2} {:.2} {:.2} {:.2}] /Border [0 0 0] /A << /Type /Action /S /URI /URI ({escaped_url}) >> >>",
+                    annot.x,
+                    annot.y,
+                    annot.x + annot.width,
+                    annot.y + annot.height,
+                );
+                let _ = page_idx; // used implicitly through iteration order
+                objects.push(obj.into_bytes());
+            }
+        }
+
+        // ── Phase 3: serialise objects & cross-reference table ──
         let mut out = Vec::with_capacity(
-            page_streams
-                .iter()
-                .map(|page| page.stream.len())
-                .sum::<usize>()
-                + 1024,
+            self.pages.iter().map(|p| p.stream.len()).sum::<usize>() + 4096,
         );
         out.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
         let mut offsets = Vec::with_capacity(objects.len());
@@ -466,21 +723,16 @@ impl PdfCanvas {
             out.extend_from_slice(b"\nendobj\n");
         }
 
-        // XRef Table
         let xref_pos = out.len();
         let total_objs = offsets.len() + 1;
-        out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", total_objs).as_bytes());
+        out.extend_from_slice(format!("xref\n0 {total_objs}\n0000000000 65535 f \n").as_bytes());
         for offset in offsets {
             out.extend_from_slice(format!("{:010} 00000 n \n", offset).as_bytes());
         }
-
-        // Trailer
         let trailer = format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
-            total_objs, xref_pos
+            "trailer\n<< /Size {total_objs} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n"
         );
         out.extend_from_slice(trailer.as_bytes());
-
         out
     }
 }

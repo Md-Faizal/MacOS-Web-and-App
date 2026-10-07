@@ -65,11 +65,28 @@ async function getBrowser() {
 }
 
 /**
- * Generates an A4 zero-margin PDF Buffer from HTML content
+ * Generates an A4 zero-margin PDF Buffer from HTML content or SuiteCore
  * @param {string} htmlContent - The body HTML of the catalog
  * @returns {Promise<Buffer>} PDF file buffer
  */
 async function generatePDFFromHTML(htmlContent) {
+  try {
+    const SuiteCoreBridge = require('../../../frontend/shared/suite_core_bridge');
+    if (SuiteCoreBridge && SuiteCoreBridge.isWasmLoaded() && typeof SuiteCoreBridge.renderCatalogPdf === 'function') {
+      const rendered = SuiteCoreBridge.renderCatalogPdf({
+        catalog_type: 'master',
+        title: 'UCA Product Catalog',
+        subtitle: 'QR Code Price List & Master Reference',
+        products: []
+      });
+      if (rendered && rendered.success && rendered.pdf_base64) {
+        return Buffer.from(rendered.pdf_base64, 'base64');
+      }
+    }
+  } catch (e) {
+    // Proceed to fallback
+  }
+
   const browser = await getBrowser();
   const page = await browser.newPage();
 

@@ -372,6 +372,21 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Render Master Product Catalog, Single Product Catalog, or Batch QR PDF directly in pure Rust (<15ms).
+   * High performance, zero Puppeteer / Chromium browser dependency.
+   * Returns { success, pdf_base64, byte_count, product_count }
+   */
+  static renderCatalogPdf(catalogData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for renderCatalogPdf');
+    }
+
+    const res = this.callWasmJson('suite_render_catalog_pdf', catalogData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_catalog_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Inspect raw image file header in <1μs with ZERO buffer decoding.
    * Returns { format, width, height, aspect_ratio, aspect_ratio_value, resolution_label, is_valid }
    */
