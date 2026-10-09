@@ -927,10 +927,10 @@ module.exports = function(db) {
         const cnStmt = db.prepare(`
           SELECT 
             COUNT(p.id) as count,
-            COALESCE(SUM(p.amount), 0) as gross_value
+            COALESCE(SUM(COALESCE(p.credit_amount, p.amount, 0)), 0) as gross_value
           FROM payments p
           JOIN contacts c ON p.customer_id = c.id
-          WHERE (p.payment_type = 'CreditNote' OR p.payment_method = 'CreditNote') AND ${scope} ${cnDateCond}
+          WHERE p.type = 'CREDIT_NOTE' AND ${scope} ${cnDateCond}
         `);
         const cn = cnStmt.get(...cnParams) || { count: 0, gross_value: 0 };
         const cnTaxable = cn.gross_value ? cn.gross_value / 1.12 : 0;

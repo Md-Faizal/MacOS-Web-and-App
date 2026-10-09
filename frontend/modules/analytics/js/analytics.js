@@ -3,6 +3,10 @@
  * Refactored to use multi-file architecture for better maintainability.
  */
 
+const log = (typeof window !== 'undefined' && window.MacOSLogger)
+  ? window.MacOSLogger.createScope('Analytics:Core')
+  : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+
 class AnalyticsApp extends AppWindow {
   get viewContainer() {
     return this.activePanel || this.rootViewContainer;
