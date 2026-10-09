@@ -59,6 +59,7 @@ class AnalyticsApp extends AppWindow {
     this.orderView = null;
     this.agingView = null;
     this.compView = null;
+    this.complianceView = null;
 
     this.setupAnalyticsUI();
   }
@@ -97,6 +98,8 @@ class AnalyticsApp extends AppWindow {
           this.agingView?.render?.();
         } else if (this.currentView === 'sales-reports') {
           this.salesView?.render?.();
+        } else if (this.currentView === 'compliance') {
+          this.complianceView?.loadReportData?.();
         } else if (this.currentView === 'customer-profile' && this.currentCustomerId) {
           this.profileView?.render?.(this.currentCustomerId);
         }
@@ -137,6 +140,7 @@ class AnalyticsApp extends AppWindow {
         <button class="analytics-menu-item" data-view="orders">🚚 Order Funnel</button>
         <button class="analytics-menu-item" data-view="aging">👥 AR Aging & RFM</button>
         <button class="analytics-menu-item" data-view="products">📦 Product Velocity</button>
+        <button class="analytics-menu-item" data-view="compliance">📜 AYUSH & GST Reports</button>
         
         <hr style="margin: 8px 0; border: none; border-top: 1px solid rgba(0,0,0,0.08);">
         
@@ -351,6 +355,14 @@ class AnalyticsApp extends AppWindow {
           if (!this.productsView) this.productsView = new ProductMetricsView(this);
           this.productsView.viewContainer = targetPanel;
           await this.productsView.render();
+          break;
+        case 'compliance':
+          if (!this.complianceView) {
+            const ViewClass = window.ComplianceReportsView || (await import('/modules/analytics/js/compliance-reports.js')).ComplianceReportsView;
+            this.complianceView = new ViewClass(this);
+          }
+          this.complianceView.viewContainer = targetPanel;
+          await this.complianceView.render();
           break;
       }
       targetPanel.dataset.rendered = 'true';

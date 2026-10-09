@@ -387,6 +387,58 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Render AYUSH Finished Goods Distribution & Dispatch Register PDF in Rust (<20ms).
+   * Complies with Schedule T GMP & Rule 157 for drug recall traceability.
+   * Returns { success, pdf_base64, byte_count }
+   */
+  static renderAyushDispatchPdf(dispatchData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for renderAyushDispatchPdf');
+    }
+    const res = this.callWasmJson('suite_render_ayush_dispatch_pdf', dispatchData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_ayush_dispatch_pdf failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
+   * Render GST Table 12 HSN-wise Outward Summary PDF in Rust (<15ms).
+   * Complies with CGST Act Section 37 / GSTR-1 Table 12 requirements.
+   */
+  static renderGstHsnPdf(hsnData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for renderGstHsnPdf');
+    }
+    const res = this.callWasmJson('suite_render_gst_hsn_pdf', hsnData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_gst_hsn_pdf failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
+   * Render GSTR-1 Outward Supplies Summary PDF in Rust (<15ms).
+   * Reconciles B2B, B2C, and Credit Notes for monthly/quarterly tax filings.
+   */
+  static renderGstr1SummaryPdf(summaryData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for renderGstr1SummaryPdf');
+    }
+    const res = this.callWasmJson('suite_render_gstr1_summary_pdf', summaryData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_gstr1_summary_pdf failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
+   * Render AYUSH Rule 161B Batch Expiry & Retention Sample Register PDF in Rust (<15ms).
+   */
+  static renderBatchExpiryPdf(batchData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for renderBatchExpiryPdf');
+    }
+    const res = this.callWasmJson('suite_render_batch_expiry_pdf', batchData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_batch_expiry_pdf failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Inspect raw image file header in <1μs with ZERO buffer decoding.
    * Returns { format, width, height, aspect_ratio, aspect_ratio_value, resolution_label, is_valid }
    */

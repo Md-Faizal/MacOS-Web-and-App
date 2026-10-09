@@ -17,7 +17,11 @@ module.exports = function(router, handlers) {
   router.get('/summary/dashboard', handlers.getDashboardSummary);
   router.put('/:id', handlers.updateAnalytic);
   router.delete('/:id', handlers.deleteAnalytic);
-  
+  router.get('/reports/ayush-dispatch', handlers.getAyushDispatchReport);
+  router.get('/reports/gst-hsn', handlers.getGstHsnReport);
+  router.get('/reports/gstr1-summary', handlers.getGstr1SummaryReport);
+  router.get('/reports/batch-expiry', handlers.getBatchExpiryReport);
+
   return router;
 };
 

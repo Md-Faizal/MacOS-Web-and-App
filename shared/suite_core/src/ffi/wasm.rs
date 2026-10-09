@@ -759,3 +759,184 @@ pub unsafe extern "C" fn suite_compute_fingerprint(ptr: *const u8, len: usize) -
         }
     }
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_ayush_dispatch_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::AyushDispatchRequest>(slice) {
+        Ok(data) => match crate::documents::pdf::render_ayush_dispatch_pdf(&data) {
+            Ok(pdf_bytes) => {
+                let b64 = bytes_to_base64(&pdf_bytes);
+                #[derive(Serialize)]
+                struct PdfResp {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&PdfResp {
+                    success: true,
+                    pdf_base64: b64,
+                    byte_count: pdf_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_gst_hsn_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::GstHsnRequest>(slice) {
+        Ok(data) => match crate::documents::pdf::render_gst_hsn_pdf(&data) {
+            Ok(pdf_bytes) => {
+                let b64 = bytes_to_base64(&pdf_bytes);
+                #[derive(Serialize)]
+                struct PdfResp {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&PdfResp {
+                    success: true,
+                    pdf_base64: b64,
+                    byte_count: pdf_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_gstr1_summary_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::Gstr1SummaryRequest>(slice) {
+        Ok(data) => match crate::documents::pdf::render_gstr1_summary_pdf(&data) {
+            Ok(pdf_bytes) => {
+                let b64 = bytes_to_base64(&pdf_bytes);
+                #[derive(Serialize)]
+                struct PdfResp {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&PdfResp {
+                    success: true,
+                    pdf_base64: b64,
+                    byte_count: pdf_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_batch_expiry_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::BatchExpiryRequest>(slice) {
+        Ok(data) => match crate::documents::pdf::render_batch_expiry_pdf(&data) {
+            Ok(pdf_bytes) => {
+                let b64 = bytes_to_base64(&pdf_bytes);
+                #[derive(Serialize)]
+                struct PdfResp {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&PdfResp {
+                    success: true,
+                    pdf_base64: b64,
+                    byte_count: pdf_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
