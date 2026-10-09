@@ -10,7 +10,7 @@ fn sample_settings() -> HashMap<String, String> {
     map.insert("company_name".to_string(), "UTKAL CHEMICAL AUSHADHALAYA".to_string());
     map.insert("company_address_factory".to_string(), "Binaba Marg, Aska, Ganjam, Odisha - 761110".to_string());
     map.insert("company_address_office".to_string(), "D1, Basera Complex, Dumduma, BBSR - 751019".to_string());
-    map.insert("company_ayush_licence".to_string(), "Form 25D/26D-AYUSH-GA/04".to_string());
+    map.insert("company_ayush_licence".to_string(), "OR-02/AYUR".to_string());
     map.insert("company_gstin".to_string(), "21AIDPF4446J1ZL".to_string());
     map.insert("company_pan".to_string(), "AIDPF4446J".to_string());
     map.insert("company_phone".to_string(), "06822273304 / 943933330".to_string());

@@ -56,6 +56,7 @@ class Product {
     this.category = category;
     this.isGold = isGold; // Gold or Non-gold classification
     this.classification = ''; // Additional classification field
+    this.hsn_code = '30049011'; // Canonical GST HSN Code
     this.variants = []; // Array of ProductVariant objects
     this.createdAt = new Date();
     this.lastUpdated = new Date();
@@ -499,6 +500,7 @@ export class ProductListApp extends AppWindow {
     product.category_id = apiProduct.category_id;
     product.category_name = apiProduct.category_name;
     product.classification = apiProduct.classification;
+    product.hsn_code = apiProduct.hsn_code || '30049011';
     product.odia_name = apiProduct.odia_name || '';
     product.created_by_role = apiProduct.created_by_role;
     product.created_by_name = apiProduct.created_by_name;
@@ -1279,6 +1281,7 @@ export class ProductListApp extends AppWindow {
       category_id: product.category_id || null,
       category_name: product.category || null,
       classification: product.classification || '',
+      hsn_code: product.hsn_code || '30049011',
       variants: product.variants.map(variant => {
         // Map frontend variant structure to database fields (pack_size_value, pack_size_type)
         return {
@@ -2065,6 +2068,10 @@ export class ProductListApp extends AppWindow {
                 <option value="Gold">✨ Gold</option>
               </select>
             </div>
+            <div>
+              <label class="form-field-label">HSN Code</label>
+              <input type="text" id="productHsnCode" placeholder="30049011" value="30049011" class="form-input" maxlength="10">
+            </div>
           </div>
 
           <h3 class="form-section-divider">Variants & Batches</h3>
@@ -2109,6 +2116,7 @@ export class ProductListApp extends AppWindow {
       const product = new Product(name, category, false);
       product.category_id = categoryId;
       product.classification = classification;
+      product.hsn_code = document.getElementById('productHsnCode')?.value?.trim() || '30049011';
 
       // Collect variants and batches
       const variantElements = document.querySelectorAll('.variant-section');
@@ -2330,6 +2338,10 @@ export class ProductListApp extends AppWindow {
                 <option value="Gold" ${product.classification === 'Gold' ? 'selected' : ''}>✨ Gold</option>
               </select>
             </div>
+            <div>
+              <label class="form-field-label">HSN Code</label>
+              <input type="text" id="editProductHsnCode" placeholder="30049011" value="${product.hsn_code || '30049011'}" class="form-input" maxlength="10">
+            </div>
           </div>
 
           <h3 class="form-section-divider">Edit Variants & Batches
@@ -2446,6 +2458,7 @@ export class ProductListApp extends AppWindow {
       product.name = newName;
       product.category = newCategory;
       product.classification = newClassification;
+      product.hsn_code = document.getElementById('editProductHsnCode')?.value?.trim() || '30049011';
       
       // Resolve category ID from categories list
       const categoryObj = app.categories.find(c => (c.name || c) === newCategory);
@@ -3817,6 +3830,10 @@ export class ProductListApp extends AppWindow {
             <span class="summary-label">Classification</span>
             <span class="summary-value">${goldBadgeHtml}</span>
           </div>` : ''}
+          <div class="summary-item">
+            <span class="summary-label">HSN Code</span>
+            <span class="summary-value" style="font-family: monospace; font-weight: 600;">${product.hsn_code || '30049011'}</span>
+          </div>
           <div class="summary-item">
             <span class="summary-label">Variants</span>
             <span class="summary-value">${product.variants.length}</span>

@@ -237,7 +237,7 @@ module.exports = function(db) {
       try {
         if (!db) throw new Error('Database connection lost');
 
-        const { name, category_id, category_name, classification, variants } = req.body;
+        const { name, category_id, category_name, classification, hsn_code, variants } = req.body;
 
         if (!name) {
           return res.status(400).json({ error: 'Product name is required' });
@@ -262,14 +262,14 @@ module.exports = function(db) {
         const creatorId = req.user ? (req.user.id || req.user.userId) : null;
         // Use a transaction for atomic product creation
         const createTransaction = db.transaction((data) => {
-          const { name, finalCategoryId, classification, variants } = data;
+          const { name, finalCategoryId, classification, hsn_code, variants } = data;
           
           // 1. Create product
           const productStmt = db.prepare(`
-            INSERT INTO products (name, category_id, classification, created_by_user_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO products (name, category_id, classification, hsn_code, created_by_user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
           `);
-          const productInfo = productStmt.run(name, finalCategoryId || null, classification || null, creatorId);
+          const productInfo = productStmt.run(name, finalCategoryId || null, classification || null, hsn_code || '30049011', creatorId);
           const productId = productInfo.lastInsertRowid;
 
           // 2. Insert variants and their batches
@@ -308,7 +308,7 @@ module.exports = function(db) {
           return productId;
         });
 
-        const productId = createTransaction({ name, finalCategoryId, classification, variants });
+        const productId = createTransaction({ name, finalCategoryId, classification, hsn_code, variants });
 
         // Audit Log
         activityLogger.logActivity(req, {
@@ -317,18 +317,19 @@ module.exports = function(db) {
           resourceType: 'product',
           resourceId: productId,
           resourceName: name,
-          metadata: { category_id: finalCategoryId, classification, variants_count: variants ? variants.length : 0 }
+          metadata: { category_id: finalCategoryId, classification, hsn_code: hsn_code || '30049011', variants_count: variants ? variants.length : 0 }
         });
 
         // Real-Time SSE Broadcast
-        dataBus.broadcast('inventory:product', 'created', { id: productId, name, category_id: finalCategoryId });
+        dataBus.broadcast('inventory:product', 'created', { id: productId, name, category_id: finalCategoryId, hsn_code: hsn_code || '30049011' });
 
         res.status(201).json({ 
           success: true, 
           id: productId,
           name: name,
           category_id: finalCategoryId,
-          classification: classification
+          classification: classification,
+          hsn_code: hsn_code || '30049011'
         });
       } catch (error) {
         console.error('Error creating product:', error.message);
@@ -399,7 +400,7 @@ module.exports = function(db) {
         if (!db) throw new Error('Database connection lost');
 
         const { id } = req.params;
-        const { name, category_id, category_name, classification, variants } = req.body;
+        const { name, category_id, category_name, classification, hsn_code, variants } = req.body;
 
         if (!id) return res.status(400).json({ error: 'Product ID required' });
 
@@ -419,7 +420,7 @@ module.exports = function(db) {
         const editorId = req.user ? (req.user.id || req.user.userId) : null;
         // Use a transaction for comprehensive product update
         const updateTransaction = db.transaction((data) => {
-          const { productId, name, categoryId, classification, variants } = data;
+          const { productId, name, categoryId, classification, hsn_code, variants } = data;
 
           // 1. Update basic product info
           const productStmt = db.prepare(`
@@ -427,11 +428,12 @@ module.exports = function(db) {
             SET name = COALESCE(?, name),
                 category_id = COALESCE(?, category_id),
                 classification = COALESCE(?, classification),
+                hsn_code = COALESCE(?, hsn_code),
                 last_edited_by_user_id = COALESCE(?, last_edited_by_user_id),
                 updated_at = datetime('now')
             WHERE id = ?
           `);
-          const productResult = productStmt.run(name || null, categoryId || null, classification || null, editorId, productId);
+          const productResult = productStmt.run(name || null, categoryId || null, classification || null, hsn_code || null, editorId, productId);
           
           if (productResult.changes === 0) {
             // Check if product actually exists
@@ -525,7 +527,7 @@ module.exports = function(db) {
           return true;
         });
 
-        updateTransaction({ productId: id, name, categoryId: finalCategoryId, classification, variants });
+        updateTransaction({ productId: id, name, categoryId: finalCategoryId, classification, hsn_code, variants });
 
         // Audit Log
         activityLogger.logActivity(req, {
@@ -534,7 +536,7 @@ module.exports = function(db) {
           resourceType: 'product',
           resourceId: id,
           resourceName: name || null,
-          metadata: { category_id: finalCategoryId, classification }
+          metadata: { category_id: finalCategoryId, classification, hsn_code }
         });
 
         // Real-Time SSE Broadcast

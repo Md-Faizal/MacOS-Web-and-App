@@ -7,6 +7,107 @@
  * Powered by pure Rust WebAssembly vector PDF generation via SuiteCoreBridge (<20ms).
  */
 
+const COMPLIANCE_HELPBOOK_DATA = [
+  {
+    id: 'ayush-dispatch',
+    category: 'ayush',
+    name: 'Finished Goods Distribution Register',
+    authority: 'Dept. of AYUSH (Govt. of India)',
+    badge: 'Schedule T GMP',
+    badgeClass: 'compliance-badge-ayush',
+    interval: 'Monthly / Real-Time per Dispatch',
+    deadline: 'Inspection-Ready at all times. Must be produced within 24 hours upon Drug Inspector notice or official drug recall alert.',
+    statute: 'Drugs & Cosmetics Act 1940 & Rules 1945, Schedule T GMP (Part I & II)',
+    purpose: 'Enforces complete forward batch traceability from factory packaging to wholesale distributors, retail chemists, and clinics. Mandatory to immediately isolate batches in case of quality defects or adverse reactions.',
+    penalty: 'Suspension or cancellation of Ayurvedic Drug Manufacturing License (Form 25D/26D) under Rule 85/159; regulatory seizure of stock.',
+    advisory: 'Automated by selecting the batch number during regular invoice billing. Zero extra manual registers required.'
+  },
+  {
+    id: 'gst-hsn',
+    category: 'gst',
+    name: 'Table 12 HSN-Wise Outward Supplies Summary',
+    authority: 'GST Council / CBIC',
+    badge: 'CGST Rule 59',
+    badgeClass: 'compliance-badge-gst',
+    interval: 'Monthly or Quarterly (QRMP)',
+    deadline: '11th of every month (Monthly Filers) or 13th of month following quarter (QRMP filers). Part of statutory GSTR-1 return.',
+    statute: 'Central Goods & Services Tax (CGST) Rules 2017, Rule 59(1)',
+    purpose: 'Groups outward sales by 8-digit/6-digit HSN codes (e.g. 30039011 Classical, 30049011 Proprietary), showing total quantities, taxable turnover, and bifurcated IGST/CGST/SGST.',
+    penalty: 'GSTR-1 submission blocked on GST Portal; Late fees of ₹50/day (₹20/day for Nil return); automated notices for HSN discrepancies under Rule 88C.',
+    advisory: 'Export CSV directly or compile Rust WASM PDF to hand over to your Chartered Accountant (CA) by the 5th of each month.'
+  },
+  {
+    id: 'gstr1-summary',
+    category: 'gst',
+    name: 'GSTR-1 Outward Supplies Summary (B2B, B2C, Credit Notes)',
+    authority: 'GST Council / CBIC',
+    badge: 'CGST Sec 37',
+    badgeClass: 'compliance-badge-gst',
+    interval: 'Monthly or Quarterly (QRMP)',
+    deadline: '11th of subsequent month. Final cut-off to upload B2B invoices and Credit Notes.',
+    statute: 'Central Goods & Services Tax (CGST) Act 2017, Section 37',
+    purpose: 'Reconciles registered B2B wholesale transactions (Table 4A), unregistered consumer sales (Table 7 B2C), and trade returns/credit notes (Table 9B) with buyer GSTIN validation.',
+    penalty: 'Wholesale buyers cannot claim Input Tax Credit (ITC) as invoices will not reflect in their GSTR-2B; buyer relationship strain; interest charges under Sec 50.',
+    advisory: 'Review on the 1st to 5th of every month to verify all wholesale customers have valid GSTINs before final filing.'
+  },
+  {
+    id: 'gstr3b-summary',
+    category: 'gst',
+    name: 'GSTR-3B Tax Liability Statement',
+    authority: 'GST Council / CBIC',
+    badge: 'CGST Sec 39',
+    badgeClass: 'compliance-badge-gst',
+    interval: 'Monthly',
+    deadline: '20th of the following month (e.g., May 20th for April sales). Determines final net tax payable in cash.',
+    statute: 'Central Goods & Services Tax (CGST) Act 2017, Section 39',
+    purpose: 'Self-declaration of total tax liability on outward sales, eligible Input Tax Credit (ITC) from raw herb purchases, and cash tax payment via Electronic Cash Ledger.',
+    penalty: '18% p.a. penal interest on unpaid tax; E-way bill generation blocked after 2 consecutive filing defaults; attachment of bank accounts under Sec 79.',
+    advisory: 'Ensure net GST liability matches the totals displayed in the analytics dashboard before transferring funds to the GST cash ledger.'
+  },
+  {
+    id: 'batch-expiry',
+    category: 'ayush',
+    name: 'Rule 161B Batch Expiry & Retention Sample Register',
+    authority: 'Dept. of AYUSH (Govt. of India)',
+    badge: 'Rule 161B',
+    badgeClass: 'compliance-badge-ayush',
+    interval: 'Quarterly Sales Audit / Annual Disposal',
+    deadline: 'Quarterly review for First-Expiry-First-Out (FEFO) stock rotation; Annual Audit on March 31st for destruction of control samples retained past 1 year of expiry.',
+    statute: 'Drugs & Cosmetics Rules 1945, Rule 161B (Shelf-life & Retention of Samples)',
+    purpose: 'Tracks shelf-life expiration (classical asavas/arishtas vs proprietary syrups & capsules). Enforces retention of reference samples for 1 year after shelf life expires.',
+    penalty: 'Selling or stocking expired drugs is a criminal offense under Section 27 of Drugs & Cosmetics Act, punishable by imprisonment and heavy fines.',
+    advisory: 'Filter batches with <90 days expiry to initiate discount promotions or quarantine them before dispatch.'
+  },
+  {
+    id: 'customer-aging',
+    category: 'internal',
+    name: 'Customer Outstanding Ledger & Dues Aging',
+    authority: 'Internal Management',
+    badge: 'Working Capital',
+    badgeClass: 'compliance-badge-alert',
+    interval: 'Weekly or Monthly',
+    deadline: 'Mandatory review before approving fresh dispatch on credit or issuing bulk distributor orders.',
+    statute: 'Sole Proprietorship Financial Prudence & MSME Samadhaan Act',
+    purpose: 'Categorizes accounts receivables into aging buckets (0-30, 31-60, 61-90, 90+ days overdue) to secure sole proprietor cash flow.',
+    penalty: 'Severe working capital stagnation, distributor default risk, and inability to purchase seasonal raw herbs on cash discounts.',
+    advisory: 'Review weekly. Automatically freeze billing credit for distributors with payments overdue beyond 60 days.'
+  },
+  {
+    id: 'daily-sales',
+    category: 'internal',
+    name: 'Daily Counter Sales & Cash Reconciliation Register',
+    authority: 'Internal Accounts',
+    badge: 'Daily Controls',
+    badgeClass: 'compliance-badge-alert',
+    interval: 'Daily Evening Close',
+    deadline: 'Every evening at shopfloor/counter closure (5:00 PM - 8:00 PM).',
+    statute: 'Internal Accounting Controls & Income Tax Cash Limits (Section 269ST - ₹2 Lakh daily limit)',
+    purpose: 'Reconciles physical counter cash, UPI/QR payments, and bank receipts against computer invoices generated during the day.',
+    penalty: 'Cash leaks, discrepancies with bank deposits, income tax assessment queries on unverified cash turnover.',
+    advisory: 'Proprietor or cashier tallies counter cash drawer with system totals in under 5 minutes before leaving the premises.'
+  }
+];
+
 export class ComplianceReportsView {
   constructor(analyticsApp) {
     this.analyticsApp = analyticsApp;
@@ -16,11 +117,13 @@ export class ComplianceReportsView {
     this.customStartDate = '';
     this.customEndDate = '';
     this.currentData = null;
+    this.helpbookCategory = 'all';
+    this.helpbookQuery = '';
   }
 
   async render() {
     this.viewContainer.innerHTML = `
-      <div class="analytics-view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+      <div class="analytics-view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
         <div>
           <div style="display: flex; align-items: center; gap: 10px;">
             <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a;">📜 Statutory & Compliance Reports</h2>
@@ -31,6 +134,24 @@ export class ComplianceReportsView {
             Dept. of AYUSH Finished Goods Traceability, Expiry Audits & GSTR Tax Filings for Sole Proprietorship
           </span>
         </div>
+      </div>
+
+      <!-- Statutory Helpbook & Filing Calendar Callout Banner -->
+      <div class="compliance-helpbook-banner">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">💡</span>
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #1e293b;">
+              Statutory Helpbook & Legal Filing Calendar
+            </div>
+            <div style="font-size: 12px; color: #64748b;">
+              Need to check official report intervals, statutory legal due dates, compliance authorities, or penalty guidelines?
+            </div>
+          </div>
+        </div>
+        <button id="compBannerHelpbookBtn" class="compliance-btn compliance-btn-secondary" style="padding: 6px 14px; font-size: 12px; white-space: nowrap;">
+          📖 Open Statutory Helpbook
+        </button>
       </div>
 
       <!-- Controls & Filter Toolbar -->
@@ -63,6 +184,9 @@ export class ComplianceReportsView {
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="compHelpbookBtn" class="compliance-btn compliance-btn-secondary" title="View Legal Deadlines, Filing Intervals & Penalties Reference">
+            📖 Helpbook
+          </button>
           <button id="compRefreshBtn" class="compliance-btn compliance-btn-secondary" title="Fetch Fresh Data">
             🔄 Refresh
           </button>
@@ -117,6 +241,36 @@ export class ComplianceReportsView {
           </div>
           <div class="compliance-modal-body">
             <iframe id="compliancePdfIframe" src="about:blank"></iframe>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compliance Helpbook Modal Container -->
+      <div id="complianceHelpbookModal" class="compliance-modal-overlay" style="display: none;">
+        <div class="compliance-modal-window compliance-helpbook-window">
+          <div class="compliance-modal-header">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 20px;">📖</span>
+              <div>
+                <span class="compliance-modal-title">Ayurvedic Manufacturing Statutory Helpbook & Filing Calendar</span>
+                <span style="font-size: 12px; color: #64748b; display: block;">Official preparation intervals, statutory legal due dates, compliance authorities, and penalty matrix</span>
+              </div>
+            </div>
+            <button id="complianceHelpbookCloseBtn" class="compliance-btn compliance-btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+              ✕ Close
+            </button>
+          </div>
+          <div class="compliance-helpbook-body">
+            <div class="helpbook-toolbar">
+              <input type="text" id="helpbookSearchInput" placeholder="🔍 Search report name, statute, legal deadline, penalty, or authority..." class="compliance-dropdown" style="flex: 1; max-width: 450px;" />
+              <div class="helpbook-tabs" id="helpbookCategoryTabs">
+                <button class="helpbook-tab active" data-cat="all">All (7)</button>
+                <button class="helpbook-tab" data-cat="ayush">Dept. of AYUSH</button>
+                <button class="helpbook-tab" data-cat="gst">GST & CBIC</button>
+                <button class="helpbook-tab" data-cat="internal">Internal Controls</button>
+              </div>
+            </div>
+            <div id="helpbookCardsContainer" class="helpbook-cards-grid"></div>
           </div>
         </div>
       </div>
@@ -181,17 +335,158 @@ export class ComplianceReportsView {
       exportCsvBtn.addEventListener('click', () => this.handleExportCsv());
     }
 
-    // Modal controls
-    const modal = document.getElementById('compliancePdfModal');
-    const modalClose = document.getElementById('complianceModalCloseBtn');
-    if (modalClose && modal) {
-      modalClose.addEventListener('click', () => {
-        modal.style.display = 'none';
+    // PDF Preview Modal controls
+    const pdfModal = document.getElementById('compliancePdfModal');
+    const pdfModalClose = document.getElementById('complianceModalCloseBtn');
+    if (pdfModalClose && pdfModal) {
+      pdfModalClose.addEventListener('click', () => {
+        pdfModal.style.display = 'none';
         const iframe = document.getElementById('compliancePdfIframe');
         if (iframe) iframe.src = 'about:blank';
       });
     }
+
+    // Helpbook Modal controls
+    const helpbookModal = document.getElementById('complianceHelpbookModal');
+    const helpbookClose = document.getElementById('complianceHelpbookCloseBtn');
+    const helpbookBtn = document.getElementById('compHelpbookBtn');
+    const bannerHelpbookBtn = document.getElementById('compBannerHelpbookBtn');
+
+    const openHelpbook = () => {
+      if (helpbookModal) {
+        helpbookModal.style.display = 'flex';
+        this.renderHelpbookCards();
+      }
+    };
+
+    const closeHelpbook = () => {
+      if (helpbookModal) {
+        helpbookModal.style.display = 'none';
+      }
+    };
+
+    if (helpbookBtn) helpbookBtn.addEventListener('click', openHelpbook);
+    if (bannerHelpbookBtn) bannerHelpbookBtn.addEventListener('click', openHelpbook);
+    if (helpbookClose) helpbookClose.addEventListener('click', closeHelpbook);
+
+    if (helpbookModal) {
+      helpbookModal.addEventListener('click', (e) => {
+        if (e.target === helpbookModal) closeHelpbook();
+      });
+    }
+
+    // Helpbook Search & Tabs
+    const searchInput = document.getElementById('helpbookSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        this.helpbookQuery = e.target.value.trim().toLowerCase();
+        this.renderHelpbookCards();
+      });
+    }
+
+    const tabContainer = document.getElementById('helpbookCategoryTabs');
+    if (tabContainer) {
+      tabContainer.addEventListener('click', (e) => {
+        const tab = e.target.closest('.helpbook-tab');
+        if (!tab) return;
+        tabContainer.querySelectorAll('.helpbook-tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        this.helpbookCategory = tab.dataset.cat || 'all';
+        this.renderHelpbookCards();
+      });
+    }
   }
+
+  renderHelpbookCards() {
+    const container = document.getElementById('helpbookCardsContainer');
+    if (!container) return;
+
+    let items = COMPLIANCE_HELPBOOK_DATA;
+
+    if (this.helpbookCategory && this.helpbookCategory !== 'all') {
+      items = items.filter((it) => it.category === this.helpbookCategory);
+    }
+
+    if (this.helpbookQuery) {
+      const q = this.helpbookQuery;
+      items = items.filter((it) =>
+        it.name.toLowerCase().includes(q) ||
+        it.authority.toLowerCase().includes(q) ||
+        it.statute.toLowerCase().includes(q) ||
+        it.deadline.toLowerCase().includes(q) ||
+        it.penalty.toLowerCase().includes(q) ||
+        it.purpose.toLowerCase().includes(q)
+      );
+    }
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: #64748b;">
+          <span style="font-size: 32px; display: block; margin-bottom: 8px;">🔍</span>
+          <strong style="font-size: 15px; color: #1e293b; display: block;">No matching compliance records found</strong>
+          <span style="font-size: 13px;">Try searching by another term such as "AYUSH", "GST", "Penalty", or "Recall".</span>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = items.map((it) => `
+      <div class="helpbook-card">
+        <div class="helpbook-card-header">
+          <div>
+            <h4 class="helpbook-card-title">${it.name}</h4>
+            <span style="font-size: 12px; color: #64748b; margin-top: 2px; display: block;">
+              Authority: <strong>${it.authority}</strong>
+            </span>
+          </div>
+          <div class="helpbook-card-badges">
+            <span class="compliance-badge ${it.badgeClass}">${it.badge}</span>
+            <span class="compliance-badge" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;">${it.interval}</span>
+          </div>
+        </div>
+
+        <div class="helpbook-meta-grid">
+          <div class="helpbook-meta-item">
+            <div class="helpbook-meta-label">Governing Statute / Rule</div>
+            <div class="helpbook-meta-value">${it.statute}</div>
+          </div>
+          <div class="helpbook-meta-item">
+            <div class="helpbook-meta-label">Preparation & Generation Interval</div>
+            <div class="helpbook-meta-value">${it.interval}</div>
+          </div>
+        </div>
+
+        <div class="helpbook-deadline-box">
+          <span class="helpbook-box-icon">⏰</span>
+          <div class="helpbook-box-text">
+            <strong style="color: #92400e;">Official Legal Due Date / Trigger:</strong><br/>
+            ${it.deadline}
+          </div>
+        </div>
+
+        <div style="font-size: 13px; color: #334155; line-height: 1.5;">
+          <strong>Statutory & Business Purpose:</strong> ${it.purpose}
+        </div>
+
+        <div class="helpbook-penalty-box">
+          <span class="helpbook-box-icon">⚠️</span>
+          <div class="helpbook-box-text">
+            <strong style="color: #991b1b;">Consequences & Penalties of Non-Compliance:</strong><br/>
+            ${it.penalty}
+          </div>
+        </div>
+
+        <div class="helpbook-advisory-box">
+          <span class="helpbook-box-icon">💡</span>
+          <div class="helpbook-box-text">
+            <strong style="color: #166534;">Sole Proprietorship Practical Advisory:</strong><br/>
+            ${it.advisory}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
 
   getDateRangeForPeriod() {
     const now = new Date();
@@ -434,13 +729,21 @@ export class ComplianceReportsView {
         return;
       }
 
+      let lastInvoiceKey = '';
       items.forEach((item, idx) => {
+        const invKey = `${item.date}|${item.invoice_no}`;
+        const isFirstItem = invKey !== lastInvoiceKey;
+        lastInvoiceKey = invKey;
+
         const tr = document.createElement('tr');
+        if (isFirstItem && idx > 0) {
+          tr.style.borderTop = '2px solid #e2e8f0';
+        }
         tr.innerHTML = `
           <td class="text-center" style="color: #94a3b8;">${idx + 1}</td>
-          <td><strong>${item.date}</strong><br><span style="font-size: 11px; color: #64748b;">${item.invoice_no}</span></td>
-          <td>${item.customer_name}<br><span style="font-size: 11px; color: #64748b;">${item.customer_town || '-'}</span></td>
-          <td><span style="font-family: monospace; font-size: 11px;">${item.customer_licence_no || item.customer_gstin || '-'}</span></td>
+          <td>${isFirstItem ? `<strong>${item.date}</strong><br><span style="font-size: 11px; color: #64748b;">${item.invoice_no}</span>` : '<span style="color:#94a3b8; font-size:11px;">〃</span>'}</td>
+          <td>${isFirstItem ? `<strong>${item.customer_name}</strong><br><span style="font-size: 11px; color: #64748b;">${item.customer_town || '-'}</span>` : ''}</td>
+          <td>${isFirstItem ? `<span style="font-family: monospace; font-size: 11px;">${item.customer_licence_no || item.customer_gstin || '-'}</span>` : ''}</td>
           <td><strong>${item.product_name}</strong></td>
           <td class="text-center"><span style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${item.batch_no}</span></td>
           <td class="text-center">${item.pack_size}</td>

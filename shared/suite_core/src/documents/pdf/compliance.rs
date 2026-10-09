@@ -41,6 +41,46 @@ pub struct AyushDispatchRequest {
     pub items: Vec<AyushDispatchItem>,
 }
 
+fn format_customer_destination(name: &str, raw_address: &str) -> String {
+    let clean_name = name.trim();
+    let addr = raw_address.trim();
+    if addr.is_empty() {
+        return clean_name.to_string();
+    }
+
+    let parts: Vec<&str> = addr
+        .split(|c| c == ',' || c == '\n' || c == ';')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let town = if parts.is_empty() {
+        ""
+    } else if parts.len() == 1 {
+        parts[0]
+    } else {
+        let filtered: Vec<&str> = parts
+            .iter()
+            .cloned()
+            .filter(|p| {
+                let lower = p.to_lowercase();
+                !lower.contains("india") && !lower.contains("pin") && !lower.contains("odisha") && !lower.contains("orissa")
+            })
+            .collect();
+        if let Some(&last) = filtered.last() {
+            last
+        } else {
+            parts[0]
+        }
+    };
+
+    if !town.is_empty() && !clean_name.to_lowercase().contains(&town.to_lowercase()) {
+        format!("{} ({})", clean_name, town)
+    } else {
+        clean_name.to_string()
+    }
+}
+
 pub fn render_ayush_dispatch_pdf(req: &AyushDispatchRequest) -> Result<Vec<u8>, String> {
     let company = ReportCompanyHeader::from_settings(&req.app_settings);
 
@@ -57,118 +97,154 @@ pub fn render_ayush_dispatch_pdf(req: &AyushDispatchRequest) -> Result<Vec<u8>, 
     };
 
     let meta = ReportMeta {
-        report_title: "FINISHED GOODS DISTRIBUTION & DISPATCH REGISTER".to_string(),
-        statutory_reference: "Mandatory Drug Traceability Register under Rule 157 & Schedule T (GMP), Drugs & Cosmetics Rules, 1945".to_string(),
+        report_title: "FINISHED GOODS DISTRIBUTION REGISTER".to_string(),
+        statutory_reference: "Schedule T (Good Manufacturing Practices), Drugs & Cosmetics Rules, 1945".to_string(),
         period_text,
         generated_at,
-        statutory_declaration: "Certified that this distribution register is accurately maintained for drug recall traceability as per Schedule T Good Manufacturing Practices.".to_string(),
+        statutory_declaration: "Certified that this distribution register is maintained for batch recall traceability under Schedule T GMP.".to_string(),
         signatory_title: "Competent Technical Person / Authorized Signatory".to_string(),
     };
 
     let columns = vec![
         TableColumnDef {
             header: "Sl.".to_string(),
-            width: 26.0,
+            width: 24.0,
             align: ColumnAlign::Center,
         },
         TableColumnDef {
             header: "Date & Inv. No".to_string(),
-            width: 76.0,
+            width: 78.0,
             align: ColumnAlign::Left,
         },
         TableColumnDef {
             header: "Customer & Destination".to_string(),
-            width: 125.0,
+            width: 150.0,
             align: ColumnAlign::Left,
         },
         TableColumnDef {
             header: "Drug Lic. / GSTIN".to_string(),
-            width: 90.0,
+            width: 84.0,
             align: ColumnAlign::Left,
         },
         TableColumnDef {
             header: "Formulation (Ayurvedic)".to_string(),
-            width: 155.0,
+            width: 142.0,
             align: ColumnAlign::Left,
         },
         TableColumnDef {
             header: "Batch No.".to_string(),
-            width: 62.0,
+            width: 60.0,
             align: ColumnAlign::Center,
         },
         TableColumnDef {
             header: "Pack Size".to_string(),
-            width: 58.0,
+            width: 54.0,
             align: ColumnAlign::Center,
         },
         TableColumnDef {
-            header: "Qty Disp.".to_string(),
-            width: 45.0,
+            header: "Qty".to_string(),
+            width: 42.0,
             align: ColumnAlign::Right,
         },
         TableColumnDef {
             header: "Rate (Rs)".to_string(),
-            width: 55.0,
+            width: 50.0,
             align: ColumnAlign::Right,
         },
         TableColumnDef {
             header: "Taxable Amt (Rs)".to_string(),
-            width: 76.0,
+            width: 78.0,
             align: ColumnAlign::Right,
         },
     ];
 
     let mut total_qty = 0.0;
     let mut total_taxable = 0.0;
+    let mut current_sl = 0;
+    let mut last_invoice_key = String::new();
 
-    let rows: Vec<TableRowData> = req
-        .items
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            total_qty += item.qty;
-            total_taxable += item.taxable_amount;
+    let mut rows: Vec<TableRowData> = Vec::with_capacity(req.items.len());
 
-            let cust_display = if !item.customer_town.trim().is_empty() {
-                format!("{}, {}", item.customer_name, item.customer_town)
+    for item in &req.items {
+        total_qty += item.qty;
+        total_taxable += item.taxable_amount;
+
+        let inv_num = item.invoice_no.trim();
+        let inv_date = item.date.trim();
+        let invoice_key = format!("{}|{}", inv_date, inv_num);
+        let is_first_item_of_invoice = invoice_key != last_invoice_key;
+
+        let sl_str = if is_first_item_of_invoice {
+            current_sl += 1;
+            format!("{}", current_sl)
+        } else {
+            String::new()
+        };
+
+        let date_inv = if is_first_item_of_invoice {
+            if !inv_num.is_empty() {
+                format!("{}\n#{}", inv_date, inv_num)
             } else {
-                item.customer_name.clone()
-            };
-
-            let lic_display = if !item.customer_licence_no.trim().is_empty() {
-                item.customer_licence_no.clone()
-            } else if !item.customer_gstin.trim().is_empty() {
-                item.customer_gstin.clone()
-            } else {
-                "-".to_string()
-            };
-
-            let date_inv = format!("{} / {}", item.date, item.invoice_no);
-
-            TableRowData {
-                cells: vec![
-                    format!("{}", idx + 1),
-                    date_inv,
-                    cust_display,
-                    lic_display,
-                    item.product_name.clone(),
-                    item.batch_no.clone(),
-                    item.pack_size.clone(),
-                    format!("{:.0}", item.qty),
-                    format!("{:.2}", item.rate),
-                    format!("{:.2}", item.taxable_amount),
-                ],
-                is_highlighted: false,
+                inv_date.to_string()
             }
-        })
-        .collect();
+        } else {
+            String::new()
+        };
+
+        let cust_display = if is_first_item_of_invoice {
+            let name = item.customer_name.trim();
+            let addr = item.customer_town.trim();
+            if addr.is_empty() || addr.to_lowercase() == name.to_lowercase() {
+                name.to_string()
+            } else {
+                format!("{}\n{}", name, addr)
+            }
+        } else {
+            String::new()
+        };
+
+        let lic_display = if is_first_item_of_invoice {
+            let mut parts = Vec::new();
+            if !item.customer_licence_no.trim().is_empty() {
+                parts.push(item.customer_licence_no.trim().to_string());
+            }
+            if !item.customer_gstin.trim().is_empty() {
+                parts.push(format!("GST: {}", item.customer_gstin.trim()));
+            }
+            if parts.is_empty() {
+                "-".to_string()
+            } else {
+                parts.join("\n")
+            }
+        } else {
+            String::new()
+        };
+
+        last_invoice_key = invoice_key;
+
+        rows.push(TableRowData {
+            cells: vec![
+                sl_str,
+                date_inv,
+                cust_display,
+                lic_display,
+                item.product_name.clone(),
+                item.batch_no.clone(),
+                item.pack_size.clone(),
+                format!("{:.0}", item.qty),
+                format!("{:.2}", item.rate),
+                format!("{:.2}", item.taxable_amount),
+            ],
+            is_highlighted: false,
+        });
+    }
 
     let summary_rows = vec![vec![
-        "TOTALS:".to_string(),
+        "TOTAL:".to_string(),
         "".to_string(),
         "".to_string(),
         "".to_string(),
-        format!("Total Line Items: {}", req.items.len()),
+        format!("Total Invoices: {}  |  Line Items: {}", current_sl, req.items.len()),
         "".to_string(),
         "".to_string(),
         format!("{:.0}", total_qty),
@@ -234,12 +310,12 @@ pub fn render_gst_hsn_pdf(req: &GstHsnRequest) -> Result<Vec<u8>, String> {
     };
 
     let meta = ReportMeta {
-        report_title: "HSN-WISE SUMMARY OF OUTWARD SUPPLIES (TABLE 12 GSTR-1)".to_string(),
-        statutory_reference: "Mandatory Statutory Filing Report under Section 37 of CGST Act, 2017 & Rule 59".to_string(),
+        report_title: "TABLE 12 HSN SUMMARY OF OUTWARD SUPPLIES".to_string(),
+        statutory_reference: "CGST Act 2017 & Rule 59 (GSTR-1 Return)".to_string(),
         period_text,
         generated_at,
-        statutory_declaration: "Certified that the HSN classification and values reported herein match books of accounts and invoices issued during the period.".to_string(),
-        signatory_title: "Proprietor / Authorized Tax Signatory".to_string(),
+        statutory_declaration: "Certified that the HSN classification and values reported match books of accounts.".to_string(),
+        signatory_title: "Authorized Signatory".to_string(),
     };
 
     let columns = vec![
@@ -406,12 +482,12 @@ pub fn render_gstr1_summary_pdf(req: &Gstr1SummaryRequest) -> Result<Vec<u8>, St
     };
 
     let meta = ReportMeta {
-        report_title: "GSTR-1 OUTWARD SUPPLIES SUMMARY & TAX LIABILITY".to_string(),
-        statutory_reference: "Executive Audit Summary for Central / State GST Filing & Reconciliation".to_string(),
+        report_title: "GSTR-1 OUTWARD SUPPLIES SUMMARY".to_string(),
+        statutory_reference: "Section 37 CGST Act 2017 & Rule 59".to_string(),
         period_text,
         generated_at,
-        statutory_declaration: "Certified that this summary reconciles all invoices, credit notes, and amendments issued in the tax period.".to_string(),
-        signatory_title: "Proprietor / Tax Administrator".to_string(),
+        statutory_declaration: "Certified that this summary reconciles all outward taxable supplies and credit notes.".to_string(),
+        signatory_title: "Authorized Signatory".to_string(),
     };
 
     let columns = vec![
@@ -559,12 +635,12 @@ pub fn render_batch_expiry_pdf(req: &BatchExpiryRequest) -> Result<Vec<u8>, Stri
     };
 
     let meta = ReportMeta {
-        report_title: "BATCH EXPIRY & RETENTION SAMPLE REGISTER (AYUSH RULE 161B)".to_string(),
-        statutory_reference: "Quality Control & Shelf-Life Compliance Register under Schedule T (GMP) & Rule 161B".to_string(),
+        report_title: "BATCH EXPIRY & RETENTION SAMPLE REGISTER".to_string(),
+        statutory_reference: "Drugs & Cosmetics Rules 1945, Rule 161B & Schedule T GMP".to_string(),
         period_text: format!("Audit As Of: {}", as_of),
         generated_at,
-        statutory_declaration: "Certified that retention samples of all active batches are stored under prescribed temperature and control samples retained till 1 year post expiry.".to_string(),
-        signatory_title: "Quality Control In-Charge / Technical Person".to_string(),
+        statutory_declaration: "Certified that retention samples of all active batches are stored under prescribed conditions and control samples retained till 1 year post expiry.".to_string(),
+        signatory_title: "Quality Control / Authorized Signatory".to_string(),
     };
 
     let columns = vec![

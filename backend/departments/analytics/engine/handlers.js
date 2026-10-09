@@ -743,6 +743,24 @@ module.exports = function(db) {
       }
     },
 
+    _getCompanySettings: () => {
+      const app_settings = {};
+      try {
+        const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
+        rows.forEach(r => { if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? ''); });
+      } catch (_) {}
+
+      if (!app_settings.company_name) app_settings.company_name = 'UTKAL CHEMICAL AUSHADHALAYA';
+      if (!app_settings.company_ayush_licence) app_settings.company_ayush_licence = 'OR-02/AYUR';
+      if (!app_settings.company_address_factory) app_settings.company_address_factory = 'Binaba Marg, Aska, Ganjam, Odisha - 761110';
+      if (!app_settings.company_address_office) app_settings.company_address_office = 'D1, Basera Complex, Dumduma, BBSR - 751019';
+      if (!app_settings.company_gstin) app_settings.company_gstin = '21AIDPF4446J1ZL';
+      if (!app_settings.company_pan) app_settings.company_pan = 'AIDPF4446J';
+      if (!app_settings.company_phone) app_settings.company_phone = '06822273304 / 943933330';
+
+      return app_settings;
+    },
+
     getAyushDispatchReport: (req, res) => {
       try {
         const { startDate, endDate, limit = 500 } = req.query;
@@ -780,19 +798,13 @@ module.exports = function(db) {
           LEFT JOIN batches b ON ii.batch_id = b.id
           LEFT JOIN variants v ON ii.variant_id = v.id
           WHERE ${scope} ${dateCondition}
-          ORDER BY date DESC, i.id DESC
+          ORDER BY date DESC, i.id DESC, ii.id ASC
           LIMIT ?
         `);
 
         params.push(parseInt(limit, 10) || 500);
         const items = stmt.all(...params);
-
-        // Fetch company settings
-        const app_settings = {};
-        try {
-          const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
-          rows.forEach(r => { if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? ''); });
-        } catch (_) {}
+        const app_settings = handlers._getCompanySettings();
 
         res.json({
           success: true,
@@ -825,7 +837,7 @@ module.exports = function(db) {
 
         const stmt = db.prepare(`
           SELECT 
-            COALESCE(p.classification, '30049011') as hsn_code,
+            COALESCE(NULLIF(p.hsn_code, ''), '30049011') as hsn_code,
             COALESCE(p.name, 'Ayurvedic Medicaments') as description,
             COALESCE(v.pack_size_type, 'NOS') as uqc,
             SUM(COALESCE(ii.qty, 0)) as total_qty,
@@ -847,11 +859,7 @@ module.exports = function(db) {
 
         const items = stmt.all(...params);
 
-        const app_settings = {};
-        try {
-          const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
-          rows.forEach(r => { if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? ''); });
-        } catch (_) {}
+        const app_settings = handlers._getCompanySettings();
 
         res.json({
           success: true,
@@ -972,11 +980,7 @@ module.exports = function(db) {
           }
         ];
 
-        const app_settings = {};
-        try {
-          const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
-          rows.forEach(r => { if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? ''); });
-        } catch (_) {}
+        const app_settings = handlers._getCompanySettings();
 
         res.json({
           success: true,
@@ -1019,12 +1023,7 @@ module.exports = function(db) {
         `);
 
         const items = stmt.all();
-
-        const app_settings = {};
-        try {
-          const rows = db.prepare('SELECT setting_key, setting_value FROM app_settings').all();
-          rows.forEach(r => { if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? ''); });
-        } catch (_) {}
+        const app_settings = handlers._getCompanySettings();
 
         res.json({
           success: true,

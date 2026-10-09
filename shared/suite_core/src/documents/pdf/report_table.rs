@@ -37,10 +37,10 @@ impl Default for ReportCompanyHeader {
     fn default() -> Self {
         Self {
             name: "UTKAL CHEMICAL AUSHADHALAYA".to_string(),
-            sub_title: "Ayurvedic Medicine Manufacturing Unit (Sole Proprietorship)".to_string(),
+            sub_title: "Ayurvedic Medicine Manufacturing Unit".to_string(),
             factory_address: "Binaba Marg, Aska, Ganjam, Odisha - 761110".to_string(),
             office_address: "D1, Basera Complex, Dumduma, BBSR - 751019".to_string(),
-            ayush_license_no: "Form 25D/26D-AYUSH-GA/04".to_string(),
+            ayush_license_no: "OR-02/AYUR".to_string(),
             gstin: "21AIDPF4446J1ZL".to_string(),
             pan: "AIDPF4446J".to_string(),
             phone: "06822273304 / 943933330".to_string(),
@@ -109,6 +109,108 @@ pub struct MultiPageTableReport {
     pub is_landscape: bool,
 }
 
+fn truncate_text_to_width(canvas: &PdfCanvas, font: PdfFont, font_size: f64, text: &str, max_w: f64) -> String {
+    if canvas.string_width(font, font_size, text) <= max_w {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut len = chars.len();
+    while len > 0 {
+        len -= 1;
+        let prefix: String = chars[..len].iter().collect();
+        let candidate = format!("{}...", prefix.trim_end());
+        if canvas.string_width(font, font_size, &candidate) <= max_w {
+            return candidate;
+        }
+    }
+    String::new()
+}
+
+fn wrap_text_to_lines(
+    canvas: &PdfCanvas,
+    font: PdfFont,
+    font_size: f64,
+    text: &str,
+    max_w: f64,
+) -> Vec<String> {
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+    for raw_part in text.split('\n') {
+        let part = raw_part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        if canvas.string_width(font, font_size, part) <= max_w {
+            lines.push(part.to_string());
+            continue;
+        }
+
+        let words: Vec<&str> = part.split_whitespace().collect();
+        if words.is_empty() {
+            continue;
+        }
+
+        let mut current_line = String::new();
+        for word in words {
+            let candidate = if current_line.is_empty() {
+                word.to_string()
+            } else {
+                format!("{} {}", current_line, word)
+            };
+
+            if canvas.string_width(font, font_size, &candidate) <= max_w {
+                current_line = candidate;
+            } else {
+                if !current_line.is_empty() {
+                    lines.push(current_line);
+                    current_line = String::new();
+                }
+
+                if canvas.string_width(font, font_size, word) <= max_w {
+                    current_line = word.to_string();
+                } else {
+                    // Break unusually long word or license code across lines without overflow
+                    let mut chunk = String::new();
+                    for ch in word.chars() {
+                        let mut test_chunk = chunk.clone();
+                        test_chunk.push(ch);
+                        if canvas.string_width(font, font_size, &test_chunk) <= max_w {
+                            chunk.push(ch);
+                        } else {
+                            if !chunk.is_empty() {
+                                lines.push(chunk);
+                            }
+                            chunk = ch.to_string();
+                        }
+                    }
+                    if !chunk.is_empty() {
+                        current_line = chunk;
+                    }
+                }
+            }
+        }
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+#[derive(Debug, Clone)]
+struct PreparedRow {
+    cells_lines: Vec<Vec<String>>,
+    height: f64,
+    is_highlighted: bool,
+}
+
 impl MultiPageTableReport {
     pub fn new(
         company: ReportCompanyHeader,
@@ -146,7 +248,6 @@ impl MultiPageTableReport {
         let content_width = page_width - left_margin - right_margin;
 
         // Heights
-        let row_height: f64 = 18.0;
         let table_header_height: f64 = 22.0;
         let page_footer_height: f64 = 36.0;
 
@@ -155,31 +256,73 @@ impl MultiPageTableReport {
         // Continuation pages header block takes ~45 pt
         let cont_header_height: f64 = 45.0;
 
-        // Calculate item budget per page
-        let p1_table_area_height: f64 = page_height - p1_header_height - table_header_height - page_footer_height - 30.0;
-        let p1_max_rows: usize = (p1_table_area_height / row_height).floor().max(5.0) as usize;
+        // Pre-measure all rows into multi-line PreparedRows with dynamic height
+        let font_size = 7.5;
+        let line_height = 9.0;
+        let mut prepared_rows: Vec<PreparedRow> = Vec::with_capacity(self.rows.len());
 
-        let cont_table_area_height: f64 = page_height - cont_header_height - table_header_height - page_footer_height - 30.0;
-        let cont_max_rows: usize = (cont_table_area_height / row_height).floor().max(8.0) as usize;
+        for row in &self.rows {
+            let mut row_cells_lines: Vec<Vec<String>> = Vec::with_capacity(self.columns.len());
+            let mut max_lines_in_row: usize = 1;
 
-        let total_items = self.rows.len();
+            for (c_idx, col) in self.columns.iter().enumerate() {
+                let cell_text = row.cells.get(c_idx).map(|s| s.as_str()).unwrap_or("");
+                let max_w = (col.width - 6.0).max(10.0);
+                let lines = wrap_text_to_lines(&canvas, PdfFont::Helvetica, font_size, cell_text, max_w);
+                if lines.len() > max_lines_in_row {
+                    max_lines_in_row = lines.len();
+                }
+                row_cells_lines.push(lines);
+            }
 
-        // Compute page slices
+            // Row height expands vertically based on max lines in that row
+            // Minimum row height is 17.0 pt (for single line)
+            let calculated_height = (8.0 + (max_lines_in_row as f64 * line_height)).max(17.0);
+
+            prepared_rows.push(PreparedRow {
+                cells_lines: row_cells_lines,
+                height: calculated_height,
+                is_highlighted: row.is_highlighted,
+            });
+        }
+
+        // Summary block height on final page (if applicable)
+        let summary_height: f64 = if !self.summary_rows.is_empty() {
+            (self.summary_rows.len() as f64 * 18.0) + 56.0
+        } else {
+            0.0
+        };
+
+        // Available vertical space for table content on each page type
+        let p1_table_area_height: f64 = page_height - p1_header_height - table_header_height - page_footer_height - 24.0;
+        let cont_table_area_height: f64 = page_height - cont_header_height - table_header_height - page_footer_height - 24.0;
+
+        // Dynamic page slicing based on actual accumulated row heights
         let mut page_ranges: Vec<(usize, usize)> = Vec::new();
-        if total_items == 0 {
+        if prepared_rows.is_empty() {
             page_ranges.push((0, 0));
         } else {
             let mut curr = 0;
-            // Page 1
-            let end_p1 = (curr + p1_max_rows).min(total_items);
-            page_ranges.push((curr, end_p1));
-            curr = end_p1;
+            while curr < prepared_rows.len() {
+                let is_p1 = page_ranges.is_empty();
+                let max_avail = if is_p1 { p1_table_area_height } else { cont_table_area_height };
+                let start = curr;
+                let mut accum_h = 0.0;
 
-            // Continuation pages
-            while curr < total_items {
-                let end = (curr + cont_max_rows).min(total_items);
-                page_ranges.push((curr, end));
-                curr = end;
+                while curr < prepared_rows.len() {
+                    let row_h = prepared_rows[curr].height;
+                    let is_last_row = curr + 1 == prepared_rows.len();
+                    let extra_space = if is_last_row { summary_height } else { 0.0 };
+
+                    if accum_h + row_h + extra_space > max_avail && curr > start {
+                        break;
+                    }
+
+                    accum_h += row_h;
+                    curr += 1;
+                }
+
+                page_ranges.push((start, curr));
             }
         }
 
@@ -202,14 +345,14 @@ impl MultiPageTableReport {
                 canvas.set_fill_color(PdfColor::hex("#0f172a"));
                 canvas.draw_string(PdfFont::HelveticaBold, 13.0, left_margin, current_y, &self.company.name);
 
-                // Small right-aligned tag
+                // Small right-aligned tag with actual AYUSH license
                 canvas.set_fill_color(PdfColor::hex("#475569"));
                 canvas.draw_right_string(
-                    PdfFont::Helvetica,
+                    PdfFont::HelveticaBold,
                     7.5,
                     page_width - right_margin,
                     current_y,
-                    "FORM 25D / 26D AYURVEDIC MANUFACTURING",
+                    &format!("AYUSH LIC. NO: {}", self.company.ayush_license_no),
                 );
 
                 current_y -= 14.0;
@@ -296,18 +439,19 @@ impl MultiPageTableReport {
 
             current_y -= table_header_height;
 
-            // Draw Data Rows for this page
-            let page_rows = if total_items > 0 {
-                &self.rows[start_idx..end_idx]
+            // Draw Data Rows for this page with dynamic vertical expansion
+            let page_rows = if !prepared_rows.is_empty() {
+                &prepared_rows[start_idx..end_idx]
             } else {
                 &[]
             };
 
-            for (row_offset, row) in page_rows.iter().enumerate() {
+            for (row_offset, prep_row) in page_rows.iter().enumerate() {
+                let row_height = prep_row.height;
                 let row_y_bottom = current_y - row_height;
 
-                // Alternate Row Striping
-                if row.is_highlighted {
+                // Alternate Row Striping across full expanded height
+                if prep_row.is_highlighted {
                     canvas.set_fill_color(PdfColor::hex("#fef3c7")); // amber alert row
                     canvas.rect(left_margin, row_y_bottom, content_width, row_height, false, true);
                 } else if row_offset % 2 == 1 {
@@ -320,34 +464,31 @@ impl MultiPageTableReport {
                 canvas.set_line_width(0.4);
                 canvas.line(left_margin, row_y_bottom, page_width - right_margin, row_y_bottom);
 
-                // Cells
+                // Draw wrapped cell text lines vertically
                 let mut cell_x = left_margin;
                 for (c_idx, col) in self.columns.iter().enumerate() {
-                    let cell_text = row.cells.get(c_idx).map(|s| s.as_str()).unwrap_or("");
-                    let text_y = row_y_bottom + 5.5;
+                    let lines = prep_row.cells_lines.get(c_idx).cloned().unwrap_or_default();
 
-                    canvas.set_fill_color(if row.is_highlighted {
+                    canvas.set_fill_color(if prep_row.is_highlighted {
                         PdfColor::hex("#92400e")
                     } else {
                         PdfColor::hex("#1e293b")
                     });
 
-                    // Fit text with dynamic size reduction if wider than column
-                    let mut font_size = 7.5;
-                    let max_w = (col.width - 6.0).max(10.0);
-                    while canvas.string_width(PdfFont::Helvetica, font_size, cell_text) > max_w && font_size > 5.0 {
-                        font_size -= 0.2;
-                    }
+                    let start_text_y = current_y - 10.0;
+                    for (l_idx, line_str) in lines.iter().enumerate() {
+                        let line_y = start_text_y - (l_idx as f64 * line_height);
 
-                    match col.align {
-                        ColumnAlign::Left => {
-                            canvas.draw_string(PdfFont::Helvetica, font_size, cell_x + 3.0, text_y, cell_text);
-                        }
-                        ColumnAlign::Center => {
-                            canvas.draw_centered_string(PdfFont::Helvetica, font_size, cell_x + col.width / 2.0, text_y, cell_text);
-                        }
-                        ColumnAlign::Right => {
-                            canvas.draw_right_string(PdfFont::Helvetica, font_size, cell_x + col.width - 3.0, text_y, cell_text);
+                        match col.align {
+                            ColumnAlign::Left => {
+                                canvas.draw_string(PdfFont::Helvetica, font_size, cell_x + 3.0, line_y, line_str);
+                            }
+                            ColumnAlign::Center => {
+                                canvas.draw_centered_string(PdfFont::Helvetica, font_size, cell_x + col.width / 2.0, line_y, line_str);
+                            }
+                            ColumnAlign::Right => {
+                                canvas.draw_right_string(PdfFont::Helvetica, font_size, cell_x + col.width - 3.0, line_y, line_str);
+                            }
                         }
                     }
 
@@ -364,10 +505,11 @@ impl MultiPageTableReport {
 
             // Summary Totals on Last Page
             if is_last_page && !self.summary_rows.is_empty() {
+                let sum_row_height: f64 = 18.0;
                 for sum_row in &self.summary_rows {
-                    let sum_y_bottom = current_y - row_height;
+                    let sum_y_bottom = current_y - sum_row_height;
                     canvas.set_fill_color(PdfColor::hex("#f1f5f9"));
-                    canvas.rect(left_margin, sum_y_bottom, content_width, row_height, true, true);
+                    canvas.rect(left_margin, sum_y_bottom, content_width, sum_row_height, true, true);
 
                     let mut s_cell_x = left_margin;
                     for (c_idx, col) in self.columns.iter().enumerate() {
@@ -375,20 +517,27 @@ impl MultiPageTableReport {
                         let text_y = sum_y_bottom + 5.5;
 
                         canvas.set_fill_color(PdfColor::hex("#0f172a"));
+                        let max_w = (col.width - 6.0).max(10.0);
+                        let display_text = if canvas.string_width(PdfFont::HelveticaBold, 7.5, text) > max_w {
+                            truncate_text_to_width(&canvas, PdfFont::HelveticaBold, 7.5, text, max_w)
+                        } else {
+                            text.to_string()
+                        };
+
                         match col.align {
                             ColumnAlign::Left => {
-                                canvas.draw_string(PdfFont::HelveticaBold, 7.5, s_cell_x + 3.0, text_y, text);
+                                canvas.draw_string(PdfFont::HelveticaBold, 7.5, s_cell_x + 3.0, text_y, &display_text);
                             }
                             ColumnAlign::Center => {
-                                canvas.draw_centered_string(PdfFont::HelveticaBold, 7.5, s_cell_x + col.width / 2.0, text_y, text);
+                                canvas.draw_centered_string(PdfFont::HelveticaBold, 7.5, s_cell_x + col.width / 2.0, text_y, &display_text);
                             }
                             ColumnAlign::Right => {
-                                canvas.draw_right_string(PdfFont::HelveticaBold, 7.5, s_cell_x + col.width - 3.0, text_y, text);
+                                canvas.draw_right_string(PdfFont::HelveticaBold, 7.5, s_cell_x + col.width - 3.0, text_y, &display_text);
                             }
                         }
                         s_cell_x += col.width;
                     }
-                    current_y -= row_height;
+                    current_y -= sum_row_height;
                 }
 
                 // Final Page Statutory Declaration & Signature Stamp Block
@@ -451,13 +600,13 @@ impl MultiPageTableReport {
             canvas.set_line_width(0.5);
             canvas.line(left_margin, footer_y + 12.0, page_width - right_margin, footer_y + 12.0);
 
-            canvas.set_fill_color(PdfColor::hex("#94a3b8"));
+            canvas.set_fill_color(PdfColor::hex("#64748b"));
             canvas.draw_string(
                 PdfFont::Helvetica,
                 6.5,
                 left_margin,
                 footer_y,
-                "macOS Business Suite (Statutory Core Engine) • Dept of AYUSH & GST Ready",
+                &format!("{} | Statutory Register", self.company.name),
             );
 
             canvas.draw_right_string(

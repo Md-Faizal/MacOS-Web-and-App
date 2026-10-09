@@ -132,7 +132,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
       const items = invoiceDb.prepare(`
         SELECT 
           p.name, 
-          COALESCE(p.classification, '30049011') as hsn, 
+          COALESCE(NULLIF(p.hsn_code, ''), '30049011') as hsn, 
           '' as mfg, 
           COALESCE(CAST(CAST(ii.pack_value AS REAL) AS INTEGER) || ' ' || ii.pack_type, '') as pack, 
           ii.batch_no, 

@@ -477,6 +477,7 @@ CREATE TABLE IF NOT EXISTS products (
   odia_name TEXT,
   category_id INTEGER NOT NULL,
   classification TEXT,
+  hsn_code TEXT DEFAULT '30049011',
   created_by_user_id TEXT,
   last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
