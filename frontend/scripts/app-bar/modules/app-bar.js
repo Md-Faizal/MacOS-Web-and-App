@@ -109,6 +109,15 @@ function initializeDock() {
       action: (params) => AppWindow.launchApp('billing', window.BillingApp, 'billingAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
     },
     {
+      id: 'manufacturing',
+      name: 'Manufacturing',
+      icon: '/assets/Images/Manufacturing.png',
+      alt: 'Manufacturing',
+      color: '#059669',
+      category: 'productivity',
+      action: (params) => AppWindow.launchApp('manufacturing', window.ManufacturingApp, 'manufacturingAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
+    },
+    {
       id: 'cloud',
       name: 'Cloud',
       icon: '/assets/Images/Cloud.png',
@@ -143,7 +152,7 @@ function initializeDock() {
       } else if (Array.isArray(parsed) && parsed.length > 0) {
         allowedAppsList = parsed;
       } else {
-        allowedAppsList = ['billing', 'products', 'contacts', 'analytics'];
+        allowedAppsList = ['billing', 'products', 'contacts', 'analytics', 'manufacturing'];
       }
     }
   } catch (e) {

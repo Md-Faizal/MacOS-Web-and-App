@@ -366,6 +366,7 @@ module.exports = function(db) {
           'logs/upstream_macos.conf',
           '/etc/nginx/conf.d/upstream_macos.conf'
         ];
+        let nginxConfPath = null;
         let nginxUpstream = null;
         let nginxStatus = null;
         for (const p of nginxConfPaths) {

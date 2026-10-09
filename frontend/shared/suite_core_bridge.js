@@ -439,6 +439,51 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Pure Rust Recipe Scaling Calculation (<1ms).
+   * Scales Master Formula standard batch size up/down to planned batch size.
+   */
+  static scaleRecipe(scalingData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for scaleRecipe');
+    }
+    return this.callWasmJson('suite_scale_recipe', scalingData);
+  }
+
+  /**
+   * Pure Rust Yield Reconciliation (<1ms).
+   * Calculates actual yield, processing loss, and statutory variance.
+   */
+  static reconcileYield(yieldData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for reconcileYield');
+    }
+    return this.callWasmJson('suite_reconcile_yield', yieldData);
+  }
+
+  /**
+   * Pure Rust Batch Release Statutory Validation (<1ms).
+   * Enforces Drugs & Cosmetics Rules (Form 48 Lab CoA, dates, retention samples).
+   */
+  static validateBatchRelease(validationData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for validateBatchRelease');
+    }
+    return this.callWasmJson('suite_validate_batch_release', validationData);
+  }
+
+  /**
+   * Render Schedule T Batch Manufacturing Record (BMR) PDF in pure Rust (<20ms).
+   */
+  static renderBmrDossierPdf(bmrData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core not loaded for renderBmrDossierPdf');
+    }
+    const res = this.callWasmJson('suite_render_bmr_dossier_pdf', bmrData);
+    if (res && res.success && res.pdf_base64) return res;
+    throw new Error(`[SuiteCoreBridge] suite_render_bmr_dossier_pdf failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Inspect raw image file header in <1μs with ZERO buffer decoding.
    * Returns { format, width, height, aspect_ratio, aspect_ratio_value, resolution_label, is_valid }
    */

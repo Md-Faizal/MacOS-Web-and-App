@@ -253,6 +253,7 @@
 /* ===== SIDEBAR ===== */
 .settings-sidebar {
   width: 200px;
+  min-width: 200px;
   flex-shrink: 0;
   border-right: 1px solid var(--settings-border);
   overflow-x: hidden;
@@ -261,19 +262,15 @@
   display: flex;
   flex-direction: column;
   padding: 0;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease,
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
+  box-sizing: border-box;
+  margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: margin-left;
 }
 
 .settings-sidebar.hidden {
-  width: 0;
-  opacity: 0;
-  border-right-color: transparent;
-  transform: translateX(-10px);
-  overflow: hidden;
-  /* Ensure everything is clipped when hidden */
+  margin-left: -200px;
+  pointer-events: none;
 }
 
 .settings-sidebar-search {

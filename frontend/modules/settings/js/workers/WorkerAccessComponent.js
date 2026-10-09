@@ -64,6 +64,17 @@ export class WorkerAccessComponent {
         isContactPicker: true
       },
       { 
+        id: 'manufacturing', 
+        name: 'Manufacturing & GMP', 
+        icon: '🏭', 
+        desc: 'Schedule T BMR batches, master formulas, godown stock, and lab testing',
+        options: [
+          { key: 'create_batches', label: 'Create Production Batches', desc: 'Worker can initiate new BMR batches', default: true },
+          { key: 'release_batches', label: 'Approve & Release Batches', desc: 'Worker can record CoA and release to billing', default: false },
+          { key: 'manage_raw_materials', label: 'Receive Raw Materials (GRN)', desc: 'Worker can log crude herb inwards', default: true }
+        ]
+      },
+      { 
         id: 'analytics', 
         name: 'Analytics', 
         icon: '📊', 
@@ -130,7 +141,7 @@ export class WorkerAccessComponent {
       }
     ];
 
-    this.DEFAULT_APPS = ['billing', 'products', 'contacts', 'analytics'];
+    this.DEFAULT_APPS = ['billing', 'products', 'contacts', 'analytics', 'manufacturing'];
   }
 
   async render() {

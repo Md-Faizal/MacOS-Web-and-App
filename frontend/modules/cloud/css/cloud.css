@@ -35,23 +35,24 @@
 /* ===== SIDEBAR ===== */
 .cloud-sidebar {
   width: 260px;
+  min-width: 260px;
   background: var(--sd-bg-sidebar);
   border-right: 1px solid var(--sd-border);
   display: flex;
   flex-direction: column;
   padding: 32px 20px;
   z-index: 10;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
   overflow-x: hidden;
+  will-change: margin-left;
 }
 
 .cloud-sidebar.hidden {
-  width: 0;
-  padding-left: 0;
-  padding-right: 0;
-  opacity: 0;
+  margin-left: -260px;
   pointer-events: none;
-  border-right: none;
 }
 
 /* ===== CLOUD WINDOW HEADER (DARK THEME) ===== */

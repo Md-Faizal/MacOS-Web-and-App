@@ -13,6 +13,7 @@ const ai = require('../ai');
 const suggestions = require('../suggestions');
 const wallpaperContent = require('../wallpaper-content');
 const cloudStorage = require('../cloud-storage');
+const manufacturing = require('../manufacturing');
 
 module.exports = {
   name: 'domain-registry',
@@ -31,7 +32,8 @@ module.exports = {
     ai,
     suggestions,
     'wallpaper-content': wallpaperContent,
-    'cloud-storage': cloudStorage
+    'cloud-storage': cloudStorage,
+    manufacturing
   },
   list() {
     return Object.keys(this.departments);

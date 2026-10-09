@@ -800,6 +800,179 @@ CREATE TABLE IF NOT EXISTS product_visual_signatures (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   FOREIGN KEY (variant_id) REFERENCES variants(id) ON DELETE CASCADE
 );
+
+-- ====================================================================
+-- AYUSH MANUFACTURING & SCHEDULE T GMP TABLES
+-- ====================================================================
+
+-- Raw Materials & Packaging Materials Catalog
+CREATE TABLE IF NOT EXISTS raw_materials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  odia_name TEXT,
+  type TEXT NOT NULL DEFAULT 'Botanical Herb',
+  uom TEXT NOT NULL DEFAULT 'KG',
+  current_stock REAL DEFAULT 0,
+  reorder_level REAL DEFAULT 10,
+  storage_location TEXT DEFAULT 'Godown Rack A-1',
+  hsn_code TEXT DEFAULT '1211',
+  shelf_life_months INTEGER DEFAULT 24,
+  is_active INTEGER DEFAULT 1,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Raw Material Inward Register (GRN)
+CREATE TABLE IF NOT EXISTS raw_material_inward (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER,
+  supplier_name TEXT,
+  invoice_no TEXT,
+  receipt_date DATE NOT NULL,
+  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
+  vendor_lot_no TEXT,
+  qty_received REAL NOT NULL,
+  unit_rate REAL DEFAULT 0,
+  total_amount REAL DEFAULT 0,
+  qc_status TEXT DEFAULT 'Conforms',
+  lab_report_no TEXT,
+  purchase_order_id INTEGER,
+  payment_status TEXT DEFAULT 'UNPAID',
+  amount_paid REAL DEFAULT 0,
+  balance_due REAL DEFAULT 0,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Master Formula Records (MFR / Standard Recipes)
+CREATE TABLE IF NOT EXISTS master_formulas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  formula_name TEXT NOT NULL,
+  pharmacopoeial_ref TEXT DEFAULT 'AFI Part I / Classical Reference',
+  std_batch_size REAL NOT NULL DEFAULT 100,
+  std_batch_uom TEXT NOT NULL DEFAULT 'LTR',
+  expected_yield_percent REAL DEFAULT 95.0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Master Formula Recipe Ingredients (BoM lines)
+CREATE TABLE IF NOT EXISTS master_formula_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  master_formula_id INTEGER NOT NULL REFERENCES master_formulas(id) ON DELETE CASCADE,
+  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
+  qty_required REAL NOT NULL,
+  stage TEXT DEFAULT 'Decoction',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Batch Manufacturing Records (BMR Active & Historical)
+CREATE TABLE IF NOT EXISTS manufacturing_bmr (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_no TEXT NOT NULL UNIQUE,
+  product_id INTEGER NOT NULL REFERENCES products(id),
+  variant_id INTEGER REFERENCES variants(id),
+  master_formula_id INTEGER REFERENCES master_formulas(id),
+  mfg_date DATE NOT NULL,
+  exp_date DATE NOT NULL,
+  mrp REAL NOT NULL DEFAULT 0,
+  planned_qty REAL NOT NULL,
+  actual_output_qty REAL DEFAULT 0,
+  yield_percent REAL DEFAULT 0,
+  status TEXT DEFAULT 'IN_PROCESS',
+  lab_name TEXT,
+  lab_report_no TEXT,
+  coa_date DATE,
+  coa_status TEXT DEFAULT 'PENDING',
+  technical_person TEXT,
+  retention_sample_qty TEXT,
+  retention_location TEXT,
+  released_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- BMR Ingredient Dispensing Logs
+CREATE TABLE IF NOT EXISTS manufacturing_batch_dispensing (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_id INTEGER NOT NULL REFERENCES manufacturing_bmr(id) ON DELETE CASCADE,
+  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
+  std_qty REAL NOT NULL,
+  actual_dispensed_qty REAL NOT NULL,
+  dispensed_by TEXT,
+  dispensed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Manufacturing Attachments (Photos & Documents for BMR & Inward)
+CREATE TABLE IF NOT EXISTS manufacturing_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  file_name TEXT,
+  file_type TEXT,
+  image_data TEXT NOT NULL,
+  caption TEXT,
+  stage TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Technical Staff & Doctors / Chemists Master
+CREATE TABLE IF NOT EXISTS technical_staff (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'Approved Technical Person (AYUSH)',
+  qualification TEXT,
+  registration_no TEXT,
+  phone TEXT,
+  email TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Purchase Orders (Inward Procurement Orders)
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_number TEXT UNIQUE NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  order_date DATE NOT NULL,
+  expected_delivery_date DATE,
+  status TEXT DEFAULT 'PLACED',
+  total_amount REAL DEFAULT 0,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (supplier_id) REFERENCES contacts(id)
+);
+
+-- Purchase Order Line Items
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_order_id INTEGER NOT NULL,
+  raw_material_id INTEGER NOT NULL,
+  qty_ordered REAL NOT NULL,
+  unit_rate REAL DEFAULT 0,
+  tax_percent REAL DEFAULT 5.0,
+  total_amount REAL NOT NULL,
+  FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (raw_material_id) REFERENCES raw_materials(id)
+);
+
+-- Supplier Payments (Inward Disbursement & Accounts Payable)
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payment_number TEXT UNIQUE NOT NULL,
+  supplier_id INTEGER NOT NULL,
+  payment_date DATE NOT NULL,
+  amount REAL NOT NULL,
+  payment_mode TEXT DEFAULT 'BANK',
+  reference_no TEXT,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (supplier_id) REFERENCES contacts(id)
+);
 `;
 
 module.exports = { schema };

@@ -28,6 +28,7 @@
 
 .ai-vision-sidebar {
   width: 250px;
+  min-width: 250px;
   height: 100%;
   background: var(--ai-sidebar-bg);
   border-right: 1px solid var(--ai-border);
@@ -35,13 +36,16 @@
   flex-direction: column;
   z-index: 100;
   flex-shrink: 0;
-  transition: width 0.3s cubic-bezier(0.25, 1, 0.5, 1), transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  box-sizing: border-box;
+  margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
   overflow: hidden;
+  will-change: margin-left;
 }
 
 .ai-vision-sidebar.collapsed {
-  width: 0;
-  border-right: none;
+  margin-left: -250px;
+  pointer-events: none;
 }
 
 .sidebar-header {

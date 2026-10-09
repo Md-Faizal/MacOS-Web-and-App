@@ -13,6 +13,7 @@ const ai = require('./ai');
 const suggestions = require('./suggestions');
 const wallpaperContent = require('./wallpaper-content');
 const cloudStorage = require('./cloud-storage');
+const manufacturing = require('./manufacturing');
 const shared = require('./shared');
 
 module.exports = {
@@ -32,13 +33,14 @@ module.exports = {
   suggestions,
   wallpaperContent,
   cloudStorage,
+  manufacturing,
   shared,
   registry: shared,
   list() {
     return [
       'billing', 'analytics', 'product-list', 'contacts', 'auth', 'admin',
       'settings', 'desktop', 'notes', 'calendar', 'logs', 'ai', 'suggestions',
-      'wallpaper-content', 'cloud-storage'
+      'wallpaper-content', 'cloud-storage', 'manufacturing'
     ];
   },
   get(name) {

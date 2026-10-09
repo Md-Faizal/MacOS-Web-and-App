@@ -1,3 +1,4 @@
+pub mod bmr_dossier;
 pub mod catalog;
 pub mod catalog_labels;
 pub mod compliance;
@@ -7,6 +8,7 @@ pub mod payment;
 pub mod report_table;
 pub mod writer;
 
+pub use bmr_dossier::*;
 pub use catalog::*;
 pub use catalog_labels::*;
 pub use compliance::*;

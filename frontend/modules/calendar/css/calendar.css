@@ -15,18 +15,16 @@
   overflow-y: auto;
   overflow-x: hidden;
   background: #f9fafb;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-right-color 0.3s, opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  opacity: 1;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: margin-left;
 }
 
 .calendar-sidebar.hidden {
-  width: 0;
-  min-width: 0;
-  padding-left: 0;
-  padding-right: 0;
-  border-right-color: transparent;
-  opacity: 0;
-  overflow: hidden;
+  margin-left: -200px;
+  pointer-events: none;
 }
 
 .sidebar-header {

@@ -666,6 +666,73 @@ class AppWindow {
         width: 70px;
       }
 
+      /* ===== STANDARDIZED MACOS SIDEBAR BUTTON & HEADER CONTROLS ===== */
+      .app-title-bar [class*="-left-controls"],
+      .manufacturing-left-controls,
+      .contacts-left-controls,
+      .billing-left-controls,
+      .notes-left-controls,
+      .product-left-controls,
+      .settings-left-controls,
+      .calendar-left-controls,
+      .cloud-left-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: 8px;
+      }
+
+      .app-title-bar [class*="-header-btn"],
+      .manufacturing-header-btn,
+      .contacts-header-btn,
+      .billing-header-btn,
+      .notes-header-btn,
+      .product-header-btn,
+      .settings-header-btn,
+      .calendar-header-btn,
+      .cloud-header-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50% !important;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        cursor: pointer;
+        color: #333333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 3px rgba(0, 0, 0, 0.06);
+        padding: 0;
+      }
+
+      .app-title-bar [class*="-header-btn"]:hover {
+        background: rgba(255, 255, 255, 0.85);
+        transform: scale(1.06);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 6px rgba(0, 0, 0, 0.12);
+      }
+
+      .app-title-bar [class*="-header-btn"]:active {
+        transform: scale(0.94);
+        background: rgba(0, 0, 0, 0.06);
+      }
+
+      .app-title-bar [class*="-header-btn"].sidebar-collapsed {
+        background: rgba(0, 0, 0, 0.08);
+        color: #059669;
+      }
+
+      .app-title-bar [class*="-header-btn"] svg {
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .app-title-bar [class*="-header-btn"].sidebar-collapsed svg {
+        transform: scale(0.9);
+        opacity: 0.8;
+      }
+
       /* ===== CONTENT AREA ===== */
       .app-content {
         flex: 1;

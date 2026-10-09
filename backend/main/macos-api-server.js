@@ -70,10 +70,12 @@ const notesApi = departments.notes.create(globalDb);
 const calendarApi = departments.calendar.create(globalDb);
 const settingsApi = departments.settings.create(globalDb);
 const cloudApi = departments.cloudStorage.create(globalDb);
+const manufacturingApi = departments.manufacturing.create(globalDb);
 const { router: notesRouter, initializeDatabase: initNotes } = notesApi;
 const { router: calendarRouter, initializeDatabase: initCalendar } = calendarApi;
 const { router: settingsRouter, initializeDatabase: initSettings } = settingsApi;
 const { router: cloudRouter, initializeDatabase: initCloud } = cloudApi;
+const { router: manufacturingRouter, initializeDatabase: initManufacturing } = manufacturingApi;
 const androidUpdateRouter = require('../core/android-updates');
 
 // Import core/orphaned modules (not tied to specific modules)
@@ -495,7 +497,8 @@ const modules = [
   { name: 'Smart Suggestions', init: initSuggestions },
   { name: 'App Logs', init: initLogs },
   { name: 'AI Assistant', init: initAI },
-  { name: 'Cloud Storage', init: initCloud }
+  { name: 'Cloud Storage', init: initCloud },
+  { name: 'Manufacturing', init: initManufacturing }
 ];
 
 console.log('🔧 Initializing APIs...');
@@ -511,7 +514,7 @@ for (const module of modules) {
   }
 }
 
-console.log(`✓ All modules initialized (${initializedModules.length}/15)\n`);
+console.log(`✓ All modules initialized (${initializedModules.length}/16)\n`);
 
 const desktopDepartment = departments.desktop.create(globalDb, authModule.authMiddleware);
 const { router: desktopRouter, clockRouter, weatherRouter: weatherSettingsRouter, quickNotesRouter, remindersRouter } = desktopDepartment;
@@ -536,7 +539,8 @@ const routes = [
   { path: '/api/weather', router: weatherSettingsRouter },
   { path: '/api/quick-notes', router: quickNotesRouter },
   { path: '/api/reminders', router: remindersRouter },
-  { path: '/api/cloud', router: cloudRouter }
+  { path: '/api/cloud', router: cloudRouter },
+  { path: '/api/manufacturing', router: manufacturingRouter }
 ];
 
 // Mount QR smart links directly under /q

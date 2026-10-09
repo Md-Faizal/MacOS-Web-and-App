@@ -2119,12 +2119,24 @@ export class BillingApp extends AppWindow {
 
       .billing-sidebar {
         width: 220px;
+        min-width: 220px;
         border-right: 1px solid rgba(0, 0, 0, 0.08);
         overflow-y: auto;
+        overflow-x: hidden;
         background: #f9fafb;
         display: flex;
         flex-direction: column;
         border-radius: 0 0 0 12px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        margin-left: 0;
+        transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+        will-change: margin-left;
+      }
+
+      .billing-sidebar.hidden {
+        margin-left: -220px;
+        pointer-events: none;
       }
 
       .billing-menu-item {

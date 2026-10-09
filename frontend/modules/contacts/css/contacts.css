@@ -197,14 +197,17 @@
   width: 220px;
   min-width: 220px;
   border-right: 1px solid var(--contacts-border);
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--contacts-sidebar-bg);
   display: flex;
   flex-direction: column;
   padding: 0;
-  margin-left: 0;
-  transition: margin-left 0.3s ease;
   flex-shrink: 0;
+  box-sizing: border-box;
+  margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: margin-left;
 }
 
 #contactsList {
@@ -218,6 +221,7 @@
 
 .contacts-sidebar.hidden {
   margin-left: -220px;
+  pointer-events: none;
 }
 
 .contacts-sidebar-search {

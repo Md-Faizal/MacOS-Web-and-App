@@ -78,16 +78,21 @@
   height: 100%;
   border-right: 1px solid rgba(0, 0, 0, 0.08);
   overflow-y: auto;
+  overflow-x: hidden;
   background: #f9fafb;
   display: flex;
   flex-direction: column;
   border-radius: 0 0 0 12px;
-  transition: margin-left 0.3s ease;
+  flex-shrink: 0;
+  box-sizing: border-box;
   margin-left: 0;
+  transition: margin-left 0.35s cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: margin-left;
 }
 
 .notes-list.hidden {
   margin-left: -200px;
+  pointer-events: none;
 }
 
 .new-note-btn {
