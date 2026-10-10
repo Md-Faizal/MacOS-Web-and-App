@@ -267,8 +267,16 @@
 .analytics-view-container {
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
   padding: 24px;
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.02) 0%, rgba(34, 197, 94, 0.02) 100%);
+}
+
+.analytics-view-container::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .analytics-header-area {

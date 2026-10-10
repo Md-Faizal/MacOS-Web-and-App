@@ -195,6 +195,14 @@
   max-height: 480px;
   overflow-y: auto;
   overflow-x: auto;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.compliance-table-scroll::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .compliance-table {
@@ -486,5 +494,75 @@
 .helpbook-box-text {
   font-size: 12.5px;
   line-height: 1.45;
+}
+
+/* ====================================================================
+   INVISIBLE SCROLLBAR & SMOOTH SCROLLING FOR COMPLIANCE REPORTS
+   ==================================================================== */
+.analytics-subview-compliance,
+.compliance-page-scrollable,
+.compliance-view-wrapper,
+.analytics-view-container:has(.analytics-subview-compliance) {
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE 10+ and Edge */
+}
+
+.analytics-subview-compliance::-webkit-scrollbar,
+.compliance-page-scrollable::-webkit-scrollbar,
+.compliance-view-wrapper::-webkit-scrollbar,
+.analytics-view-container:has(.analytics-subview-compliance)::-webkit-scrollbar {
+  display: none !important; /* Safari, Chrome, Edge, WebKit */
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+.analytics-subview-compliance,
+.compliance-page-scrollable {
+  width: 100% !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.compliance-view-wrapper {
+  padding-bottom: 50px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ====================================================================
+   BIG STATUTORY ANALYTICS & RECONCILIATION CHART (BELOW TABLE)
+   ==================================================================== */
+.compliance-chart-container {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+  margin-top: 10px;
+  margin-bottom: 30px;
+  transition: all 0.3s ease;
+}
+
+.compliance-chart-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.compliance-chart-body {
+  height: 380px;
+  position: relative;
+  padding: 16px 20px 24px;
+  background: #ffffff;
 }
 

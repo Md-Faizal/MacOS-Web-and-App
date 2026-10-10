@@ -121,11 +121,21 @@ export class ComplianceReportsView {
     this.currentData = null;
     this.helpbookCategory = 'all';
     this.helpbookQuery = '';
+    this.bigChart = null;
   }
 
   async render() {
+    if (this.viewContainer) {
+      this.viewContainer.classList.add('compliance-page-scrollable');
+      this.viewContainer.style.overflowY = 'auto';
+      this.viewContainer.style.overflowX = 'hidden';
+      this.viewContainer.style.scrollbarWidth = 'none';
+      this.viewContainer.style.msOverflowStyle = 'none';
+    }
+
     this.viewContainer.innerHTML = `
-      <div class="analytics-view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+      <div class="compliance-view-wrapper">
+        <div class="analytics-view-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
         <div>
           <div style="display: flex; align-items: center; gap: 10px;">
             <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a;">📜 Statutory & Compliance Reports</h2>
@@ -244,7 +254,27 @@ export class ComplianceReportsView {
         </div>
       </div>
 
-      <!-- PDF Preview Modal Container -->
+      <!-- Big Statutory Analytics & Reconciliation Chart Section (Below Table) -->
+      <div id="complianceChartWrapper" class="compliance-chart-container" style="display: none;">
+        <div class="compliance-chart-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 20px;" id="complianceChartIcon">📊</span>
+            <div>
+              <h3 id="complianceChartTitle" style="margin: 0; font-size: 15px; font-weight: 700; color: #1e293b;">Statutory Tax & Turnover Analytics</h3>
+              <span id="complianceChartSub" style="font-size: 12px; color: #64748b;">Visual statutory comparison and distribution</span>
+            </div>
+          </div>
+          <div id="complianceChartTag" style="display: flex; align-items: center; gap: 8px;">
+            <span class="compliance-badge compliance-badge-gst" id="complianceChartBadge">STATUTORY VISUALIZATION</span>
+          </div>
+        </div>
+        <div class="compliance-chart-body">
+          <canvas id="complianceBigChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF Preview Modal Container -->
       <div id="compliancePdfModal" class="compliance-modal-overlay" style="display: none;">
         <div class="compliance-modal-window">
           <div class="compliance-modal-header">
@@ -618,6 +648,7 @@ export class ComplianceReportsView {
 
       this.renderKpis(data);
       this.renderTable(data);
+      await this.renderBigChart(data);
     } catch (err) {
       console.error('[ComplianceReports] Failed to load data:', err);
       if (tableWrapper) {
@@ -1151,6 +1182,447 @@ export class ComplianceReportsView {
           </td>
         `;
         tbody.appendChild(tr);
+      });
+    }
+  }
+
+  async ensureChartJs() {
+    if (window.Chart) return window.Chart;
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+      script.onload = () => resolve(window.Chart);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+  }
+
+  async renderBigChart(data) {
+    const chartWrapper = document.getElementById('complianceChartWrapper');
+    const canvas = document.getElementById('complianceBigChart');
+    const chartTitle = document.getElementById('complianceChartTitle');
+    const chartSub = document.getElementById('complianceChartSub');
+    const chartBadge = document.getElementById('complianceChartBadge');
+
+    if (!chartWrapper || !canvas) return;
+
+    // Ensure Chart.js is ready
+    const ChartClass = await this.ensureChartJs();
+    if (!ChartClass) {
+      chartWrapper.style.display = 'none';
+      return;
+    }
+
+    if (this.bigChart) {
+      this.bigChart.destroy();
+      this.bigChart = null;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (this.selectedReport === 'gstr1-summary') {
+      chartWrapper.style.display = 'block';
+      chartTitle.textContent = 'Statutory Turnover & Tax Liability Comparison (Included vs Excluded vs Total)';
+      chartSub.textContent = 'Reconciliation of Gross Outward Supplies, Taxable Turnover, and CGST + SGST statutory tax liability by customer scope';
+      if (chartBadge) {
+        chartBadge.className = 'compliance-badge compliance-badge-gst';
+        chartBadge.textContent = 'GSTR-1 RECONCILIATION';
+      }
+
+      const cb = data.calculation_breakdown || {
+        included: { gross_value: 0, taxable_value: 0, cgst: 0, sgst: 0 },
+        excluded: { gross_value: 0, taxable_value: 0, cgst: 0, sgst: 0 },
+        combined: { gross_value: 0, taxable_value: 0, cgst: 0, sgst: 0 }
+      };
+
+      const labels = ['Included in Stats', 'Excluded from Stats', 'Consolidated Total (Both)'];
+      const grossData = [
+        Number(cb.included?.gross_value || 0),
+        Number(cb.excluded?.gross_value || 0),
+        Number(cb.combined?.gross_value || 0)
+      ];
+      const taxableData = [
+        Number(cb.included?.taxable_value || 0),
+        Number(cb.excluded?.taxable_value || 0),
+        Number(cb.combined?.taxable_value || 0)
+      ];
+      const taxData = [
+        Number(cb.included?.cgst || 0) + Number(cb.included?.sgst || 0),
+        Number(cb.excluded?.cgst || 0) + Number(cb.excluded?.sgst || 0),
+        Number(cb.combined?.cgst || 0) + Number(cb.combined?.sgst || 0)
+      ];
+
+      this.bigChart = new ChartClass(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Gross Invoiced Turnover (₹)',
+              data: grossData,
+              backgroundColor: 'rgba(99, 102, 241, 0.85)',
+              borderColor: '#6366f1',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 50
+            },
+            {
+              label: 'Net Taxable Turnover (₹)',
+              data: taxableData,
+              backgroundColor: 'rgba(59, 130, 246, 0.85)',
+              borderColor: '#3b82f6',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 50
+            },
+            {
+              label: 'Statutory GST Liability (CGST + SGST) (₹)',
+              data: taxData,
+              backgroundColor: 'rgba(16, 185, 129, 0.85)',
+              borderColor: '#10b981',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 50
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                boxWidth: 14,
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#334155',
+                padding: 16
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              padding: 12,
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12 },
+              cornerRadius: 8,
+              callbacks: {
+                label(context) {
+                  const val = context.parsed.y ?? context.parsed ?? 0;
+                  return `${context.dataset.label}: ₹${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#475569'
+              }
+            },
+            y: {
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11 },
+                color: '#64748b',
+                callback(val) {
+                  return '₹' + Number(val).toLocaleString('en-IN');
+                }
+              }
+            }
+          }
+        }
+      });
+    } else if (this.selectedReport === 'gst-hsn') {
+      chartWrapper.style.display = 'block';
+      chartTitle.textContent = 'Table 12 HSN Commodity Distribution & Statutory Tax Contribution';
+      chartSub.textContent = 'Top HSN commodity codes ranked by Net Taxable Value and CGST + SGST statutory tax liability';
+      if (chartBadge) {
+        chartBadge.className = 'compliance-badge compliance-badge-gst';
+        chartBadge.textContent = 'TABLE 12 HSN SHARE';
+      }
+
+      const items = [...(data.items || [])].sort((a, b) => (Number(b.taxable_value) || 0) - (Number(a.taxable_value) || 0)).slice(0, 8);
+      const labels = items.map(it => `${it.hsn_code} (${(it.description || '').substring(0, 14)}...)`);
+      const taxableData = items.map(it => Number(it.taxable_value || 0));
+      const taxData = items.map(it => Number(it.cgst_amount || 0) + Number(it.sgst_amount || 0));
+      const totalData = items.map(it => Number(it.total_value || 0));
+
+      this.bigChart = new ChartClass(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Taxable Value (₹)',
+              data: taxableData,
+              backgroundColor: 'rgba(59, 130, 246, 0.85)',
+              borderColor: '#3b82f6',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 45
+            },
+            {
+              label: 'CGST + SGST Tax (₹)',
+              data: taxData,
+              backgroundColor: 'rgba(16, 185, 129, 0.85)',
+              borderColor: '#10b981',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 45
+            },
+            {
+              label: 'Total Invoiced Value (₹)',
+              data: totalData,
+              backgroundColor: 'rgba(139, 92, 246, 0.85)',
+              borderColor: '#8b5cf6',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 45
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                boxWidth: 14,
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#334155',
+                padding: 16
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              padding: 12,
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12 },
+              cornerRadius: 8,
+              callbacks: {
+                label(context) {
+                  const val = context.parsed.y ?? context.parsed ?? 0;
+                  return `${context.dataset.label}: ₹${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11, weight: '600' },
+                color: '#475569'
+              }
+            },
+            y: {
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11 },
+                color: '#64748b',
+                callback(val) {
+                  return '₹' + Number(val).toLocaleString('en-IN');
+                }
+              }
+            }
+          }
+        }
+      });
+    } else if (this.selectedReport === 'ayush-dispatch') {
+      chartWrapper.style.display = 'block';
+      chartTitle.textContent = 'Top Formulations Dispatched (Schedule T Traceability Volume)';
+      chartSub.textContent = 'Highest volume Ayurvedic products dispatched under GMP batch compliance';
+      if (chartBadge) {
+        chartBadge.className = 'compliance-badge compliance-badge-ayush';
+        chartBadge.textContent = 'AYUSH GMP DISPATCH';
+      }
+
+      // Group items by product_name
+      const prodMap = {};
+      (data.items || []).forEach(it => {
+        const name = it.product_name || 'Other';
+        if (!prodMap[name]) prodMap[name] = { qty: 0, taxable: 0 };
+        prodMap[name].qty += Number(it.qty || 0);
+        prodMap[name].taxable += Number(it.taxable_amount || 0);
+      });
+
+      const topProds = Object.entries(prodMap)
+        .sort((a, b) => b[1].taxable - a[1].taxable)
+        .slice(0, 8);
+
+      const labels = topProds.map(p => p[0].length > 20 ? p[0].substring(0, 18) + '...' : p[0]);
+      const taxableData = topProds.map(p => p[1].taxable);
+      const qtyData = topProds.map(p => p[1].qty);
+
+      this.bigChart = new ChartClass(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Taxable Turnover (₹)',
+              data: taxableData,
+              backgroundColor: 'rgba(5, 150, 105, 0.85)',
+              borderColor: '#059669',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              yAxisID: 'y',
+              maxBarThickness: 45
+            },
+            {
+              label: 'Dispatched Units',
+              data: qtyData,
+              backgroundColor: 'rgba(245, 158, 11, 0.85)',
+              borderColor: '#f59e0b',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              yAxisID: 'y1',
+              maxBarThickness: 45
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                boxWidth: 14,
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#334155',
+                padding: 16
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              padding: 12,
+              titleFont: { size: 13, weight: '700' },
+              bodyFont: { size: 12 },
+              cornerRadius: 8
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11, weight: '600' },
+                color: '#475569'
+              }
+            },
+            y: {
+              type: 'linear',
+              position: 'left',
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11 },
+                color: '#059669',
+                callback(val) {
+                  return '₹' + Number(val).toLocaleString('en-IN');
+                }
+              }
+            },
+            y1: {
+              type: 'linear',
+              position: 'right',
+              grid: { drawOnChartArea: false },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11 },
+                color: '#d97706',
+                callback(val) {
+                  return Number(val).toLocaleString('en-IN') + ' units';
+                }
+              }
+            }
+          }
+        }
+      });
+    } else if (this.selectedReport === 'batch-expiry') {
+      chartWrapper.style.display = 'block';
+      chartTitle.textContent = 'Rule 161B Ayurvedic Batch Stability & Expiry Distribution';
+      chartSub.textContent = 'Manufactured formulations units produced vs retained balance stock by stability horizon';
+      if (chartBadge) {
+        chartBadge.className = 'compliance-badge compliance-badge-ayush';
+        chartBadge.textContent = 'RULE 161B AUDIT';
+      }
+
+      // Group by status
+      const statusMap = {};
+      (data.items || []).forEach(it => {
+        const status = it.status || 'Active';
+        if (!statusMap[status]) statusMap[status] = { produced: 0, sold: 0, stock: 0 };
+        statusMap[status].produced += Number(it.units_produced || 0);
+        statusMap[status].sold += Number(it.units_sold || 0);
+        statusMap[status].stock += Number(it.balance_stock || 0);
+      });
+
+      const labels = Object.keys(statusMap);
+      const producedData = labels.map(k => statusMap[k].produced);
+      const stockData = labels.map(k => statusMap[k].stock);
+
+      this.bigChart = new ChartClass(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Total Units Produced',
+              data: producedData,
+              backgroundColor: 'rgba(59, 130, 246, 0.85)',
+              borderColor: '#3b82f6',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 50
+            },
+            {
+              label: 'Balance Retained Stock Units',
+              data: stockData,
+              backgroundColor: 'rgba(239, 68, 68, 0.85)',
+              borderColor: '#ef4444',
+              borderWidth: 1.5,
+              borderRadius: 6,
+              maxBarThickness: 50
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                boxWidth: 14,
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#334155',
+                padding: 16
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 12, weight: '600' },
+                color: '#475569'
+              }
+            },
+            y: {
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: {
+                font: { family: "'SF Pro Display', 'Inter', sans-serif", size: 11 },
+                color: '#64748b',
+                callback(val) {
+                  return Number(val).toLocaleString('en-IN') + ' units';
+                }
+              }
+            }
+          }
+        }
       });
     }
   }
