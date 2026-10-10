@@ -2,15 +2,34 @@ const { buildDashboardSummaryResponse, buildExecutiveKpiResponse } = require('..
 const analyticsDepartment = require('../service');
 
 module.exports = function(db) {
-  function getContactScopeFilter(req, tableAlias = 'c') {
+  function getContactScopeFilter(req, tableAlias = 'c', customExclusion = null) {
+    const exclusionMode = customExclusion !== null && customExclusion !== undefined
+      ? customExclusion
+      : (req?.query?.exclusionScope || req?.query?.exclusionFilter || req?.query?.customerFilter || 'default');
+
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
+      let exclusionCheck = '';
+      if (exclusionMode === 'excluded_only' || exclusionMode === 'excluded') {
+        exclusionCheck = `AND ${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)`;
+      } else if (exclusionMode === 'both' || exclusionMode === 'all') {
+        exclusionCheck = '';
+      } else {
+        exclusionCheck = `AND ${tableAlias}.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)`;
+      }
+
       return `(
         (${tableAlias}.id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR ${tableAlias}.created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR ${tableAlias}.created_by_user_id = '${safeUserId}')
-        AND ${tableAlias}.id NOT IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}' AND exclude_from_stats = 1)
+        ${exclusionCheck}
       )`;
     }
-    return `${tableAlias}.exclude_from_stats = 0`;
+
+    if (exclusionMode === 'excluded_only' || exclusionMode === 'excluded') {
+      return `(${tableAlias}.exclude_from_stats = 1)`;
+    } else if (exclusionMode === 'both' || exclusionMode === 'all') {
+      return `(1=1)`;
+    }
+    return `(COALESCE(${tableAlias}.exclude_from_stats, 0) = 0)`;
   }
 
   function _getCompanySettings() {
@@ -823,8 +842,8 @@ module.exports = function(db) {
 
     getGstHsnReport: (req, res) => {
       try {
-        const { startDate, endDate } = req.query;
-        const scope = getContactScopeFilter(req, 'c');
+        const { startDate, endDate, exclusionScope = 'both' } = req.query;
+        const scope = getContactScopeFilter(req, 'c', exclusionScope);
 
         let dateCondition = '';
         const params = [];
@@ -837,6 +856,7 @@ module.exports = function(db) {
           params.push(endDate);
         }
 
+        // Table 12 HSN Summary Items
         const stmt = db.prepare(`
           SELECT 
             COALESCE(NULLIF(p.hsn_code, ''), '30049011') as hsn_code,
@@ -861,14 +881,69 @@ module.exports = function(db) {
 
         const items = stmt.all(...params);
 
+        // Granular line-item details with customer identity & exclusion flag
+        const granularStmt = db.prepare(`
+          SELECT 
+            DATE(COALESCE(i.invoice_date, i.created_at)) as date,
+            i.invoice_no,
+            c.name as customer_name,
+            COALESCE(c.gstin, '') as customer_gstin,
+            COALESCE(c.exclude_from_stats, 0) as is_excluded,
+            COALESCE(NULLIF(p.hsn_code, ''), '30049011') as hsn_code,
+            COALESCE(p.name, 'Ayurvedic Medicaments') as description,
+            COALESCE(v.pack_size_type, 'NOS') as uqc,
+            COALESCE(ii.qty, 0) as qty,
+            COALESCE(ii.rate, 0) as rate,
+            COALESCE(ii.amount, 0) as taxable_value,
+            COALESCE(ii.cgst_amount, 0) as cgst_amount,
+            COALESCE(ii.sgst_amount, 0) as sgst_amount,
+            COALESCE(ii.final_amount, 0) as total_value
+          FROM invoice_items ii
+          JOIN invoices i ON ii.invoice_id = i.id
+          JOIN contacts c ON i.customer_id = c.id
+          LEFT JOIN products p ON ii.product_id = p.id
+          LEFT JOIN variants v ON ii.variant_id = v.id
+          WHERE ${scope} ${dateCondition}
+          ORDER BY date DESC, i.id DESC, ii.id ASC
+        `);
+        const granular_items = granularStmt.all(...params);
+
+        // Calculation breakdown for audit (included vs excluded vs combined)
+        const calcQuery = (subScope) => {
+          const s = db.prepare(`
+            SELECT 
+              COUNT(ii.id) as item_count,
+              COUNT(DISTINCT i.id) as invoice_count,
+              COALESCE(SUM(ii.qty), 0) as total_qty,
+              COALESCE(SUM(ii.final_amount), 0) as total_value,
+              COALESCE(SUM(ii.amount), 0) as taxable_value,
+              COALESCE(SUM(ii.cgst_amount), 0) as cgst_amount,
+              COALESCE(SUM(ii.sgst_amount), 0) as sgst_amount
+            FROM invoice_items ii
+            JOIN invoices i ON ii.invoice_id = i.id
+            JOIN contacts c ON i.customer_id = c.id
+            WHERE ${subScope} ${dateCondition}
+          `);
+          return s.get(...params) || { item_count: 0, invoice_count: 0, total_qty: 0, total_value: 0, taxable_value: 0, cgst_amount: 0, sgst_amount: 0 };
+        };
+
+        const calculation_breakdown = {
+          included: calcQuery(getContactScopeFilter(req, 'c', 'included')),
+          excluded: calcQuery(getContactScopeFilter(req, 'c', 'excluded')),
+          combined: calcQuery(getContactScopeFilter(req, 'c', 'both'))
+        };
+
         const app_settings = _getCompanySettings();
 
         res.json({
           success: true,
           period: startDate && endDate ? `${startDate} to ${endDate}` : 'Financial Year YTD',
+          exclusion_scope: exclusionScope,
           generated_at: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
           app_settings,
-          items
+          items,
+          granular_items,
+          calculation_breakdown
         });
       } catch (error) {
         console.error('Error in getGstHsnReport:', error);
@@ -878,8 +953,8 @@ module.exports = function(db) {
 
     getGstr1SummaryReport: (req, res) => {
       try {
-        const { startDate, endDate } = req.query;
-        const scope = getContactScopeFilter(req, 'c');
+        const { startDate, endDate, exclusionScope = 'both' } = req.query;
+        const scope = getContactScopeFilter(req, 'c', exclusionScope);
 
         let dateCondition = '';
         const params = [];
@@ -892,37 +967,6 @@ module.exports = function(db) {
           params.push(endDate);
         }
 
-        // 1. Table 4A: B2B Regular Invoices (contacts with GSTIN)
-        const b2bStmt = db.prepare(`
-          SELECT 
-            COUNT(DISTINCT i.id) as count,
-            COALESCE(SUM(i.grand_total), 0) as gross_value,
-            COALESCE(SUM(i.total_amount - i.total_discount), 0) as taxable_value,
-            0 as igst,
-            COALESCE(SUM(i.total_gst / 2.0), 0) as cgst,
-            COALESCE(SUM(i.total_gst / 2.0), 0) as sgst
-          FROM invoices i
-          JOIN contacts c ON i.customer_id = c.id
-          WHERE ${scope} AND (c.gstin IS NOT NULL AND TRIM(c.gstin) != '') ${dateCondition}
-        `);
-        const b2b = b2bStmt.get(...params) || { count: 0, gross_value: 0, taxable_value: 0, igst: 0, cgst: 0, sgst: 0 };
-
-        // 2. Table 7: B2C Small Invoices (unregistered retail/clinic)
-        const b2cStmt = db.prepare(`
-          SELECT 
-            COUNT(DISTINCT i.id) as count,
-            COALESCE(SUM(i.grand_total), 0) as gross_value,
-            COALESCE(SUM(i.total_amount - i.total_discount), 0) as taxable_value,
-            0 as igst,
-            COALESCE(SUM(i.total_gst / 2.0), 0) as cgst,
-            COALESCE(SUM(i.total_gst / 2.0), 0) as sgst
-          FROM invoices i
-          JOIN contacts c ON i.customer_id = c.id
-          WHERE ${scope} AND (c.gstin IS NULL OR TRIM(c.gstin) = '') ${dateCondition}
-        `);
-        const b2c = b2cStmt.get(...params) || { count: 0, gross_value: 0, taxable_value: 0, igst: 0, cgst: 0, sgst: 0 };
-
-        // 3. Table 9B: Credit Notes (registered/unregistered adjustments)
         let cnDateCond = '';
         const cnParams = [];
         if (startDate) {
@@ -934,62 +978,162 @@ module.exports = function(db) {
           cnParams.push(endDate);
         }
 
-        const cnStmt = db.prepare(`
+        const buildSections = (targetScope) => {
+          // 1. Table 4A: B2B Regular Invoices (contacts with GSTIN)
+          const b2bStmt = db.prepare(`
+            SELECT 
+              COUNT(DISTINCT i.id) as count,
+              COALESCE(SUM(i.grand_total), 0) as gross_value,
+              COALESCE(SUM(i.total_amount - i.total_discount), 0) as taxable_value,
+              0 as igst,
+              COALESCE(SUM(i.total_gst / 2.0), 0) as cgst,
+              COALESCE(SUM(i.total_gst / 2.0), 0) as sgst
+            FROM invoices i
+            JOIN contacts c ON i.customer_id = c.id
+            WHERE ${targetScope} AND (c.gstin IS NOT NULL AND TRIM(c.gstin) != '') ${dateCondition}
+          `);
+          const b2b = b2bStmt.get(...params) || { count: 0, gross_value: 0, taxable_value: 0, igst: 0, cgst: 0, sgst: 0 };
+
+          // 2. Table 7: B2C Small Invoices (unregistered retail/clinic)
+          const b2cStmt = db.prepare(`
+            SELECT 
+              COUNT(DISTINCT i.id) as count,
+              COALESCE(SUM(i.grand_total), 0) as gross_value,
+              COALESCE(SUM(i.total_amount - i.total_discount), 0) as taxable_value,
+              0 as igst,
+              COALESCE(SUM(i.total_gst / 2.0), 0) as cgst,
+              COALESCE(SUM(i.total_gst / 2.0), 0) as sgst
+            FROM invoices i
+            JOIN contacts c ON i.customer_id = c.id
+            WHERE ${targetScope} AND (c.gstin IS NULL OR TRIM(c.gstin) = '') ${dateCondition}
+          `);
+          const b2c = b2cStmt.get(...params) || { count: 0, gross_value: 0, taxable_value: 0, igst: 0, cgst: 0, sgst: 0 };
+
+          // 3. Table 9B: Credit Notes (registered/unregistered adjustments)
+          const cnStmt = db.prepare(`
+            SELECT 
+              COUNT(p.id) as count,
+              COALESCE(SUM(COALESCE(p.credit_amount, p.amount, 0)), 0) as gross_value
+            FROM payments p
+            JOIN contacts c ON p.customer_id = c.id
+            WHERE p.type = 'CREDIT_NOTE' AND ${targetScope} ${cnDateCond}
+          `);
+          const cn = cnStmt.get(...cnParams) || { count: 0, gross_value: 0 };
+          const cnTaxable = cn.gross_value ? cn.gross_value / 1.12 : 0;
+          const cnGst = cn.gross_value - cnTaxable;
+
+          return {
+            sections: [
+              {
+                table_number: "4A, 4B",
+                description: "B2B Regular Invoices (GST Registered Stockists & Pharmacies)",
+                count: b2b.count || 0,
+                gross_value: b2b.gross_value || 0,
+                taxable_value: b2b.taxable_value || 0,
+                igst: 0,
+                cgst: b2b.cgst || 0,
+                sgst: b2b.sgst || 0,
+                cess: 0
+              },
+              {
+                table_number: "7",
+                description: "B2C Others (Retail Clinic Counters & Unregistered Vaidyas)",
+                count: b2c.count || 0,
+                gross_value: b2c.gross_value || 0,
+                taxable_value: b2c.taxable_value || 0,
+                igst: 0,
+                cgst: b2c.cgst || 0,
+                sgst: b2c.sgst || 0,
+                cess: 0
+              },
+              {
+                table_number: "9B",
+                description: "Credit / Debit Notes (Breakage & Commercial Adjustments)",
+                count: cn.count || 0,
+                gross_value: -1.0 * (cn.gross_value || 0),
+                taxable_value: -1.0 * cnTaxable,
+                igst: 0,
+                cgst: -1.0 * (cnGst / 2.0),
+                sgst: -1.0 * (cnGst / 2.0),
+                cess: 0
+              }
+            ],
+            totals: {
+              invoice_count: (b2b.count || 0) + (b2c.count || 0) + (cn.count || 0),
+              gross_value: (b2b.gross_value || 0) + (b2c.gross_value || 0) - (cn.gross_value || 0),
+              taxable_value: (b2b.taxable_value || 0) + (b2c.taxable_value || 0) - cnTaxable,
+              cgst: (b2b.cgst || 0) + (b2c.cgst || 0) - (cnGst / 2.0),
+              sgst: (b2b.sgst || 0) + (b2c.sgst || 0) - (cnGst / 2.0)
+            }
+          };
+        };
+
+        const activeResult = buildSections(scope);
+        const sections = activeResult.sections;
+
+        // Granular Invoices & Vouchers List
+        const granularInvoices = db.prepare(`
           SELECT 
-            COUNT(p.id) as count,
-            COALESCE(SUM(COALESCE(p.credit_amount, p.amount, 0)), 0) as gross_value
+            DATE(COALESCE(i.invoice_date, i.created_at)) as date,
+            i.invoice_no,
+            i.id as invoice_id,
+            c.name as customer_name,
+            COALESCE(c.gstin, '') as customer_gstin,
+            COALESCE(c.exclude_from_stats, 0) as is_excluded,
+            CASE 
+              WHEN c.gstin IS NOT NULL AND TRIM(c.gstin) != '' THEN 'B2B Regular'
+              ELSE 'B2C Retail'
+            END as supply_type,
+            COALESCE(i.grand_total, 0) as gross_value,
+            COALESCE(i.total_amount - i.total_discount, 0) as taxable_value,
+            0 as igst,
+            COALESCE(i.total_gst / 2.0, 0) as cgst,
+            COALESCE(i.total_gst / 2.0, 0) as sgst
+          FROM invoices i
+          JOIN contacts c ON i.customer_id = c.id
+          WHERE ${scope} ${dateCondition}
+          ORDER BY date DESC, i.id DESC
+        `).all(...params);
+
+        const granularCns = db.prepare(`
+          SELECT 
+            DATE(p.payment_date) as date,
+            COALESCE(p.reference_number, 'CN-' || p.id) as invoice_no,
+            p.id as invoice_id,
+            c.name as customer_name,
+            COALESCE(c.gstin, '') as customer_gstin,
+            COALESCE(c.exclude_from_stats, 0) as is_excluded,
+            'Credit Note' as supply_type,
+            -1.0 * COALESCE(p.credit_amount, p.amount, 0) as gross_value,
+            -1.0 * (COALESCE(p.credit_amount, p.amount, 0) / 1.12) as taxable_value,
+            0 as igst,
+            -1.0 * ((COALESCE(p.credit_amount, p.amount, 0) - (COALESCE(p.credit_amount, p.amount, 0) / 1.12)) / 2.0) as cgst,
+            -1.0 * ((COALESCE(p.credit_amount, p.amount, 0) - (COALESCE(p.credit_amount, p.amount, 0) / 1.12)) / 2.0) as sgst
           FROM payments p
           JOIN contacts c ON p.customer_id = c.id
           WHERE p.type = 'CREDIT_NOTE' AND ${scope} ${cnDateCond}
-        `);
-        const cn = cnStmt.get(...cnParams) || { count: 0, gross_value: 0 };
-        const cnTaxable = cn.gross_value ? cn.gross_value / 1.12 : 0;
-        const cnGst = cn.gross_value - cnTaxable;
+          ORDER BY date DESC, p.id DESC
+        `).all(...cnParams);
 
-        const sections = [
-          {
-            table_number: "4A, 4B",
-            description: "B2B Regular Invoices (GST Registered Stockists & Pharmacies)",
-            count: b2b.count || 0,
-            gross_value: b2b.gross_value || 0,
-            taxable_value: b2b.taxable_value || 0,
-            igst: 0,
-            cgst: b2b.cgst || 0,
-            sgst: b2b.sgst || 0,
-            cess: 0
-          },
-          {
-            table_number: "7",
-            description: "B2C Others (Retail Clinic Counters & Unregistered Vaidyas)",
-            count: b2c.count || 0,
-            gross_value: b2c.gross_value || 0,
-            taxable_value: b2c.taxable_value || 0,
-            igst: 0,
-            cgst: b2c.cgst || 0,
-            sgst: b2c.sgst || 0,
-            cess: 0
-          },
-          {
-            table_number: "9B",
-            description: "Credit / Debit Notes (Breakage & Commercial Adjustments)",
-            count: cn.count || 0,
-            gross_value: -1.0 * (cn.gross_value || 0),
-            taxable_value: -1.0 * cnTaxable,
-            igst: 0,
-            cgst: -1.0 * (cnGst / 2.0),
-            sgst: -1.0 * (cnGst / 2.0),
-            cess: 0
-          }
-        ];
+        const granular_invoices = [...granularInvoices, ...granularCns].sort((a, b) => (b.date > a.date ? 1 : -1));
+
+        const calculation_breakdown = {
+          included: buildSections(getContactScopeFilter(req, 'c', 'included')).totals,
+          excluded: buildSections(getContactScopeFilter(req, 'c', 'excluded')).totals,
+          combined: buildSections(getContactScopeFilter(req, 'c', 'both')).totals
+        };
 
         const app_settings = _getCompanySettings();
 
         res.json({
           success: true,
           period: startDate && endDate ? `${startDate} to ${endDate}` : 'Filing Period YTD',
+          exclusion_scope: exclusionScope,
           generated_at: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
           app_settings,
-          sections
+          sections,
+          granular_invoices,
+          calculation_breakdown
         });
       } catch (error) {
         console.error('Error in getGstr1SummaryReport:', error);

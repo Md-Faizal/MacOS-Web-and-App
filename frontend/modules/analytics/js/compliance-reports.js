@@ -114,6 +114,8 @@ export class ComplianceReportsView {
     this.viewContainer = analyticsApp.viewContainer;
     this.selectedReport = 'ayush-dispatch';
     this.selectedPeriod = 'ytd';
+    this.exclusionScope = 'both';
+    this.viewMode = 'summary';
     this.customStartDate = '';
     this.customEndDate = '';
     this.currentData = null;
@@ -155,8 +157,8 @@ export class ComplianceReportsView {
       </div>
 
       <!-- Controls & Filter Toolbar -->
-      <div class="compliance-controls-bar">
-        <div class="compliance-select-group">
+      <div class="compliance-controls-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div class="compliance-select-group" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
           <label style="font-size: 12px; font-weight: 600; color: #475569;">Report Type:</label>
           <select id="compReportTypeSelect" class="compliance-dropdown">
             <option value="ayush-dispatch">🌿 AYUSH: Finished Goods Distribution Register (Schedule T GMP)</option>
@@ -165,7 +167,7 @@ export class ComplianceReportsView {
             <option value="batch-expiry">⏳ AYUSH: Rule 161B Batch Expiry & Retention Register</option>
           </select>
 
-          <label style="font-size: 12px; font-weight: 600; color: #475569; margin-left: 10px;">Period:</label>
+          <label style="font-size: 12px; font-weight: 600; color: #475569; margin-left: 6px;">Period:</label>
           <select id="compPeriodSelect" class="compliance-dropdown">
             <option value="ytd">Current Financial Year (YTD)</option>
             <option value="q1">Q1 (Apr - Jun)</option>
@@ -181,17 +183,37 @@ export class ComplianceReportsView {
             <span style="font-size: 12px; color: #64748b;">to</span>
             <input type="date" id="compEndDate" class="compliance-dropdown" style="padding: 6px 10px;" />
           </div>
+
+          <div id="compExclusionScopeWrapper" style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: #475569; margin-left: 6px;">Customer Scope:</label>
+            <select id="compExclusionScopeSelect" class="compliance-dropdown" style="font-weight: 600;">
+              <option value="both" selected>👥 All (Included + Excluded)</option>
+              <option value="included">✅ Included in Stats Only</option>
+              <option value="excluded">🚫 Excluded from Stats Only</option>
+            </select>
+          </div>
+
+          <div id="compViewModeWrapper" style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: #475569; margin-left: 6px;">View Level:</label>
+            <select id="compViewModeSelect" class="compliance-dropdown" style="font-weight: 600;">
+              <option value="summary" selected>📊 Statutory Summary</option>
+              <option value="granular">🔍 Granular Customer Register</option>
+            </select>
+          </div>
         </div>
 
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <button id="compHelpbookBtn" class="compliance-btn compliance-btn-secondary" title="View Legal Deadlines, Filing Intervals & Penalties Reference">
             📖 Helpbook
           </button>
           <button id="compRefreshBtn" class="compliance-btn compliance-btn-secondary" title="Fetch Fresh Data">
             🔄 Refresh
           </button>
-          <button id="compExportCsvBtn" class="compliance-btn compliance-btn-secondary" title="Export CSV for Portal/Excel">
+          <button id="compExportCsvBtn" class="compliance-btn compliance-btn-secondary" title="Export Summary CSV for Portal/Excel">
             📊 Export CSV
+          </button>
+          <button id="compExportGranularCsvBtn" class="compliance-btn compliance-btn-secondary" title="Export Granular Customer Register with Exclusion Status" style="border-color: #3b82f6; color: #1d4ed8; font-weight: 600;">
+            📑 Granular CSV
           </button>
           <button id="compExportPdfBtn" class="compliance-btn compliance-btn-export" title="Compile Vector PDF in Rust via WebAssembly">
             ⚡ Export Official PDF (Rust WASM)
@@ -284,15 +306,47 @@ export class ComplianceReportsView {
     const reportSelect = document.getElementById('compReportTypeSelect');
     const periodSelect = document.getElementById('compPeriodSelect');
     const customDateWrap = document.getElementById('compCustomDateWrapper');
+    const exclusionSelect = document.getElementById('compExclusionScopeSelect');
+    const viewModeSelect = document.getElementById('compViewModeSelect');
+    const exclusionWrap = document.getElementById('compExclusionScopeWrapper');
+    const viewModeWrap = document.getElementById('compViewModeWrapper');
     const refreshBtn = document.getElementById('compRefreshBtn');
     const exportPdfBtn = document.getElementById('compExportPdfBtn');
     const exportCsvBtn = document.getElementById('compExportCsvBtn');
+    const exportGranularCsvBtn = document.getElementById('compExportGranularCsvBtn');
+
+    const updateControlsVisibility = () => {
+      const isGst = this.selectedReport === 'gst-hsn' || this.selectedReport === 'gstr1-summary';
+      if (exclusionWrap) exclusionWrap.style.display = isGst ? 'flex' : 'none';
+      if (viewModeWrap) viewModeWrap.style.display = isGst ? 'flex' : 'none';
+      if (exportGranularCsvBtn) exportGranularCsvBtn.style.display = isGst ? 'inline-flex' : 'none';
+    };
+    updateControlsVisibility();
 
     if (reportSelect) {
       reportSelect.value = this.selectedReport;
       reportSelect.addEventListener('change', (e) => {
         this.selectedReport = e.target.value;
+        updateControlsVisibility();
         this.loadReportData();
+      });
+    }
+
+    if (exclusionSelect) {
+      exclusionSelect.value = this.exclusionScope;
+      exclusionSelect.addEventListener('change', (e) => {
+        this.exclusionScope = e.target.value;
+        this.loadReportData();
+      });
+    }
+
+    if (viewModeSelect) {
+      viewModeSelect.value = this.viewMode;
+      viewModeSelect.addEventListener('change', (e) => {
+        this.viewMode = e.target.value;
+        if (this.currentData) {
+          this.renderTable(this.currentData);
+        }
       });
     }
 
@@ -332,7 +386,11 @@ export class ComplianceReportsView {
     }
 
     if (exportCsvBtn) {
-      exportCsvBtn.addEventListener('click', () => this.handleExportCsv());
+      exportCsvBtn.addEventListener('click', () => this.handleExportCsv(false));
+    }
+
+    if (exportGranularCsvBtn) {
+      exportGranularCsvBtn.addEventListener('click', () => this.handleExportCsv(true));
     }
 
     // PDF Preview Modal controls
@@ -548,6 +606,7 @@ export class ComplianceReportsView {
       const params = new URLSearchParams();
       if (dates.startDate) params.append('startDate', dates.startDate);
       if (dates.endDate) params.append('endDate', dates.endDate);
+      if (this.exclusionScope) params.append('exclusionScope', this.exclusionScope);
 
       const qs = params.toString();
       if (qs) url += `?${qs}`;
@@ -610,27 +669,40 @@ export class ComplianceReportsView {
       const totalQty = items.reduce((sum, it) => sum + (Number(it.total_qty) || 0), 0);
       const totalTaxable = items.reduce((sum, it) => sum + (Number(it.taxable_value) || 0), 0);
       const totalTax = items.reduce((sum, it) => sum + (Number(it.cgst_amount) || 0) + (Number(it.sgst_amount) || 0) + (Number(it.igst_amount) || 0), 0);
+      const cb = data.calculation_breakdown || {};
+      const incl = cb.included || {};
+      const excl = cb.excluded || {};
+      const comb = cb.combined || {};
+      const scopeLabel = this.exclusionScope === 'both' ? 'All (Included + Excluded)' : this.exclusionScope === 'included' ? 'Included in Stats' : 'Excluded from Stats';
 
       grid.innerHTML = `
         <div class="compliance-stat-card">
-          <div class="compliance-stat-title">HSN Categories</div>
-          <div class="compliance-stat-val">${items.length}</div>
-          <div class="compliance-stat-sub">Table 12 Classifications</div>
-        </div>
-        <div class="compliance-stat-card">
-          <div class="compliance-stat-title">Total Units Outward</div>
-          <div class="compliance-stat-val">${totalQty.toLocaleString('en-IN')}</div>
-          <div class="compliance-stat-sub">BTL / PAC / NOS Quantities</div>
-        </div>
-        <div class="compliance-stat-card">
           <div class="compliance-stat-title">Taxable Turnover</div>
           <div class="compliance-stat-val">₹ ${totalTaxable.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-          <div class="compliance-stat-sub">Base Value Subject to Tax</div>
+          <div class="compliance-stat-sub">
+            <span style="color:#047857; font-weight:600;">Incl: ₹${Number(incl.taxable_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span> | 
+            <span style="color:#b45309; font-weight:600;">Excl: ₹${Number(excl.taxable_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+          </div>
         </div>
         <div class="compliance-stat-card">
           <div class="compliance-stat-title">Total Tax Collected</div>
           <div class="compliance-stat-val" style="color: #2563eb;">₹ ${totalTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-          <div class="compliance-stat-sub">CGST + SGST Output Liability</div>
+          <div class="compliance-stat-sub">
+            <span style="color:#047857; font-weight:600;">CGST: ₹${(Number(incl.cgst_amount || 0) + Number(excl.cgst_amount || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span> | 
+            <span style="color:#047857; font-weight:600;">SGST: ₹${(Number(incl.sgst_amount || 0) + Number(excl.sgst_amount || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+          </div>
+        </div>
+        <div class="compliance-stat-card">
+          <div class="compliance-stat-title">Outward Volume</div>
+          <div class="compliance-stat-val">${totalQty.toLocaleString('en-IN')} units</div>
+          <div class="compliance-stat-sub">${items.length} Table 12 HSN Classifications</div>
+        </div>
+        <div class="compliance-stat-card">
+          <div class="compliance-stat-title">Customer Reconciliation</div>
+          <div class="compliance-stat-val" style="font-size: 18px; color: #0284c7;">
+            ${incl.invoice_count || 0} Incl / ${excl.invoice_count || 0} Excl
+          </div>
+          <div class="compliance-stat-sub">Scope: ${scopeLabel} (${comb.invoice_count || 0} Invoices)</div>
         </div>
       `;
     } else if (this.selectedReport === 'gstr1-summary') {
@@ -638,27 +710,43 @@ export class ComplianceReportsView {
       const totalGross = sections.reduce((sum, s) => sum + (Number(s.gross_value) || 0), 0);
       const totalTaxable = sections.reduce((sum, s) => sum + (Number(s.taxable_value) || 0), 0);
       const totalTax = sections.reduce((sum, s) => sum + (Number(s.cgst) || 0) + (Number(s.sgst) || 0), 0);
+      const cb = data.calculation_breakdown || {};
+      const incl = cb.included || {};
+      const excl = cb.excluded || {};
+      const comb = cb.combined || {};
+      const scopeLabel = this.exclusionScope === 'both' ? 'All (Included + Excluded)' : this.exclusionScope === 'included' ? 'Included in Stats' : 'Excluded from Stats';
 
       grid.innerHTML = `
         <div class="compliance-stat-card">
           <div class="compliance-stat-title">Gross Turnover</div>
           <div class="compliance-stat-val">₹ ${totalGross.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-          <div class="compliance-stat-sub">Total Invoiced B2B + B2C</div>
+          <div class="compliance-stat-sub">
+            <span style="color:#047857; font-weight:600;">Incl: ₹${Number(incl.gross_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span> | 
+            <span style="color:#b45309; font-weight:600;">Excl: ₹${Number(excl.gross_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+          </div>
         </div>
         <div class="compliance-stat-card">
           <div class="compliance-stat-title">Net Taxable Value</div>
           <div class="compliance-stat-val">₹ ${totalTaxable.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-          <div class="compliance-stat-sub">After Trade Discounts & Credit Notes</div>
+          <div class="compliance-stat-sub">
+            <span style="color:#047857; font-weight:600;">Incl: ₹${Number(incl.taxable_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span> | 
+            <span style="color:#b45309; font-weight:600;">Excl: ₹${Number(excl.taxable_value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+          </div>
         </div>
         <div class="compliance-stat-card">
           <div class="compliance-stat-title">Net GST Output Tax</div>
           <div class="compliance-stat-val" style="color: #059669;">₹ ${totalTax.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-          <div class="compliance-stat-sub">Payable in Cash / ITC Offset</div>
+          <div class="compliance-stat-sub">
+            <span style="color:#047857; font-weight:600;">Incl: ₹${(Number(incl.cgst || 0) + Number(incl.sgst || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span> | 
+            <span style="color:#b45309; font-weight:600;">Excl: ₹${(Number(excl.cgst || 0) + Number(excl.sgst || 0)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+          </div>
         </div>
         <div class="compliance-stat-card">
-          <div class="compliance-stat-title">GSTR-1 Reconciliation</div>
-          <div class="compliance-stat-val" style="font-size: 20px; color: #0284c7;">✓ Ready for Portal</div>
-          <div class="compliance-stat-sub">B2B GSTINs Validated</div>
+          <div class="compliance-stat-title">Customer Reconciliation</div>
+          <div class="compliance-stat-val" style="font-size: 18px; color: #0284c7;">
+            ${incl.invoice_count || 0} Incl / ${excl.invoice_count || 0} Excl
+          </div>
+          <div class="compliance-stat-sub">Scope: ${scopeLabel} (${comb.invoice_count || 0} Vouchers)</div>
         </div>
       `;
     } else if (this.selectedReport === 'batch-expiry') {
@@ -755,69 +843,272 @@ export class ComplianceReportsView {
         tbody.appendChild(tr);
       });
     } else if (this.selectedReport === 'gst-hsn') {
-      const items = data.items || [];
-      tableTitle.textContent = 'Table 12 HSN Summary (GSTR-1 Outward Supplies)';
-      recordCount.textContent = `${items.length} HSN items`;
+      const scopeLabel = this.exclusionScope === 'both' ? 'All Customers (Included + Excluded)' : this.exclusionScope === 'included' ? 'Included Customers Only' : 'Excluded Customers Only';
 
-      thead.innerHTML = `
-        <tr>
-          <th class="text-center" style="width: 40px;">#</th>
-          <th class="text-center">HSN Code</th>
-          <th>Description</th>
-          <th class="text-center">UQC</th>
-          <th class="text-right">Total Qty</th>
-          <th class="text-right">Total Value (₹)</th>
-          <th class="text-right">Taxable Value (₹)</th>
-          <th class="text-right">CGST (₹)</th>
-          <th class="text-right">SGST (₹)</th>
-        </tr>
-      `;
+      if (this.viewMode === 'granular') {
+        const items = data.granular_items || [];
+        tableTitle.textContent = `Granular HSN Item Register [${scopeLabel}]`;
+        recordCount.textContent = `${items.length} line items`;
 
-      items.forEach((item, idx) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="text-center" style="color: #94a3b8;">${idx + 1}</td>
-          <td class="text-center"><span style="font-family: monospace; font-weight: 700; color: #1e40af;">${item.hsn_code}</span></td>
-          <td><strong>${item.description}</strong></td>
-          <td class="text-center">${item.uqc}</td>
-          <td class="text-right">${Number(item.total_qty).toLocaleString('en-IN')}</td>
-          <td class="text-right">₹${Number(item.total_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-          <td class="text-right" style="font-weight: 600;">₹${Number(item.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-          <td class="text-right">₹${Number(item.cgst_amount).toFixed(2)}</td>
-          <td class="text-right">₹${Number(item.sgst_amount).toFixed(2)}</td>
+        thead.innerHTML = `
+          <tr>
+            <th class="text-center" style="width: 40px;">#</th>
+            <th>Date & Inv.</th>
+            <th>Customer & Town</th>
+            <th>GSTIN</th>
+            <th class="text-center">Scope Status</th>
+            <th class="text-center">HSN Code</th>
+            <th>Description</th>
+            <th class="text-center">UQC</th>
+            <th class="text-right">Qty</th>
+            <th class="text-right">Rate (₹)</th>
+            <th class="text-right">Taxable (₹)</th>
+            <th class="text-right">CGST (₹)</th>
+            <th class="text-right">SGST (₹)</th>
+            <th class="text-right">Total (₹)</th>
+          </tr>
         `;
-        tbody.appendChild(tr);
-      });
+
+        if (items.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 24px; color: #94a3b8;">No granular HSN records found for selected period and scope.</td></tr>`;
+          return;
+        }
+
+        let lastInv = '';
+        items.forEach((item, idx) => {
+          const isFirstItem = item.invoice_no !== lastInv;
+          lastInv = item.invoice_no;
+          const tr = document.createElement('tr');
+          if (isFirstItem && idx > 0) tr.style.borderTop = '2px solid #e2e8f0';
+
+          tr.innerHTML = `
+            <td class="text-center" style="color: #94a3b8;">${idx + 1}</td>
+            <td>${isFirstItem ? `<strong>${item.date}</strong><br><span style="font-size: 11px; color: #64748b;">${item.invoice_no}</span>` : '<span style="color:#94a3b8; font-size:11px;">〃</span>'}</td>
+            <td>${isFirstItem ? `<strong>${item.customer_name}</strong>` : ''}</td>
+            <td>${isFirstItem ? `<span style="font-family: monospace; font-size: 11px;">${item.customer_gstin || '-'}</span>` : ''}</td>
+            <td class="text-center">
+              ${isFirstItem ? `<span class="compliance-badge ${item.is_excluded ? 'compliance-badge-excluded' : 'compliance-badge-included'}">${item.is_excluded ? '🚫 Excluded' : '✅ Included'}</span>` : ''}
+            </td>
+            <td class="text-center"><span style="font-family: monospace; font-weight: 700; color: #1e40af;">${item.hsn_code}</span></td>
+            <td><strong>${item.description}</strong></td>
+            <td class="text-center">${item.uqc}</td>
+            <td class="text-right font-medium">${Number(item.qty).toLocaleString('en-IN')}</td>
+            <td class="text-right">₹${Number(item.rate).toFixed(2)}</td>
+            <td class="text-right" style="font-weight: 600;">₹${Number(item.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${Number(item.cgst_amount).toFixed(2)}</td>
+            <td class="text-right">₹${Number(item.sgst_amount).toFixed(2)}</td>
+            <td class="text-right font-medium">₹${Number(item.total_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        // Summary Mode
+        const items = data.items || [];
+        tableTitle.textContent = `Table 12 HSN Summary (GSTR-1 Outward Supplies) [${scopeLabel}]`;
+        recordCount.textContent = `${items.length} HSN items`;
+
+        thead.innerHTML = `
+          <tr>
+            <th class="text-center" style="width: 40px;">#</th>
+            <th class="text-center">HSN Code</th>
+            <th>Description</th>
+            <th class="text-center">UQC</th>
+            <th class="text-right">Total Qty</th>
+            <th class="text-right">Total Value (₹)</th>
+            <th class="text-right">Taxable Value (₹)</th>
+            <th class="text-right">CGST (₹)</th>
+            <th class="text-right">SGST (₹)</th>
+          </tr>
+        `;
+
+        if (items.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 24px; color: #94a3b8;">No HSN summary items found for selected period and scope.</td></tr>`;
+          return;
+        }
+
+        items.forEach((item, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-center" style="color: #94a3b8;">${idx + 1}</td>
+            <td class="text-center"><span style="font-family: monospace; font-weight: 700; color: #1e40af;">${item.hsn_code}</span></td>
+            <td><strong>${item.description}</strong></td>
+            <td class="text-center">${item.uqc}</td>
+            <td class="text-right">${Number(item.total_qty).toLocaleString('en-IN')}</td>
+            <td class="text-right">₹${Number(item.total_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right" style="font-weight: 600;">₹${Number(item.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${Number(item.cgst_amount).toFixed(2)}</td>
+            <td class="text-right">₹${Number(item.sgst_amount).toFixed(2)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Add comparative calculation audit sub-table
+        const cb = data.calculation_breakdown;
+        if (cb) {
+          const auditRow = document.createElement('tr');
+          auditRow.innerHTML = `
+            <td colspan="9" style="background: #f8fafc; padding: 18px 20px; border-top: 2px solid #cbd5e1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <strong style="color: #1e293b; font-size: 13px;">⚖️ Statutory Calculation Audit (Included vs. Excluded Customers)</strong>
+                <span style="font-size: 11px; color: #64748b;">Table 12 HSN Reconciled against Master Accounts</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 12px;">
+                <div style="background: #ffffff; border: 1px solid #d1fae5; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #065f46; margin-bottom: 6px;">✅ Standard Included Customers</div>
+                  <div style="color: #475569;">Invoices: <strong>${cb.included?.invoice_count || 0}</strong> | Line Items: <strong>${cb.included?.item_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Turnover: <strong>₹${Number(cb.included?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #047857; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.included?.cgst_amount || 0) + Number(cb.included?.sgst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #92400e; margin-bottom: 6px;">🚫 Excluded Customers</div>
+                  <div style="color: #475569;">Invoices: <strong>${cb.excluded?.invoice_count || 0}</strong> | Line Items: <strong>${cb.excluded?.item_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Turnover: <strong>₹${Number(cb.excluded?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #b45309; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.excluded?.cgst_amount || 0) + Number(cb.excluded?.sgst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #1e40af; margin-bottom: 6px;">👥 Consolidated Total (Both)</div>
+                  <div style="color: #475569;">Invoices: <strong>${cb.combined?.invoice_count || 0}</strong> | Line Items: <strong>${cb.combined?.item_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Turnover: <strong>₹${Number(cb.combined?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #1d4ed8; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.combined?.cgst_amount || 0) + Number(cb.combined?.sgst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(auditRow);
+        }
+      }
     } else if (this.selectedReport === 'gstr1-summary') {
-      const sections = data.sections || [];
-      tableTitle.textContent = 'GSTR-1 Section Summary & Tax Outward Liability';
-      recordCount.textContent = `${sections.length} tables`;
+      const scopeLabel = this.exclusionScope === 'both' ? 'All Customers (Included + Excluded)' : this.exclusionScope === 'included' ? 'Included Customers Only' : 'Excluded Customers Only';
 
-      thead.innerHTML = `
-        <tr>
-          <th class="text-center" style="width: 60px;">Table</th>
-          <th>Supply Category</th>
-          <th class="text-center">Vouchers</th>
-          <th class="text-right">Gross Value (₹)</th>
-          <th class="text-right">Taxable Value (₹)</th>
-          <th class="text-right">CGST (₹)</th>
-          <th class="text-right">SGST (₹)</th>
-        </tr>
-      `;
+      if (this.viewMode === 'granular') {
+        const invoices = data.granular_invoices || [];
+        tableTitle.textContent = `Granular Customer Voucher Register [${scopeLabel}]`;
+        recordCount.textContent = `${invoices.length} vouchers`;
 
-      sections.forEach((sec) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="text-center"><strong>${sec.table_number}</strong></td>
-          <td><strong>${sec.description}</strong></td>
-          <td class="text-center">${sec.count}</td>
-          <td class="text-right">₹${Number(sec.gross_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-          <td class="text-right" style="font-weight: 600;">₹${Number(sec.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-          <td class="text-right">₹${Number(sec.cgst).toFixed(2)}</td>
-          <td class="text-right">₹${Number(sec.sgst).toFixed(2)}</td>
+        thead.innerHTML = `
+          <tr>
+            <th class="text-center" style="width: 40px;">#</th>
+            <th>Date</th>
+            <th>Voucher / Invoice No</th>
+            <th>Customer Name</th>
+            <th>GSTIN</th>
+            <th class="text-center">Scope Status</th>
+            <th class="text-center">Supply Category</th>
+            <th class="text-right">Gross Value (₹)</th>
+            <th class="text-right">Taxable Value (₹)</th>
+            <th class="text-right">CGST (₹)</th>
+            <th class="text-right">SGST (₹)</th>
+          </tr>
         `;
-        tbody.appendChild(tr);
-      });
+
+        if (invoices.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 24px; color: #94a3b8;">No customer voucher records found for selected period and scope.</td></tr>`;
+          return;
+        }
+
+        invoices.forEach((inv, idx) => {
+          const tr = document.createElement('tr');
+          const isCn = inv.supply_type === 'Credit Note';
+          if (isCn) tr.classList.add('alert-row');
+
+          tr.innerHTML = `
+            <td class="text-center" style="color: #94a3b8;">${idx + 1}</td>
+            <td><strong>${inv.date}</strong></td>
+            <td><span style="font-family: monospace; font-size: 11px; font-weight: 600;">${inv.invoice_no}</span></td>
+            <td><strong>${inv.customer_name}</strong></td>
+            <td><span style="font-family: monospace; font-size: 11px;">${inv.customer_gstin || '-'}</span></td>
+            <td class="text-center">
+              <span class="compliance-badge ${inv.is_excluded ? 'compliance-badge-excluded' : 'compliance-badge-included'}">
+                ${inv.is_excluded ? '🚫 Excluded' : '✅ Included'}
+              </span>
+            </td>
+            <td class="text-center">
+              <span class="compliance-badge ${isCn ? 'compliance-badge-alert' : inv.supply_type.includes('B2B') ? 'compliance-badge-gst' : 'compliance-badge-ayush'}">
+                ${inv.supply_type}
+              </span>
+            </td>
+            <td class="text-right font-medium">₹${Number(inv.gross_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right" style="font-weight: 600;">₹${Number(inv.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${Number(inv.cgst).toFixed(2)}</td>
+            <td class="text-right">₹${Number(inv.sgst).toFixed(2)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        // Summary Mode
+        const sections = data.sections || [];
+        tableTitle.textContent = `GSTR-1 Section Summary & Tax Outward Liability [${scopeLabel}]`;
+        recordCount.textContent = `${sections.length} tables`;
+
+        thead.innerHTML = `
+          <tr>
+            <th class="text-center" style="width: 60px;">Table</th>
+            <th>Supply Category</th>
+            <th class="text-center">Vouchers</th>
+            <th class="text-right">Gross Value (₹)</th>
+            <th class="text-right">Taxable Value (₹)</th>
+            <th class="text-right">CGST (₹)</th>
+            <th class="text-right">SGST (₹)</th>
+          </tr>
+        `;
+
+        if (sections.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 24px; color: #94a3b8;">No section data found for selected period and scope.</td></tr>`;
+          return;
+        }
+
+        sections.forEach((sec) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-center"><strong>${sec.table_number}</strong></td>
+            <td><strong>${sec.description}</strong></td>
+            <td class="text-center">${sec.count}</td>
+            <td class="text-right">₹${Number(sec.gross_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right" style="font-weight: 600;">₹${Number(sec.taxable_value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+            <td class="text-right">₹${Number(sec.cgst).toFixed(2)}</td>
+            <td class="text-right">₹${Number(sec.sgst).toFixed(2)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Add comparative calculation audit sub-table
+        const cb = data.calculation_breakdown;
+        if (cb) {
+          const auditRow = document.createElement('tr');
+          auditRow.innerHTML = `
+            <td colspan="7" style="background: #f8fafc; padding: 18px 20px; border-top: 2px solid #cbd5e1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <strong style="color: #1e293b; font-size: 13px;">⚖️ Statutory Calculation Audit (Included vs. Excluded Customers)</strong>
+                <span style="font-size: 11px; color: #64748b;">GSTR-1 Return Reconciled against Books of Accounts</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 12px;">
+                <div style="background: #ffffff; border: 1px solid #d1fae5; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #065f46; margin-bottom: 6px;">✅ Standard Included Customers</div>
+                  <div style="color: #475569;">Vouchers: <strong>${cb.included?.invoice_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Gross Invoiced: <strong>₹${Number(cb.included?.gross_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Value: <strong>₹${Number(cb.included?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #047857; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.included?.cgst || 0) + Number(cb.included?.sgst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #92400e; margin-bottom: 6px;">🚫 Excluded Customers</div>
+                  <div style="color: #475569;">Vouchers: <strong>${cb.excluded?.invoice_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Gross Invoiced: <strong>₹${Number(cb.excluded?.gross_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Value: <strong>₹${Number(cb.excluded?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #b45309; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.excluded?.cgst || 0) + Number(cb.excluded?.sgst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px;">
+                  <div style="font-weight: 700; color: #1e40af; margin-bottom: 6px;">👥 Consolidated Total (Both)</div>
+                  <div style="color: #475569;">Vouchers: <strong>${cb.combined?.invoice_count || 0}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Gross Invoiced: <strong>₹${Number(cb.combined?.gross_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #475569; margin-top: 3px;">Taxable Value: <strong>₹${Number(cb.combined?.taxable_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style="color: #1d4ed8; margin-top: 3px;">CGST + SGST: <strong>₹${(Number(cb.combined?.cgst || 0) + Number(cb.combined?.sgst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                </div>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(auditRow);
+        }
+      }
     } else if (this.selectedReport === 'batch-expiry') {
       const items = data.items || [];
       tableTitle.textContent = 'Batch Expiry & Stability Audit (Ayurvedic Formulations)';
@@ -886,17 +1177,19 @@ export class ComplianceReportsView {
           items: this.currentData.items || []
         });
       } else if (this.selectedReport === 'gst-hsn') {
-        docTitle = 'GST Table 12 HSN Summary';
+        const scopeDesc = this.exclusionScope === 'both' ? 'All Customers (Included + Excluded)' : (this.exclusionScope === 'excluded' ? 'Excluded Customers Only' : 'Included Customers Only');
+        docTitle = `GST Table 12 HSN Summary (${this.exclusionScope.toUpperCase()})`;
         pdfRes = SuiteCoreBridge.renderGstHsnPdf({
-          period: this.currentData.period || 'YTD',
+          period: `${this.currentData.period || 'YTD'} [Scope: ${scopeDesc}]`,
           generated_at: this.currentData.generated_at || '',
           app_settings: this.currentData.app_settings || {},
           items: this.currentData.items || []
         });
       } else if (this.selectedReport === 'gstr1-summary') {
-        docTitle = 'GSTR-1 Outward Supplies Summary';
+        const scopeDesc = this.exclusionScope === 'both' ? 'All Customers (Included + Excluded)' : (this.exclusionScope === 'excluded' ? 'Excluded Customers Only' : 'Included Customers Only');
+        docTitle = `GSTR-1 Outward Supplies Summary (${this.exclusionScope.toUpperCase()})`;
         pdfRes = SuiteCoreBridge.renderGstr1SummaryPdf({
-          period: this.currentData.period || 'YTD',
+          period: `${this.currentData.period || 'YTD'} [Scope: ${scopeDesc}]`,
           generated_at: this.currentData.generated_at || '',
           app_settings: this.currentData.app_settings || {},
           sections: this.currentData.sections || []
@@ -955,39 +1248,79 @@ export class ComplianceReportsView {
     }
   }
 
-  handleExportCsv() {
+  handleExportCsv(forceGranular = false) {
     if (!this.currentData) return;
 
     let csvContent = '';
     let filename = `report_${Date.now()}.csv`;
+    const cb = this.currentData.calculation_breakdown;
+    const isGranular = forceGranular || this.viewMode === 'granular';
 
     if (this.selectedReport === 'ayush-dispatch') {
       filename = `AYUSH_Distribution_Register_${Date.now()}.csv`;
       const items = this.currentData.items || [];
       csvContent = 'Sl,Date,Invoice_No,Customer_Name,Customer_Town,Licence_No,GSTIN,Product_Name,Batch_No,Pack_Size,Qty,Rate,Taxable_Amount\n';
       items.forEach((it, idx) => {
-        csvContent += `${idx + 1},"${it.date}","${it.invoice_no}","${it.customer_name}","${it.customer_town || ''}","${it.customer_licence_no || ''}","${it.customer_gstin || ''}","${it.product_name}","${it.batch_no}","${it.pack_size}",${it.qty},${it.rate},${it.taxable_amount}\n`;
+        csvContent += `${idx + 1},"${it.date}","${it.invoice_no}","${(it.customer_name || '').replace(/"/g, '""')}","${(it.customer_town || '').replace(/"/g, '""')}","${(it.customer_licence_no || '').replace(/"/g, '""')}","${it.customer_gstin || ''}","${(it.product_name || '').replace(/"/g, '""')}","${it.batch_no}","${it.pack_size}",${it.qty},${it.rate},${it.taxable_amount}\n`;
       });
     } else if (this.selectedReport === 'gst-hsn') {
-      filename = `GST_HSN_Table12_${Date.now()}.csv`;
-      const items = this.currentData.items || [];
-      csvContent = 'Sl,HSN_Code,Description,UQC,Total_Qty,Total_Value,Taxable_Value,IGST,CGST,SGST,Cess\n';
-      items.forEach((it, idx) => {
-        csvContent += `${idx + 1},"${it.hsn_code}","${it.description}","${it.uqc}",${it.total_qty},${it.total_value},${it.taxable_value},${it.igst_amount || 0},${it.cgst_amount || 0},${it.sgst_amount || 0},${it.cess_amount || 0}\n`;
-      });
+      if (isGranular) {
+        filename = `GST_HSN_Granular_Items_${this.exclusionScope}_${Date.now()}.csv`;
+        const items = this.currentData.granular_items || [];
+        csvContent = 'Sl,Date,Invoice_No,Customer_Name,Customer_GSTIN,Customer_Scope,HSN_Code,Description,UQC,Qty,Rate,Taxable_Value,CGST,SGST,Total_Value\n';
+        items.forEach((it, idx) => {
+          const scopeLabel = it.is_excluded === 1 ? 'Excluded from Stats' : 'Included in Stats';
+          csvContent += `${idx + 1},"${it.date || ''}","${it.invoice_no || ''}","${(it.customer_name || '').replace(/"/g, '""')}","${it.customer_gstin || 'URP'}","${scopeLabel}","${it.hsn_code}","${(it.description || '').replace(/"/g, '""')}","${it.uqc || 'NOS'}",${it.qty || 0},${it.rate || 0},${it.taxable_value || 0},${it.cgst_amount || 0},${it.sgst_amount || 0},${it.total_value || 0}\n`;
+        });
+      } else {
+        filename = `GST_HSN_Table12_Summary_${this.exclusionScope}_${Date.now()}.csv`;
+        const items = this.currentData.items || [];
+        csvContent = 'Sl,HSN_Code,Description,UQC,Total_Qty,Total_Value,Taxable_Value,IGST,CGST,SGST,Cess\n';
+        items.forEach((it, idx) => {
+          csvContent += `${idx + 1},"${it.hsn_code}","${(it.description || '').replace(/"/g, '""')}","${it.uqc}",${it.total_qty},${it.total_value},${it.taxable_value},${it.igst_amount || 0},${it.cgst_amount || 0},${it.sgst_amount || 0},${it.cess_amount || 0}\n`;
+        });
+      }
+
+      // Append Calculation Breakdown Audit Rows if present
+      if (cb) {
+        csvContent += '\n"--- STATUTORY CALCULATION BREAKDOWN BY CUSTOMER SCOPE ---"\n';
+        csvContent += 'Customer_Scope,Line_Items,Vouchers,Total_Qty,Taxable_Value,CGST,SGST,Total_Value\n';
+        csvContent += `"Included in Stats",${cb.included?.item_count || 0},${cb.included?.invoice_count || 0},${cb.included?.total_qty || 0},${cb.included?.taxable_value || 0},${cb.included?.cgst_amount || 0},${cb.included?.sgst_amount || 0},${cb.included?.total_value || 0}\n`;
+        csvContent += `"Excluded from Stats",${cb.excluded?.item_count || 0},${cb.excluded?.invoice_count || 0},${cb.excluded?.total_qty || 0},${cb.excluded?.taxable_value || 0},${cb.excluded?.cgst_amount || 0},${cb.excluded?.sgst_amount || 0},${cb.excluded?.total_value || 0}\n`;
+        csvContent += `"Consolidated Total (Both)",${cb.combined?.item_count || 0},${cb.combined?.invoice_count || 0},${cb.combined?.total_qty || 0},${cb.combined?.taxable_value || 0},${cb.combined?.cgst_amount || 0},${cb.combined?.sgst_amount || 0},${cb.combined?.total_value || 0}\n`;
+      }
     } else if (this.selectedReport === 'gstr1-summary') {
-      filename = `GSTR1_Section_Summary_${Date.now()}.csv`;
-      const sections = this.currentData.sections || [];
-      csvContent = 'Table,Description,Voucher_Count,Gross_Value,Taxable_Value,CGST,SGST\n';
-      sections.forEach((s) => {
-        csvContent += `"${s.table_number}","${s.description}",${s.count},${s.gross_value},${s.taxable_value},${s.cgst},${s.sgst}\n`;
-      });
+      if (isGranular) {
+        filename = `GSTR1_Granular_Invoices_${this.exclusionScope}_${Date.now()}.csv`;
+        const invoices = this.currentData.granular_invoices || [];
+        csvContent = 'Sl,Date,Invoice_No,Customer_Name,Customer_GSTIN,Customer_Scope,Supply_Type,Gross_Value,Taxable_Value,CGST,SGST\n';
+        invoices.forEach((inv, idx) => {
+          const scopeLabel = inv.is_excluded === 1 ? 'Excluded from Stats' : 'Included in Stats';
+          csvContent += `${idx + 1},"${inv.date || ''}","${inv.invoice_no || ''}","${(inv.customer_name || '').replace(/"/g, '""')}","${inv.customer_gstin || 'URP'}","${scopeLabel}","${inv.supply_type || ''}",${inv.gross_value || 0},${inv.taxable_value || 0},${inv.cgst || 0},${inv.sgst || 0}\n`;
+        });
+      } else {
+        filename = `GSTR1_Section_Summary_${this.exclusionScope}_${Date.now()}.csv`;
+        const sections = this.currentData.sections || [];
+        csvContent = 'Table,Description,Voucher_Count,Gross_Value,Taxable_Value,CGST,SGST\n';
+        sections.forEach((s) => {
+          csvContent += `"${s.table_number}","${(s.description || '').replace(/"/g, '""')}",${s.count},${s.gross_value},${s.taxable_value},${s.cgst},${s.sgst}\n`;
+        });
+      }
+
+      // Append Calculation Breakdown Audit Rows if present
+      if (cb) {
+        csvContent += '\n"--- STATUTORY CALCULATION BREAKDOWN BY CUSTOMER SCOPE ---"\n';
+        csvContent += 'Customer_Scope,Vouchers,Gross_Value,Taxable_Value,CGST,SGST,Total_Tax\n';
+        csvContent += `"Included in Stats",${cb.included?.invoice_count || 0},${cb.included?.gross_value || 0},${cb.included?.taxable_value || 0},${cb.included?.cgst || 0},${cb.included?.sgst || 0},${(Number(cb.included?.cgst || 0) + Number(cb.included?.sgst || 0)).toFixed(2)}\n`;
+        csvContent += `"Excluded from Stats",${cb.excluded?.invoice_count || 0},${cb.excluded?.gross_value || 0},${cb.excluded?.taxable_value || 0},${cb.excluded?.cgst || 0},${cb.excluded?.sgst || 0},${(Number(cb.excluded?.cgst || 0) + Number(cb.excluded?.sgst || 0)).toFixed(2)}\n`;
+        csvContent += `"Consolidated Total (Both)",${cb.combined?.invoice_count || 0},${cb.combined?.gross_value || 0},${cb.combined?.taxable_value || 0},${cb.combined?.cgst || 0},${cb.combined?.sgst || 0},${(Number(cb.combined?.cgst || 0) + Number(cb.combined?.sgst || 0)).toFixed(2)}\n`;
+      }
     } else if (this.selectedReport === 'batch-expiry') {
       filename = `AYUSH_Batch_Expiry_${Date.now()}.csv`;
       const items = this.currentData.items || [];
       csvContent = 'Sl,Batch_No,Product_Name,Pack_Size,Mfg_Date,Exp_Date,Produced,Sold,Stock,Status\n';
       items.forEach((it, idx) => {
-        csvContent += `${idx + 1},"${it.batch_no}","${it.product_name}","${it.pack_size}","${it.mfg_date}","${it.exp_date}",${it.units_produced},${it.units_sold},${it.balance_stock},"${it.status}"\n`;
+        csvContent += `${idx + 1},"${it.batch_no}","${(it.product_name || '').replace(/"/g, '""')}","${it.pack_size}","${it.mfg_date}","${it.exp_date}",${it.units_produced},${it.units_sold},${it.balance_stock},"${it.status}"\n`;
       });
     }
 
