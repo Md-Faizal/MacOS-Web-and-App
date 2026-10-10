@@ -193,16 +193,10 @@
 
 .compliance-table-scroll {
   max-height: 480px;
-  overflow-y: auto;
-  overflow-x: auto;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.compliance-table-scroll::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(100, 116, 139, 0.4) rgba(0, 0, 0, 0.04) !important;
 }
 
 .compliance-table {
@@ -497,24 +491,64 @@
 }
 
 /* ====================================================================
-   INVISIBLE SCROLLBAR & SMOOTH SCROLLING FOR COMPLIANCE REPORTS
+   VISIBLE & STYLED VERTICAL & HORIZONTAL SCROLLBAR FOR COMPLIANCE REPORTS
    ==================================================================== */
 .analytics-subview-compliance,
 .compliance-page-scrollable,
-.compliance-view-wrapper,
-.analytics-view-container:has(.analytics-subview-compliance) {
-  scrollbar-width: none !important; /* Firefox */
-  -ms-overflow-style: none !important; /* IE 10+ and Edge */
+.compliance-table-scroll {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(100, 116, 139, 0.4) rgba(0, 0, 0, 0.04) !important;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
+/* WebKit Scrollbar Geometry: visible 8px vertical & horizontal scrollbars */
 .analytics-subview-compliance::-webkit-scrollbar,
 .compliance-page-scrollable::-webkit-scrollbar,
-.compliance-view-wrapper::-webkit-scrollbar,
-.analytics-view-container:has(.analytics-subview-compliance)::-webkit-scrollbar {
-  display: none !important; /* Safari, Chrome, Edge, WebKit */
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
+.compliance-table-scroll::-webkit-scrollbar {
+  display: block !important;
+  width: 8px !important;
+  height: 8px !important;
+}
+
+/* Scrollbar Track styling */
+.analytics-subview-compliance::-webkit-scrollbar-track,
+.compliance-page-scrollable::-webkit-scrollbar-track,
+.compliance-table-scroll::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03) !important;
+  border-radius: 8px !important;
+}
+
+/* Scrollbar Thumb (Pill capsule with interactive hover & active states) */
+.analytics-subview-compliance::-webkit-scrollbar-thumb,
+.compliance-page-scrollable::-webkit-scrollbar-thumb,
+.compliance-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.38) !important;
+  border-radius: 8px !important;
+  border: 1.5px solid transparent !important;
+  background-clip: padding-box !important;
+  transition: background-color 0.2s ease !important;
+}
+
+.analytics-subview-compliance::-webkit-scrollbar-thumb:hover,
+.compliance-page-scrollable::-webkit-scrollbar-thumb:hover,
+.compliance-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(51, 65, 85, 0.65) !important;
+  background-clip: padding-box !important;
+}
+
+.analytics-subview-compliance::-webkit-scrollbar-thumb:active,
+.compliance-page-scrollable::-webkit-scrollbar-thumb:active,
+.compliance-table-scroll::-webkit-scrollbar-thumb:active {
+  background: rgba(15, 23, 42, 0.8) !important;
+  background-clip: padding-box !important;
+}
+
+/* Corner junction between vertical and horizontal scrollbars */
+.analytics-subview-compliance::-webkit-scrollbar-corner,
+.compliance-page-scrollable::-webkit-scrollbar-corner,
+.compliance-table-scroll::-webkit-scrollbar-corner {
+  background: rgba(0, 0, 0, 0.02) !important;
 }
 
 .analytics-subview-compliance,
@@ -522,7 +556,7 @@
   width: 100% !important;
   height: 100% !important;
   overflow-y: auto !important;
-  overflow-x: hidden !important;
+  overflow-x: auto !important;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
@@ -532,6 +566,10 @@
   padding-bottom: 50px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.analytics-view-container:has(.analytics-subview-compliance) {
+  overflow: hidden !important;
 }
 
 /* ====================================================================

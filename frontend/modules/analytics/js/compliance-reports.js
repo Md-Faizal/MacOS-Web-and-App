@@ -128,9 +128,9 @@ export class ComplianceReportsView {
     if (this.viewContainer) {
       this.viewContainer.classList.add('compliance-page-scrollable');
       this.viewContainer.style.overflowY = 'auto';
-      this.viewContainer.style.overflowX = 'hidden';
-      this.viewContainer.style.scrollbarWidth = 'none';
-      this.viewContainer.style.msOverflowStyle = 'none';
+      this.viewContainer.style.overflowX = 'auto';
+      this.viewContainer.style.scrollbarWidth = 'thin';
+      this.viewContainer.style.msOverflowStyle = 'auto';
     }
 
     this.viewContainer.innerHTML = `
