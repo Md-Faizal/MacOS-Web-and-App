@@ -162,7 +162,11 @@ class AnalyticsApp extends AppWindow {
         
         <span class="analytics-sidebar-header">Customer Insights</span>
         <div class="analytics-customer-list">
-          <div class="loading-spinner">Loading customers...</div>
+          <div class="macos-loader-container compact">
+            <div class="macos-circular-loader sm"></div>
+            <p class="macos-loader-title" style="font-size: 12px;">Loading Customers...</p>
+            <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing insights</p>
+          </div>
         </div>
       </div>
       <div class="analytics-main">

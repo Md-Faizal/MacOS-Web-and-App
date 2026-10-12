@@ -36,9 +36,10 @@ export class BillingSettingsComponent {
     async render() {
         if (this.loading) {
             this.container.innerHTML = `
-                <div class="billing-settings-root" style="padding: 40px 20px; text-align: center; color: var(--settings-text, #fff);">
-                    <div style="font-size: 28px; margin-bottom: 12px; animation: spin 1.2s linear infinite;">⏳</div>
-                    <div style="font-size: 14px; font-weight: 500;">Loading Billing & Invoice preferences...</div>
+                <div class="macos-loader-container">
+                    <div class="macos-circular-loader"></div>
+                    <div class="macos-loader-title">Loading Billing & Invoice Preferences...</div>
+                    <div class="macos-loader-subtitle">Syncing business configurations</div>
                 </div>
             `;
             await this.loadSettings();

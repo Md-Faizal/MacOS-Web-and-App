@@ -84,7 +84,15 @@ export class BmrPipelineView {
             </tr>
           </thead>
           <tbody id="mfgBatchesTableBody">
-            <tr><td colspan="8" style="text-align: center; padding: 24px;">Loading manufacturing batches...</td></tr>
+            <tr>
+              <td colspan="8" class="mfg-loading-cell">
+                <div class="macos-loader-container compact">
+                  <div class="macos-circular-loader sm"></div>
+                  <p class="macos-loader-title" style="font-size: 13px;">Loading Manufacturing Batches...</p>
+                  <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing production records</p>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

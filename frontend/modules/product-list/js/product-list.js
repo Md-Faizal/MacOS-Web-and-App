@@ -1677,15 +1677,17 @@ export class ProductListApp extends AppWindow {
     const productsToDisplay = this.filterProducts();
     
     if (this.isLoading && (!this.products || this.products.length === 0)) {
-      this.viewContainer.innerHTML = `
-        <div class="product-empty-state">
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-            <div style="width: 32px; height: 32px; border: 3px solid rgba(0,0,0,0.15); border-top-color: #007aff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px;"></div>
-            <p class="empty-state-title" style="font-weight: 600; color: #1e293b;">Loading Products...</p>
-            <p class="empty-state-subtitle" style="color: #64748b;">Syncing inventory catalog with server</p>
+      if (window.MacOSLoader) {
+        this.viewContainer.innerHTML = window.MacOSLoader.create('Loading Products...', 'Syncing inventory catalog with server');
+      } else {
+        this.viewContainer.innerHTML = `
+          <div class="macos-loader-container">
+            <div class="macos-circular-loader"></div>
+            <p class="macos-loader-title">Loading Products...</p>
+            <p class="macos-loader-subtitle">Syncing inventory catalog with server</p>
           </div>
-        </div>
-      `;
+        `;
+      }
       return;
     }
 

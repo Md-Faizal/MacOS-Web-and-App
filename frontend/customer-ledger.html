@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customer Ledger Portal</title>
+  <link rel="stylesheet" href="/shared/macos-loader.css">
   <link rel="stylesheet" href="modules/billing/css/customer-ledger.css">
 </head>
 <body>
@@ -40,9 +41,10 @@
       </table>
     </div>
 
-    <div class="loader" id="loader">
-      <div class="spinner"></div>
-      <p>LOADING LEDGER...</p>
+    <div class="loader macos-loader-container" id="loader">
+      <div class="macos-circular-loader"></div>
+      <p class="macos-loader-title" style="letter-spacing: 1px; font-weight: 700;">LOADING LEDGER...</p>
+      <p class="macos-loader-subtitle">Syncing statement records with server</p>
     </div>
     
     <div class="error-state" id="errorState" style="display: none;">

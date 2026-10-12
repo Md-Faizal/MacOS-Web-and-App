@@ -28,6 +28,7 @@ class ContactsApp extends AppWindow {
     this.apiUrl = '/api/contacts';
     this.useAPI = true;
     this.contacts = [];
+    this.isLoading = true;
     this.selectedContactId = null;
     this.editingContactId = null;
     this.setupContactsUI();
@@ -233,6 +234,24 @@ class ContactsApp extends AppWindow {
 
   renderContactsList(searchQuery = '') {
     const prevScroll = this.contactsList ? this.contactsList.scrollTop : 0;
+
+    if (this.isLoading && (!this.contacts || this.contacts.length === 0)) {
+      if (this.contactsList) {
+        if (window.MacOSLoader) {
+          this.contactsList.innerHTML = window.MacOSLoader.create('Loading Contacts...', 'Syncing contacts catalog with server');
+        } else {
+          this.contactsList.innerHTML = `
+            <div class="macos-loader-container">
+              <div class="macos-circular-loader"></div>
+              <p class="macos-loader-title">Loading Contacts...</p>
+              <p class="macos-loader-subtitle">Syncing contacts catalog with server</p>
+            </div>
+          `;
+        }
+      }
+      return;
+    }
+
     this.contactsList.innerHTML = '';
 
     let filteredContacts = this.contacts;
@@ -845,6 +864,11 @@ class ContactsApp extends AppWindow {
   }
 
   loadContactsFromAPI() {
+    this.isLoading = true;
+    if (!this.contacts || this.contacts.length === 0) {
+      this.renderContactsList();
+    }
+
     const normalizeContactsPayload = (payload, fallback = []) => {
       if (Array.isArray(payload)) return payload;
       if (!payload) return fallback;
@@ -911,6 +935,9 @@ class ContactsApp extends AppWindow {
         this.contacts = [];
         this.renderContactsList();
         throw error;
+      })
+      .finally(() => {
+        this.isLoading = false;
       });
   }
 

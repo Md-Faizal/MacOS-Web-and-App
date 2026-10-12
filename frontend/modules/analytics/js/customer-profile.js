@@ -9,7 +9,11 @@ class CustomerProfileView {
   }
 
   async render(customerId) {
-    this.viewContainer.innerHTML = '<div class="loading-spinner">Deep diving into customer data...</div>';
+    if (window.MacOSLoader) {
+      this.viewContainer.innerHTML = window.MacOSLoader.create('Deep diving into customer data...', 'Analyzing transactions and metrics');
+    } else {
+      this.viewContainer.innerHTML = '<div class="macos-loader-container"><div class="macos-circular-loader"></div><p class="macos-loader-title">Deep diving into customer data...</p><p class="macos-loader-subtitle">Analyzing transactions and metrics</p></div>';
+    }
 
     try {
       const contResp = await fetch(`/api/contacts/${customerId}`);

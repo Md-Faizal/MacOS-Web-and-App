@@ -789,7 +789,11 @@ class OrdersView {
                 <span id="ordersPendingCount" style="font-size: 11px; font-weight: 700; color: #666666;">(0)</span>
               </div>
               <div id="ordersPendingContainer" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 0; gap: 8px;">
-                <div style="padding: 40px 20px; text-align: center; color: #999999; font-size: 12px;">Loading...</div>
+                <div class="macos-loader-container compact" style="padding: 40px 10px;">
+                  <div class="macos-circular-loader sm"></div>
+                  <p class="macos-loader-title" style="font-size: 12px;">Loading Orders...</p>
+                  <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
+                </div>
               </div>
             </div>
 
@@ -800,7 +804,11 @@ class OrdersView {
                 <span id="ordersCompletedCount" style="font-size: 11px; font-weight: 700; color: #666666;">(0)</span>
               </div>
               <div id="ordersCompletedContainer" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 0; gap: 8px;">
-                <div style="padding: 40px 20px; text-align: center; color: #999999; font-size: 12px;">Loading...</div>
+                <div class="macos-loader-container compact" style="padding: 40px 10px;">
+                  <div class="macos-circular-loader sm"></div>
+                  <p class="macos-loader-title" style="font-size: 12px;">Loading Orders...</p>
+                  <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1495,7 +1503,11 @@ class OrdersView {
               <span id="ordersPendingCount" style="font-size: 11px; font-weight: 700; color: #666666;">(0)</span>
             </div>
             <div id="ordersPendingContainer" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 0; gap: 8px;">
-              <div style="padding: 40px 20px; text-align: center; color: #999999; font-size: 12px;">Loading...</div>
+              <div class="macos-loader-container compact" style="padding: 40px 10px;">
+                <div class="macos-circular-loader sm"></div>
+                <p class="macos-loader-title" style="font-size: 12px;">Loading Orders...</p>
+                <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
+              </div>
             </div>
           </div>
 
@@ -1506,7 +1518,11 @@ class OrdersView {
               <span id="ordersCompletedCount" style="font-size: 11px; font-weight: 700; color: #666666;">(0)</span>
             </div>
             <div id="ordersCompletedContainer" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 0; gap: 8px;">
-              <div style="padding: 40px 20px; text-align: center; color: #999999; font-size: 12px;">Loading...</div>
+              <div class="macos-loader-container compact" style="padding: 40px 10px;">
+                <div class="macos-circular-loader sm"></div>
+                <p class="macos-loader-title" style="font-size: 12px;">Loading Orders...</p>
+                <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
+              </div>
             </div>
           </div>
         </div>

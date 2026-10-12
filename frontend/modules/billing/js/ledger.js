@@ -479,7 +479,11 @@ class LedgerView {
 
           <!-- Customer List -->
           <div id="ledgerSidebarList" style="flex: 1; overflow-y: auto; padding: 4px; background: #000000;">
-            <div style="padding: 40px 20px; text-align: center; color: #555555; font-size: 12px;">Loading...</div>
+            <div class="macos-loader-container compact" style="padding: 40px 10px;">
+              <div class="macos-circular-loader sm"></div>
+              <p class="macos-loader-title" style="color: #ffffff; font-size: 12px;">Loading Customers...</p>
+              <p class="macos-loader-subtitle" style="color: #888888; font-size: 11px;">Syncing ledger</p>
+            </div>
           </div>
         </div>
 

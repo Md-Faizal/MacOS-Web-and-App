@@ -77,7 +77,15 @@ export class RawMaterialsView {
             </tr>
           </thead>
           <tbody id="mfgRmTableBody">
-            <tr><td colspan="9" style="text-align: center; padding: 24px;">Loading raw materials...</td></tr>
+            <tr>
+              <td colspan="9" class="mfg-loading-cell">
+                <div class="macos-loader-container compact">
+                  <div class="macos-circular-loader sm"></div>
+                  <p class="macos-loader-title" style="font-size: 13px;">Loading Raw Materials...</p>
+                  <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing stock inventory</p>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
