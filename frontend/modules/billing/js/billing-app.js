@@ -2429,9 +2429,9 @@ export class BillingApp extends AppWindow {
 
       if (result.success && !result.cancelled) {
         // Show success notification
-        const toastId = 'pdf-success-' + Date.now();
-        const toast = document.createElement('div');
-        toast.id = toastId;
+        let message = `✓ ${fileName} saved successfully`;
+        if (result.folder) message = `✓ Saved to ${result.folder}/${fileName}`;
+        else if (result.fallback) message = `✓ ${fileName} downloaded successfully`;
         this.showNotification(message, 'success');
       }
     } catch (error) {
@@ -2782,9 +2782,9 @@ export class BillingApp extends AppWindow {
 
       if (result.success && !result.cancelled) {
         // Show success notification
-        const toastId = 'pdf-success-' + Date.now();
-        const toast = document.createElement('div');
-        toast.id = toastId;
+        let message = `✓ ${fileName} saved successfully`;
+        if (result.folder) message = `✓ Saved to ${result.folder}/${fileName}`;
+        else if (result.fallback) message = `✓ ${fileName} downloaded successfully`;
         this.showNotification(message, 'success');
       }
 
