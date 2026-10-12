@@ -442,6 +442,11 @@ export class BillingApp extends AppWindow {
             if (domains.has('inventory')) this.billEditor?.populateProductsList?.();
           }
 
+          const history = this._subviewInstances?.get('history');
+          if (this.currentView === 'history' && history && typeof history.loadHistoryData === 'function') {
+            history.loadHistoryData();
+          }
+
           // 3. Perform a single coalesced background fetch of root store
           try {
             await this.loadBillingDataFromAPI({ forceRefresh: true });

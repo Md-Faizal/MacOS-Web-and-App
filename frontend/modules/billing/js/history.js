@@ -3,13 +3,13 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
 /**
  * HistoryView - Premium Transaction Timeline
  * Enhanced transaction history with stats, filtering, and modern UI
- * Rebuilt: Efficient data fetching without 404 errors
+ * Resilient in-memory store resolution with fallback to API client
  */
 
 class HistoryView {
   constructor(billingApp) {
     this.billingApp = billingApp;
-    this.viewContainer = billingApp.viewContainer;
+    this.viewContainer = billingApp?.viewContainer;
     this.loadCSS();
     this.allTransactions = [];
     this.customerOpeningBalances = new Map();
@@ -74,9 +74,11 @@ class HistoryView {
 
         <!-- TRANSACTION LIST -->
         <div class="history-content-area">
-          <div id="historyLoadingMsg" class="history-loading-state">
-            <div class="loading-spinner"></div>
-            <div>Loading transactions...</div>
+          <div id="historyLoadingMsg" class="history-loading-state" style="padding: 40px 20px; display: flex; justify-content: center; align-items: center;">
+            ${(typeof window !== 'undefined' && window.MacOSLoader) ? window.MacOSLoader.create('Loading Transactions...', 'Syncing financial audit trail') : `
+              <div class="loading-spinner"></div>
+              <div>Loading transactions...</div>
+            `}
           </div>
           <div id="historyContainer" style="display: none;" class="history-timeline"></div>
         </div>
@@ -90,6 +92,10 @@ class HistoryView {
   }
 
   async loadHistoryData() {
+    const root = this.viewContainer || document;
+    const container = root.querySelector('#historyContainer');
+    const loadingMsg = root.querySelector('#historyLoadingMsg');
+
     try {
       log.debug('Loading history data...');
       
@@ -97,15 +103,38 @@ class HistoryView {
       const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
       const accessibleNames = scoped && isWorker ? new Set(scoped.contacts.map(c => c.name).filter(Boolean)) : null;
 
-      // Fetch all data in parallel - single efficient calls only
-      const [billsDataRaw, paymentsDataRaw] = await Promise.all([
-        this.fetchBills(),
-        this.fetchPayments()
-      ]);
+      let billsDataRaw = scoped?.bills || this.billingApp?.billingData?.bills;
+      let paymentsDataRaw = scoped?.payments || this.billingApp?.billingData?.payments;
 
+      // If in-memory data is not yet available, attempt to load from API with a 6-second timeout race
       if (!billsDataRaw || !paymentsDataRaw) {
-        throw new Error('Failed to fetch transaction data');
+        if (this.billingApp?.loadBillingDataFromAPI) {
+          try {
+            await Promise.race([
+              this.billingApp.loadBillingDataFromAPI(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('API load timeout')), 6000))
+            ]);
+            const refreshedScoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+            billsDataRaw = refreshedScoped?.bills || this.billingApp?.billingData?.bills;
+            paymentsDataRaw = refreshedScoped?.payments || this.billingApp?.billingData?.payments;
+          } catch (e) {
+            log.warn('BillingData API load timed out or failed, falling back:', e.message);
+          }
+        }
       }
+
+      // If still missing, try individual fetchBills/fetchPayments with race timeout
+      if (!billsDataRaw || !paymentsDataRaw) {
+        const [fallbackBills, fallbackPayments] = await Promise.all([
+          this.fetchBills(),
+          this.fetchPayments()
+        ]);
+        if (!billsDataRaw) billsDataRaw = fallbackBills || [];
+        if (!paymentsDataRaw) paymentsDataRaw = fallbackPayments || [];
+      }
+
+      billsDataRaw = billsDataRaw || [];
+      paymentsDataRaw = paymentsDataRaw || [];
 
       // Filter by worker access if applicable
       const billsData = (isWorker && accessibleNames)
@@ -116,8 +145,8 @@ class HistoryView {
         ? paymentsDataRaw.filter(p => accessibleNames.has(p.customer_name))
         : paymentsDataRaw;
 
-      log.debug('✓ Bills fetched:', billsData.length);
-      log.debug('✓ Payments fetched:', paymentsData.length);
+      log.debug('✓ Bills resolved:', billsData.length);
+      log.debug('✓ Payments resolved:', paymentsData.length);
 
       // Separate payments and credit notes
       const payments = paymentsData.filter(p => p.type === 'PAYMENT' || !p.type);
@@ -127,39 +156,55 @@ class HistoryView {
       this.allTransactions = [
         ...billsData.map(bill => ({
           typeCode: 'bill',
-          date: new Date(bill.bill_date || bill.created_at),
+          date: new Date(bill.bill_date || bill.invoice_date || bill.created_at || Date.now()),
           data: bill
         })),
         ...payments.map(payment => ({
           typeCode: 'payment',
-          date: new Date(payment.payment_date || payment.created_at),
+          date: new Date(payment.payment_date || payment.created_at || Date.now()),
           data: payment
         })),
         ...creditNotes.map(credit => ({
           typeCode: 'credit_note',
-          date: new Date(credit.payment_date || credit.created_at),
+          date: new Date(credit.payment_date || credit.created_at || Date.now()),
           data: credit
         }))
       ];
 
       log.debug(`✓ Total transactions: ${this.allTransactions.length} (${billsData.length} bills, ${payments.length} payments, ${creditNotes.length} credits)`);
 
-      await this.updateStats();
+      try {
+        await this.updateStats();
+      } catch (statErr) {
+        log.warn('Non-fatal error updating stats:', statErr);
+      }
+
       this.setupEventListeners();
       this.renderTransactions();
 
     } catch (error) {
       log.error('Error loading history:', error);
-      const loadingMsg = document.getElementById('historyLoadingMsg');
       if (loadingMsg) {
         loadingMsg.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">⚠ Error loading transactions: ${error.message}</div>`;
+      }
+    } finally {
+      // Guaranteed dismiss of the loading state
+      if (loadingMsg && container && container.style.display === 'block') {
+        loadingMsg.style.display = 'none';
       }
     }
   }
 
   async fetchBills() {
     try {
-      const response = await this.billingApp.api.getBills();
+      if (this.billingApp?.billingData?.bills?.length > 0) {
+        return this.billingApp.billingData.bills;
+      }
+      if (!this.billingApp?.api?.getBills) return [];
+      const response = await Promise.race([
+        this.billingApp.api.getBills(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout fetching bills')), 5000))
+      ]);
       const normalizeCollection = payload => {
         if (Array.isArray(payload)) return payload;
         if (!payload) return [];
@@ -170,13 +215,7 @@ class HistoryView {
       };
       
       let bills = normalizeCollection(response);
-      
-      if (!Array.isArray(bills)) {
-        log.warn('Unexpected bills response format:', response);
-        return [];
-      }
-
-      return bills;
+      return Array.isArray(bills) ? bills : [];
     } catch (error) {
       log.error('Error fetching bills:', error);
       return [];
@@ -185,7 +224,14 @@ class HistoryView {
 
   async fetchPayments() {
     try {
-      const response = await this.billingApp.api.getPayments();
+      if (this.billingApp?.billingData?.payments?.length > 0) {
+        return this.billingApp.billingData.payments;
+      }
+      if (!this.billingApp?.api?.getPayments) return [];
+      const response = await Promise.race([
+        this.billingApp.api.getPayments(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout fetching payments')), 5000))
+      ]);
       const normalizeCollection = payload => {
         if (Array.isArray(payload)) return payload;
         if (!payload) return [];
@@ -196,13 +242,7 @@ class HistoryView {
       };
       
       let payments = normalizeCollection(response);
-      
-      if (!Array.isArray(payments)) {
-        log.warn('Unexpected payments response format:', response);
-        return [];
-      }
-
-      return payments;
+      return Array.isArray(payments) ? payments : [];
     } catch (error) {
       log.error('Error fetching payments:', error);
       return [];
@@ -210,104 +250,128 @@ class HistoryView {
   }
 
   async updateStats() {
-    const isWorker = this.isWorkerUser();
     let excludedCustomerNames = new Set();
     let customerOpeningBalances = new Map();
     
-    try {
-      const response = await fetch('/api/contacts');
-      if (response.ok) {
-        const result = await response.json();
-        const normalizeCollection = payload => {
-          if (Array.isArray(payload)) return payload;
-          if (!payload) return [];
-          if (Array.isArray(payload.items)) return payload.items;
-          if (Array.isArray(payload.data)) return payload.data;
-          if (Array.isArray(payload.data?.items)) return payload.data.items;
-          return [];
-        };
-        const contactsArr = normalizeCollection(result);
-        contactsArr.forEach(c => {
-          if (c.exclude_from_stats === 1 || c.exclude_from_stats === '1' || c.exclude_from_stats === true) {
-            excludedCustomerNames.add(c.name);
-          }
-          if (c.opening_balance) {
-            customerOpeningBalances.set(c.name, c.opening_balance);
-          }
-        });
+    // First check contacts from in-memory billingData to avoid redundant network call
+    const inMemoryContacts = this.billingApp?.billingData?.contacts || (this.billingApp?.getScopedBillingData?.()?.contacts);
+    if (Array.isArray(inMemoryContacts) && inMemoryContacts.length > 0) {
+      inMemoryContacts.forEach(c => {
+        if (c.exclude_from_stats === 1 || c.exclude_from_stats === '1' || c.exclude_from_stats === true) {
+          excludedCustomerNames.add(c.name);
+        }
+        if (c.opening_balance) {
+          customerOpeningBalances.set(c.name, Number(c.opening_balance) || 0);
+        }
+      });
+    } else {
+      try {
+        const response = await Promise.race([
+          fetch('/api/contacts'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout fetching contacts')), 4000))
+        ]);
+        if (response.ok) {
+          const result = await response.json();
+          const normalizeCollection = payload => {
+            if (Array.isArray(payload)) return payload;
+            if (!payload) return [];
+            if (Array.isArray(payload.items)) return payload.items;
+            if (Array.isArray(payload.data)) return payload.data;
+            if (Array.isArray(payload.data?.items)) return payload.data.items;
+            return [];
+          };
+          const contactsArr = normalizeCollection(result);
+          contactsArr.forEach(c => {
+            if (c.exclude_from_stats === 1 || c.exclude_from_stats === '1' || c.exclude_from_stats === true) {
+              excludedCustomerNames.add(c.name);
+            }
+            if (c.opening_balance) {
+              customerOpeningBalances.set(c.name, Number(c.opening_balance) || 0);
+            }
+          });
+        }
+      } catch (error) {
+        log.warn('Error fetching contacts for history stats:', error);
       }
-    } catch (error) {
-      log.warn('Error fetching contacts for history stats:', error);
     }
 
-    // 2. Filter transactions by excluded customers for admin stats calculation
-    const bills = this.allTransactions.filter(t => t.typeCode === 'bill' && !excludedCustomerNames.has(t.data.customer_name));
-    const payments = this.allTransactions.filter(t => t.typeCode === 'payment' && !excludedCustomerNames.has(t.data.customer_name));
-    const credits = this.allTransactions.filter(t => t.typeCode === 'credit_note' && !excludedCustomerNames.has(t.data.customer_name));
+    // Filter transactions by excluded customers for admin stats calculation
+    const bills = (this.allTransactions || []).filter(t => t.typeCode === 'bill' && !excludedCustomerNames.has(t.data?.customer_name));
+    const payments = (this.allTransactions || []).filter(t => t.typeCode === 'payment' && !excludedCustomerNames.has(t.data?.customer_name));
+    const credits = (this.allTransactions || []).filter(t => t.typeCode === 'credit_note' && !excludedCustomerNames.has(t.data?.customer_name));
 
-    // 3. Calculate totals
-    let totalInvoiced = bills.reduce((sum, t) => sum + (t.data.grand_total || t.data.total || 0), 0);
-    const totalPaid = payments.reduce((sum, t) => sum + (t.data.amount || 0), 0);
-    const totalCredits = credits.reduce((sum, t) => sum + (t.data.credit_amount || 0), 0);
+    // Calculate totals with explicit number coercion
+    let totalInvoiced = bills.reduce((sum, t) => sum + (Number(t.data?.grand_total || t.data?.total) || 0), 0);
+    const totalPaid = payments.reduce((sum, t) => sum + (Number(t.data?.amount) || 0), 0);
+    const totalCredits = credits.reduce((sum, t) => sum + (Number(t.data?.credit_amount) || 0), 0);
 
-    // 4. Add opening balance ONLY from non-excluded customers
+    // Add opening balance ONLY from non-excluded customers
     let totalOpeningBalance = 0;
     customerOpeningBalances.forEach((balance, name) => {
       if (!excludedCustomerNames.has(name)) {
-        totalOpeningBalance += balance;
+        totalOpeningBalance += (Number(balance) || 0);
       }
     });
     
     totalInvoiced += totalOpeningBalance;
-
     const outstanding = totalInvoiced - totalPaid - totalCredits;
 
-    const statBoxes = document.querySelectorAll('.stat-box');
-    if (statBoxes.length >= 3) {
-      statBoxes[0].querySelector('.stat-value').textContent = `₹${totalInvoiced.toFixed(2)}`;
-      statBoxes[1].querySelector('.stat-value').textContent = `₹${(totalPaid + totalCredits).toFixed(2)}`;
-      statBoxes[2].querySelector('.stat-value').textContent = `₹${outstanding.toFixed(2)}`;
+    const root = this.viewContainer || document;
+    const statBoxes = root.querySelectorAll('#headerStats .stat-box');
+    if (statBoxes && statBoxes.length >= 3) {
+      const v0 = statBoxes[0].querySelector('.stat-value');
+      const v1 = statBoxes[1].querySelector('.stat-value');
+      const v2 = statBoxes[2].querySelector('.stat-value');
+      if (v0) v0.textContent = `₹${(Number(totalInvoiced) || 0).toFixed(2)}`;
+      if (v1) v1.textContent = `₹${(Number(totalPaid + totalCredits) || 0).toFixed(2)}`;
+      if (v2) v2.textContent = `₹${(Number(outstanding) || 0).toFixed(2)}`;
     }
   }
 
   setupEventListeners() {
-    const searchInput = document.getElementById('historySearch');
-    const typeFilter = document.getElementById('historyTypeFilter');
-    const sortSelect = document.getElementById('historySortSelect');
+    const root = this.viewContainer || document;
+    const searchInput = root.querySelector('#historySearch');
+    const typeFilter = root.querySelector('#historyTypeFilter');
+    const sortSelect = root.querySelector('#historySortSelect');
 
-    if (searchInput) {
+    if (searchInput && !searchInput._hasHistoryListener) {
+      searchInput._hasHistoryListener = true;
       searchInput.addEventListener('input', () => this.renderTransactions());
     }
-    if (typeFilter) {
+    if (typeFilter && !typeFilter._hasHistoryListener) {
+      typeFilter._hasHistoryListener = true;
       typeFilter.addEventListener('change', () => this.renderTransactions());
     }
-    if (sortSelect) {
+    if (sortSelect && !sortSelect._hasHistoryListener) {
+      sortSelect._hasHistoryListener = true;
       sortSelect.addEventListener('change', () => this.renderTransactions());
     }
 
-    // Listen for worker badges toggle
-    window.addEventListener('worker-badges-toggle-changed', () => {
-      this.renderTransactions();
-    });
+    if (!this._workerBadgeListenerBound) {
+      this._workerBadgeListenerBound = true;
+      window.addEventListener('worker-badges-toggle-changed', () => {
+        this.renderTransactions();
+      });
+    }
   }
 
   renderTransactions() {
-    const searchInput = document.getElementById('historySearch');
-    const typeFilter = document.getElementById('historyTypeFilter');
-    const sortSelect = document.getElementById('historySortSelect');
-    const container = document.getElementById('historyContainer');
-    const loadingMsg = document.getElementById('historyLoadingMsg');
+    const root = this.viewContainer || document;
+    const searchInput = root.querySelector('#historySearch');
+    const typeFilter = root.querySelector('#historyTypeFilter');
+    const sortSelect = root.querySelector('#historySortSelect');
+    const container = root.querySelector('#historyContainer');
+    const loadingMsg = root.querySelector('#historyLoadingMsg');
 
-    if (!container || !loadingMsg) return;
+    if (!container) return;
 
-    let filtered = [...this.allTransactions];
+    let filtered = [...(this.allTransactions || [])];
     let showingOpeningBalance = false;
 
     // Filter by type
     if (typeFilter?.value) {
       if (typeFilter.value === 'opening-balance') {
         showingOpeningBalance = true;
-        // Don't filter transactions, we'll show opening balance cards
         filtered = [];
       } else {
         filtered = filtered.filter(t => t.typeCode === typeFilter.value);
@@ -316,12 +380,14 @@ class HistoryView {
 
     // Search
     if (searchInput?.value) {
-      const q = searchInput.value.toLowerCase();
-      filtered = filtered.filter(t => {
-        const customer = (t.data.customer_name || '').toLowerCase();
-        const ref = (t.data.reference_no || t.data.reference_number || t.data.invoice_no || '').toLowerCase();
-        return customer.includes(q) || ref.includes(q);
-      });
+      const q = searchInput.value.toLowerCase().trim();
+      if (q) {
+        filtered = filtered.filter(t => {
+          const customer = (t.data?.customer_name || '').toLowerCase();
+          const ref = (t.data?.reference_no || t.data?.reference_number || t.data?.invoice_no || '').toLowerCase();
+          return customer.includes(q) || ref.includes(q);
+        });
+      }
     }
 
     // Sort
@@ -331,12 +397,12 @@ class HistoryView {
           filtered.sort((a, b) => a.date - b.date);
           break;
         case 'customer':
-          filtered.sort((a, b) => (a.data.customer_name || '').localeCompare(b.data.customer_name || ''));
+          filtered.sort((a, b) => (a.data?.customer_name || '').localeCompare(b.data?.customer_name || ''));
           break;
         case 'amount-high':
           filtered.sort((a, b) => {
-            const aAmount = a.data.grand_total || a.data.amount || a.data.credit_amount || 0;
-            const bAmount = b.data.grand_total || b.data.amount || b.data.credit_amount || 0;
+            const aAmount = Number(a.data?.grand_total || a.data?.amount || a.data?.credit_amount) || 0;
+            const bAmount = Number(b.data?.grand_total || b.data?.amount || b.data?.credit_amount) || 0;
             return bAmount - aAmount;
           });
           break;
@@ -347,13 +413,21 @@ class HistoryView {
       filtered.sort((a, b) => b.date - a.date);
     }
 
-    // Render
+    // Always ensure loadingMsg is hidden and container is displayed
+    if (loadingMsg) loadingMsg.style.display = 'none';
+    container.style.display = 'block';
+
+    // Render Opening Balance View
     if (showingOpeningBalance) {
-      // Show only opening balance cards
-      const customers = [...new Set(this.allTransactions.map(t => t.data.customer_name).filter(c => c))];
+      const customers = [...new Set((this.allTransactions || []).map(t => t.data?.customer_name).filter(Boolean))];
       
+      if (customers.length === 0) {
+        container.innerHTML = `<div class="history-empty" style="text-align:center; padding:40px; color:#6b7280;"><span>✨</span> No customer balances found</div>`;
+        return;
+      }
+
       const openingBalanceCardsHTML = customers.map(customer => `
-        <div class="history-card opening-balance-card" data-customer="${customer}" style="background: linear-gradient(135deg, #f0f8ff 0%, #e0efff 100%); border: 2px solid #1e40af; margin-bottom: 12px;">
+        <div class="history-card opening-balance-card" data-customer="${customer}" style="background: linear-gradient(135deg, #f0f8ff 0%, #e0efff 100%); border: 2px solid #1e40af; margin-bottom: 12px; border-radius: 8px;">
           <div style="padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
@@ -368,8 +442,6 @@ class HistoryView {
       `).join('');
       
       container.innerHTML = openingBalanceCardsHTML;
-      loadingMsg.style.display = 'none';
-      container.style.display = 'block';
       
       customers.forEach(customer => {
         this.fetchAndDisplayOpeningBalance(customer, container);
@@ -378,50 +450,65 @@ class HistoryView {
     }
     
     if (filtered.length === 0) {
-      container.innerHTML = `<div class="history-empty"><span>✨</span> No transactions found</div>`;
-      loadingMsg.style.display = 'none';
-      container.style.display = 'block';
+      container.innerHTML = `<div class="history-empty" style="text-align:center; padding:40px; color:#6b7280;"><span style="font-size:24px; display:block; margin-bottom:8px;">✨</span> No transactions found</div>`;
       return;
     }
 
-    const html = filtered.map(t => this.renderCard(t)).join('');
-    container.innerHTML = html;
-    loadingMsg.style.display = 'none';
-    container.style.display = 'block';
+    try {
+      const html = filtered.map(t => this.renderCard(t)).join('');
+      container.innerHTML = html;
+    } catch (renderErr) {
+      log.error('Error rendering transaction cards:', renderErr);
+      container.innerHTML = `<div style="color: #ef4444; padding: 20px; text-align: center;">⚠ Error rendering transactions: ${renderErr.message}</div>`;
+    }
   }
 
   async fetchAndDisplayOpeningBalance(customerName, container) {
     try {
-      const response = await fetch(`/api/contacts?search=${encodeURIComponent(customerName)}`);
-      if (response.ok) {
-        const result = await response.json();
-        const contacts = result.data || result;
-        
-        if (Array.isArray(contacts) && contacts.length > 0) {
-          const customer = contacts.find(c => c.name.toLowerCase() === customerName.toLowerCase());
-          if (customer) {
-            const openingBalance = customer.opening_balance || 0;
-            // Store opening balance for sorting
+      // First check cache in this.customerOpeningBalances or in-memory contacts
+      let openingBalance = this.customerOpeningBalances.get(customerName);
+      if (openingBalance === undefined) {
+        const inMemoryContacts = this.billingApp?.billingData?.contacts || (this.billingApp?.getScopedBillingData?.()?.contacts);
+        if (Array.isArray(inMemoryContacts)) {
+          const match = inMemoryContacts.find(c => (c.name || '').toLowerCase() === customerName.toLowerCase());
+          if (match) {
+            openingBalance = Number(match.opening_balance) || 0;
             this.customerOpeningBalances.set(customerName, openingBalance);
-            
-            // Hide card if opening balance is 0
-            const balanceCard = container.querySelector(`[data-customer="${customerName}"]`);
-            if (openingBalance === 0) {
-              if (balanceCard) balanceCard.style.display = 'none';
-              return;
-            }
-            
-            const card = container.querySelector(`[data-customer="${customerName}"] .opening-balance-amount`);
-            if (card) {
-              let balanceHTML = '';
-              if (openingBalance < 0) {
-                balanceHTML = `<span style="color: #16a34a;">Cr. ₹${Math.abs(openingBalance).toFixed(2)}</span>`;
-              } else {
-                balanceHTML = `<span style="color: #dc2626;">₹${openingBalance.toFixed(2)}</span>`;
-              }
-              card.innerHTML = balanceHTML;
+          }
+        }
+      }
+
+      if (openingBalance === undefined) {
+        const response = await fetch(`/api/contacts?search=${encodeURIComponent(customerName)}`);
+        if (response.ok) {
+          const result = await response.json();
+          const contacts = result.data || result;
+          if (Array.isArray(contacts) && contacts.length > 0) {
+            const customer = contacts.find(c => (c.name || '').toLowerCase() === customerName.toLowerCase());
+            if (customer) {
+              openingBalance = Number(customer.opening_balance) || 0;
+              this.customerOpeningBalances.set(customerName, openingBalance);
             }
           }
+        }
+      }
+
+      if (openingBalance !== undefined) {
+        const balanceCard = container.querySelector(`[data-customer="${customerName}"]`);
+        if (openingBalance === 0) {
+          if (balanceCard) balanceCard.style.display = 'none';
+          return;
+        }
+        
+        const card = container.querySelector(`[data-customer="${customerName}"] .opening-balance-amount`);
+        if (card) {
+          let balanceHTML = '';
+          if (openingBalance < 0) {
+            balanceHTML = `<span style="color: #16a34a;">Cr. ₹${Math.abs(openingBalance).toFixed(2)}</span>`;
+          } else {
+            balanceHTML = `<span style="color: #dc2626;">₹${openingBalance.toFixed(2)}</span>`;
+          }
+          card.innerHTML = balanceHTML;
         }
       }
     } catch (error) {
@@ -432,15 +519,15 @@ class HistoryView {
   renderCard(transaction) {
     const { typeCode, data } = transaction;
 
-    // Determine appropriate date field
     const dateField = typeCode === 'bill' 
-      ? (data.bill_date || data.created_at) 
+      ? (data.bill_date || data.invoice_date || data.created_at) 
       : (data.payment_date || data.created_at);
-    const date = new Date(dateField).toLocaleDateString('en-IN', {
+    const dateObj = dateField ? new Date(dateField) : new Date();
+    const date = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString('en-IN', {
       day: '2-digit',
       month: 'short',
       year: 'numeric'
-    });
+    }) : 'N/A';
 
     if (typeCode === 'bill') {
       return this.renderBillCard(data, date);
@@ -452,8 +539,8 @@ class HistoryView {
   }
 
   renderBillCard(data, date) {
-    const invNo = data.invoice_no || data.invoice_number || `INV-${data.id}`;
-    const amount = data.grand_total || 0;
+    const invNo = data.invoice_no || data.invoice_number || `INV-${data.id || ''}`;
+    const amount = Number(data.grand_total || data.total || 0) || 0;
     const status = data.status || 'pending';
     const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
       ? window.renderWorkerBadge(data, { compact: true })
@@ -498,8 +585,8 @@ class HistoryView {
   }
 
   renderPaymentCard(data, date) {
-    const refNo = data.reference_no || data.reference_number || `PAY-${data.id}`;
-    const amount = data.amount || 0;
+    const refNo = data.reference_no || data.reference_number || `PAY-${data.id || ''}`;
+    const amount = Number(data.amount || 0) || 0;
     const medium = data.payment_medium || 'Cash';
     const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
       ? window.renderWorkerBadge(data, { compact: true })
@@ -545,8 +632,8 @@ class HistoryView {
   }
 
   renderCreditCard(data, date) {
-    const refNo = data.reference_no || data.reference_number || `CREDIT-${data.id}`;
-    const amount = data.credit_amount || 0;
+    const refNo = data.reference_no || data.reference_number || `CREDIT-${data.id || ''}`;
+    const amount = Number(data.credit_amount || 0) || 0;
     const reason = data.reason || 'General Credit';
     const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
       ? window.renderWorkerBadge(data, { compact: true })
@@ -693,8 +780,8 @@ HistoryView.showViewer = function(imgData, refName = 'Unknown') {
         ev.preventDefault();
         const dx = ev.clientX - lastPointer.x;
         const dy = ev.clientY - lastPointer.y;
-        lastPointer.x = ev.clientX;
-        lastPointer.y = ev.clientY;
+        lastPointer.x = dx;
+        lastPointer.y = dy;
         translate.x += dx;
         translate.y += dy;
         applyTransform();
@@ -723,4 +810,3 @@ HistoryView.showViewer = function(imgData, refName = 'Unknown') {
 
 // Make accessible globally
 window.HistoryView = HistoryView;
-
