@@ -291,21 +291,27 @@ export class ProductListApp extends AppWindow {
     this.checkBackendConnection();
 
     if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._reactiveProductTimer = null;
+      this.scheduleReactiveProductRefresh = () => {
+        clearTimeout(this._reactiveProductTimer);
+        this._reactiveProductTimer = setTimeout(() => {
+          if (this.api) this.api.invalidateCache('/products');
+          if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
+        }, 350);
+      };
+
       this._dataBusProductsUnsub = window.CoreDataBus.subscribeDomain('products:', (data) => {
         log.debug('Reactive trigger from CoreDataBus for products update:', data);
-        if (this.api) this.api.invalidateCache('/products');
-        if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
+        this.scheduleReactiveProductRefresh();
       });
       this._dataBusInventoryUnsub = window.CoreDataBus.subscribeDomain('inventory:', () => {
         log.debug('Reactive trigger from CoreDataBus for inventory update');
-        if (this.api) this.api.invalidateCache('/products');
-        if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
+        this.scheduleReactiveProductRefresh();
       });
       this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
         if (data?.domain === 'billing:invoice') {
           log.debug('Reactive trigger from CoreDataBus for bill creation (refreshing product stock)');
-          if (this.api) this.api.invalidateCache('/products');
-          if (this.apiEnabled) this.loadProducts({ forceRefresh: true });
+          this.scheduleReactiveProductRefresh();
         }
       });
     }

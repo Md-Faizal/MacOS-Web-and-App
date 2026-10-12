@@ -34,13 +34,21 @@ class ContactsApp extends AppWindow {
     this.loadContactsFromAPI();
 
     if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._reactiveContactsTimer = null;
+      this.scheduleReactiveContactsRefresh = () => {
+        clearTimeout(this._reactiveContactsTimer);
+        this._reactiveContactsTimer = setTimeout(() => {
+          this.loadContactsFromAPI();
+        }, 350);
+      };
+
       this._dataBusContactsUnsub = window.CoreDataBus.subscribeDomain('contacts:', () => {
         log.debug('Reactive trigger from CoreDataBus for contacts');
-        this.loadContactsFromAPI();
+        this.scheduleReactiveContactsRefresh();
       });
       this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
         log.debug('Reactive trigger from CoreDataBus for billing (updating customer balance/sales):', data?.domain, data?.action);
-        this.loadContactsFromAPI();
+        this.scheduleReactiveContactsRefresh();
       });
     }
 

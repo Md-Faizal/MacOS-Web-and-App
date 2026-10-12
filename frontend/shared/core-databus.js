@@ -92,18 +92,42 @@
   let sseRetryDelay = 2000;
   let sseReconnectTimer = null;
   let hasConnectedToSSE = false;
+  const pageLoadTimestamp = Date.now();
+  let lastReconciliationTime = 0;
+  let reconciliationDebounceTimer = null;
+  const STARTUP_QUIET_WINDOW_MS = 3500; // 3.5s quiet window on boot to prevent thundering herd
+  const RECONCILIATION_COOLDOWN_MS = 6000; // At most once every 6s
 
   function dispatchReconciliation(reason) {
-    [
-      'billing:invoice:updated',
-      'contacts:customer:updated',
-      'inventory:product:updated',
-      'orders:order:updated',
-      'notes:note:updated',
-      'calendar:event:updated'
-    ].forEach((type) => {
-      dispatchInternal(type, { reason }, false);
-    });
+    // 1. Never trigger reconciliation storm during initial page boot & DOM mount
+    if (Date.now() - pageLoadTimestamp < STARTUP_QUIET_WINDOW_MS) {
+      log.debug(`[CoreDataBus] Suppressed reconciliation (${reason}) during startup quiet window.`);
+      return;
+    }
+
+    // 2. Cooldown gate
+    const now = Date.now();
+    if (now - lastReconciliationTime < RECONCILIATION_COOLDOWN_MS) {
+      log.debug(`[CoreDataBus] Suppressed reconciliation (${reason}) due to cooldown window.`);
+      return;
+    }
+
+    // 3. Trailing-edge debounce to collapse rapid tab/window events
+    clearTimeout(reconciliationDebounceTimer);
+    reconciliationDebounceTimer = setTimeout(() => {
+      lastReconciliationTime = Date.now();
+      log.debug(`[CoreDataBus] Dispatching reconciliation (${reason})`);
+      [
+        'billing:invoice:updated',
+        'contacts:customer:updated',
+        'inventory:product:updated',
+        'orders:order:updated',
+        'notes:note:updated',
+        'calendar:event:updated'
+      ].forEach((type) => {
+        dispatchInternal(type, { reason }, false);
+      });
+    }, 400);
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -112,9 +136,27 @@
     }
   });
 
+  function isSessionAuthenticated() {
+    try {
+      if (document.body && document.body.getAttribute('data-unlock-state') === 'locked') return false;
+      if (window.location.pathname.endsWith('index.html') || window.location.pathname === '/') {
+        return sessionStorage.getItem('macos_session_active') === 'true';
+      }
+      return sessionStorage.getItem('macos_session_active') === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
   function initSSE() {
     if (typeof EventSource === 'undefined') return;
     if (sseConnection) return;
+
+    // Do not attempt SSE connection on unauthenticated / lockscreen states to prevent 401 retry loops
+    if (!isSessionAuthenticated()) {
+      log.debug('SSE connection deferred: user session not active yet.');
+      return;
+    }
 
     try {
       // Prefer unified /api/events with fallback to /api/billing/events
@@ -148,6 +190,9 @@
           sseConnection.close();
           sseConnection = null;
         }
+        // Only retry if session is active
+        if (!isSessionAuthenticated()) return;
+
         // Exponential backoff up to 30s
         if (!sseReconnectTimer) {
           sseReconnectTimer = setTimeout(() => {
@@ -162,11 +207,16 @@
     }
   }
 
+  // Listen for login / session verification event to trigger SSE seamlessly
+  window.addEventListener('macos-auth-verified', () => {
+    setTimeout(initSSE, 1000);
+  });
+
   // Automatically initialize SSE once DOM / session is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(initSSE, 1000));
+    document.addEventListener('DOMContentLoaded', () => setTimeout(initSSE, 1500));
   } else {
-    setTimeout(initSSE, 1000);
+    setTimeout(initSSE, 1500);
   }
 
   // Public CoreDataBus API

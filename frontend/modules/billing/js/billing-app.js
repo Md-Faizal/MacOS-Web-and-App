@@ -400,52 +400,70 @@ export class BillingApp extends AppWindow {
 
     // Centralized CoreDataBus Reactive Integration for Instant Zero-Refresh Multi-Tab Synchronization
     if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._pendingReactiveDomains = new Set();
+      this._reactiveSyncTimer = null;
+
+      this.scheduleReactiveSync = (domainName) => {
+        if (domainName) this._pendingReactiveDomains.add(domainName);
+        clearTimeout(this._reactiveSyncTimer);
+        this._reactiveSyncTimer = setTimeout(async () => {
+          const domains = new Set(this._pendingReactiveDomains);
+          this._pendingReactiveDomains.clear();
+
+          // 1. Invalidate caches for affected domains
+          if (domains.has('billing')) {
+            this.api?.invalidateCache('/billing');
+          }
+          if (domains.has('contacts')) {
+            this.api?.invalidateCache('/billing/ledger/customers');
+            this.api?.invalidateCache('/customers');
+            this.api?.invalidateCache('/contacts');
+          }
+          if (domains.has('inventory')) {
+            this.api?.invalidateCache('/products');
+            this.api?.invalidateCache('/categories');
+          }
+
+          // 2. Refresh active subviews if mounted in DOM
+          const ledger = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
+          if (this.currentView === 'ledger' && ledger && typeof ledger.syncWithServer === 'function') {
+            ledger.syncWithServer(domains.has('contacts'));
+          }
+
+          const payment = this._subviewInstances?.get('payment-credit');
+          if (this.currentView === 'payment-credit' && payment) {
+            payment.loadRecentTransactions?.();
+            payment.updateStatsDisplay?.();
+            if (domains.has('contacts')) payment.refreshCustomerDropdowns?.();
+          }
+
+          if (this.currentView === 'create') {
+            if (domains.has('contacts')) this.billEditor?.populateCustomersList?.();
+            if (domains.has('inventory')) this.billEditor?.populateProductsList?.();
+          }
+
+          // 3. Perform a single coalesced background fetch of root store
+          try {
+            await this.loadBillingDataFromAPI({ forceRefresh: true });
+          } catch (_) {}
+        }, 350);
+      };
+
       window.CoreDataBus.subscribeDomain('billing:', (data) => {
         log.debug('[BillingApp] Central DataBus update received:', data?.domain, data?.action);
-        // 1. Invalidate read cache immediately
-        this.api.invalidateCache('/billing');
-        // 2. Refresh ledger view in-place if mounted in DOM
-        const ledger = this._subviewInstances?.get('ledger') || this._subviewInstances?.get('existing');
-        if (ledger && typeof ledger.syncWithServer === 'function') {
-          ledger.syncWithServer(false);
-        }
-        // 3. Refresh payment view in-place if mounted in DOM
-        const payment = this._subviewInstances?.get('payment-credit');
-        if (payment && typeof payment.loadRecentTransactions === 'function') {
-          payment.loadRecentTransactions();
-          payment.updateStatsDisplay?.();
-        }
-        // 4. Silently update root store in background
-        this.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.scheduleReactiveSync('billing');
       });
 
       // Cross-App Reactivity: listen to Contacts mutations
       window.CoreDataBus.subscribeDomain('contacts:', (data) => {
         log.debug('[BillingApp] Contact update received from DataBus:', data?.domain, data?.action);
-        this.api.invalidateCache('/billing/ledger/customers');
-        this.api.invalidateCache('/customers');
-        this.api.invalidateCache('/contacts');
-        this.loadBillingDataFromAPI({ forceRefresh: true }).then(() => {
-          if (this.currentView === 'ledger') {
-            this._subviewInstances?.get('ledger')?.syncWithServer(true);
-          } else if (this.currentView === 'payment-credit') {
-            this._subviewInstances?.get('payment-credit')?.refreshCustomerDropdowns?.();
-          } else if (this.currentView === 'create') {
-            this.billEditor?.populateCustomersList?.();
-          }
-        }).catch(() => {});
+        this.scheduleReactiveSync('contacts');
       });
 
       // Cross-App Reactivity: listen to Inventory mutations
       window.CoreDataBus.subscribeDomain('inventory:', (data) => {
         log.debug('[BillingApp] Inventory update received from DataBus:', data?.domain, data?.action);
-        this.api.invalidateCache('/products');
-        this.api.invalidateCache('/categories');
-        this.loadBillingDataFromAPI({ forceRefresh: true }).then(() => {
-          if (this.currentView === 'create') {
-            this.billEditor?.populateProductsList?.();
-          }
-        }).catch(() => {});
+        this.scheduleReactiveSync('inventory');
       });
     }
 

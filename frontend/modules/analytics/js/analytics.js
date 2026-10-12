@@ -85,40 +85,52 @@ class AnalyticsApp extends AppWindow {
     window.currentAnalyticsApp = this;
 
     if (typeof window !== 'undefined' && window.CoreDataBus) {
+      this._reactiveAnalyticsTimer = null;
+      this.scheduleReactiveAnalyticsRefresh = (source = 'billing') => {
+        clearTimeout(this._reactiveAnalyticsTimer);
+        this._reactiveAnalyticsTimer = setTimeout(() => {
+          this.refreshCustomerList().catch(() => {});
+          if (this._subviewPanels) {
+            this._subviewPanels.forEach((panel, name) => {
+              if (name !== this.currentView) {
+                delete panel.dataset.rendered;
+              }
+            });
+          }
+
+          // Only trigger heavy Chart / Canvas re-renders if analytics window is open and visible
+          const isAppOpen = this.appContainer && !this.appContainer.classList.contains('hidden') && this.appContainer.style.display !== 'none';
+          if (!isAppOpen) return;
+
+          if (this.currentView === 'dashboard') {
+            this.dashboardView?.render?.();
+          } else if (this.currentView === 'customer-aging') {
+            this.agingView?.render?.();
+          } else if (this.currentView === 'sales-reports') {
+            this.salesView?.render?.();
+          } else if (this.currentView === 'compliance') {
+            this.complianceView?.loadReportData?.();
+          } else if (this.currentView === 'customer-profile' && this.currentCustomerId) {
+            this.profileView?.render?.(this.currentCustomerId);
+          } else if (this.currentView === 'order-analytics') {
+            this.orderView?.render?.();
+          }
+        }, 400);
+      };
+
       this._dataBusBillingUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
         log.debug('[AnalyticsApp] Billing event received, refreshing active view & insights:', data?.domain, data?.action);
-        this.refreshCustomerList().catch(() => {});
-        if (this._subviewPanels) {
-          this._subviewPanels.forEach((panel, name) => {
-            if (name !== this.currentView) {
-              delete panel.dataset.rendered;
-            }
-          });
-        }
-        // Active view immediate live re-render
-        if (this.currentView === 'dashboard') {
-          this.dashboardView?.render?.();
-        } else if (this.currentView === 'customer-aging') {
-          this.agingView?.render?.();
-        } else if (this.currentView === 'sales-reports') {
-          this.salesView?.render?.();
-        } else if (this.currentView === 'compliance') {
-          this.complianceView?.loadReportData?.();
-        } else if (this.currentView === 'customer-profile' && this.currentCustomerId) {
-          this.profileView?.render?.(this.currentCustomerId);
-        }
+        this.scheduleReactiveAnalyticsRefresh('billing');
       });
 
       this._dataBusContactsUnsub = window.CoreDataBus.subscribeDomain('contacts:', () => {
         log.debug('[AnalyticsApp] Contact event received, refreshing customer list');
-        this.refreshCustomerList().catch(() => {});
+        this.scheduleReactiveAnalyticsRefresh('contacts');
       });
 
       this._dataBusOrdersUnsub = window.CoreDataBus.subscribeDomain('orders:', () => {
         log.debug('[AnalyticsApp] Order event received, refreshing order insights');
-        if (this.currentView === 'order-analytics') {
-          this.orderView?.render?.();
-        }
+        this.scheduleReactiveAnalyticsRefresh('orders');
       });
     }
   }
