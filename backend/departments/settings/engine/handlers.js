@@ -948,7 +948,7 @@ module.exports = function(db) {
           'email_reminders_enabled': 'true',
           'email_reminder_to': 'me@faizal.uk',
           'email_reminder_from': 'reports@faizal.uk',
-          'email_smtp_host': '127.0.0.1',
+          'email_smtp_host': 'mail.faizal.uk',
           'email_smtp_port': '587',
           'email_smtp_user': 'reports@faizal.uk',
           'email_smtp_pass': 'FaizalReports2026!',

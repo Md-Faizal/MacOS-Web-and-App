@@ -172,7 +172,7 @@ export class EmailRemindersSettingsComponent {
             ⚡ Fill Stalwart Defaults
           </button>
         </div>
-        ${this._renderTextInput('erSmtpHost', this._val('email_smtp_host'), 'SMTP Host', '127.0.0.1 or mail.faizal.uk')}
+        ${this._renderTextInput('erSmtpHost', this._val('email_smtp_host') || 'mail.faizal.uk', 'SMTP Host', 'mail.faizal.uk or 172.18.0.1')}
         ${this._renderTextInput('erSmtpPort', this._val('email_smtp_port'), 'SMTP Port', '587 (STARTTLS) or 465 (SMTPS)')}
         ${this._renderTextInput('erSmtpUser', this._val('email_smtp_user'), 'SMTP Username', 'reports@faizal.uk')}
         ${this._renderTextInput('erSmtpPass', this._val('email_smtp_pass'), 'SMTP Password', '••••••••', 'password')}
@@ -363,7 +363,7 @@ export class EmailRemindersSettingsComponent {
     // Stalwart preset button
     c.querySelector('#erStalwartPresetBtn')?.addEventListener('click', () => {
       const setVal = (id, val) => { const el = c.querySelector(`#${id}`); if (el) el.value = val; };
-      setVal('erSmtpHost', '127.0.0.1');
+      setVal('erSmtpHost', 'mail.faizal.uk');
       setVal('erSmtpPort', '587');
       setVal('erSmtpUser', 'reports@faizal.uk');
       setVal('erSmtpPass', 'FaizalReports2026!');
@@ -371,9 +371,10 @@ export class EmailRemindersSettingsComponent {
       setVal('erRecipient', 'me@faizal.uk');
       const status = c.querySelector('#erTestStatus');
       if (status) {
-        status.textContent = '⚡ Filled Stalwart defaults. Click "Save Changes" or "Send Test Email".';
+        status.textContent = '⚡ Filled Stalwart defaults (mail.faizal.uk:587). Click "Save Changes" or "Send Test Email".';
         status.className = 'er-test-status er-test-ok';
       }
+      console.log('[EmailSettings] Applied Stalwart defaults: mail.faizal.uk:587 (reports@faizal.uk)');
     });
 
     // Manual trigger buttons
@@ -390,7 +391,7 @@ export class EmailRemindersSettingsComponent {
     const newSettings = {
       ...this.settings,
       email_reminders_enabled:       getBool('erMasterToggle'),
-      email_smtp_host:               getVal('erSmtpHost') || '127.0.0.1',
+      email_smtp_host:               getVal('erSmtpHost') || 'mail.faizal.uk',
       email_smtp_port:               getVal('erSmtpPort') || '587',
       email_smtp_user:               getVal('erSmtpUser') || 'reports@faizal.uk',
       email_smtp_pass:               getVal('erSmtpPass') || 'FaizalReports2026!',
@@ -419,6 +420,7 @@ export class EmailRemindersSettingsComponent {
     });
 
     try {
+      console.log('[EmailSettings] Saving email reminder settings to backend...', newSettings);
       const res = await fetch('/api/settings/app-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -426,9 +428,11 @@ export class EmailRemindersSettingsComponent {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.settings = newSettings;
+      console.log('[EmailSettings] Settings saved successfully.');
       const toast = c.querySelector('#erSaveStatus');
       if (toast) { toast.style.display = 'inline-flex'; setTimeout(() => toast.style.display = 'none', 3000); }
     } catch (err) {
+      console.error('[EmailSettings] Error saving settings:', err);
       alert('Failed to save email settings: ' + err.message);
     } finally {
       [saveBtn, saveBtn2].filter(Boolean).forEach(b => {
@@ -441,18 +445,32 @@ export class EmailRemindersSettingsComponent {
     const btn    = this.container.querySelector('#erTestBtn');
     const status = this.container.querySelector('#erTestStatus');
     if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Sending…'; }
-    if (status) { status.textContent = ''; status.className = 'er-test-status'; }
+    if (status) { status.textContent = '⏳ Saving settings and contacting mail server…'; status.className = 'er-test-status'; }
     try {
-      // Save first so recipient is up to date
+      // Save first so recipient and host settings are persisted
       await this._save();
+      console.log('[EmailSettings] Initiating test email via POST /api/billing/email/test...');
       const res  = await fetch('/api/billing/email/test', { method: 'POST' });
       const data = await res.json();
+      console.log('[EmailSettings] Test email response from server:', data);
+
       if (status) {
-        status.textContent = data.ok ? '✅ Test email sent successfully!' : `❌ ${data.error || 'Send failed'}`;
-        status.className   = `er-test-status ${data.ok ? 'er-test-ok' : 'er-test-fail'}`;
+        if (data.ok) {
+          status.textContent = `✅ Test email delivered to ${data.recipient || 'inbox'} via ${data.host || 'mail.faizal.uk'}!`;
+          status.className   = 'er-test-status er-test-ok';
+        } else {
+          const detail = data.error || (data.host ? `Could not connect to ${data.host}:${data.port}` : 'Send failed');
+          status.textContent = `❌ ${detail}`;
+          status.className   = 'er-test-status er-test-fail';
+          console.error('[EmailSettings] Test email failed:', detail, data);
+        }
       }
     } catch (err) {
-      if (status) { status.textContent = '❌ ' + err.message; status.className = 'er-test-status er-test-fail'; }
+      console.error('[EmailSettings] Exception while testing email:', err);
+      if (status) {
+        status.textContent = '❌ Network error: ' + err.message;
+        status.className = 'er-test-status er-test-fail';
+      }
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<span>📤</span> Send Test Email'; }
     }
@@ -464,12 +482,16 @@ export class EmailRemindersSettingsComponent {
     try {
       const body = { type };
       if (days) body.days = parseInt(days, 10);
+      console.log('[EmailSettings] Manually triggering reminder email:', body);
       const res  = await fetch('/api/billing/email/trigger', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await res.json();
+      console.log('[EmailSettings] Trigger response:', data);
+
       if (data.ok === false && data.error) {
+        console.error('[EmailSettings] Trigger failed:', data.error);
         alert(`Email trigger failed: ${data.error}`);
       } else {
         const label = { daily:'Daily Summary', weekly:'Weekly Summary', invoice:`${days}d Invoice Alert`,
@@ -486,6 +508,7 @@ export class EmailRemindersSettingsComponent {
         setTimeout(() => toast.remove(), 4000);
       }
     } catch (err) {
+      console.error('[EmailSettings] Trigger error:', err);
       alert('Trigger error: ' + err.message);
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.days ? `▶ ${btn.dataset.days}d Now` : '<span>▶</span> Send Now'; }

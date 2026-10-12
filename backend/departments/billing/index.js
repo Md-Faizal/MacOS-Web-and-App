@@ -75,7 +75,7 @@ module.exports = {
               enabled:         getSetting('email_reminders_enabled', 'false'),
               recipient:       getSetting('email_reminder_to', 'me@faizal.uk'),
               sender:          getSetting('email_reminder_from', 'reports@faizal.uk'),
-              smtp_host:       getSetting('email_smtp_host', '127.0.0.1'),
+              smtp_host:       getSetting('email_smtp_host', 'mail.faizal.uk'),
               smtp_port:       getSetting('email_smtp_port', '587'),
               smtp_user:       getSetting('email_smtp_user', 'reports@faizal.uk'),
               smtp_secure:     getSetting('email_smtp_secure', 'false'),

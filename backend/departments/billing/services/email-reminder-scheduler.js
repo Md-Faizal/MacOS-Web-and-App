@@ -62,9 +62,10 @@ const inr = (n) =>
 // ─── SMTP transport ───────────────────────────────────────────────────────────
 const net = require('net');
 const tls = require('tls');
+const fs  = require('fs');
 
 function getSmtpConfig(db) {
-  const rawHost = getSetting(db, 'email_smtp_host', '127.0.0.1');
+  let rawHost = getSetting(db, 'email_smtp_host', 'mail.faizal.uk');
   const port    = parseInt(getSetting(db, 'email_smtp_port', '587'), 10) || 587;
   const user    = getSetting(db, 'email_smtp_user', 'reports@faizal.uk');
   const pass    = getSetting(db, 'email_smtp_pass', 'FaizalReports2026!');
@@ -72,17 +73,22 @@ function getSmtpConfig(db) {
   const to      = getSetting(db, 'email_reminder_to', 'me@faizal.uk');
   const secure  = port === 465 || getSetting(db, 'email_smtp_secure', 'false').toLowerCase() === 'true';
 
-  let host = rawHost;
-  if ((host === '127.0.0.1' || host === 'localhost') && process.env.DOCKER_BRIDGE_GATEWAY) {
-    host = process.env.DOCKER_BRIDGE_GATEWAY;
+  let host = rawHost || 'mail.faizal.uk';
+  const isInsideDocker = fs.existsSync('/.dockerenv') || !!process.env.DOCKER_CONTAINER || process.cwd().startsWith('/app');
+  if ((host === '127.0.0.1' || host === 'localhost')) {
+    if (process.env.DOCKER_BRIDGE_GATEWAY) {
+      host = process.env.DOCKER_BRIDGE_GATEWAY;
+    } else if (isInsideDocker || process.env.NODE_ENV === 'production') {
+      host = 'mail.faizal.uk';
+    }
   }
 
   return { host, port, user, pass, from, to, secure };
 }
 
-function createTransport(db) {
+function createTransport(cfgOrDb) {
   if (!nodemailer) return null;
-  const cfg = getSmtpConfig(db);
+  const cfg = cfgOrDb && cfgOrDb.host ? cfgOrDb : getSmtpConfig(cfgOrDb);
   const opts = {
     host: cfg.host,
     port: cfg.port,
@@ -97,9 +103,9 @@ function createTransport(db) {
   return nodemailer.createTransport(opts);
 }
 
-function sendViaRawSmtp(db, { subject, html, text }) {
+function sendViaRawSmtp(cfgOrDb, { subject, html, text }) {
   return new Promise((resolve, reject) => {
-    const cfg = getSmtpConfig(db);
+    const cfg = cfgOrDb && cfgOrDb.host ? cfgOrDb : getSmtpConfig(cfgOrDb);
     const recipients = (cfg.to || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!recipients.length) return reject(new Error('No recipient email specified'));
 
@@ -285,33 +291,58 @@ function sendViaRawSmtp(db, { subject, html, text }) {
 
 async function sendEmail(db, { subject, html, text }) {
   const cfg = getSmtpConfig(db);
-  if (!cfg.to) { console.warn('[EmailScheduler] No recipient — skipping:', subject); return false; }
+  if (!cfg.to) {
+    console.warn('[EmailScheduler] No recipient — skipping:', subject);
+    return { ok: false, error: 'No recipient email configured' };
+  }
 
-  const transport = createTransport(db);
-  if (transport) {
+  // Candidate hosts to attempt: configured host first, followed by known network bridges
+  const candidates = [cfg.host];
+  if (cfg.host === '127.0.0.1' || cfg.host === 'localhost') {
+    if (!candidates.includes('mail.faizal.uk')) candidates.push('mail.faizal.uk');
+    if (!candidates.includes('172.18.0.1')) candidates.push('172.18.0.1');
+    if (!candidates.includes('172.17.0.1')) candidates.push('172.17.0.1');
+  } else if (cfg.host === 'mail.faizal.uk') {
+    if (!candidates.includes('172.18.0.1')) candidates.push('172.18.0.1');
+  }
+
+  let lastError = null;
+
+  for (const candidateHost of candidates) {
+    const activeCfg = { ...cfg, host: candidateHost };
+
+    // 1. Try nodemailer first
+    const transport = createTransport(activeCfg);
+    if (transport) {
+      try {
+        const info = await transport.sendMail({
+          from: `"MacOS Suite" <${activeCfg.from}>`,
+          to: activeCfg.to,
+          subject,
+          text: text || subject,
+          html,
+        });
+        console.log(`[EmailScheduler] ✓ Sent via nodemailer (${candidateHost}:${activeCfg.port}): "${subject}" → ${info.messageId}`);
+        return { ok: true, messageId: info.messageId, host: candidateHost };
+      } catch (err) {
+        lastError = err.message;
+        console.warn(`[EmailScheduler] Nodemailer (${candidateHost}) failed (${err.message}), trying raw SMTP...`);
+      }
+    }
+
+    // 2. Fallback to native raw SMTP
     try {
-      const info = await transport.sendMail({
-        from: `"MacOS Suite" <${cfg.from}>`,
-        to: cfg.to,
-        subject,
-        text: text || subject,
-        html,
-      });
-      console.log(`[EmailScheduler] ✓ Sent via nodemailer: "${subject}" → ${info.messageId}`);
-      return true;
-    } catch (err) {
-      console.warn(`[EmailScheduler] Nodemailer send failed (${err.message}), trying raw SMTP fallback...`);
+      const res = await sendViaRawSmtp(activeCfg, { subject, html, text });
+      console.log(`[EmailScheduler] ✓ Sent via raw SMTP (${candidateHost}:${activeCfg.port}): "${subject}" → ${res.messageId}`);
+      return { ok: true, messageId: res.messageId, host: candidateHost };
+    } catch (rawErr) {
+      lastError = rawErr.message;
+      console.warn(`[EmailScheduler] Raw SMTP delivery failed for ${candidateHost}:`, rawErr.message);
     }
   }
 
-  try {
-    const res = await sendViaRawSmtp(db, { subject, html, text });
-    console.log(`[EmailScheduler] ✓ Sent via raw SMTP: "${subject}" → ${res.messageId}`);
-    return true;
-  } catch (rawErr) {
-    console.error('[EmailScheduler] SMTP delivery failed:', rawErr.message);
-    return false;
-  }
+  console.error('[EmailScheduler] All SMTP delivery attempts failed:', lastError);
+  return { ok: false, error: lastError || 'SMTP delivery failed', host: cfg.host };
 }
 
 // ─── HTML email shell ─────────────────────────────────────────────────────────
@@ -751,11 +782,32 @@ class EmailReminderScheduler {
   }
 
   // ── Manual triggers (called from API endpoints) ──────────────────────────
-  async triggerDaily()               { return sendEmail(this.db, buildDailySummary(this.db)); }
-  async triggerWeekly()              { return sendEmail(this.db, buildWeeklySummary(this.db)); }
-  async triggerInvoiceOverdue(days)  { const m = buildInvoiceOverdue(this.db, days); return m ? sendEmail(this.db, m) : false; }
-  async triggerOrderPending(days)    { const m = buildOrderPending(this.db, days); return m ? sendEmail(this.db, m) : false; }
-  async triggerLowStock()            { const m = buildLowStock(this.db); return m ? sendEmail(this.db, m) : false; }
+  async triggerDaily() {
+    const res = await sendEmail(this.db, buildDailySummary(this.db));
+    return res && res.ok;
+  }
+  async triggerWeekly() {
+    const res = await sendEmail(this.db, buildWeeklySummary(this.db));
+    return res && res.ok;
+  }
+  async triggerInvoiceOverdue(days) {
+    const m = buildInvoiceOverdue(this.db, days);
+    if (!m) return false;
+    const res = await sendEmail(this.db, m);
+    return res && res.ok;
+  }
+  async triggerOrderPending(days) {
+    const m = buildOrderPending(this.db, days);
+    if (!m) return false;
+    const res = await sendEmail(this.db, m);
+    return res && res.ok;
+  }
+  async triggerLowStock() {
+    const m = buildLowStock(this.db);
+    if (!m) return false;
+    const res = await sendEmail(this.db, m);
+    return res && res.ok;
+  }
 
   async testSmtp() {
     const cfg = getSmtpConfig(this.db);
@@ -782,10 +834,13 @@ class EmailReminderScheduler {
       }),
     };
     try {
-      const ok = await sendEmail(this.db, msg);
-      return { ok, host: cfg.host, port: cfg.port, recipient: cfg.to };
+      const res = await sendEmail(this.db, msg);
+      if (res && res.ok) {
+        return { ok: true, host: res.host || cfg.host, port: cfg.port, recipient: cfg.to, messageId: res.messageId };
+      }
+      return { ok: false, error: res?.error || 'SMTP delivery failed', host: cfg.host, port: cfg.port, recipient: cfg.to };
     } catch (err) {
-      return { ok: false, error: err.message };
+      return { ok: false, error: err.message, host: cfg.host, port: cfg.port, recipient: cfg.to };
     }
   }
 }
