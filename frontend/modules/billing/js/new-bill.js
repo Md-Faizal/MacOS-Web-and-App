@@ -633,8 +633,15 @@ class BillEditor {
     clearBtn?.addEventListener('click', () => this.clearBillForm());
     
     backBtn?.addEventListener('click', () => {
-      // Return to edit bills list view
-      this.billingApp.editBillsPayments.renderEditBillListView();
+      // Return to ledger or edit bills list view
+      const returnView = this.returnToView || ((this.billingApp?.currentView === 'ledger') ? 'ledger' : 'edit');
+      this.returnToView = null;
+      if (returnView === 'ledger') {
+        this.billingApp.switchView('ledger');
+      } else {
+        this.billingApp.switchView('edit');
+        this.billingApp.editBillsPayments.renderEditBillListView();
+      }
     });
 
     // GST Reverse button toggle
@@ -3508,14 +3515,14 @@ class BillEditor {
     // Check if we're updating an existing bill or creating a new one
     if (this.editingBillId) {
       // UPDATE MODE - Update existing bill
-      const billIndex = this.billingData.bills.findIndex(b => b.id === this.editingBillId || b.bill_id === this.editingBillId);
-      if (billIndex === -1) {
-        this.showNotification('Bill not found', 'error');
-        return;
-      }
+      const billIndex = (this.billingData?.bills || []).findIndex(b => 
+        b.id == this.editingBillId || b.bill_id == this.editingBillId || String(b.id) === String(this.editingBillId)
+      );
 
+      const existingBill = (billIndex !== -1) ? this.billingData.bills[billIndex] : (this.billDataToEdit || {});
       const updatedBill = {
-        ...this.billingData.bills[billIndex],
+        ...existingBill,
+        id: this.editingBillId,
         customer_name: customerName,
         bill_date: invoiceDateVal,
         due_date: dueDateVal,
@@ -3552,7 +3559,13 @@ class BillEditor {
 
 
           // Update in memory
-          this.billingData.bills[billIndex] = updatedBill;
+          if (this.billingData?.bills) {
+            if (billIndex !== -1) {
+              this.billingData.bills[billIndex] = updatedBill;
+            } else {
+              this.billingData.bills.push(updatedBill);
+            }
+          }
 
           if (window.CoreDataBus) {
             try {
@@ -3586,7 +3599,9 @@ class BillEditor {
       // Clear editing state
       this.editingBillId = null;
       this.billDataToEdit = null;
-      this.switchView('existing');
+      const targetReturn = (this.returnToView === 'ledger') ? 'ledger' : 'existing';
+      this.returnToView = null;
+      this.switchView(targetReturn);
     } else {
       // CREATE MODE - Create new bill
       // Server allocates reference_no atomically (no client-side generation needed)

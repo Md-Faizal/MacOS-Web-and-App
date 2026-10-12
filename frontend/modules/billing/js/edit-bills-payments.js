@@ -142,7 +142,16 @@ class EditBillsPayments {
       if (scoped && scoped.contacts && scoped.contacts.length > 0) {
         return scoped.contacts;
       }
-      const response = await fetch('/api/contacts');
+      if (this.billingApp?.api?.getContacts) {
+        try {
+          const apiContacts = await this.billingApp.api.getContacts();
+          const normalizedApi = Array.isArray(apiContacts)
+            ? apiContacts
+            : (Array.isArray(apiContacts?.items) ? apiContacts.items : (Array.isArray(apiContacts?.data?.items) ? apiContacts.data.items : (Array.isArray(apiContacts?.data) ? apiContacts.data : [])));
+          if (normalizedApi && normalizedApi.length > 0) return normalizedApi;
+        } catch (_) {}
+      }
+      const response = await fetch(`${this.getApiBaseUrl()}/api/contacts`);
       if (response.ok) {
         const result = await response.json();
         const normalized = Array.isArray(result)
@@ -159,7 +168,7 @@ class EditBillsPayments {
 
   async fetchProductsList() {
     try {
-      const response = await fetch('/api/products');
+      const response = await fetch(`${this.getApiBaseUrl()}/api/products`);
       if (response.ok) {
         const result = await response.json();
         const normalized = Array.isArray(result)
@@ -191,16 +200,34 @@ class EditBillsPayments {
       // Lookup customer by ID and get full details from contacts table
       if (billData.customer_id) {
         log.debug('🔍 Looking up customer ID:', billData.customer_id);
-        const customer = customers.find(c => c.id === billData.customer_id);
-        if (customer) {
-          billData.customer_name = customer.name || customer.customer_name || customer.first_name || '';
+        let customer = customers.find(c => 
+          c.id == billData.customer_id || 
+          String(c.id) === String(billData.customer_id) ||
+          (c.name && billData.customer_name && c.name.trim().toLowerCase() === billData.customer_name.trim().toLowerCase())
+        );
+
+        // Fallback: If not found in contacts array, attempt direct single contact lookup
+        if (!customer) {
+          try {
+            const singleRes = await fetch(`${this.getApiBaseUrl()}/api/contacts/${billData.customer_id}`);
+            if (singleRes.ok) {
+              const singleData = await singleRes.json();
+              customer = singleData?.data?.item || singleData?.data || singleData?.item || singleData;
+            }
+          } catch (fetchErr) {
+            log.debug('Direct contact fetch fallback failed:', fetchErr);
+          }
+        }
+
+        if (customer && (customer.name || customer.customer_name || customer.first_name)) {
+          billData.customer_name = customer.name || customer.customer_name || customer.first_name || billData.customer_name || '';
           log.debug('✅ Customer found in contacts:', {
             id: billData.customer_id,
             name: billData.customer_name,
             phone: customer.phone
           });
         } else {
-          log.warn('⚠️ Customer ID not found in contacts table:', billData.customer_id);
+          log.warn('⚠️ Customer ID not found in contacts table:', billData.customer_id, 'preserving customer name:', billData.customer_name);
         }
       } else {
         log.debug('⚠️ No customer_id in bill data, using existing customer_name:', billData.customer_name);
@@ -1475,6 +1502,13 @@ class EditBillsPayments {
             
             // Pass directly to BillEditor - same as new bill page
             // BillEditor will handle all rendering, listeners, and data initialization
+            const originView = (this.billingApp?.currentView === 'ledger') ? 'ledger' : 'edit';
+            if (this.billingApp?.billEditor) {
+              this.billingApp.billEditor.returnToView = originView;
+            }
+            if (typeof this.billingApp?.switchView === 'function') {
+              this.billingApp.switchView('create', { billDataToEdit: billData, returnView: originView });
+            }
             this.billingApp.billEditor.renderCreateBillView(billData);
           })
           .catch(error => {
@@ -1572,6 +1606,11 @@ class EditBillsPayments {
         // BillEditor will handle all rendering and initialization identical to new bill page
         if (this.billingApp.billEditor) {
           log.debug('📖 Opening BillEditor with fully enriched data for bill:', billData.id);
+          const originView = (this.billingApp?.currentView === 'ledger') ? 'ledger' : 'edit';
+          this.billingApp.billEditor.returnToView = originView;
+          if (typeof this.billingApp?.switchView === 'function') {
+            this.billingApp.switchView('create', { billDataToEdit: billData, returnView: originView });
+          }
           this.billingApp.billEditor.renderCreateBillView(billData);
         } else {
           log.error('BillEditor not available');

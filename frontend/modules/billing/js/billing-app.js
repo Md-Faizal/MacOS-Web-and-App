@@ -1548,7 +1548,10 @@ export class BillingApp extends AppWindow {
         case 'create':
           viewInstance = this.billEditor;
           viewInstance.viewContainer = targetPanel;
-          if (params && params.customerName) {
+          if (params && params.billDataToEdit) {
+            if (params.returnView) this.billEditor.returnToView = params.returnView;
+            this.billEditor.renderCreateBillView(params.billDataToEdit);
+          } else if (params && params.customerName) {
             this.billEditor.renderCreateBillView({ customer_name: params.customerName });
           } else {
             this.billEditor.renderCreateBillView();
@@ -1598,7 +1601,10 @@ export class BillingApp extends AppWindow {
         viewInstance.loadRecentTransactions();
         viewInstance.updateStatsDisplay?.();
       } else if (safeName === 'create') {
-        if (params && params.customerName) {
+        if (params && params.billDataToEdit) {
+          if (params.returnView) this.billEditor.returnToView = params.returnView;
+          this.billEditor.renderCreateBillView(params.billDataToEdit);
+        } else if (params && params.customerName) {
           this.billEditor.renderCreateBillView({ customer_name: params.customerName });
         }
       } else if (safeName === 'edit') {
