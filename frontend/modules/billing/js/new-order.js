@@ -2269,6 +2269,44 @@ class OrdersView {
     }
   }
 
+  attachProductToNotes(targetInputId, item, noteField = 'order_notes', extraTag = '') {
+    const textarea = document.getElementById(targetInputId);
+    if (!textarea) return;
+
+    const productName = item.product_name || item.name || 'Product';
+    const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : (item.variant_name || '');
+    const batchDisplay = item.batch_no || item.batchNo || '';
+
+    const details = [];
+    if (variantDisplay) details.push(variantDisplay);
+    if (batchDisplay && batchDisplay !== 'N/A') details.push(`Batch: ${batchDisplay}`);
+    if (extraTag) details.push(extraTag);
+
+    const detailSuffix = details.length ? ` (${details.join(', ')})` : '';
+    const line = `- ${productName}${detailSuffix}: `;
+
+    let currentVal = textarea.value || '';
+    if (currentVal && !currentVal.endsWith('\n')) {
+      currentVal += '\n';
+    }
+    currentVal += line;
+    textarea.value = currentVal;
+
+    if (noteField && this.currentOrderData) {
+      this.currentOrderData[noteField] = currentVal;
+    }
+    this.saveOrderDraft();
+
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    textarea.scrollTop = textarea.scrollHeight;
+    try {
+      textarea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (_) {}
+
+    this.showNotification(`Added "${productName}" to notes`, 'info');
+  }
+
   // ===== STAGE 1: CREATE ORDER =====
   renderStage1() {
     const container = document.getElementById('stageContent');
@@ -2792,14 +2830,17 @@ class OrdersView {
             <div style="font-weight:600; color:#333;">${p.name}</div>
             <div style="font-size:10px; color:#666;">₹${p.mrp || 0}</div>
           </div>
-          <button style="padding:4px 8px; background:#0066cc; color:#fff; border:none; border-radius:2px; cursor:pointer; font-size:10px; margin-left:8px;">ADD</button>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <button class="search-add-btn" style="padding:4px 8px; background:#0066cc; color:#fff; border:none; border-radius:2px; cursor:pointer; font-size:10px; margin-left:8px;">ADD</button>
+            <button type="button" class="search-note-btn" title="Add note about this product" style="padding:4px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:2px; cursor:pointer; font-size:10px;">📝</button>
+          </div>
         </div>
       `;
     }).join('');
 
     container.querySelectorAll('.search-product').forEach((item) => {
-      const btn = item.querySelector('button');
-      btn.addEventListener('click', (e) => {
+      const addBtn = item.querySelector('.search-add-btn');
+      addBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         const productId = item.dataset.productId;
         const product = this.products.find(p => p.id == productId);
@@ -2818,6 +2859,16 @@ class OrdersView {
           this.renderStage1Items();
           document.getElementById('productSearch').value = '';
           this.renderStage1SearchResults();
+        }
+      });
+
+      const noteBtn = item.querySelector('.search-note-btn');
+      noteBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const productId = item.dataset.productId;
+        const product = this.products.find(p => p.id == productId);
+        if (product) {
+          this.attachProductToNotes('orderNotes', product, 'order_notes');
         }
       });
     });
@@ -2906,7 +2957,12 @@ class OrdersView {
           return `
           <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center;">
             <div style="flex:1;">
-              <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+                <button type="button" class="item-note-btn" data-idx="${idx}" title="Write note about this product" style="padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                  📝 + Note
+                </button>
+              </div>
               ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
               <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
               <div style="font-size:10px; color:#666; margin:2px 0;">₹${price}</div>
@@ -2928,6 +2984,16 @@ class OrdersView {
     `;
 
     // Event handlers
+    container.querySelectorAll('.item-note-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const item = this.currentOrderData.items[idx];
+        if (item) {
+          this.attachProductToNotes('orderNotes', item, 'order_notes');
+        }
+      });
+    });
+
     container.querySelectorAll('.qty-plus').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.idx);
@@ -3006,7 +3072,12 @@ class OrdersView {
                     <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; gap:10px;">
                       <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px;" />
                       <div style="flex:1;">
-                        <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                          <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+                          <button type="button" class="stage2-item-note-btn" data-idx="${idx}" title="Write QC note about this product" style="padding:3px 8px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">
+                            📝 + Note
+                          </button>
+                        </div>
                         ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
                         <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
                         <div style="font-size:9px; color:#000000; font-weight:600; margin:2px 0;">MRP: ₹${parseFloat(item.mrp || item.unit_price || item.price || 0).toFixed(2)}</div>
@@ -3027,7 +3098,21 @@ class OrdersView {
                   <input type="date" id="qcDate" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" value="${this.currentOrderData.qc_date ? this.currentOrderData.qc_date.split('T')[0] : new Date().toISOString().split('T')[0]}" />
                 </div>
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">QC NOTES</h4>
-                <textarea id="qcNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:160px; font-size:11px;" placeholder="Damaged items, missing qty, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
+                <textarea id="qcNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:140px; font-size:11px;" placeholder="Damaged items, missing qty, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
+
+                <!-- Stage 1 Notes Display below QC Notes -->
+                ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
+                  <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px;">
+                    <div style="font-size:11px; font-weight:700; color:#1d4ed8; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                      <span>📋</span> STAGE 1 (ORDER) NOTES
+                    </div>
+                    <div style="font-size:11px; color:#1e293b; white-space:pre-wrap; line-height:1.5; background:#ffffff; padding:8px 10px; border-radius:3px; border:1px solid #dbeafe; font-family:'Courier New', monospace;">${Utils.escapeHtml(this.currentOrderData.order_notes)}</div>
+                  </div>
+                ` : `
+                  <div style="margin-top:14px; padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px;">
+                    <span>📋</span> <span>Stage 1 notes: <em>None provided</em></span>
+                  </div>
+                `}
               </div>
             </div>
           </div>
@@ -3054,6 +3139,26 @@ class OrdersView {
       input.addEventListener('input', () => {
         const idx = parseInt(input.dataset.idx);
         this.setQcReceivedQuantity(container, idx, input.value);
+      });
+    });
+
+    const qcNotesArea = document.getElementById('qcNotes');
+    qcNotesArea?.addEventListener('input', (e) => {
+      this.currentOrderData.qc_notes = e.target.value;
+      this.saveOrderDraft();
+    });
+    qcNotesArea?.addEventListener('change', (e) => {
+      this.currentOrderData.qc_notes = e.target.value;
+      this.saveOrderDraft();
+    });
+
+    container.querySelectorAll('.stage2-item-note-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const item = this.currentOrderData?.items?.[idx];
+        if (item) {
+          this.attachProductToNotes('qcNotes', item, 'qc_notes');
+        }
       });
     });
 
@@ -3736,11 +3841,17 @@ class OrdersView {
                   const received = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
                   const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
                   const batchDisplay = item.batch_no || 'N/A';
+                  const globalIdx = items.indexOf(item);
                   return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
-                    <div style="display:flex; justify-content:space-between;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                       <div style="flex:1;">
-                        <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
+                          <button type="button" class="stage3-item-note-btn" data-idx="${globalIdx}" title="Write note about this product" style="padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                            📝 + Note
+                          </button>
+                        </div>
                         ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
                         <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
                         <div style="font-size:10px; color:#666; margin:2px 0;">Ordered: ${qty} | Received: ${received}</div>
@@ -3761,11 +3872,17 @@ class OrdersView {
                   const price = item.unit_price || item.price || 0;
                   const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
                   const batchDisplay = item.batch_no || 'N/A';
+                  const globalIdx = items.indexOf(item);
                   return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
-                    <div style="display:flex; justify-content:space-between; opacity: 0.8;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; opacity: 0.85;">
                       <div style="flex:1;">
-                        <div style="font-weight:600; color: #888;">${item.product_name || 'Unknown'}</div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <div style="font-weight:600; color: #888;">${item.product_name || 'Unknown'}</div>
+                          <button type="button" class="stage3-not-received-note-btn" data-idx="${globalIdx}" title="Write note about this unreceived product" style="padding:2px 7px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                            📝 + Note
+                          </button>
+                        </div>
                         ${variantDisplay ? `<div style="font-size:9px; color:#aaa; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
                         <div style="font-size:9px; color:#aaa; margin:2px 0;">Batch: ${batchDisplay}</div>
                         <div style="font-size:10px; color:#aaa; margin:2px 0;">Ordered: ${qty} | Received: 0</div>
@@ -3777,6 +3894,24 @@ class OrdersView {
                 }).join('')}
               </div>
             ` : ''}
+
+            <!-- Stage 3 Notes Section -->
+            <div style="margin-bottom:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+              <div>
+                <label for="stage3QcNotes" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">⚠️ QC & DELIVERY NOTES</label>
+                <textarea id="stage3QcNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:90px; font-size:11px;" placeholder="Delivery findings, missing items, damaged packaging, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
+              </div>
+              <div>
+                <div style="font-size:11px; font-weight:600; margin-bottom:8px; color:#555;">📋 STAGE 1 (ORDER) NOTES</div>
+                ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
+                  <div style="padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:3px; min-height:90px; font-size:11px; color:#1e293b; white-space:pre-wrap; line-height:1.5; font-family:'Courier New', monospace;">${Utils.escapeHtml(this.currentOrderData.order_notes)}</div>
+                ` : `
+                  <div style="padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:3px; min-height:90px; font-size:11px; color:#64748b; display:flex; align-items:center; justify-content:center;">
+                    <em>None provided</em>
+                  </div>
+                `}
+              </div>
+            </div>
 
             <div style="background:#f0f0f0; padding:16px; border-radius:3px; margin-bottom:20px; border: 1px solid #ddd;">
               <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px; color: #666;">
@@ -3885,6 +4020,36 @@ class OrdersView {
     deliveryDateInput?.addEventListener('change', (e) => {
       this.currentOrderData.delivery_date = e.target.value;
       this.saveOrderDraft();
+    });
+
+    const stage3NotesArea = document.getElementById('stage3QcNotes');
+    stage3NotesArea?.addEventListener('input', (e) => {
+      this.currentOrderData.qc_notes = e.target.value;
+      this.saveOrderDraft();
+    });
+    stage3NotesArea?.addEventListener('change', (e) => {
+      this.currentOrderData.qc_notes = e.target.value;
+      this.saveOrderDraft();
+    });
+
+    container.querySelectorAll('.stage3-item-note-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const item = this.currentOrderData?.items?.[idx];
+        if (item) {
+          this.attachProductToNotes('stage3QcNotes', item, 'qc_notes');
+        }
+      });
+    });
+
+    container.querySelectorAll('.stage3-not-received-note-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const item = this.currentOrderData?.items?.[idx];
+        if (item) {
+          this.attachProductToNotes('stage3QcNotes', item, 'qc_notes', 'Not Received');
+        }
+      });
     });
 
     document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
@@ -4255,6 +4420,8 @@ class OrdersView {
         this.currentOrderData.delivery_date = dDate.toISOString();
       }
       if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
+      const stage3NotesArea = document.getElementById('stage3QcNotes');
+      if (stage3NotesArea) this.currentOrderData.qc_notes = stage3NotesArea.value;
       
       
       // Update the total amount explicitly based on billing sum (received quantity)
