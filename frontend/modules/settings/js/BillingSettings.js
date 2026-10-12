@@ -80,6 +80,24 @@ export class BillingSettingsComponent {
                     </div>
                 </div>
 
+                <!-- 0. Automated Email Reminders Fast Access -->
+                <div class="billing-card" style="border-left: 3px solid #0a84ff; background: rgba(10, 132, 255, 0.06);">
+                    <div class="billing-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0;">
+                        <div>
+                            <div class="billing-card-title" style="color: #0a84ff;">
+                                <span>📧</span>
+                                <span>Automated Email Summaries & Overdue Reminders</span>
+                            </div>
+                            <div class="billing-card-subtitle" style="margin-top: 4px;">
+                                Daily business digests, weekly financial summaries, and 7d/14d/30d overdue invoice reminders via Stalwart Mail.
+                            </div>
+                        </div>
+                        <button type="button" id="openEmailRemindersSettingsBtn" class="billing-save-btn" style="padding: 7px 16px; font-size: 12px; white-space: nowrap; cursor: pointer;">
+                            <span>Configure Email Controls →</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- 1. Document & Printing Options -->
                 <div class="billing-card">
                     <div class="billing-card-header">
@@ -716,6 +734,15 @@ export class BillingSettingsComponent {
 
         if (saveBtnFooter) saveBtnFooter.addEventListener('click', triggerSave);
         if (saveBtnHeader) saveBtnHeader.addEventListener('click', triggerSave);
+
+        // 9. Email Reminders Fast-Access Shortcut
+        const emailShortcutBtn = this.container.querySelector('#openEmailRemindersSettingsBtn');
+        if (emailShortcutBtn) {
+            emailShortcutBtn.addEventListener('click', () => {
+                const navItem = document.querySelector('.settings-sidebar-item[data-section="email-reminders"]');
+                if (navItem) navItem.click();
+            });
+        }
     }
 
     updateLivePreview() {

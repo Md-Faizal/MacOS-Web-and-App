@@ -44,7 +44,7 @@ export class SettingsApp extends AppWindow {
     // Sidebar-based Navigation Order
     this.sectionsOrder = [
       'profile', 'admin', 'wifi', 'bluetooth', 'network', 'energy', 
-      'general', 'billing', 'accessibility', 'appearance', 'menubar', 
+      'general', 'billing', 'email-reminders', 'accessibility', 'appearance', 'menubar', 
       'siri', 'dock', 'displays', 'spotlight', 'wallpaper', 'systemhealth', 'systemlogs', 'android-update'
     ];
 
@@ -393,6 +393,11 @@ export class SettingsApp extends AppWindow {
           <span>Billing & Invoices</span>
         </button>
 
+        <button class="settings-sidebar-item" data-section="email-reminders">
+          <span class="settings-sidebar-icon">📧</span>
+          <span>Email Reminders</span>
+        </button>
+
         <button class="settings-sidebar-item" data-section="accessibility">
           <span class="settings-sidebar-icon">♿</span>
           <span>Accessibility</span>
@@ -600,6 +605,7 @@ export class SettingsApp extends AppWindow {
       </div>
 
       <div class="settings-panel hidden" id="billing-panel"></div>
+      <div class="settings-panel hidden" id="email-reminders-panel"></div>
 
       <div class="settings-panel hidden" id="wifi-panel">
         <div class="settings-section">
@@ -1915,6 +1921,7 @@ export class SettingsApp extends AppWindow {
       'energy': 'Energy',
       'general': 'General',
       'billing': 'Billing & Invoices',
+      'email-reminders': 'Email Reminders & Summaries',
       'accessibility': 'Accessibility',
       'appearance': 'Appearance',
       'menubar': 'Menu Bar',
@@ -1987,12 +1994,9 @@ export class SettingsApp extends AppWindow {
           this.billingModule = new BillingSettingsComponent(panel);
         }
         this.billingModule.render();
-        // Email reminders sub-section — rendered below billing settings in same panel
+      } else if (section === 'email-reminders') {
         if (!this.emailRemindersModule) {
-          const emailContainer = document.createElement('div');
-          emailContainer.id = 'emailRemindersSettingsRoot';
-          panel.appendChild(emailContainer);
-          this.emailRemindersModule = new EmailRemindersSettingsComponent(emailContainer);
+          this.emailRemindersModule = new EmailRemindersSettingsComponent(panel);
         }
         this.emailRemindersModule.render();
       } else if (section === 'network') {

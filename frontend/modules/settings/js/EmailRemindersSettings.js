@@ -130,8 +130,8 @@ export class EmailRemindersSettingsComponent {
             <span>📧</span><span>Email Reminders & Summaries</span>
           </div>
           <div class="er-section-desc">
-            Automated email digests and overdue alerts sent via your local mail server
-            (Postfix/Exim on <code>127.0.0.1:25</code>) — completely free, no third-party gateway.
+            Automated email digests and overdue alerts sent via your Stalwart Mail Server
+            (<code>mail.faizal.uk:587</code>) — completely free, internal delivery.
           </div>
         </div>
         <div class="er-header-actions">
