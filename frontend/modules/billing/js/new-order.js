@@ -54,12 +54,75 @@ const Utils = {
       month: 'long',
       year: 'numeric'
     }).format(date).toUpperCase();
+  },
+  escapeHtml: (str) => {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 };
 
 class OrdersView {
     // Track selected orders for multi-select
     selectedOrderIds = new Set();
+
+    saveOrderDraft() {
+      if (!this.currentOrderData || this.isViewMode) return;
+      try {
+        const draft = {
+          currentOrderData: this.currentOrderData,
+          currentStage: this.currentStage,
+          selectedCustomerId: this.selectedCustomerId,
+          timestamp: Date.now()
+        };
+        sessionStorage.setItem('macos_billing_order_draft', JSON.stringify(draft));
+      } catch (_) {}
+    }
+
+    clearOrderDraft() {
+      try {
+        sessionStorage.removeItem('macos_billing_order_draft');
+      } catch (_) {}
+    }
+
+    restoreOrderDraft() {
+      try {
+        const saved = sessionStorage.getItem('macos_billing_order_draft');
+        if (!saved) return false;
+        const draft = JSON.parse(saved);
+        if (!draft || !draft.currentOrderData || !draft.currentOrderData.customer_id) return false;
+        // Expire after 24 hours
+        if (Date.now() - (draft.timestamp || 0) > 24 * 60 * 60 * 1000) {
+          this.clearOrderDraft();
+          return false;
+        }
+        this.currentOrderData = draft.currentOrderData;
+        this.currentStage = draft.currentStage || 'stage1';
+        this.selectedCustomerId = draft.selectedCustomerId || draft.currentOrderData.customer_id;
+        this.currentOrderId = draft.currentOrderData.id;
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    unlinkInvoice() {
+      this.selectedOrderInvoice = null;
+      if (this.currentOrderData) {
+        this.currentOrderData.bill_reference = '';
+        this.currentOrderData.auto_matched = false;
+        this.currentOrderData.auto_match_details = null;
+      }
+      const input = document.getElementById('billRefInput');
+      if (input) input.value = '';
+      this.saveOrderDraft();
+      this.renderLinkedInvoiceSummary();
+      this.showNotification('Invoice reference cleared.', 'info');
+    }
 
     isWorkerUser() {
       const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role');
@@ -705,8 +768,22 @@ class OrdersView {
       // document.head.appendChild(link); /* Disabled for Vite */
     }
     
+    // Check if an uncommitted order is actively in progress
+    const hasActiveOrder = Boolean(this.currentOrderData && this.currentStage);
+
     await this.loadCustomersAndProducts();
     await this.loadOrders();
+
+    // If active order is mounted in DOM, preserve it without wiping out the workspace
+    if (hasActiveOrder && document.getElementById('mainContent')) {
+      log.debug('[OrdersView] Preserving active order workspace during background refresh');
+      return;
+    }
+
+    // Try restoring uncommitted draft if memory is empty
+    if (!this.currentOrderData) {
+      this.restoreOrderDraft();
+    }
     
     // Calculate stats
     const totalOrders = this.orders.length;
@@ -821,7 +898,11 @@ class OrdersView {
     this.bindEvents();
     this.setupListButtonToggle();
     this.setupDateFilter();
-    this.showAllCustomersView();
+    if (this.currentOrderData && this.currentStage) {
+      this.renderCurrentStage();
+    } else {
+      this.showAllCustomersView();
+    }
     this.renderCustomersList();
     // Setup multi-select view button event
     setTimeout(() => {
@@ -1783,6 +1864,7 @@ class OrdersView {
     this.selectedOrderIds = new Set();
     this.lastSavedPayload = null;
     this.updateMultiSelectUI();
+    this.saveOrderDraft();
     this.renderCurrentStage();
   }
 
@@ -2261,6 +2343,7 @@ class OrdersView {
     if (orderDateInput) {
       orderDateInput.addEventListener('change', (e) => {
         this.currentOrderData.order_date = e.target.value;
+        this.saveOrderDraft();
       });
     }
   }
@@ -2302,8 +2385,13 @@ class OrdersView {
     });
 
     const notesArea = document.getElementById('orderNotes');
+    notesArea?.addEventListener('input', (e) => {
+      this.currentOrderData.order_notes = e.target.value;
+      this.saveOrderDraft();
+    });
     notesArea?.addEventListener('change', (e) => {
       this.currentOrderData.order_notes = e.target.value;
+      this.saveOrderDraft();
     });
 
     const completeBtn = document.getElementById('completeStage1Btn');
@@ -2795,6 +2883,7 @@ class OrdersView {
 
     if (!this.currentOrderData.items || !this.currentOrderData.items.length) {
       container.innerHTML = '<div style="color:#999; font-size:11px;">No items added</div>';
+      this.saveOrderDraft();
       return;
     }
 
@@ -2804,6 +2893,7 @@ class OrdersView {
       return s + (price * qty);
     }, 0);
     this.currentOrderData.total_amount = total;
+    this.saveOrderDraft();
 
     container.innerHTML = `
       <div style="font-size:11px;">
@@ -3019,6 +3109,7 @@ class OrdersView {
     checklistItems[index] = checkbox.checked;
     const count = container.querySelector(`[data-received-count="${index}"]`);
     if (count) count.textContent = String(received);
+    this.saveOrderDraft();
     return { expected, received, complete: checkbox.checked };
   }
 
@@ -3269,9 +3360,162 @@ class OrdersView {
       input.value = invNo;
     }
     this.currentOrderData.bill_reference = invNo;
+    this.currentOrderData.auto_matched = false;
+    this.currentOrderData.auto_match_details = null;
     this.selectedOrderInvoice = invoice;
+    this.saveOrderDraft();
     this.renderLinkedInvoiceSummary();
     this.hideInvoiceDropdown();
+  }
+
+  autoMatchOrderInvoice(orderData, invoices) {
+    if (!orderData || !Array.isArray(invoices) || invoices.length === 0) return null;
+
+    const orderItems = orderData.items || [];
+    const receivedItems = orderItems.filter(i => {
+      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+      return rec >= 1;
+    });
+
+    const grandTotal = receivedItems.reduce((s, i) => {
+      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+      return s + ((i.unit_price || i.price || 0) * rec);
+    }, 0);
+    const fullSubtotal = orderItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
+    const targetOrderTotal = grandTotal > 0 ? grandTotal : (Number(orderData.total_amount) || fullSubtotal);
+
+    const orderDateRaw = orderData.delivery_date || orderData.qc_date || orderData.order_date || orderData.created_at;
+    const orderDate = orderDateRaw ? new Date(orderDateRaw).getTime() : Date.now();
+
+    const orderProductsMap = new Map();
+    orderItems.forEach(i => {
+      const pid = String(i.product_id || '').trim();
+      const pname = String(i.product_name || '').trim().toLowerCase();
+      const qty = (i.received_quantity !== undefined && i.received_quantity !== null && i.received_quantity > 0)
+        ? i.received_quantity
+        : (i.qty || i.quantity || 0);
+      if (pid) orderProductsMap.set(`id:${pid}`, qty);
+      if (pname) orderProductsMap.set(`name:${pname}`, qty);
+    });
+
+    const linkedInvoiceNos = new Set();
+    if (Array.isArray(this.orders)) {
+      this.orders.forEach(o => {
+        if (o && String(o.id) !== String(orderData.id) && o.bill_reference) {
+          linkedInvoiceNos.add(String(o.bill_reference).trim().toLowerCase());
+        }
+      });
+    }
+
+    const scoredCandidates = [];
+
+    for (const inv of invoices) {
+      const invNo = String(inv.invoice_no || inv.id || '').trim();
+      if (!invNo) continue;
+
+      // Exclude if already linked to another distinct order
+      if (linkedInvoiceNos.has(invNo.toLowerCase())) {
+        continue;
+      }
+
+      let score = 0;
+      const matchReasons = [];
+
+      // A. TOTAL AMOUNT MATCH (Max 40 points)
+      const invTotal = parseFloat(inv.grand_total ?? inv.total_amount ?? inv.total ?? 0);
+      if (targetOrderTotal > 0 && invTotal > 0) {
+        const diff = Math.abs(invTotal - targetOrderTotal);
+        if (diff < 0.05) {
+          score += 40;
+          matchReasons.push('Exact total match');
+        } else if (diff <= 1.05) {
+          score += 35;
+          matchReasons.push('Total matches within rounding (₹' + diff.toFixed(2) + ')');
+        } else if (diff / targetOrderTotal <= 0.03) {
+          score += 25;
+          matchReasons.push('Total within 3%');
+        } else if (fullSubtotal > 0 && Math.abs(invTotal - fullSubtotal) <= 1.05) {
+          score += 25;
+          matchReasons.push('Subtotal match');
+        }
+      }
+
+      // B. ITEMS MATCH (Max 40 points)
+      const invItems = Array.isArray(inv.items) ? inv.items : [];
+      if (orderItems.length > 0 && invItems.length > 0) {
+        let matchedProductCount = 0;
+        let matchedQtyCount = 0;
+
+        invItems.forEach(ii => {
+          const pid = String(ii.product_id || '').trim();
+          const pname = String(ii.product_name || '').trim().toLowerCase();
+          const invQty = Number(ii.qty ?? ii.quantity ?? 0);
+
+          let expectedQty = null;
+          if (pid && orderProductsMap.has(`id:${pid}`)) {
+            expectedQty = orderProductsMap.get(`id:${pid}`);
+            matchedProductCount++;
+          } else if (pname && orderProductsMap.has(`name:${pname}`)) {
+            expectedQty = orderProductsMap.get(`name:${pname}`);
+            matchedProductCount++;
+          }
+
+          if (expectedQty !== null && expectedQty === invQty) {
+            matchedQtyCount++;
+          }
+        });
+
+        const maxItemCount = Math.max(orderItems.length, invItems.length, 1);
+        const itemOverlapRatio = matchedProductCount / maxItemCount;
+
+        if (itemOverlapRatio >= 0.95 && matchedQtyCount >= matchedProductCount * 0.9) {
+          score += 40;
+          matchReasons.push(`100% items and quantities match (${matchedProductCount} items)`);
+        } else if (itemOverlapRatio >= 0.7) {
+          score += 30;
+          matchReasons.push(`${Math.round(itemOverlapRatio * 100)}% items match`);
+        } else if (itemOverlapRatio >= 0.4) {
+          score += 15;
+          matchReasons.push('Partial items match');
+        }
+      }
+
+      // C. DATE PROXIMITY (Max 20 points)
+      const invDateRaw = inv.invoice_date || inv.bill_date || inv.created_at;
+      if (invDateRaw) {
+        const invDate = new Date(invDateRaw).getTime();
+        const diffMs = Math.abs(invDate - orderDate);
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+        if (diffDays <= 1) {
+          score += 20;
+          matchReasons.push('Created on same date');
+        } else if (diffDays <= 3) {
+          score += 15;
+          matchReasons.push('Within 3 days');
+        } else if (diffDays <= 7) {
+          score += 10;
+          matchReasons.push('Within 7 days');
+        } else if (diffDays <= 14) {
+          score += 5;
+        } else if (diffDays > 45) {
+          score -= 10;
+        }
+      }
+
+      if (score >= 45) {
+        scoredCandidates.push({
+          invoice: inv,
+          score,
+          reasons: matchReasons
+        });
+      }
+    }
+
+    if (scoredCandidates.length === 0) return null;
+
+    scoredCandidates.sort((a, b) => b.score - a.score);
+    return scoredCandidates[0];
   }
 
   renderLinkedInvoiceSummary() {
@@ -3279,25 +3523,58 @@ class OrdersView {
     if (!summary) return;
     summary.replaceChildren();
     const invoice = this.selectedOrderInvoice;
+
     if (!invoice) {
-      summary.textContent = this.currentOrderData?.bill_reference
-        ? `Linked reference: ${this.currentOrderData.bill_reference}`
-        : 'No invoice linked yet.';
+      if (this.currentOrderData?.bill_reference) {
+        const textSpan = document.createElement('span');
+        textSpan.style.display = 'inline-flex';
+        textSpan.style.alignItems = 'center';
+        textSpan.style.gap = '6px';
+        textSpan.innerHTML = `<strong>Linked reference:</strong> <code style="background:#e2e8f0; padding:2px 6px; border-radius:3px; font-weight:600;">${Utils.escapeHtml(this.currentOrderData.bill_reference)}</code>`;
+        summary.appendChild(textSpan);
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#475569;';
+        clearBtn.textContent = '✕ Unlink';
+        clearBtn.addEventListener('click', () => {
+          this.unlinkInvoice();
+        });
+        summary.appendChild(clearBtn);
+      } else {
+        summary.innerHTML = '<span style="color:#64748b; font-size:11px;">ℹ️ No invoice linked yet. Search invoice #, scan QR, or matching invoices will pre-link automatically.</span>';
+      }
       return;
+    }
+
+    const infoContainer = document.createElement('div');
+    infoContainer.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;';
+
+    if (this.currentOrderData?.auto_matched) {
+      const autoBadge = document.createElement('span');
+      autoBadge.style.cssText = 'display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;';
+      const reasonText = this.currentOrderData.auto_match_details?.reasons?.length ? ` (${this.currentOrderData.auto_match_details.reasons[0]})` : '';
+      autoBadge.innerHTML = `⚡ AUTO-MATCHED${reasonText}`;
+      infoContainer.appendChild(autoBadge);
     }
 
     const label = document.createElement('span');
     const number = invoice.invoice_no || invoice.id;
     const amount = Number(invoice.grand_total ?? invoice.total_amount ?? invoice.amount ?? 0);
-    label.textContent = `Linked invoice ${number} · ${new Intl.NumberFormat('en-IN', {
+    label.innerHTML = `<strong>Invoice:</strong> ${number} · <strong>${new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR'
-    }).format(amount)}`;
-    summary.appendChild(label);
+    }).format(amount)}</strong>`;
+    infoContainer.appendChild(label);
+    summary.appendChild(infoContainer);
+
+    const actionContainer = document.createElement('div');
+    actionContainer.style.cssText = 'display:flex; align-items:center; gap:8px;';
 
     const exportButton = document.createElement('button');
     exportButton.type = 'button';
     exportButton.textContent = 'Export invoice PDF';
+    exportButton.style.cssText = 'padding:4px 10px; font-size:11px; background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#1e293b;';
     exportButton.addEventListener('click', () => {
       if (!this.billingApp?.exportBill) {
         this.showNotification('Invoice PDF export is unavailable in this view.', 'error');
@@ -3305,17 +3582,30 @@ class OrdersView {
       }
       this.billingApp.exportBill(number);
     });
-    summary.appendChild(exportButton);
+    actionContainer.appendChild(exportButton);
+
+    const unlinkBtn = document.createElement('button');
+    unlinkBtn.type = 'button';
+    unlinkBtn.textContent = '✕ Unlink';
+    unlinkBtn.title = 'Clear linked invoice';
+    unlinkBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; cursor:pointer; font-weight:600; color:#dc2626;';
+    unlinkBtn.addEventListener('click', () => {
+      this.unlinkInvoice();
+    });
+    actionContainer.appendChild(unlinkBtn);
+
+    summary.appendChild(actionContainer);
   }
 
   async linkOrderInvoiceFromQr(value) {
-    const parsed = parseInvoiceQrLink(value, window.location.origin);
+    if (!value || typeof value !== 'string') return { success: false, message: 'Invalid QR content.' };
+    const parsed = parseInvoiceQrLink(value.trim(), window.location.origin);
 
     const customerId = String(this.currentOrderData?.customer_id ?? '');
     if (!customerId) return { success: false, message: 'The order has no customer to match this invoice against.' };
 
     let invoices = this.allCustomerInvoices;
-    if (!invoices.length) {
+    if (!invoices || !invoices.length) {
       invoices = await this.getCustomerInvoices(customerId);
       this.allCustomerInvoices = invoices;
     }
@@ -3324,12 +3614,22 @@ class OrdersView {
     if (!parsed || parsed.type === 'payment') {
       const invoiceNo = parsed?.invoiceNo || value.trim();
       invoice = invoices.find(candidate =>
-        String(candidate.invoice_no || '').trim().toLowerCase() === invoiceNo.toLowerCase()
+        String(candidate.invoice_no || candidate.id || '').trim().toLowerCase() === invoiceNo.toLowerCase()
       );
       if (!invoice) {
+        this.currentOrderData.bill_reference = invoiceNo;
+        this.currentOrderData.auto_matched = false;
+        this.currentOrderData.auto_match_details = null;
+        this.selectedOrderInvoice = null;
+        const input = document.getElementById('billRefInput');
+        if (input) input.value = invoiceNo;
+        this.saveOrderDraft();
+        this.renderLinkedInvoiceSummary();
         return {
-          success: false,
-          message: 'No matching invoice was found for this customer. Enter its invoice number or scan its QR again.'
+          success: true,
+          label: `Reference ${invoiceNo}`,
+          message: `Set reference ${invoiceNo} for this order.`,
+          close: true
         };
       }
     } else {
@@ -3352,12 +3652,6 @@ class OrdersView {
         throw new Error(result?.error || 'The invoice QR could not be linked to this order.');
       }
       invoice = result.invoice;
-      if (!invoices.some(candidate => String(candidate.id) === String(invoice.id))) {
-        return {
-          success: false,
-          message: 'This invoice is not in the current customer’s invoice list. Refresh invoices and try again.'
-        };
-      }
     }
 
     this.selectInvoiceFromDropdown(invoice);
@@ -3400,6 +3694,8 @@ class OrdersView {
     }, 0);
     const notReceivedTotal = fullSubtotal - grandTotal;
 
+    const deliveryDateValue = this.currentOrderData.delivery_date ? new Date(this.currentOrderData.delivery_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
     container.innerHTML = `
       <div style="display:flex; flex-direction:column; height:100%;">
         <div style="flex:1; overflow:visible; padding:0; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar">
@@ -3409,85 +3705,27 @@ class OrdersView {
               <button id="exitStageBtn" style="width:32px; height:32px; padding:0; background:#ff6b6b; color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:18px; font-weight:bold; line-height:1;">✕</button>
             </div>
             
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:20px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:14px;">
               <div>
-                <label style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">DELIVERY DATE</label>
-                <input id="deliveryDate" type="date" value="${this.currentOrderData.delivery_date ? new Date(this.currentOrderData.delivery_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px;" />
+                <label for="deliveryDate" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">DELIVERY DATE</label>
+                <input id="deliveryDate" type="date" value="${deliveryDateValue}" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px;" />
               </div>
               <div>
-                <label style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">INVOICE # (Optional)</label>
-                <div class="invoice-search-group">
-                  <input id="billRefInput" type="text" value="${this.currentOrderData.bill_reference || ''}" placeholder="Search invoices..." autocomplete="off" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px;" />
-                  <div id="invoiceDropdown" class="search-dropdown-container"></div>
+                <label for="billRefInput" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">INVOICE # (Optional)</label>
+                <div class="invoice-search-group" style="position:relative; display:flex; gap:6px; align-items:center;">
+                  <div style="position:relative; flex:1;">
+                    <input id="billRefInput" type="text" value="${Utils.escapeHtml(this.currentOrderData.bill_reference || '')}" placeholder="Search invoice # or paste QR link..." autocomplete="off" style="width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:3px; font-family:'Courier New', monospace; font-size:12px; box-sizing:border-box;" />
+                    <div id="invoiceDropdown" class="search-dropdown-container"></div>
+                  </div>
+                  <button type="button" id="stage3QrScanBtn" title="Scan invoice or payment QR code" style="padding:9px 12px; background:#ffea00; color:#111; border:1px solid #d4b800; border-radius:3px; font-weight:700; font-size:11px; cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap; transition:all 0.15s ease;">
+                    <span style="font-size:13px;">▦</span> SCAN QR
+                  </button>
                 </div>
               </div>
             </div>
-            <div id="linkedInvoiceSummary" role="status" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:-8px 0 16px; padding:10px 12px; background:#f8fafc; border:1px solid #dbe2ea; border-radius:6px; font-size:12px;"></div>
-            <div style="margin-bottom:20px; padding:12px; border:1px solid #dbe2ea; border-radius:6px; background:#f8fafc;">
-              <label for="invoiceQrReferenceInput" style="display:block; font-size:11px; font-weight:700; margin-bottom:8px;">LINK AN INVOICE FROM ITS QR</label>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <input id="invoiceQrReferenceInput" type="text" placeholder="Type invoice number or paste its QR link" autocomplete="off" style="flex:1 1 260px; min-width:0; padding:10px; border:1px solid #cbd5e1; border-radius:4px;" />
-                <button type="button" id="stage3QrScanBtn" style="padding:9px 14px; background:#ffea00; color:#111; border:1px solid #d4b800; border-radius:4px; font-weight:700; cursor:pointer;">▦ SCAN QR</button>
-                <button type="button" id="stage3LinkQrBtn" style="padding:9px 14px; background:#1f2937; color:#fff; border:1px solid #1f2937; border-radius:4px; font-weight:700; cursor:pointer;">LINK</button>
-              </div>
-              <small style="display:block; margin-top:7px; color:#64748b;">Scan or paste the portal/payment QR, or type an invoice number. Older payment QRs link using their invoice note.</small>
-            </div>`;
 
-    // Fetch invoices for this customer and setup searchable dropdown
-    const customerId = this.currentOrderData.customer_id;
-    this.getCustomerInvoices(customerId).then(invoices => {
-      this.allCustomerInvoices = invoices;
-      const existingReference = String(this.currentOrderData?.bill_reference || '').trim().toLowerCase();
-      const linkedInvoice = invoices.find(invoice =>
-        String(invoice.invoice_no || invoice.id || '').trim().toLowerCase() === existingReference
-      );
-      if (linkedInvoice) {
-        this.selectedOrderInvoice = linkedInvoice;
-        this.renderLinkedInvoiceSummary();
-      }
-      
-      const input = document.getElementById('billRefInput');
-      if (input) {
-        input.addEventListener('input', (e) => this.handleInvoiceSearchInput(e.target.value));
-        input.addEventListener('keydown', (e) => this.handleInvoiceSearchKeydown(e));
-        input.addEventListener('focus', () => {
-          if (this.allCustomerInvoices.length > 0) {
-            this.renderInvoiceDropdown(this.allCustomerInvoices);
-          }
-        }).catch(error => {
-          log.error('[NewOrder] Unable to load invoices for Stage 3:', error);
-          this.showNotification(error?.message || 'Unable to load customer invoices.', 'error');
-        });
-        input.addEventListener('blur', () => {
-          setTimeout(() => this.hideInvoiceDropdown(), 200);
-          this.currentOrderData.bill_reference = input.value;
-          if (!this.selectedOrderInvoice || String(this.selectedOrderInvoice.invoice_no || this.selectedOrderInvoice.id) !== input.value) {
-            this.selectedOrderInvoice = null;
-            this.renderLinkedInvoiceSummary();
-          }
-        });
-      }
-    });
-    this.renderLinkedInvoiceSummary();
+            <div id="linkedInvoiceSummary" role="status" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 0 16px; padding:10px 12px; background:#f8fafc; border:1px solid #dbe2ea; border-radius:6px; font-size:12px;"></div>
 
-    document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
-      openQrScanner({
-        title: 'Scan invoice QR to link order',
-        onScan: value => this.linkOrderInvoiceFromQr(value)
-      });
-    });
-    document.getElementById('stage3LinkQrBtn')?.addEventListener('click', async () => {
-      const value = document.getElementById('invoiceQrReferenceInput')?.value || '';
-      try {
-        const result = await this.linkOrderInvoiceFromQr(value);
-        this.showNotification(result.message || 'Invoice QR could not be linked.', result.success ? 'success' : 'warning');
-      } catch (error) {
-        log.error('[NewOrder] Invoice QR linking failed:', error);
-        this.showNotification(error?.message || 'Unable to link this invoice QR.', 'error');
-      }
-    });
-
-    container.innerHTML += `
             <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">ITEMS RECEIVED</h4>
             <div style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f9f9f9; margin-bottom:20px; min-height: 200px; max-height:300px; overflow-y:auto;">
               ${receivedItems.length === 0 ? 
@@ -3564,9 +3802,102 @@ class OrdersView {
       </div>
     `;
 
+    // Fetch invoices for this customer and setup searchable dropdown + background auto-matching
+    const customerId = this.currentOrderData.customer_id;
+    this.getCustomerInvoices(customerId).then(invoices => {
+      this.allCustomerInvoices = invoices;
+      const existingReference = String(this.currentOrderData?.bill_reference || '').trim().toLowerCase();
+      
+      let linkedInvoice = null;
+      if (existingReference) {
+        linkedInvoice = invoices.find(invoice =>
+          String(invoice.invoice_no || invoice.id || '').trim().toLowerCase() === existingReference
+        );
+      }
+
+      // Background Auto-Matching & Pre-linking:
+      if (!linkedInvoice && !existingReference) {
+        const matchResult = this.autoMatchOrderInvoice(this.currentOrderData, invoices);
+        if (matchResult && matchResult.invoice) {
+          log.info(`[NewOrder] Background pre-linked matching invoice ${matchResult.invoice.invoice_no || matchResult.invoice.id} (Score: ${matchResult.score})`);
+          linkedInvoice = matchResult.invoice;
+          this.currentOrderData.bill_reference = linkedInvoice.invoice_no || linkedInvoice.id;
+          this.currentOrderData.auto_matched = true;
+          this.currentOrderData.auto_match_details = matchResult;
+          const input = document.getElementById('billRefInput');
+          if (input) input.value = this.currentOrderData.bill_reference;
+          this.saveOrderDraft();
+        }
+      }
+
+      if (linkedInvoice) {
+        this.selectedOrderInvoice = linkedInvoice;
+      }
+      this.renderLinkedInvoiceSummary();
+    }).catch(error => {
+      log.error('[NewOrder] Unable to load invoices for Stage 3:', error);
+      this.renderLinkedInvoiceSummary();
+    });
+
+    const input = document.getElementById('billRefInput');
+    if (input) {
+      input.addEventListener('input', (e) => {
+        this.currentOrderData.auto_matched = false;
+        this.currentOrderData.auto_match_details = null;
+        this.currentOrderData.bill_reference = e.target.value.trim();
+        this.saveOrderDraft();
+        this.handleInvoiceSearchInput(e.target.value);
+      });
+      input.addEventListener('paste', async (e) => {
+        const pastedText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+        if (pastedText && (pastedText.includes('http') || pastedText.includes('invoice') || pastedText.includes('INV-') || pastedText.includes('='))) {
+          setTimeout(async () => {
+            try {
+              const res = await this.linkOrderInvoiceFromQr(input.value.trim());
+              if (res?.success) {
+                this.showNotification(res.message, 'success');
+              }
+            } catch (_) {}
+          }, 50);
+        }
+      });
+      input.addEventListener('keydown', (e) => this.handleInvoiceSearchKeydown(e));
+      input.addEventListener('focus', () => {
+        if (this.allCustomerInvoices.length > 0) {
+          this.renderInvoiceDropdown(this.allCustomerInvoices);
+        }
+      });
+      input.addEventListener('blur', () => {
+        setTimeout(() => this.hideInvoiceDropdown(), 200);
+        this.currentOrderData.bill_reference = input.value.trim();
+        this.saveOrderDraft();
+        if (!this.selectedOrderInvoice || String(this.selectedOrderInvoice.invoice_no || this.selectedOrderInvoice.id).trim().toLowerCase() !== input.value.trim().toLowerCase()) {
+          const matched = this.allCustomerInvoices?.find(inv => 
+            String(inv.invoice_no || inv.id || '').trim().toLowerCase() === input.value.trim().toLowerCase()
+          );
+          this.selectedOrderInvoice = matched || null;
+          this.renderLinkedInvoiceSummary();
+        }
+      });
+    }
+
+    const deliveryDateInput = document.getElementById('deliveryDate');
+    deliveryDateInput?.addEventListener('change', (e) => {
+      this.currentOrderData.delivery_date = e.target.value;
+      this.saveOrderDraft();
+    });
+
+    document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
+      openQrScanner({
+        title: 'Scan invoice QR to link order',
+        onScan: value => this.linkOrderInvoiceFromQr(value)
+      });
+    });
+
     document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
       await this.saveCurrentStageState(true);
-      this.selectedCustomerId = this.currentOrderData.customer_id;
+      this.selectedCustomerId = this.currentOrderData?.customer_id;
+      this.clearOrderDraft();
       this.refreshOrdersData();
       this.rerenderOrderCards();
     });
@@ -3576,21 +3907,23 @@ class OrdersView {
       if (!saved) return;
 
       if (this.showConfirm('Complete Order?', 'Mark this order as delivered and complete?')) {
+        const customerId = this.currentOrderData.customer_id;
+        const customer = this.customers.find(c => c.id === customerId);
+        const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
+
         this.currentOrderData.current_stage = 'stage3';
         this.currentOrderData.status = 'complete';
         await this.saveOrder();
+        this.clearOrderDraft();
         this.showNotification('✓ Order completed!', 'success');
         
         this.loadOrders().then(() => {
-          const customer = this.customers.find(c => c.id === this.currentOrderData.customer_id);
-          const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
-          this.showCustomerOrders(this.selectedCustomerId, customerName);
+          this.showCustomerOrders(this.selectedCustomerId || customerId, customerName);
           this.currentOrderData = null;
           this.currentOrderId = null;
         });
       }
     });
-
 
     document.getElementById('backStage2Btn')?.addEventListener('click', async () => {
       await this.saveCurrentStageState(true);
@@ -3932,6 +4265,8 @@ class OrdersView {
       }, 0);
       this.currentOrderData.total_amount = subtotal;
     }
+
+    this.saveOrderDraft();
   }
 
   injectOrdersStyles() {

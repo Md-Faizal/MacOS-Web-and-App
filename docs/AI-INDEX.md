@@ -59,6 +59,7 @@ These are repository ownership boundaries, not a claim that every app shares one
 | Benchmark PDF renderer resources on primary/backup VMs | `docs/operations/pdf-rendering-vm-benchmark-handoff.md` | Confirm SSH alias targets and production status; inspect current renderer call paths and get approval before load tests or deployment |
 | Change MacOS browser UI | `docs/handbook/chapters/04-web-frontends.md` | `frontend/` component/module, styles, event/state source, API client and browser entry page |
 | Trace billing cache/events or invoice UI lifecycle | `docs/handbook/chapters/13-macos-workflows.md` | `BillingAPI`, view activation, API route, invalidation and subscriber |
+| Plan or build automated email summaries or WhatsApp reminders | `docs/AUTOMATED_EMAIL_AND_WHATSAPP_REMINDERS_SPEC.md` | Local VM Postfix loopback (127.0.0.1:25), Supervised 1-click wa.me dispatcher, reminder cooldown |
 | Review invoice creation, numbering, or partial-write behavior | `docs/handbook/chapters/16-invoice-lifecycle.md` | Browser submit, billing route/handler, calculator, SQL writes, broadcasts and failure tests |
 | Trace payment allocation, credit-note splitting, or ledger refresh | `docs/handbook/chapters/23-payment-lifecycle.md` | UI payload, nested invoice payment handler, unified payments table, ledger sync and SSE event |
 | Trace order stages or convert an order to invoice | `docs/handbook/chapters/24-order-lifecycle.md` | Main/Android order UI, order handler, server calculation, invoice write and stage update |

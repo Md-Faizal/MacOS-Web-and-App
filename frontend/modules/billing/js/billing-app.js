@@ -382,13 +382,22 @@ export class BillingApp extends AppWindow {
     this.setupBillingUI();
     
     // Listen for tab focus/visibility change to immediately refresh data
+    let focusRefreshDebounceTimer = null;
+    const scheduleDataRefresh = () => {
+      clearTimeout(focusRefreshDebounceTimer);
+      focusRefreshDebounceTimer = setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          this.ensureDataUpToDate();
+        }
+      }, 300);
+    };
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        this.ensureDataUpToDate();
+        scheduleDataRefresh();
       }
     });
     window.addEventListener('focus', () => {
-      this.ensureDataUpToDate();
+      scheduleDataRefresh();
     });
 
     // Listen for worker badge toggle
@@ -597,7 +606,7 @@ export class BillingApp extends AppWindow {
     this.renderDashboard();
     
     // If we're not on dashboard, only refresh views that don't have active user input
-    const inputViews = ['create', 'edit', 'payment-credit'];
+    const inputViews = ['create', 'edit', 'payment-credit', 'orders'];
     if (this.currentView && this.currentView !== 'dashboard' && !inputViews.includes(this.currentView)) {
       this.refreshCurrentView();
     }
@@ -1677,7 +1686,7 @@ export class BillingApp extends AppWindow {
     if (!this.apiEnabled) return;
     
     // Don't auto-refresh if user is inside views that have active text inputs/forms
-    const inputViews = ['create', 'edit', 'payment-credit'];
+    const inputViews = ['create', 'edit', 'payment-credit', 'orders'];
     if (inputViews.includes(this.currentView)) return;
 
     // Cooldown Gate: Minimum 60-second TTL before re-fetching on window focus
