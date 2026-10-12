@@ -345,230 +345,712 @@ async function sendEmail(db, { subject, html, text }) {
   return { ok: false, error: lastError || 'SMTP delivery failed', host: cfg.host };
 }
 
-// ─── HTML email shell ─────────────────────────────────────────────────────────
-function wrapEmail({ title, badge, badgeColor = '#0a84ff', body }) {
-  const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata',
-    weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${title}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#0d0d0f;color:#e5e5e7}
-.wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px}
-.header{background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:28px 28px 20px;margin-bottom:20px}
-.logo{font-size:22px;font-weight:700;color:#fff;letter-spacing:-.4px;margin-bottom:4px}
-.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px}
-.title{font-size:26px;font-weight:700;color:#fff;letter-spacing:-.5px;line-height:1.2}
-.subtitle{font-size:13px;color:#8e8e93;margin-top:6px}
-.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px;margin-bottom:16px}
-.card-title{font-size:13px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
-.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.kpi{background:rgba(255,255,255,.05);border-radius:10px;padding:14px}
-.kpi-label{font-size:11px;color:#8e8e93;margin-bottom:4px}
-.kpi-val{font-size:22px;font-weight:700;color:#fff}
-.green{color:#32d74b}.orange{color:#ff9f0a}.red{color:#ff453a}.blue{color:#0a84ff}
-table{width:100%;border-collapse:collapse}
-th{font-size:11px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:.5px;padding:6px 10px;text-align:left;border-bottom:1px solid rgba(255,255,255,.06)}
-td{font-size:13px;color:#e5e5e7;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
-tr:last-child td{border-bottom:none}
-.pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.3px}
-.pill-red{background:#ff453a22;color:#ff453a;border:1px solid #ff453a44}
-.pill-orange{background:#ff9f0a22;color:#ff9f0a;border:1px solid #ff9f0a44}
-.alert-box{background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.3);border-radius:10px;padding:14px 16px;margin-bottom:12px}
-.alert-box.warn{background:rgba(255,159,10,.08);border-color:rgba(255,159,10,.3)}
-.stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
-.stat-row:last-child{border-bottom:none}
-.sl{font-size:13px;color:#aeaeb2}.sv{font-size:14px;font-weight:600;color:#fff}
-.footer{font-size:11px;color:#48484a;text-align:center;margin-top:28px;line-height:1.6}
-a{color:#0a84ff;text-decoration:none}
-@media(max-width:500px){.kpi-grid{grid-template-columns:1fr}}
-</style></head><body>
-<div class="wrap">
-  <div class="header">
-    <div class="logo">🖥️ MacOS Suite</div>
-    <div class="badge">${badge}</div>
-    <div class="title">${title}</div>
-    <div class="subtitle">Generated ${now} IST</div>
-  </div>
-  ${body}
-  <div class="footer">MacOS Business Suite &bull; Automated Report &bull; Do not reply.</div>
-</div></body></html>`;
+// ─── Calculator engine import ─────────────────────────────────────────────────
+const path = require('path');
+let calculator = null;
+try {
+  calculator = require('../../../core/billing/calculator');
+} catch (e1) {
+  try {
+    calculator = require(path.join(__dirname, '../../../core/billing/calculator'));
+  } catch (e2) {
+    console.warn('[EmailScheduler] Could not load calculator:', e2.message);
+  }
 }
 
-// ─── DATA QUERIES ─────────────────────────────────────────────────────────────
+// ─── HTML email shell (Light, Ultra-Beautiful & Responsive) ──────────────────
+function wrapEmail({ title, badge, badgeColor = '#0071e3', body }) {
+  const now = new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 
-function querySales(db, period = '7 days') {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+<title>${title}</title>
+<style>
+  /* Base reset */
+  body, table, td, p, a, li, blockquote {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #f4f5f8;
+    color: #1f2328;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+    width: 100% !important;
+  }
+  .wrapper {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 24px 16px 40px;
+  }
+  /* Header Card */
+  .header-card {
+    background: #ffffff;
+    border: 1px solid #e1e4e8;
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  }
+  .brand-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .brand-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #374151;
+    letter-spacing: -0.2px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: ${badgeColor}15;
+    color: ${badgeColor};
+    border: 1px solid ${badgeColor}35;
+  }
+  .main-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.5px;
+    line-height: 1.25;
+    margin-top: 4px;
+  }
+  .meta-sub {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+  }
+  /* Standard Content Card */
+  .card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  }
+  .card-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  /* Responsive KPI Grid */
+  .kpi-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 10px;
+    margin: -10px;
+  }
+  .kpi-cell {
+    width: 50%;
+    background: #f9fafb;
+    border: 1px solid #f3f4f6;
+    border-radius: 10px;
+    padding: 14px 16px;
+    vertical-align: top;
+  }
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 4px;
+  }
+  .kpi-val {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.5px;
+  }
+  .blue { color: #0284c7; }
+  .green { color: #16a34a; }
+  .amber { color: #d97706; }
+  .red { color: #dc2626; }
+  .stat-row {
+    padding: 10px 0;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { font-size: 13px; color: #4b5563; }
+  .stat-value { font-size: 14px; font-weight: 700; color: #111827; }
+  /* Clean Data Table */
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th {
+    background: #f9fafb;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+  }
+  .data-table td {
+    padding: 10px 10px;
+    color: #374151;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:nth-child(even) td { background-color: #fafbfc; }
+  /* Alert Box */
+  .alert-box {
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .alert-warning {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+  }
+  .alert-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+  }
+  .alert-success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+  }
+  /* Badges */
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.3px;
+  }
+  .pill-red { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+  .pill-amber { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+  .pill-blue { background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; }
+  .pill-green { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; }
+  .btn-link {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #0071e3;
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: #eef2ff;
+    white-space: nowrap;
+  }
+  .footer {
+    text-align: center;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 28px;
+    line-height: 1.6;
+  }
+  /* Mobile reflow */
+  @media only screen and (max-width: 580px) {
+    .wrapper { padding: 12px 10px 30px; }
+    .header-card { padding: 18px 20px; }
+    .card { padding: 16px 14px; }
+    .main-title { font-size: 20px; }
+    .kpi-table { display: block; border-spacing: 0; margin: 0; }
+    .kpi-table tbody, .kpi-table tr { display: block; }
+    .kpi-cell { display: block; width: 100% !important; margin-bottom: 8px; box-sizing: border-box; }
+    .data-table th, .data-table td { padding: 8px 6px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header-card">
+    <div class="brand-row">
+      <span class="brand-title">🖥️ MacOS Business Suite</span>
+      <span class="badge">${badge}</span>
+    </div>
+    <div class="main-title">${title}</div>
+    <div class="meta-sub">Generated on ${now} IST</div>
+  </div>
+  ${body}
+  <div class="footer">
+    MacOS Business Suite &bull; Automated Enterprise Briefing<br/>
+    <span style="font-size:11px;color:#9ca3af;">Delivered locally via Stalwart Mail Server &bull; Do not reply to this email</span>
+  </div>
+</div>
+</body>
+</html>`;
+}
+
+// ─── CANONICAL BILLING & ORDER QUERIES ─────────────────────────────────────────
+
+function queryBusinessMetrics(db) {
+  if (calculator && typeof calculator.calculateDashboardMetrics === 'function') {
+    try {
+      return calculator.calculateDashboardMetrics(db, null, { preset: 'all' });
+    } catch (e) {
+      console.warn('[EmailScheduler] calculateDashboardMetrics error:', e.message);
+    }
+  }
+  return null;
+}
+
+function querySales(db, days = 7) {
   return db.prepare(`
     SELECT
-      COALESCE(SUM(grand_total),0)  AS total_invoiced,
-      COUNT(*)                       AS invoice_count,
+      COALESCE(SUM(grand_total), 0) AS total_invoiced,
+      COUNT(*) AS invoice_count,
       COALESCE((SELECT SUM(amount) FROM payments WHERE type='PAYMENT'
-                AND created_at >= datetime('now','-${period}')),0) AS payments_collected,
+                AND created_at >= datetime('now', '-${days} days')), 0) AS payments_collected,
       COALESCE((SELECT SUM(credit_amount) FROM payments WHERE type='CREDIT_NOTE'
-                AND created_at >= datetime('now','-${period}')),0) AS credits_issued
-    FROM invoices WHERE created_at >= datetime('now','-${period}')
+                AND created_at >= datetime('now', '-${days} days')), 0) AS credits_issued
+    FROM invoices
+    WHERE created_at >= datetime('now', '-${days} days')
   `).get() || {};
 }
 
 function queryDailySales(db) {
   return db.prepare(`
     SELECT
-      COALESCE(SUM(grand_total),0) AS total_invoiced,
+      COALESCE(SUM(grand_total), 0) AS total_invoiced,
       COUNT(*) AS invoice_count,
-      COALESCE((SELECT SUM(amount) FROM payments WHERE type='PAYMENT' AND date(created_at)=date('now')),0) AS payments_collected
-    FROM invoices WHERE date(created_at)=date('now')
+      COALESCE((SELECT SUM(amount) FROM payments WHERE type='PAYMENT' AND date(created_at, '+5 hours', '+30 minutes') = date('now', '+5 hours', '+30 minutes')), 0) AS payments_collected
+    FROM invoices
+    WHERE date(created_at, '+5 hours', '+30 minutes') = date('now', '+5 hours', '+30 minutes')
   `).get() || {};
 }
 
-function queryAging(db) {
-  const total = db.prepare(`SELECT COALESCE(SUM(current_due),0) AS v FROM ledger WHERE current_due>0`).get()?.v || 0;
-  const over30 = db.prepare(`
-    SELECT COALESCE(SUM(l.current_due),0) AS v FROM ledger l
-    JOIN invoices i ON i.customer_id=l.customer_id
-    WHERE l.current_due>0 AND i.invoice_date<=datetime('now','-30 days')
-  `).get()?.v || 0;
-  const over60 = db.prepare(`
-    SELECT COALESCE(SUM(l.current_due),0) AS v FROM ledger l
-    JOIN invoices i ON i.customer_id=l.customer_id
-    WHERE l.current_due>0 AND i.invoice_date<=datetime('now','-60 days')
-  `).get()?.v || 0;
-  const top5 = db.prepare(`
-    SELECT c.name, l.current_due, c.phone,
-      (SELECT MAX(payment_date) FROM payments p WHERE p.customer_id=c.id AND p.type='PAYMENT') AS last_pay,
-      c.ledger_token
-    FROM ledger l JOIN contacts c ON c.id=l.customer_id
-    WHERE l.current_due>0 AND c.exclude_from_stats=0
-    ORDER BY l.current_due DESC LIMIT 5
-  `).all();
-  return { total, over30, over60, top5 };
+function queryReceivablesAndAging(db) {
+  const metrics = queryBusinessMetrics(db);
+  if (metrics) {
+    const totalDue = Number(metrics.keyMetrics?.amountDue || 0);
+    const aging = metrics.receivablesAging || {};
+    const top5 = (metrics.topCustomers || [])
+      .filter(c => Number(c.dueBalance || c.current_due || 0) > 0.01)
+      .slice(0, 5)
+      .map(c => {
+        const contact = db.prepare(`SELECT phone, ledger_token FROM contacts WHERE id = ?`).get(c.id) || {};
+        return {
+          name: c.name,
+          current_due: Number(c.dueBalance || c.current_due || 0),
+          phone: contact.phone,
+          ledger_token: contact.ledger_token
+        };
+      });
+
+    // Fallback if topCustomers didn't have dueBalance:
+    let topCustomers = top5;
+    if (topCustomers.length === 0) {
+      const unsettled = queryOverdueInvoices(db, 0);
+      const custTotals = {};
+      for (const inv of unsettled) {
+        if (!custTotals[inv.cust]) {
+          custTotals[inv.cust] = { name: inv.cust, current_due: 0, phone: inv.phone, ledger_token: inv.ledger_token };
+        }
+        custTotals[inv.cust].current_due += inv.balance;
+      }
+      topCustomers = Object.values(custTotals).sort((a, b) => b.current_due - a.current_due).slice(0, 5);
+    }
+
+    return {
+      total: totalDue,
+      billed: Number(metrics.keyMetrics?.totalBilled || 0),
+      collected: Number(metrics.keyMetrics?.totalCollected || 0),
+      collectionRate: Number(metrics.keyMetrics?.collectionRatePercent || 0),
+      over30: Number(metrics.keyMetrics?.overdueAmount || 0),
+      aging0to30: Number(aging.outstanding0to30 || 0),
+      aging31to60: Number(aging.outstanding31to60 || 0),
+      aging61Plus: Number(aging.outstanding61Plus || 0),
+      top5: topCustomers
+    };
+  }
+
+  // Pure SQL fallback if calculator module is not found:
+  const unsettled = queryOverdueInvoices(db, 0);
+  const totalDue = unsettled.reduce((sum, inv) => sum + inv.balance, 0);
+  const over30 = unsettled.filter(inv => inv.age > 30).reduce((sum, inv) => sum + inv.balance, 0);
+  const over60 = unsettled.filter(inv => inv.age > 60).reduce((sum, inv) => sum + inv.balance, 0);
+
+  const custTotals = {};
+  for (const inv of unsettled) {
+    if (!custTotals[inv.cust]) {
+      custTotals[inv.cust] = { name: inv.cust, current_due: 0, phone: inv.phone, ledger_token: inv.ledger_token };
+    }
+    custTotals[inv.cust].current_due += inv.balance;
+  }
+  const top5 = Object.values(custTotals).sort((a, b) => b.current_due - a.current_due).slice(0, 5);
+
+  return {
+    total: totalDue,
+    billed: 0,
+    collected: 0,
+    collectionRate: 0,
+    over30,
+    aging0to30: Math.max(0, totalDue - over30),
+    aging31to60: Math.max(0, over30 - over60),
+    aging61Plus: over60,
+    top5
+  };
 }
 
-function queryOverdueInvoices(db, days) {
-  return db.prepare(`
-    SELECT i.invoice_no, i.invoice_date, i.grand_total, c.name AS cust, c.phone, c.ledger_token,
-      CAST(julianday('now')-julianday(i.invoice_date) AS INTEGER) AS age,
-      i.grand_total - COALESCE((SELECT SUM(amount) FROM payments p WHERE p.invoice_id=i.id AND p.type='PAYMENT'),0) AS balance
-    FROM invoices i JOIN contacts c ON c.id=i.customer_id
-    WHERE i.invoice_date<=datetime('now','-${days} days')
-      AND i.grand_total - COALESCE((SELECT SUM(amount) FROM payments p2 WHERE p2.invoice_id=i.id AND p2.type='PAYMENT'),0) > 0.01
-      AND c.exclude_from_stats=0
-    ORDER BY age DESC LIMIT 50
+/**
+ * Only returns genuinely UNSETTLED invoices (remaining balance > 0.01 via FIFO).
+ * Excludes fully paid/settled invoices!
+ */
+function queryOverdueInvoices(db, daysThreshold = 0) {
+  const allContacts = db.prepare(`SELECT id, name, phone, ledger_token, opening_balance, exclude_from_stats FROM contacts WHERE exclude_from_stats = 0`).all();
+  const allInvoices = db.prepare(`
+    SELECT i.id, i.invoice_no, i.customer_id, c.name AS cust, c.phone, c.ledger_token,
+           COALESCE(i.invoice_date, i.created_at) AS invoice_date, i.grand_total
+    FROM invoices i
+    JOIN contacts c ON i.customer_id = c.id
+    WHERE c.exclude_from_stats = 0
+    ORDER BY COALESCE(i.invoice_date, i.created_at) ASC
   `).all();
+  const allPayments = db.prepare(`SELECT * FROM payments ORDER BY COALESCE(payment_date, created_at) ASC`).all();
+
+  let billBalances = {};
+  if (calculator && typeof calculator.calculateBillSettlement === 'function') {
+    try {
+      billBalances = calculator.calculateBillSettlement(allInvoices, allPayments, allContacts);
+    } catch (e) {
+      console.warn('[EmailScheduler] calculateBillSettlement fallback:', e.message);
+    }
+  }
+
+  const now = Date.now();
+  const overdueList = [];
+
+  for (const inv of allInvoices) {
+    const remaining = billBalances[inv.id] !== undefined ? billBalances[inv.id] : inv.grand_total;
+    // CRITICAL: Only include unsettled invoices!
+    if (remaining > 0.01) {
+      const invDate = new Date(inv.invoice_date);
+      const ageDays = isNaN(invDate.getTime()) ? 0 : Math.max(0, Math.floor((now - invDate.getTime()) / 86400000));
+      if (ageDays >= daysThreshold) {
+        overdueList.push({
+          id: inv.id,
+          invoice_no: inv.invoice_no,
+          invoice_date: inv.invoice_date,
+          grand_total: inv.grand_total,
+          balance: Number(remaining.toFixed(2)),
+          cust: inv.cust,
+          phone: inv.phone,
+          ledger_token: inv.ledger_token,
+          age: ageDays
+        });
+      }
+    }
+  }
+
+  overdueList.sort((a, b) => b.age - a.age);
+  return overdueList;
 }
 
-function queryPendingOrders(db, days) {
-  return db.prepare(`
-    SELECT o.order_number, o.order_date, o.current_stage, o.total_amount,
-      c.name AS cust, c.phone,
-      CAST(julianday('now')-julianday(o.order_date) AS INTEGER) AS age
-    FROM orders o JOIN contacts c ON c.id=o.customer_id
-    WHERE o.status NOT IN ('delivered','cancelled')
-      AND o.order_date<=datetime('now','-${days} days')
-    ORDER BY age DESC LIMIT 30
+/**
+ * Only returns genuinely PENDING orders (current_stage in stage1, stage2 and not completed/delivered).
+ * Excludes stage3 (delivered/billed) and completed/cancelled orders!
+ */
+function queryPendingOrders(db, daysThreshold = 0) {
+  const pendingOrders = db.prepare(`
+    SELECT o.id, o.order_number, o.customer_id, c.name AS cust, c.phone,
+           o.current_stage, o.status, o.total_amount,
+           COALESCE(o.order_date, o.created_at) AS order_date
+    FROM orders o
+    LEFT JOIN contacts c ON o.customer_id = c.id
+    WHERE (o.status IS NULL OR o.status NOT IN ('complete', 'delivered', 'cancelled', 'settled'))
+      AND (o.current_stage IN ('stage1', 'stage2') OR o.current_stage IS NULL)
+    ORDER BY COALESCE(o.order_date, o.created_at) ASC
   `).all();
+
+  const now = Date.now();
+  const result = [];
+
+  for (const ord of pendingOrders) {
+    const ordDate = new Date(ord.order_date);
+    const ageDays = isNaN(ordDate.getTime()) ? 0 : Math.max(0, Math.floor((now - ordDate.getTime()) / 86400000));
+    if (ageDays >= daysThreshold) {
+      result.push({
+        id: ord.id,
+        order_number: ord.order_number,
+        cust: ord.cust || 'Direct Customer',
+        phone: ord.phone,
+        current_stage: ord.current_stage || 'stage1',
+        status: ord.status || 'pending',
+        total_amount: Number(ord.total_amount || 0),
+        order_date: ord.order_date,
+        age: ageDays
+      });
+    }
+  }
+
+  result.sort((a, b) => b.age - a.age);
+  return result;
+}
+
+function queryOrderSummary(db) {
+  const pending = queryPendingOrders(db, 0);
+  const s1 = pending.filter(o => o.current_stage === 'stage1').length;
+  const s2 = pending.filter(o => o.current_stage === 'stage2').length;
+  const pipeline = pending.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+
+  const fulfilledRow = db.prepare(`
+    SELECT COUNT(*) as count FROM orders
+    WHERE status IN ('complete', 'delivered') OR current_stage = 'stage3'
+  `).get();
+
+  return {
+    total: pending.length,
+    s1,
+    s2,
+    pipeline,
+    fulfilledCount: fulfilledRow ? fulfilledRow.count : 0
+  };
 }
 
 function queryLowStock(db) {
   return db.prepare(`
     SELECT p.name, v.pack_size_value, v.pack_size_type, b.batch_no, b.units_sold, b.exp_date
-    FROM batches b JOIN variants v ON v.id=b.variant_id JOIN products p ON p.id=v.product_id
-    WHERE b.units_sold < 10 ORDER BY b.units_sold ASC LIMIT 20
+    FROM batches b
+    JOIN variants v ON v.id = b.variant_id
+    JOIN products p ON p.id = v.product_id
+    WHERE b.units_sold < 10
+    ORDER BY b.units_sold ASC
+    LIMIT 20
   `).all();
 }
 
-function queryOrderSummary(db) {
-  return db.prepare(`
-    SELECT COUNT(*) AS total,
-      SUM(CASE WHEN current_stage='stage1' THEN 1 ELSE 0 END) AS s1,
-      SUM(CASE WHEN current_stage='stage2' THEN 1 ELSE 0 END) AS s2,
-      SUM(CASE WHEN current_stage='stage3' THEN 1 ELSE 0 END) AS s3,
-      COALESCE(SUM(total_amount),0) AS pipeline
-    FROM orders WHERE status NOT IN ('delivered','cancelled')
-  `).get() || {};
-}
-
-// ─── EMAIL BUILDERS ───────────────────────────────────────────────────────────
+// ─── EMAIL TEMPLATE BUILDERS ──────────────────────────────────────────────────
 
 function buildWeeklySummary(db) {
   const company = getSetting(db, 'email_company_name', getSetting(db, 'company_name', 'Your Business'));
-  const portal  = getSetting(db, 'email_portal_url',   getSetting(db, 'portal_base_url', 'https://mac.faizal.uk'));
-  const sales   = querySales(db, '7 days');
-  const aging   = queryAging(db);
+  const portal  = getSetting(db, 'email_portal_url', getSetting(db, 'portal_base_url', 'https://mac.faizal.uk'));
+  const sales   = querySales(db, 7);
+  const aging   = queryReceivablesAndAging(db);
   const orders  = queryOrderSummary(db);
 
   const top5rows = (aging.top5 || []).map(c => {
-    const ledger = c.ledger_token ? `<a href="${portal}/ledger/${c.ledger_token}">View</a>` : '—';
-    const last   = c.last_pay ? new Date(c.last_pay).toLocaleDateString('en-IN') : `<span style="color:#8e8e93">Never</span>`;
-    const ph     = c.phone ? `<br/><span style="color:#8e8e93;font-size:11px">${c.phone}</span>` : '';
-    return `<tr><td><strong>${c.name}</strong>${ph}</td><td style="color:#ff453a;font-weight:600">${inr(c.current_due)}</td><td>${last}</td><td>${ledger}</td></tr>`;
+    const ledger = c.ledger_token ? `<a href="${portal}/ledger/${c.ledger_token}" class="btn-link" target="_blank">View Ledger →</a>` : '—';
+    const ph = c.phone ? `<br/><span style="color:#6b7280;font-size:11px;">${c.phone}</span>` : '';
+    return `<tr>
+      <td><strong>${c.name}</strong>${ph}</td>
+      <td style="color:#dc2626;font-weight:700;">${inr(c.current_due)}</td>
+      <td style="text-align:right;">${ledger}</td>
+    </tr>`;
   }).join('');
 
   const body = `
+    <!-- KPI Row -->
     <div class="card">
-      <div class="card-title">📊 Weekly Sales & Cash Flow (7 Days)</div>
-      <div class="kpi-grid">
-        <div class="kpi"><div class="kpi-label">Gross Invoiced</div><div class="kpi-val blue">${inr(sales.total_invoiced)}</div></div>
-        <div class="kpi"><div class="kpi-label">Invoices Raised</div><div class="kpi-val">${sales.invoice_count||0}</div></div>
-        <div class="kpi"><div class="kpi-label">Payments Collected</div><div class="kpi-val green">${inr(sales.payments_collected)}</div></div>
-        <div class="kpi"><div class="kpi-label">Credits Issued</div><div class="kpi-val orange">${inr(sales.credits_issued)}</div></div>
+      <div class="card-header">📊 7-Day Performance & Receivables</div>
+      <table class="kpi-table" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="kpi-cell">
+            <div class="kpi-label">Gross Invoiced</div>
+            <div class="kpi-val blue">${inr(sales.total_invoiced)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">${sales.invoice_count || 0} Invoices Raised</div>
+          </td>
+          <td class="kpi-cell">
+            <div class="kpi-label">Payments Collected</div>
+            <div class="kpi-val green">${inr(sales.payments_collected)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Credits: ${inr(sales.credits_issued)}</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="kpi-cell">
+            <div class="kpi-label">Total Outstanding</div>
+            <div class="kpi-val red">${inr(aging.total)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Actual Customer Due</div>
+          </td>
+          <td class="kpi-cell">
+            <div class="kpi-label">Collection Rate</div>
+            <div class="kpi-val green">${aging.collectionRate || 100}%</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Overall Inflow Ratio</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Receivables Aging Card -->
+    <div class="card">
+      <div class="card-header">💳 Receivables Aging Analysis</div>
+      <div class="stat-row">
+        <span class="stat-label">Current (0 – 30 Days)</span>
+        <span class="stat-value blue">${inr(aging.aging0to30)}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Overdue (31 – 60 Days)</span>
+        <span class="stat-value amber">${inr(aging.aging31to60)}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Critical (61+ Days)</span>
+        <span class="stat-value red">${inr(aging.aging61Plus)}</span>
+      </div>
+      <div class="stat-row" style="background:#fafbfc;margin:8px -22px -20px;padding:12px 22px;border-top:1px solid #e5e7eb;border-bottom-left-radius:14px;border-bottom-right-radius:14px;">
+        <span class="stat-label" style="font-weight:700;color:#111827;">Total Outstanding Debt</span>
+        <span class="stat-value red" style="font-size:16px;">${inr(aging.total)}</span>
       </div>
     </div>
+
+    <!-- Top Outstanding Customers -->
+    ${top5rows ? `
     <div class="card">
-      <div class="card-title">💳 Customer Receivables</div>
-      <div class="stat-row"><span class="sl">Total Outstanding</span><span class="sv red">${inr(aging.total)}</span></div>
-      <div class="stat-row"><span class="sl">Overdue &gt; 30 days</span><span class="sv orange">${inr(aging.over30)}</span></div>
-      <div class="stat-row"><span class="sl">Overdue &gt; 60 days</span><span class="sv red">${inr(aging.over60)}</span></div>
-    </div>
-    ${top5rows ? `<div class="card"><div class="card-title">🏆 Top 5 Outstanding Customers</div>
-      <table><thead><tr><th>Customer</th><th>Due</th><th>Last Payment</th><th>Ledger</th></tr></thead>
-      <tbody>${top5rows}</tbody></table></div>` : ''}
+      <div class="card-header">🏆 Top Outstanding Receivables</div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Due Balance</th>
+              <th style="text-align:right;">Ledger</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${top5rows}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    <!-- Active Orders Pipeline -->
     <div class="card">
-      <div class="card-title">📦 Orders Pipeline</div>
-      <div class="kpi-grid">
-        <div class="kpi"><div class="kpi-label">Active Orders</div><div class="kpi-val">${orders.total||0}</div></div>
-        <div class="kpi"><div class="kpi-label">Pipeline Value</div><div class="kpi-val blue">${inr(orders.pipeline)}</div></div>
-        <div class="kpi"><div class="kpi-label">Packing (Stage 1)</div><div class="kpi-val orange">${orders.s1||0}</div></div>
-        <div class="kpi"><div class="kpi-label">Ready (Stage 2)</div><div class="kpi-val green">${orders.s2||0}</div></div>
+      <div class="card-header">📦 Orders Pipeline Status</div>
+      <table class="kpi-table" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="kpi-cell">
+            <div class="kpi-label">Pending Orders</div>
+            <div class="kpi-val amber">${orders.total || 0}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">In Production Pipeline</div>
+          </td>
+          <td class="kpi-cell">
+            <div class="kpi-label">Pipeline Value</div>
+            <div class="kpi-val blue">${inr(orders.pipeline)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Awaiting Dispatch</div>
+          </td>
+        </tr>
+      </table>
+      <div style="margin-top:14px;">
+        <div class="stat-row">
+          <span class="stat-label">📦 Stage 1: Order Packing</span>
+          <span class="stat-value amber">${orders.s1 || 0} Orders</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">✅ Stage 2: Ready for Dispatch</span>
+          <span class="stat-value green">${orders.s2 || 0} Orders</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">🚚 Fulfilled / Delivered</span>
+          <span class="stat-value blue">${orders.fulfilledCount || 0} Orders</span>
+        </div>
       </div>
     </div>`;
 
   return {
-    subject: `📊 Weekly Business Summary — ${company}`,
-    html: wrapEmail({ title: `Weekly Summary — ${company}`, badge: 'Weekly Digest', badgeColor: '#0a84ff', body }),
-    text: `Weekly Summary\nGross Invoiced: ${inr(sales.total_invoiced)}\nCollected: ${inr(sales.payments_collected)}\nOutstanding: ${inr(aging.total)}`,
+    subject: `📊 Weekly Business Digest — ${company}`,
+    html: wrapEmail({ title: `Weekly Executive Briefing — ${company}`, badge: 'Weekly Summary', badgeColor: '#0071e3', body }),
+    text: `Weekly Executive Briefing\nGross Invoiced: ${inr(sales.total_invoiced)}\nPayments Collected: ${inr(sales.payments_collected)}\nTotal Outstanding: ${inr(aging.total)}\nPending Orders: ${orders.total}`,
   };
 }
 
 function buildDailySummary(db) {
   const company = getSetting(db, 'email_company_name', getSetting(db, 'company_name', 'Your Business'));
   const sales   = queryDailySales(db);
-  const aging   = queryAging(db);
+  const aging   = queryReceivablesAndAging(db);
   const orders  = queryOrderSummary(db);
 
   const body = `
+    <!-- Today's Activity KPI -->
     <div class="card">
-      <div class="card-title">☀️ Today's Activity</div>
-      <div class="kpi-grid">
-        <div class="kpi"><div class="kpi-label">Today's Invoiced</div><div class="kpi-val blue">${inr(sales.total_invoiced)}</div></div>
-        <div class="kpi"><div class="kpi-label">Invoices Raised</div><div class="kpi-val">${sales.invoice_count||0}</div></div>
-        <div class="kpi"><div class="kpi-label">Payments Collected</div><div class="kpi-val green">${inr(sales.payments_collected)}</div></div>
-        <div class="kpi"><div class="kpi-label">Total Outstanding</div><div class="kpi-val red">${inr(aging.total)}</div></div>
-      </div>
+      <div class="card-header">☀️ Today's Business Activity</div>
+      <table class="kpi-table" cellpadding="0" cellspacing="0">
+        <tr>
+          <td class="kpi-cell">
+            <div class="kpi-label">Today's Invoiced</div>
+            <div class="kpi-val blue">${inr(sales.total_invoiced)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">${sales.invoice_count || 0} Bills Raised Today</div>
+          </td>
+          <td class="kpi-cell">
+            <div class="kpi-label">Collected Today</div>
+            <div class="kpi-val green">${inr(sales.payments_collected)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Cash / Bank Inflow</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="kpi-cell">
+            <div class="kpi-label">Total Outstanding</div>
+            <div class="kpi-val red">${inr(aging.total)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Live Ledger Debt</div>
+          </td>
+          <td class="kpi-cell">
+            <div class="kpi-label">Active Orders</div>
+            <div class="kpi-val amber">${orders.total || 0}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">Value: ${inr(orders.pipeline)}</div>
+          </td>
+        </tr>
+      </table>
     </div>
+
+    <!-- Active Pipeline Card -->
     <div class="card">
-      <div class="card-title">📦 Orders Status</div>
-      <div class="stat-row"><span class="sl">Active Orders</span><span class="sv">${orders.total||0}</span></div>
-      <div class="stat-row"><span class="sl">Stage 1 — Packing</span><span class="sv orange">${orders.s1||0}</span></div>
-      <div class="stat-row"><span class="sl">Stage 2 — Ready</span><span class="sv green">${orders.s2||0}</span></div>
-      <div class="stat-row"><span class="sl">Stage 3 — In Transit</span><span class="sv blue">${orders.s3||0}</span></div>
-      <div class="stat-row"><span class="sl">Pipeline Value</span><span class="sv">${inr(orders.pipeline)}</span></div>
+      <div class="card-header">📦 Order Fulfillment Status</div>
+      <div class="stat-row">
+        <span class="stat-label">📦 Stage 1: Order Packing</span>
+        <span class="stat-value amber">${orders.s1 || 0}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">✅ Stage 2: Quality Checked & Ready</span>
+        <span class="stat-value green">${orders.s2 || 0}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">💰 Unfulfilled Pipeline Value</span>
+        <span class="stat-value blue">${inr(orders.pipeline)}</span>
+      </div>
     </div>`;
 
   return {
-    subject: `☀️ Daily Briefing — ${company}`,
-    html: wrapEmail({ title: `Daily Briefing — ${company}`, badge: 'Daily Summary', badgeColor: '#32d74b', body }),
-    text: `Daily Briefing\nToday's Invoiced: ${inr(sales.total_invoiced)}\nOutstanding: ${inr(aging.total)}`,
+    subject: `☀️ Daily Business Briefing — ${company}`,
+    html: wrapEmail({ title: `Daily Briefing — ${company}`, badge: 'Daily Briefing', badgeColor: '#16a34a', body }),
+    text: `Daily Briefing\nToday's Invoiced: ${inr(sales.total_invoiced)}\nCollected Today: ${inr(sales.payments_collected)}\nTotal Outstanding: ${inr(aging.total)}\nActive Orders: ${orders.total}`,
   };
 }
 
@@ -578,40 +1060,62 @@ function buildInvoiceOverdue(db, days) {
   if (!invoices.length) return null;
 
   const total = invoices.reduce((s, i) => s + (i.balance || 0), 0);
-  const color = days >= 30 ? '#ff453a' : '#ff9f0a';
+  const color = days >= 30 ? '#dc2626' : (days >= 14 ? '#ea580c' : '#d97706');
+  const alertCls = days >= 30 ? 'alert-danger' : 'alert-warning';
   const icon  = days >= 30 ? '🚨' : '⚠️';
 
   const rows = invoices.map(i => {
-    const ledger = i.ledger_token ? `<a href="${portal}/ledger/${i.ledger_token}">Ledger</a>` : '—';
-    const ph = i.phone ? `<br/><span style="color:#8e8e93;font-size:11px">${i.phone}</span>` : '';
-    const pillCls = days >= 30 ? 'pill-red' : 'pill-orange';
+    const ledger = i.ledger_token
+      ? `<a href="${portal}/ledger/${i.ledger_token}" class="btn-link" target="_blank">Ledger →</a>`
+      : '—';
+    const ph = i.phone ? `<br/><span style="color:#6b7280;font-size:11px;">${i.phone}</span>` : '';
+    const pillCls = days >= 30 ? 'pill-red' : (days >= 14 ? 'pill-amber' : 'pill-blue');
+    const billDate = i.invoice_date ? new Date(i.invoice_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
     return `<tr>
       <td><strong>${i.cust}</strong>${ph}</td>
-      <td>${i.invoice_no}</td>
-      <td>${i.invoice_date ? new Date(i.invoice_date).toLocaleDateString('en-IN') : ''}</td>
-      <td style="color:${color};font-weight:600">${inr(i.balance)}</td>
+      <td><span style="font-family:monospace;font-weight:600;">${i.invoice_no}</span></td>
+      <td>${billDate}</td>
+      <td style="color:#6b7280;">${inr(i.grand_total)}</td>
+      <td style="color:#dc2626;font-weight:700;">${inr(i.balance)}</td>
       <td><span class="pill ${pillCls}">${i.age}d</span></td>
-      <td>${ledger}</td>
+      <td style="text-align:right;">${ledger}</td>
     </tr>`;
   }).join('');
 
-  const alertCls = days >= 30 ? '' : ' warn';
   const body = `
-    <div class="alert-box${alertCls}">
-      <span style="font-size:18px;margin-right:8px">${icon}</span>
-      <strong>${invoices.length} invoice${invoices.length!==1?'s':''} unsettled for ${days}+ days</strong>
-      — Total at risk: <strong>${inr(total)}</strong>
+    <div class="alert-box ${alertCls}">
+      <span style="font-size:18px;margin-right:6px;">${icon}</span>
+      <strong>${invoices.length} invoice${invoices.length !== 1 ? 's' : ''} unsettled for ${days}+ days</strong>
+      &bull; Total outstanding collection due: <strong>${inr(total)}</strong>
     </div>
+
     <div class="card">
-      <div class="card-title">📋 Overdue Invoices — ${days}+ Days</div>
-      <table><thead><tr><th>Customer</th><th>Invoice #</th><th>Date</th><th>Balance Due</th><th>Age</th><th>Ledger</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="card-header">📋 Overdue Invoices Requiring Follow-Up (${days}+ Days)</div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Bill #</th>
+              <th>Date</th>
+              <th>Billed</th>
+              <th>Balance Due</th>
+              <th>Age</th>
+              <th style="text-align:right;">Ledger</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
     </div>`;
 
   return {
-    subject: `${icon} ${invoices.length} Invoice${invoices.length!==1?'s':''} Overdue ${days}+ Days — ${inr(total)} Outstanding`,
-    html: wrapEmail({ title: `Invoices Overdue ${days}+ Days`, badge: `${days}-Day Overdue`, badgeColor: color, body }),
-    text: `${invoices.length} invoices overdue ${days}+ days. Total: ${inr(total)}`,
+    subject: `${icon} ${invoices.length} Invoice${invoices.length !== 1 ? 's' : ''} Overdue ${days}+ Days — ${inr(total)} Pending Collection`,
+    html: wrapEmail({ title: `Invoices Overdue ${days}+ Days`, badge: `${days}-Day Overdue Alert`, badgeColor: color, body }),
+    text: `${invoices.length} invoices unsettled ${days}+ days. Total overdue: ${inr(total)}`,
   };
 }
 
@@ -619,34 +1123,57 @@ function buildOrderPending(db, days) {
   const orders = queryPendingOrders(db, days);
   if (!orders.length) return null;
 
-  const stageLabel = { stage1: '📦 Packing', stage2: '✅ Ready', stage3: '🚚 In Transit' };
+  const totalValue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const stageLabels = {
+    stage1: '<span class="pill pill-amber">📦 Stage 1: Packing</span>',
+    stage2: '<span class="pill pill-green">✅ Stage 2: Ready for Dispatch</span>',
+  };
+
   const rows = orders.map(o => {
-    const ph = o.phone ? `<br/><span style="color:#8e8e93;font-size:11px">${o.phone}</span>` : '';
+    const ph = o.phone ? `<br/><span style="color:#6b7280;font-size:11px;">${o.phone}</span>` : '';
+    const ordDate = o.order_date ? new Date(o.order_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
     return `<tr>
       <td><strong>${o.order_number}</strong></td>
-      <td>${o.cust}${ph}</td>
-      <td>${o.order_date ? new Date(o.order_date).toLocaleDateString('en-IN') : ''}</td>
-      <td>${stageLabel[o.current_stage] || o.current_stage}</td>
-      <td><span class="pill pill-orange">${o.age}d</span></td>
-      <td style="color:#ff9f0a;font-weight:600">${inr(o.total_amount)}</td>
+      <td><strong>${o.cust}</strong>${ph}</td>
+      <td>${ordDate}</td>
+      <td>${stageLabels[o.current_stage] || o.current_stage}</td>
+      <td><span class="pill pill-amber">${o.age}d</span></td>
+      <td style="color:#111827;font-weight:700;">${inr(o.total_amount)}</td>
     </tr>`;
   }).join('');
 
   const body = `
-    <div class="alert-box warn">
-      <span style="font-size:18px;margin-right:8px">⏳</span>
-      <strong>${orders.length} order${orders.length!==1?'s':''} pending for ${days}+ days</strong> — need attention.
+    <div class="alert-box alert-warning">
+      <span style="font-size:18px;margin-right:6px;">⏳</span>
+      <strong>${orders.length} order${orders.length !== 1 ? 's' : ''} in pipeline for ${days}+ days</strong>
+      &bull; Total pending dispatch value: <strong>${inr(totalValue)}</strong>
     </div>
+
     <div class="card">
-      <div class="card-title">📦 Pending Orders — ${days}+ Days Old</div>
-      <table><thead><tr><th>Order #</th><th>Customer</th><th>Date</th><th>Stage</th><th>Age</th><th>Value</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="card-header">📦 Pending Orders Requiring Processing (${days}+ Days Old)</div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Customer</th>
+              <th>Order Date</th>
+              <th>Current Stage</th>
+              <th>Age</th>
+              <th>Order Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
     </div>`;
 
   return {
-    subject: `⏳ ${orders.length} Order${orders.length!==1?'s':''} Pending ${days}+ Days — Action Required`,
-    html: wrapEmail({ title: `Pending Orders — ${days}+ Days`, badge: `${days}-Day Order Alert`, badgeColor: '#ff9f0a', body }),
-    text: `${orders.length} orders pending ${days}+ days.`,
+    subject: `⏳ ${orders.length} Order${orders.length !== 1 ? 's' : ''} Pending ${days}+ Days — Action Required`,
+    html: wrapEmail({ title: `Pending Orders (${days}+ Days)`, badge: `${days}-Day Order Notice`, badgeColor: '#d97706', body }),
+    text: `${orders.length} orders pending ${days}+ days. Total value: ${inr(totalValue)}`,
   };
 }
 
@@ -657,25 +1184,40 @@ function buildLowStock(db) {
   const rows = items.map(i => `<tr>
     <td><strong>${i.name}</strong></td>
     <td>${i.pack_size_value} ${i.pack_size_type}</td>
-    <td>${i.batch_no}</td>
-    <td style="color:#ff453a;font-weight:600">${i.units_sold} sold</td>
+    <td><span style="font-family:monospace;">${i.batch_no}</span></td>
+    <td style="color:#dc2626;font-weight:700;">${i.units_sold} sold</td>
     <td>${i.exp_date ? new Date(i.exp_date).toLocaleDateString('en-IN') : '—'}</td>
   </tr>`).join('');
 
   const body = `
-    <div class="alert-box">
-      <span style="font-size:18px;margin-right:8px">📉</span>
-      <strong>${items.length} product variant${items.length!==1?'s':''} with low stock</strong> — review inventory.
+    <div class="alert-box alert-danger">
+      <span style="font-size:18px;margin-right:6px;">📉</span>
+      <strong>${items.length} product item${items.length !== 1 ? 's' : ''} with critical inventory</strong> &bull; Review stock & production.
     </div>
+
     <div class="card">
-      <div class="card-title">📉 Low Stock Items</div>
-      <table><thead><tr><th>Product</th><th>Pack Size</th><th>Batch</th><th>Units Sold</th><th>Expiry</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="card-header">📉 Low Stock Inventory Alerts</div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Product Name</th>
+              <th>Pack Size</th>
+              <th>Batch</th>
+              <th>Units Sold</th>
+              <th>Expiry</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      </div>
     </div>`;
 
   return {
-    subject: `📉 Low Stock Alert — ${items.length} Item${items.length!==1?'s':''} Need Restocking`,
-    html: wrapEmail({ title: 'Low Stock Alert', badge: 'Inventory Alert', badgeColor: '#ff453a', body }),
+    subject: `📉 Low Stock Notice — ${items.length} Item${items.length !== 1 ? 's' : ''} Need Restocking`,
+    html: wrapEmail({ title: 'Low Stock Alert', badge: 'Inventory Alert', badgeColor: '#dc2626', body }),
     text: `${items.length} low-stock items detected.`,
   };
 }
@@ -817,18 +1359,38 @@ class EmailReminderScheduler {
       subject: '✅ MacOS Suite — Stalwart Email Test',
       text: `MacOS Suite email test — SMTP is working. Sent via ${cfg.host}:${cfg.port} (${cfg.user || 'no auth'}) at ${now} IST.`,
       html: wrapEmail({
-        title: 'Email Delivery Test', badge: 'Stalwart Mail Active', badgeColor: '#32d74b',
+        title: 'Email Delivery Test', badge: 'Stalwart Mail Active', badgeColor: '#16a34a',
         body: `<div class="card">
-          <p style="color:#32d74b;font-weight:600;font-size:16px">✅ SMTP connection to Stalwart Mail succeeded!</p>
-          <p style="margin-top:10px;color:#aeaeb2;font-size:13px;line-height:1.6">
-            <strong>Server:</strong> ${cfg.host}:${cfg.port} (${cfg.secure ? 'SMTPS 465' : 'STARTTLS 587'})<br/>
-            <strong>Authenticated User:</strong> ${cfg.user || 'anonymous'}<br/>
-            <strong>Sender:</strong> ${cfg.from}<br/>
-            <strong>Recipient:</strong> ${cfg.to}<br/>
-            <strong>Delivered At:</strong> ${now} IST
-          </p>
-          <div style="margin-top:14px;padding:10px 12px;background:rgba(50,215,75,0.08);border:1px solid rgba(50,215,75,0.25);border-radius:8px;font-size:12px;color:#32d74b">
-            ✓ Automated daily summaries, weekly digests, and invoice/order overdue reminders are active and ready.
+          <div class="alert-box alert-success" style="margin-bottom:16px;">
+            <span style="font-size:20px;margin-right:6px;">✅</span>
+            <div>
+              <strong>SMTP connection to Stalwart Mail succeeded!</strong>
+              <div style="font-size:12px;margin-top:2px;color:#166534;">Mail server is fully authenticated and ready for scheduled dispatch.</div>
+            </div>
+          </div>
+          <div class="card-header">📡 Connection Diagnostics</div>
+          <div class="stat-row">
+            <span class="stat-label">Server Host & Port</span>
+            <span class="stat-value blue">${cfg.host}:${cfg.port} (${cfg.secure ? 'SMTPS 465' : 'STARTTLS 587'})</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Authenticated Account</span>
+            <span class="stat-value">${cfg.user || 'anonymous'}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Sender Address</span>
+            <span class="stat-value">${cfg.from}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Recipient Address</span>
+            <span class="stat-value green">${cfg.to}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Delivered At</span>
+            <span class="stat-value">${now} IST</span>
+          </div>
+          <div style="margin-top:16px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:12px;color:#166534;line-height:1.5;">
+            ✓ Automated daily executive briefings, weekly digests, and invoice/order overdue reminders will be delivered to this inbox.
           </div>
         </div>`,
       }),
