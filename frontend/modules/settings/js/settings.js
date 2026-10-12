@@ -10,6 +10,7 @@ import { AppearanceComponent } from './Appearance.js';
 import { StorageComponent } from './Storage.js';
 import { BackupComponent } from './BackupComponent.js';
 import { BillingSettingsComponent } from './BillingSettings.js';
+import { EmailRemindersSettingsComponent } from './EmailRemindersSettings.js';
 import { WorkerAccessComponent as AdminComponent } from './workers/WorkerAccessComponent.js';
 import { SystemLogsComponent } from './SystemLogs.js';
 import { WallpaperComponent } from './WallpaperComponent.js';
@@ -1986,6 +1987,14 @@ export class SettingsApp extends AppWindow {
           this.billingModule = new BillingSettingsComponent(panel);
         }
         this.billingModule.render();
+        // Email reminders sub-section — rendered below billing settings in same panel
+        if (!this.emailRemindersModule) {
+          const emailContainer = document.createElement('div');
+          emailContainer.id = 'emailRemindersSettingsRoot';
+          panel.appendChild(emailContainer);
+          this.emailRemindersModule = new EmailRemindersSettingsComponent(emailContainer);
+        }
+        this.emailRemindersModule.render();
       } else if (section === 'network') {
         if (!this.networkTrafficModule) {
           this.networkTrafficModule = new NetworkTrafficComponent(panel);

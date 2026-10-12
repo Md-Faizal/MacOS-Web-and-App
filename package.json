@@ -55,7 +55,8 @@
     "pdfkit": "^0.17.2",
     "puppeteer": "^25.4.0",
     "qrcode": "^1.5.4",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "nodemailer": "^6.9.16"
   },
   "devDependencies": {
     "@zxing/browser": "^0.1.5",

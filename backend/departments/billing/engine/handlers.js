@@ -2795,7 +2795,29 @@ module.exports = function(db) {
           'bank_mmid': '9240072',
           'bank_show_mmid': 'true',
           'bank_account_type': 'Savings Account',
-          'portal_base_url': 'https://mac.faizal.uk'
+          'portal_base_url': 'https://mac.faizal.uk',
+          'email_reminders_enabled': 'true',
+          'email_reminder_to': 'me@faizal.uk',
+          'email_reminder_from': 'reports@faizal.uk',
+          'email_smtp_host': '127.0.0.1',
+          'email_smtp_port': '587',
+          'email_smtp_user': 'reports@faizal.uk',
+          'email_smtp_pass': 'FaizalReports2026!',
+          'email_smtp_secure': 'false',
+          'email_daily_summary_enabled': 'true',
+          'email_daily_summary_time': '08:00',
+          'email_weekly_summary_enabled': 'true',
+          'email_weekly_summary_day': '1',
+          'email_weekly_summary_time': '09:00',
+          'email_invoice_7d_enabled': 'true',
+          'email_invoice_14d_enabled': 'true',
+          'email_invoice_30d_enabled': 'true',
+          'email_invoice_check_time': '10:00',
+          'email_order_3d_enabled': 'true',
+          'email_order_7d_enabled': 'true',
+          'email_order_check_time': '10:30',
+          'email_low_stock_enabled': 'true',
+          'email_low_stock_check_time': '07:00'
         };
 
         for (const [k, v] of Object.entries(defaults)) {
