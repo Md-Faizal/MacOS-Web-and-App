@@ -1,4 +1,4 @@
-# Automated Financial Email Summaries & Supervised WhatsApp Reminders Specification
+BUT # Automated Financial Email Summaries & Supervised WhatsApp Reminders Specification
 
 > **Status**: Planned / Architectural Specification  
 > **Target Release**: Future Implementation  

@@ -1745,14 +1745,18 @@ class BillEditor {
             </div>
 
             <!-- Notes Section -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 25px;">
               <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px;">
                 <label style="display: block; font-size: 11px; color: #92400e; font-weight: 700; margin-bottom: 6px;">📝 Order Notes</label>
-                <div style="font-size: 13px; color: #451a03; line-height: 1.4;">${order.order_notes || 'No notes provided for this order.'}</div>
+                <div style="font-size: 12px; color: #451a03; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${order.order_notes || 'None'}</div>
               </div>
               <div style="background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 12px; border-radius: 4px;">
                 <label style="display: block; font-size: 11px; color: #075985; font-weight: 700; margin-bottom: 6px;">🛡️ QC Notes ${order.qc_date ? `<small>(${new Date(order.qc_date).toLocaleDateString()})</small>` : ''}</label>
-                <div style="font-size: 13px; color: #0c4a6e; line-height: 1.4;">${order.qc_notes || 'Order has not reached QC stage yet or no notes recorded.'}</div>
+                <div style="font-size: 12px; color: #0c4a6e; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${order.qc_notes || 'None'}</div>
+              </div>
+              <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px;">
+                <label style="display: block; font-size: 11px; color: #15803d; font-weight: 700; margin-bottom: 6px;">🚚 Delivery Notes ${order.delivery_date ? `<small>(${new Date(order.delivery_date).toLocaleDateString()})</small>` : ''}</label>
+                <div style="font-size: 12px; color: #14532d; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${order.delivery_notes || 'None'}</div>
               </div>
             </div>
             

@@ -384,9 +384,21 @@ class OrdersView {
         }
         individualOrdersHtml += `</div>`;
         if (order.order_notes) {
-          individualOrdersHtml += `<div style="padding: 12px; background: #f0f8ff; border: 1px solid #1e40af; border-radius: 3px; margin-bottom: 20px;">
-            <div style="font-size: 11px; font-weight: 600; color: #1e40af; margin-bottom: 6px;">📝 ORDER NOTES</div>
-            <div style="font-size: 11px; color: #333333; font-family: 'Courier New', monospace;">${order.order_notes}</div>
+          individualOrdersHtml += `<div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-bottom: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">📋 STAGE 1 (ORDER) NOTES</div>
+            <div style="font-size: 11px; color: #1e293b; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.order_notes)}</div>
+          </div>`;
+        }
+        if (order.qc_notes) {
+          individualOrdersHtml += `<div style="padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 3px; margin-bottom: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #d97706; margin-bottom: 6px;">⚠️ STAGE 2 (QC) NOTES</div>
+            <div style="font-size: 11px; color: #78350f; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.qc_notes)}</div>
+          </div>`;
+        }
+        if (order.delivery_notes) {
+          individualOrdersHtml += `<div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; margin-bottom: 16px;">
+            <div style="font-size: 11px; font-weight: 700; color: #16a34a; margin-bottom: 6px;">🚚 STAGE 3 (DELIVERY) NOTES</div>
+            <div style="font-size: 11px; color: #14532d; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.delivery_notes)}</div>
           </div>`;
         }
         individualOrdersHtml += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
@@ -510,9 +522,17 @@ class OrdersView {
             }).join('')
           }
         </div>
-        ${order.order_notes ? `\n          <div style="padding: 12px; background: #f0f8ff; border: 1px solid #1e40af; border-radius: 3px; margin-bottom: 20px;">
-            <div style="font-size: 11px; font-weight: 600; color: #1e40af; margin-bottom: 6px;">📝 ORDER NOTES</div>
-            <div style="font-size: 11px; color: #333333; font-family: 'Courier New', monospace;">${order.order_notes}</div>
+        ${order.order_notes ? `\n          <div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-bottom: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">📋 STAGE 1 (ORDER) NOTES</div>
+            <div style="font-size: 11px; color: #1e293b; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.order_notes)}</div>
+          </div>\n        ` : ''}
+        ${order.qc_notes ? `\n          <div style="padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 3px; margin-bottom: 10px;">
+            <div style="font-size: 11px; font-weight: 700; color: #d97706; margin-bottom: 6px;">⚠️ STAGE 2 (QC) NOTES</div>
+            <div style="font-size: 11px; color: #78350f; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.qc_notes)}</div>
+          </div>\n        ` : ''}
+        ${order.delivery_notes ? `\n          <div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; margin-bottom: 20px;">
+            <div style="font-size: 11px; font-weight: 700; color: #16a34a; margin-bottom: 6px;">🚚 STAGE 3 (DELIVERY) NOTES</div>
+            <div style="font-size: 11px; color: #14532d; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.delivery_notes)}</div>
           </div>\n        ` : ''}
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
           <button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>
@@ -582,6 +602,27 @@ class OrdersView {
                     </div>
                   `;
                 }).join('')}
+              </div>
+            ` : ''}
+
+            ${order.order_notes ? `
+              <div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-top: 16px; margin-bottom: 10px;">
+                <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">📋 STAGE 1 (ORDER) NOTES</div>
+                <div style="font-size: 11px; color: #1e293b; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.order_notes)}</div>
+              </div>
+            ` : ''}
+
+            ${order.qc_notes ? `
+              <div style="padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 3px; margin-top: 10px; margin-bottom: 10px;">
+                <div style="font-size: 11px; font-weight: 700; color: #d97706; margin-bottom: 6px;">⚠️ STAGE 2 (QC) NOTES</div>
+                <div style="font-size: 11px; color: #78350f; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.qc_notes)}</div>
+              </div>
+            ` : ''}
+
+            ${order.delivery_notes ? `
+              <div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; margin-top: 10px; margin-bottom: 16px;">
+                <div style="font-size: 11px; font-weight: 700; color: #16a34a; margin-bottom: 6px;">🚚 STAGE 3 (DELIVERY) NOTES</div>
+                <div style="font-size: 11px; color: #14532d; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.delivery_notes)}</div>
               </div>
             ` : ''}
 
@@ -1854,6 +1895,7 @@ class OrdersView {
       order_notes: '',
       qc_date: null,
       qc_notes: '',
+      delivery_notes: '',
       delivery_date: null,
       bill_reference: '',
       created_at: orderDate.toISOString(),
@@ -2144,17 +2186,18 @@ class OrdersView {
 
     // 3. Notes Section
     const createNoteBox = (title, contentText, bg, border, color) => {
-      const box = this.createBaseElement('div', { padding: '12px', background: bg, border: `1px solid ${border}`, borderRadius: '3px', marginBottom: '20px' });
-      const t = this.createBaseElement('div', { fontSize: '11px', fontWeight: '600', color: color, marginBottom: '6px' }, title);
-      const c = this.createBaseElement('div', { fontSize: '11px', color: '#333', fontFamily: "'Courier New', monospace" }, contentText);
+      const box = this.createBaseElement('div', { padding: '12px', background: bg, border: `1px solid ${border}`, borderRadius: '3px', marginBottom: '16px' });
+      const t = this.createBaseElement('div', { fontSize: '11px', fontWeight: '700', color: color, marginBottom: '6px' }, title);
+      const c = this.createBaseElement('div', { fontSize: '11px', color: '#333', fontFamily: "'Courier New', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }, contentText);
       box.append(t, c);
       return box;
     };
 
-    if (order.order_notes) modalContent.appendChild(createNoteBox('📝 ORDER NOTES', order.order_notes, '#f0f8ff', '#1e40af', '#1e40af'));
-    
+    if (order.order_notes) modalContent.appendChild(createNoteBox('📋 STAGE 1 (ORDER) NOTES', order.order_notes, '#eff6ff', '#bfdbfe', '#1d4ed8'));
+    if (order.qc_notes) modalContent.appendChild(createNoteBox('⚠️ STAGE 2 (QC) NOTES', order.qc_notes, '#fef3c7', '#fde68a', '#d97706'));
+    if (order.delivery_notes) modalContent.appendChild(createNoteBox('🚚 STAGE 3 (DELIVERY) NOTES', order.delivery_notes, '#f0fdf4', '#bbf7d0', '#16a34a'));
+
     if (stage === ORDER_CONSTANTS.STAGES.DELIVERY || order.status === 'complete') {
-      if (order.qc_notes) modalContent.appendChild(createNoteBox('⚠️ QC NOTES', order.qc_notes, '#fef3c7', '#f59e0b', '#d97706'));
       if (order.qc_date) {
          const dBox = this.createBaseElement('div', { padding: '12px', background: '#f5f3ff', border: '1px solid #d8b4fe', borderRadius: '3px', marginBottom: '20px' });
          dBox.innerHTML = `<div style="font-size: 11px; font-weight: 600; color: #9333ea; margin-bottom: 4px;">📅 QC DATE</div><div style="font-size: 12px; font-weight: 700; color: #000; font-family: 'Courier New', monospace;">${Utils.formatDate(order.qc_date)}</div>`;
@@ -2328,14 +2371,14 @@ class OrdersView {
             <!-- Order Date Selector -->
             <div style="margin-bottom:20px;">
               <label for="orderDate" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">ORDER DATE</label>
-              <input type="date" id="orderDate" style="padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px; width:200px;" value="${this.currentOrderData.order_date ? this.currentOrderData.order_date.split('T')[0] : ''}" />
+              <input type="date" id="orderDate" style="padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px; width:200px; max-width:100%; box-sizing:border-box;" value="${this.currentOrderData.order_date ? this.currentOrderData.order_date.split('T')[0] : ''}" />
             </div>
 
             <!-- Product Search -->
             <div style="margin-bottom:20px;">
               <label style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">SEARCH & ADD PRODUCTS</label>
               <div style="display:flex; flex-wrap:wrap; gap:8px;">
-                <input id="productSearch" list="productsList" placeholder="Search products..." style="flex:1 1 140px; min-width:140px; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" />
+                <input id="productSearch" list="productsList" placeholder="Search products..." style="flex:1 1 140px; min-width:140px; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px; box-sizing:border-box;" />
                 <datalist id="productsList"></datalist>
                 <button id="addProductBtn" style="padding:10px 16px; background:#0066cc; color:#fff; border:none; border-radius:3px; cursor:pointer; font-weight:600;">+ ADD</button>
                 <button type="button" id="stage1QrScanBtn" style="padding:10px 16px; background:#ffea00; color:#000; border:1px solid #000; border-radius:3px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">▦ SCAN QR</button>
@@ -2347,20 +2390,20 @@ class OrdersView {
               <!-- Recommended Products -->
               <div>
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px; color:#333;">✨ RECOMMENDED PRODUCTS</h4>
-                <div id="recommendations" style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f0f8ff; max-height:300px; overflow-y:auto;"></div>
+                <div id="recommendations" style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f0f8ff; max-height:300px; overflow-y:auto; box-sizing:border-box;"></div>
               </div>
 
               <!-- Order Items -->
               <div>
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px; color:#333;">YOUR ORDER (${this.currentOrderData.items.length})</h4>
-                <div id="orderItems" style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f9f9f9; max-height:300px; overflow-y:auto;"></div>
+                <div id="orderItems" style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f9f9f9; max-height:300px; overflow-y:auto; box-sizing:border-box;"></div>
               </div>
             </div>
 
             <!-- Notes -->
             <div style="margin-bottom:20px;">
               <label style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">📝 ORDER NOTES (Optional)</label>
-              <textarea id="orderNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:80px; font-size:11px;" placeholder="Special requests, pricing notes, etc...">${this.currentOrderData.order_notes}</textarea>
+              <textarea id="orderNotes" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:80px; font-size:11px;" placeholder="Special requests, pricing notes, etc...">${this.currentOrderData.order_notes}</textarea>
             </div>
           </div>
         </div>
@@ -2955,25 +2998,27 @@ class OrdersView {
           const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
           const batchDisplay = item.batch_no || 'N/A';
           return `
-          <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center;">
-            <div style="flex:1;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
-                <button type="button" class="item-note-btn" data-idx="${idx}" title="Write note about this product" style="padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+          <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="flex:1; min-width:140px;">
+              <div style="font-weight:600; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
+                ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
+                <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                <span style="font-size:10px; font-weight:600; color:#444;">₹${price}</span>
+                <button type="button" class="item-note-btn" data-idx="${idx}" title="Write note about this product" style="padding:1px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                   📝 + Note
                 </button>
               </div>
-              ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
-              <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
-              <div style="font-size:10px; color:#666; margin:2px 0;">₹${price}</div>
             </div>
-            <div style="display:flex; gap:4px; align-items:center;">
-              <button class="qty-minus" data-idx="${idx}" style="padding:4px 6px; background:#f0f0f0; border:1px solid #ddd; border-radius:2px; cursor:pointer; font-size:10px;">−</button>
-              <input type="number" class="qty-input" data-idx="${idx}" value="${qty}" min="1" style="width:40px; padding:4px; border:1px solid #ddd; border-radius:2px; text-align:center; font-size:11px;" />
-              <button class="qty-plus" data-idx="${idx}" style="padding:4px 6px; background:#f0f0f0; border:1px solid #ddd; border-radius:2px; cursor:pointer; font-size:10px;">+</button>
-              <button class="delete-item" data-idx="${idx}" style="padding:4px 6px; background:#f44; color:#fff; border:none; border-radius:2px; cursor:pointer; font-size:10px; margin-left:4px;">×</button>
+            <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+              <div style="display:flex; gap:3px; align-items:center;">
+                <button class="qty-minus" data-idx="${idx}" style="padding:4px 6px; background:#f0f0f0; border:1px solid #ddd; border-radius:2px; cursor:pointer; font-size:10px;">−</button>
+                <input type="number" class="qty-input" data-idx="${idx}" value="${qty}" min="1" style="width:36px; padding:4px; border:1px solid #ddd; border-radius:2px; text-align:center; font-size:11px;" />
+                <button class="qty-plus" data-idx="${idx}" style="padding:4px 6px; background:#f0f0f0; border:1px solid #ddd; border-radius:2px; cursor:pointer; font-size:10px;">+</button>
+                <button class="delete-item" data-idx="${idx}" style="padding:4px 6px; background:#f44; color:#fff; border:none; border-radius:2px; cursor:pointer; font-size:10px; margin-left:2px;">×</button>
+              </div>
+              <div style="font-weight:600; min-width:55px; text-align:right;">₹${itemTotal.toFixed(2)}</div>
             </div>
-            <div style="font-weight:600; width:60px; text-align:right;">₹${itemTotal.toFixed(2)}</div>
           </div>
         `;
         }).join('')}
@@ -3069,21 +3114,23 @@ class OrdersView {
                     const expectedQuantity = Number(item.qty ?? item.quantity ?? 0);
                     const receivedQuantity = Number(item.received_quantity ?? 0);
                     return `
-                    <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; gap:10px;">
-                      <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px;" />
-                      <div style="flex:1;">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                          <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
-                          <button type="button" class="stage2-item-note-btn" data-idx="${idx}" title="Write QC note about this product" style="padding:3px 8px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">
+                    <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:flex-start;">
+                      <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px; flex-shrink:0;" />
+                      <div style="flex:1; min-width:0;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                          <div style="font-weight:600; word-break:break-word; line-height:1.3; min-width:0;">${item.product_name || 'Unknown'}</div>
+                          <button type="button" class="stage2-item-note-btn" data-idx="${idx}" title="Write QC note about this product" style="padding:2px 7px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; flex-shrink:0;">
                             📝 + Note
                           </button>
                         </div>
-                        ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
-                        <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
-                        <div style="font-size:9px; color:#000000; font-weight:600; margin:2px 0;">MRP: ₹${parseFloat(item.mrp || item.unit_price || item.price || 0).toFixed(2)}</div>
-                        <div style="font-size:10px; color:#666; margin:2px 0;">Received: <span data-received-count="${idx}">${receivedQuantity}</span> / ${expectedQuantity} units</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:4px 0 2px;">
+                          ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">Variant: ${variantDisplay}</span>` : ''}
+                          <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          <span style="font-size:9px; color:#000000; font-weight:600;">MRP: ₹${parseFloat(item.mrp || item.unit_price || item.price || 0).toFixed(2)}</span>
+                        </div>
+                        <div style="font-size:10px; color:#666; margin:4px 0 2px;">Received: <span data-received-count="${idx}">${receivedQuantity}</span> / ${expectedQuantity} units</div>
                         <label for="receivedQty-${idx}" style="font-size:10px; color:#555;">Scan once per unit or enter received quantity</label>
-                        <input type="number" id="receivedQty-${idx}" class="received-qty" data-idx="${idx}" value="${receivedQuantity}" placeholder="${expectedQuantity}" min="0" max="${expectedQuantity}" step="any" style="width:100%; padding:4px; margin-top:4px; border:1px solid #ddd; border-radius:2px;" />
+                        <input type="number" id="receivedQty-${idx}" class="received-qty" data-idx="${idx}" value="${receivedQuantity}" placeholder="${expectedQuantity}" min="0" max="${expectedQuantity}" step="any" style="width:100%; box-sizing:border-box; padding:4px; margin-top:4px; border:1px solid #ddd; border-radius:2px;" />
                       </div>
                     </div>
                   `;
@@ -3095,21 +3142,21 @@ class OrdersView {
               <div>
                 <div style="margin-bottom:16px;">
                   <label for="qcDate" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">QC DATE</label>
-                  <input type="date" id="qcDate" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" value="${this.currentOrderData.qc_date ? this.currentOrderData.qc_date.split('T')[0] : new Date().toISOString().split('T')[0]}" />
+                  <input type="date" id="qcDate" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ddd; border-radius:3px; font-size:11px;" value="${this.currentOrderData.qc_date ? this.currentOrderData.qc_date.split('T')[0] : new Date().toISOString().split('T')[0]}" />
                 </div>
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">QC NOTES</h4>
-                <textarea id="qcNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:140px; font-size:11px;" placeholder="Damaged items, missing qty, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
+                <textarea id="qcNotes" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:140px; font-size:11px;" placeholder="Damaged items, missing qty, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
 
                 <!-- Stage 1 Notes Display below QC Notes -->
                 ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
-                  <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px;">
+                  <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; box-sizing:border-box;">
                     <div style="font-size:11px; font-weight:700; color:#1d4ed8; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
                       <span>📋</span> STAGE 1 (ORDER) NOTES
                     </div>
-                    <div style="font-size:11px; color:#1e293b; white-space:pre-wrap; line-height:1.5; background:#ffffff; padding:8px 10px; border-radius:3px; border:1px solid #dbeafe; font-family:'Courier New', monospace;">${Utils.escapeHtml(this.currentOrderData.order_notes)}</div>
+                    <div style="font-size:11px; color:#1e293b; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; line-height:1.5; background:#ffffff; padding:8px 10px; border-radius:3px; border:1px solid #dbeafe; font-family:'Courier New', monospace; box-sizing:border-box;">${Utils.escapeHtml(this.currentOrderData.order_notes)}</div>
                   </div>
                 ` : `
-                  <div style="margin-top:14px; padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px;">
+                  <div style="margin-top:14px; padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:4px; font-size:11px; color:#64748b; display:flex; align-items:center; gap:6px; box-sizing:border-box;">
                     <span>📋</span> <span>Stage 1 notes: <em>None provided</em></span>
                   </div>
                 `}
@@ -3844,19 +3891,19 @@ class OrdersView {
                   const globalIdx = items.indexOf(item);
                   return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                      <div style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                          <div style="font-weight:600;">${item.product_name || 'Unknown'}</div>
-                          <button type="button" class="stage3-item-note-btn" data-idx="${globalIdx}" title="Write note about this product" style="padding:2px 7px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                      <div style="flex:1; min-width:140px;">
+                        <div style="font-weight:600; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
+                          ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
+                          <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          <span style="font-size:10px; color:#666;">Ordered: ${qty} | Received: ${received}</span>
+                          <button type="button" class="stage3-item-note-btn" data-idx="${globalIdx}" title="Write note about this product" style="padding:1px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                             📝 + Note
                           </button>
                         </div>
-                        ${variantDisplay ? `<div style="font-size:9px; color:#0066cc; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
-                        <div style="font-size:9px; color:#666; margin:2px 0;">Batch: ${batchDisplay}</div>
-                        <div style="font-size:10px; color:#666; margin:2px 0;">Ordered: ${qty} | Received: ${received}</div>
                       </div>
-                      <div style="font-weight:600; text-align:right;">₹${(price * received).toFixed(2)}</div>
+                      <div style="font-weight:600; text-align:right; flex-shrink:0;">₹${(price * received).toFixed(2)}</div>
                     </div>
                   </div>
                 `;
@@ -3875,19 +3922,19 @@ class OrdersView {
                   const globalIdx = items.indexOf(item);
                   return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; opacity: 0.85;">
-                      <div style="flex:1;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                          <div style="font-weight:600; color: #888;">${item.product_name || 'Unknown'}</div>
-                          <button type="button" class="stage3-not-received-note-btn" data-idx="${globalIdx}" title="Write note about this unreceived product" style="padding:2px 7px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; opacity: 0.85;">
+                      <div style="flex:1; min-width:140px;">
+                        <div style="font-weight:600; color: #888; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
+                          ${variantDisplay ? `<span style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
+                          <span style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          <span style="font-size:10px; color:#aaa;">Ordered: ${qty} | Received: 0</span>
+                          <button type="button" class="stage3-not-received-note-btn" data-idx="${globalIdx}" title="Write note about this unreceived product" style="padding:1px 6px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                             📝 + Note
                           </button>
                         </div>
-                        ${variantDisplay ? `<div style="font-size:9px; color:#aaa; margin:2px 0;">Variant: ${variantDisplay}</div>` : ''}
-                        <div style="font-size:9px; color:#aaa; margin:2px 0;">Batch: ${batchDisplay}</div>
-                        <div style="font-size:10px; color:#aaa; margin:2px 0;">Ordered: ${qty} | Received: 0</div>
                       </div>
-                      <div style="font-weight:600; text-align:right; color: #aaa;">₹0.00</div>
+                      <div style="font-weight:600; text-align:right; color: #aaa; flex-shrink:0;">₹0.00</div>
                     </div>
                   </div>
                 `;
@@ -3898,18 +3945,30 @@ class OrdersView {
             <!-- Stage 3 Notes Section -->
             <div style="margin-bottom:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
               <div>
-                <label for="stage3QcNotes" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">⚠️ QC & DELIVERY NOTES</label>
-                <textarea id="stage3QcNotes" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:90px; font-size:11px;" placeholder="Delivery findings, missing items, damaged packaging, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
+                <label for="stage3DeliveryNotes" style="display:block; font-size:11px; font-weight:600; margin-bottom:8px;">🚚 STAGE 3 (DELIVERY) NOTES</label>
+                <textarea id="stage3DeliveryNotes" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:90px; font-size:11px;" placeholder="Delivery findings, missing items, damaged packaging, etc...">${this.currentOrderData.delivery_notes || ''}</textarea>
               </div>
               <div>
-                <div style="font-size:11px; font-weight:600; margin-bottom:8px; color:#555;">📋 STAGE 1 (ORDER) NOTES</div>
-                ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
-                  <div style="padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:3px; min-height:90px; font-size:11px; color:#1e293b; white-space:pre-wrap; line-height:1.5; font-family:'Courier New', monospace;">${Utils.escapeHtml(this.currentOrderData.order_notes)}</div>
-                ` : `
-                  <div style="padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:3px; min-height:90px; font-size:11px; color:#64748b; display:flex; align-items:center; justify-content:center;">
-                    <em>None provided</em>
-                  </div>
-                `}
+                <div style="font-size:11px; font-weight:600; margin-bottom:8px; color:#555;">📋 PREVIOUS STAGE NOTES</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${this.currentOrderData.qc_notes && this.currentOrderData.qc_notes.trim() ? `
+                    <div style="padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:3px; font-size:11px; color:#78350f; white-space:pre-wrap; word-break:break-word; font-family:'Courier New', monospace; box-sizing:border-box;">
+                      <div style="font-size:10px; font-weight:700; color:#d97706; margin-bottom:4px;">⚠️ QC NOTES</div>
+                      ${Utils.escapeHtml(this.currentOrderData.qc_notes)}
+                    </div>
+                  ` : ''}
+                  ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
+                    <div style="padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:3px; font-size:11px; color:#1e293b; white-space:pre-wrap; word-break:break-word; font-family:'Courier New', monospace; box-sizing:border-box;">
+                      <div style="font-size:10px; font-weight:700; color:#1d4ed8; margin-bottom:4px;">📋 ORDER NOTES</div>
+                      ${Utils.escapeHtml(this.currentOrderData.order_notes)}
+                    </div>
+                  ` : ''}
+                  ${(!this.currentOrderData.qc_notes || !this.currentOrderData.qc_notes.trim()) && (!this.currentOrderData.order_notes || !this.currentOrderData.order_notes.trim()) ? `
+                    <div style="padding:10px 12px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:3px; min-height:90px; font-size:11px; color:#64748b; display:flex; align-items:center; justify-content:center; box-sizing:border-box;">
+                      <em>No previous notes recorded</em>
+                    </div>
+                  ` : ''}
+                </div>
               </div>
             </div>
 
@@ -4022,13 +4081,13 @@ class OrdersView {
       this.saveOrderDraft();
     });
 
-    const stage3NotesArea = document.getElementById('stage3QcNotes');
+    const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
     stage3NotesArea?.addEventListener('input', (e) => {
-      this.currentOrderData.qc_notes = e.target.value;
+      this.currentOrderData.delivery_notes = e.target.value;
       this.saveOrderDraft();
     });
     stage3NotesArea?.addEventListener('change', (e) => {
-      this.currentOrderData.qc_notes = e.target.value;
+      this.currentOrderData.delivery_notes = e.target.value;
       this.saveOrderDraft();
     });
 
@@ -4037,7 +4096,7 @@ class OrdersView {
         const idx = parseInt(btn.dataset.idx);
         const item = this.currentOrderData?.items?.[idx];
         if (item) {
-          this.attachProductToNotes('stage3QcNotes', item, 'qc_notes');
+          this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes');
         }
       });
     });
@@ -4047,7 +4106,7 @@ class OrdersView {
         const idx = parseInt(btn.dataset.idx);
         const item = this.currentOrderData?.items?.[idx];
         if (item) {
-          this.attachProductToNotes('stage3QcNotes', item, 'qc_notes', 'Not Received');
+          this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes', 'Not Received');
         }
       });
     });
@@ -4116,6 +4175,7 @@ class OrdersView {
       order_notes: this.currentOrderData.order_notes,
       qc_date: this.currentOrderData.qc_date,
       qc_notes: this.currentOrderData.qc_notes,
+      delivery_notes: this.currentOrderData.delivery_notes,
       checklist_items: this.currentOrderData.checklist_items,
       delivery_date: this.currentOrderData.delivery_date,
       bill_reference: this.currentOrderData.bill_reference,
@@ -4420,8 +4480,8 @@ class OrdersView {
         this.currentOrderData.delivery_date = dDate.toISOString();
       }
       if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
-      const stage3NotesArea = document.getElementById('stage3QcNotes');
-      if (stage3NotesArea) this.currentOrderData.qc_notes = stage3NotesArea.value;
+      const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
+      if (stage3NotesArea) this.currentOrderData.delivery_notes = stage3NotesArea.value;
       
       
       // Update the total amount explicitly based on billing sum (received quantity)

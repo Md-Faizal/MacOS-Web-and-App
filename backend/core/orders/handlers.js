@@ -117,6 +117,7 @@ module.exports = function(db) {
         order_notes = '',
         qc_date = null,
         qc_notes = '',
+        delivery_notes = '',
         checklist_items = '{}',
         delivery_date = null,
         bill_reference = '',
@@ -169,10 +170,10 @@ module.exports = function(db) {
         const insertOrderSQL = `
           INSERT INTO orders (
             order_number, customer_id, current_stage, order_date,
-            order_notes, qc_date, qc_notes, checklist_items, delivery_date,
+            order_notes, qc_date, qc_notes, delivery_notes, checklist_items, delivery_date,
             bill_reference, total_amount, status, created_by_user_id, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const stmtOrder = db.prepare(insertOrderSQL);
         const orderResult = stmtOrder.run(
@@ -183,6 +184,7 @@ module.exports = function(db) {
           order_notes || '',
           qc_date || null,
           qc_notes || '',
+          delivery_notes || '',
           typeof checklist_items === 'string' ? checklist_items : JSON.stringify(checklist_items),
           delivery_date || null,
           bill_reference || '',
@@ -342,6 +344,7 @@ module.exports = function(db) {
         order_notes,
         qc_date,
         qc_notes,
+        delivery_notes,
         checklist_items,
         delivery_date,
         bill_reference,
@@ -387,6 +390,10 @@ module.exports = function(db) {
       if (qc_notes !== undefined) {
         updates.push('qc_notes = ?');
         values.push(qc_notes);
+      }
+      if (delivery_notes !== undefined) {
+        updates.push('delivery_notes = ?');
+        values.push(delivery_notes);
       }
       if (checklist_items !== undefined) {
         updates.push('checklist_items = ?');

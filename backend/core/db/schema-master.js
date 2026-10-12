@@ -644,6 +644,7 @@ CREATE TABLE IF NOT EXISTS orders (
   order_notes TEXT,
   qc_date DATETIME,
   qc_notes TEXT,
+  delivery_notes TEXT,
   checklist_items TEXT,
   delivery_date DATETIME,
   bill_reference TEXT,
