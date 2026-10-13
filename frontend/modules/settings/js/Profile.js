@@ -976,26 +976,57 @@ export class ProfileComponent {
     }
 
     async renderTouchIdSetupView() {
+        let credentials = [];
+        try {
+            const res = await fetch('/api/auth/webauthn/credentials');
+            if (res.ok) {
+                const data = await res.json();
+                credentials = data.credentials || [];
+            }
+        } catch (e) {}
+
+        const credentialsHtml = credentials.length > 0 ? `
+            <div style="margin: 20px auto; max-width: 440px; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); border-radius: 12px; padding: 16px;">
+                <div style="font-size: 11px; font-weight: 700; color: var(--settings-primary, #0071E3); letter-spacing: 0.04em; margin-bottom: 12px;">ACTIVE PASSKEYS & BIOMETRIC KEYS</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    ${credentials.map(c => `
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 20px;">${c.friendly_name?.toLowerCase().includes('mac') ? '💻' : c.friendly_name?.toLowerCase().includes('phone') ? '📱' : '🪪'}</span>
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">${this.escapeHtml(c.friendly_name || 'Passkey')}</div>
+                                    <div style="font-size: 11px; color: var(--settings-text-secondary, #888);">${c.credential_device_type === 'multiDevice' ? 'Synced Passkey (iCloud / Google)' : 'Device-bound Passkey'} • Added ${new Date(c.created_at).toLocaleDateString()}</div>
+                                </div>
+                            </div>
+                            <button class="delete-passkey-btn" data-id="${this.escapeHtml(c.id)}" style="background: rgba(255, 69, 58, 0.15); border: 1px solid rgba(255, 69, 58, 0.3); color: #ff453a; border-radius: 6px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; font-weight: 500;">Remove</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : '';
+
         this.container.innerHTML = `
             <div class="profile-container">
                 <div class="subview-header">
                     <button class="back-button" id="backToHub">◀ Sign-In & Security</button>
-                    <h2 class="subview-title">Set Up Touch ID</h2>
+                    <h2 class="subview-title">Passkeys & Touch ID</h2>
                 </div>
                 <div class="settings-group">
                     <div class="security-form" style="text-align: center; padding: 24px 16px;">
                         <div class="touchid-setup-header" style="margin-bottom: 20px;">
                             <div class="touchid-setup-icon" style="font-size: 54px; margin-bottom: 12px; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2));">🤚</div>
-                            <h3 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; color: var(--settings-text, #fff);">Use Touch ID on this Mac</h3>
+                            <h3 style="font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; color: var(--settings-text, #fff);">Passkeys & Biometric Sign-In</h3>
                             <p class="challenge-instruction centered-description" style="max-width: 380px; margin: 0 auto; color: var(--settings-text-secondary, #888); font-size: 13px; line-height: 1.45;">
-                                Use your fingerprint / biometrics to quickly unlock your Mac and sign into your Apple Account.
+                                Unlock quickly with your fingerprint, Face ID, Windows Hello, or hardware passkey on this and synced devices.
                             </p>
                         </div>
                         
-                        <div id="touchIdStatusContainer" style="display: none; margin: 16px auto; max-width: 380px; padding: 12px 14px; border-radius: 8px; font-size: 13px; text-align: left;"></div>
+                        <div id="touchIdStatusContainer" style="display: none; margin: 16px auto; max-width: 440px; padding: 12px 14px; border-radius: 8px; font-size: 13px; text-align: left;"></div>
+
+                        ${credentialsHtml}
 
                         <div class="form-actions form-actions-mt25" style="display: flex; gap: 12px; justify-content: center;">
-                            <button class="primary-btn primary-btn-wide" id="confirmTouchSetup" style="max-width: 200px;">Set Up Touch ID</button>
+                            <button class="primary-btn primary-btn-wide" id="confirmTouchSetup" style="max-width: 240px;">${credentials.length > 0 ? '+ Add Another Passkey' : 'Set Up Passkey / Touch ID'}</button>
                         </div>
                     </div>
                 </div>
@@ -1003,6 +1034,27 @@ export class ProfileComponent {
         `;
 
         this.setupSecurityViewListeners('#confirmTouchSetup', []);
+
+        this.container.querySelectorAll('.delete-passkey-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const credId = btn.getAttribute('data-id');
+                if (!confirm('Are you sure you want to remove this passkey?')) return;
+                try {
+                    const dRes = await fetch(`/api/auth/webauthn/credentials/${encodeURIComponent(credId)}`, {
+                        method: 'DELETE'
+                    });
+                    if (dRes.ok) {
+                        this.renderTouchIdSetupView();
+                    } else {
+                        const dData = await dRes.json().catch(() => ({}));
+                        alert(dData.error || 'Failed to remove passkey');
+                    }
+                } catch (err) {
+                    alert('Error removing passkey');
+                }
+            });
+        });
     }
 
     async renderSetupPasswordView() {
@@ -1249,26 +1301,33 @@ export class ProfileComponent {
             const credential = await navigator.credentials.create({ publicKey: options });
 
             if (credential) {
+                const friendlyName = navigator.userAgent.includes('Macintosh') ? 'Touch ID (MacBook)' :
+                                     navigator.userAgent.includes('Windows') ? 'Windows Hello' :
+                                     navigator.userAgent.includes('iPhone') ? 'iCloud Keychain (iPhone)' :
+                                     navigator.userAgent.includes('Android') ? 'Android Passkey' : 'Device Passkey';
+
                 const verifyRes = await fetch('/api/auth/webauthn/registration-verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(serializeCredential(credential))
+                    body: JSON.stringify({
+                        ...serializeCredential(credential),
+                        friendlyName
+                    })
                 });
                 if (!verifyRes.ok) {
                     const vData = await verifyRes.json().catch(() => ({}));
-                    throw new Error(vData.error || 'Touch ID registration was not verified');
+                    throw new Error(vData.error || 'Passkey registration was not verified');
                 }
 
                 localStorage.setItem('touchIdEnabled', 'true');
-                showStatus('✓ Touch ID Enabled', 'Touch ID is now configured and active for this device.', 'success');
+                showStatus('✓ Passkey Configured', 'Your passkey is configured and active for this device.', 'success');
                 if (btn) {
                     btn.textContent = '✓ Configured';
                     btn.style.background = '#34c759';
                 }
                 setTimeout(() => {
-                    this.currentView = 'security';
-                    this.render();
-                }, 1200);
+                    this.renderTouchIdSetupView();
+                }, 1000);
             }
         } catch (err) {
             console.error('Touch ID setup error:', err);

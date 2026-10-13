@@ -388,11 +388,13 @@ module.exports = function(db, permissionsHelper = null) {
           userName: user.email || user.username || user.id,
           userDisplayName: user.full_name || user.username || user.email || 'MacOS User',
           attestationType: 'none',
-          excludeCredentials: [],
+          excludeCredentials: existingCredentials.map(cred => ({
+            id: cred.provider_user_id,
+            transports: cred.credential_transports ? JSON.parse(cred.credential_transports) : undefined
+          })),
           authenticatorSelection: {
-            authenticatorAttachment: 'platform',
             residentKey: 'preferred',
-            userVerification: 'required'
+            userVerification: 'preferred'
           }
         });
 
@@ -400,7 +402,7 @@ module.exports = function(db, permissionsHelper = null) {
         res.json(options);
       } catch (error) {
         console.error('WebAuthn registration options error:', error);
-        res.status(500).json({ error: 'Unable to prepare Touch ID setup' });
+        res.status(500).json({ error: 'Unable to prepare Passkey setup' });
       }
     },
 
@@ -411,97 +413,187 @@ module.exports = function(db, permissionsHelper = null) {
           ? consumeChallenge(db, challengeKey(req.user.userId, 'registration'))
           : null;
         if (!user || !challenge) {
-          return res.status(400).json({ error: 'Touch ID setup has expired. Try again.' });
+          return res.status(400).json({ error: 'Passkey setup has expired. Try again.' });
         }
 
+        const rawResponse = req.body.credential || req.body.response || req.body;
         const verification = await verifyRegistrationResponse({
-          response: req.body,
+          response: rawResponse,
           expectedChallenge: challenge,
           expectedOrigin: expectedOrigin(req),
           expectedRPID: process.env.WEBAUTHN_RP_ID || req.hostname
         });
         if (!verification.verified || !verification.registrationInfo) {
-          return res.status(400).json({ error: 'Touch ID registration was not verified' });
+          return res.status(400).json({ error: 'Passkey registration was not verified' });
         }
 
         const credential = verification.registrationInfo.credential;
-        
-        // Remove previous webauthn credentials for clean overwrite/re-enrollment
-        try {
-          db.prepare("DELETE FROM user_identities WHERE user_id = ? AND provider = 'webauthn'").run(user.id);
-        } catch (e) {}
+        const { credentialDeviceType, credentialBackedUp, aaguid } = verification.registrationInfo;
+        const friendlyName = (req.body.friendlyName || req.body.deviceName || (credentialDeviceType === 'multiDevice' ? 'Synced Passkey' : 'Device Passkey')).trim();
 
-        db.prepare(`
-          INSERT INTO user_identities (
-            id, user_id, provider, provider_user_id, credential_public_key,
-            credential_counter, credential_transports, is_verified
-          ) VALUES (?, ?, 'webauthn', ?, ?, ?, ?, 1)
-        `).run(
-          crypto.randomUUID(),
-          user.id,
-          credential.id,
-          Buffer.from(credential.publicKey),
-          credential.counter,
-          JSON.stringify(credential.transports || [])
-        );
+        // Check if this specific credential ID is already registered for this user
+        const existingCred = db.prepare(`
+          SELECT id FROM user_identities
+          WHERE provider = 'webauthn' AND provider_user_id = ?
+        `).get(credential.id);
+
+        if (existingCred) {
+          db.prepare(`
+            UPDATE user_identities SET
+              credential_public_key = ?,
+              credential_counter = ?,
+              credential_transports = ?,
+              friendly_name = COALESCE(?, friendly_name),
+              aaguid = COALESCE(?, aaguid),
+              credential_device_type = ?,
+              backup_eligible = ?,
+              backup_state = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(
+            Buffer.from(credential.publicKey),
+            credential.counter,
+            JSON.stringify(credential.transports || []),
+            friendlyName,
+            aaguid || null,
+            credentialDeviceType || 'singleDevice',
+            credentialBackedUp ? 1 : 0,
+            credentialBackedUp ? 1 : 0,
+            existingCred.id
+          );
+        } else {
+          db.prepare(`
+            INSERT INTO user_identities (
+              id, user_id, provider, provider_user_id, credential_public_key,
+              credential_counter, credential_transports, friendly_name, aaguid,
+              credential_device_type, backup_eligible, backup_state, is_verified
+            ) VALUES (?, ?, 'webauthn', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          `).run(
+            crypto.randomUUID(),
+            user.id,
+            credential.id,
+            Buffer.from(credential.publicKey),
+            credential.counter,
+            JSON.stringify(credential.transports || []),
+            friendlyName,
+            aaguid || null,
+            credentialDeviceType || 'singleDevice',
+            credentialBackedUp ? 1 : 0,
+            credentialBackedUp ? 1 : 0
+          );
+        }
 
         res.json({ success: true, credentialId: credential.id });
       } catch (error) {
         console.error('WebAuthn registration verification error:', error);
-        res.status(400).json({ error: 'Touch ID registration failed' });
+        res.status(400).json({ error: 'Passkey registration failed' });
       }
     },
 
     getWebAuthnAuthenticationOptions: async (req, res) => {
       try {
-        const user = findUserByIdentifier(req.query.identifier || '');
-        if (!user) return res.status(404).json({ error: 'Account not found' });
+        const identifier = (req.query.identifier || '').trim();
+        let credentials = [];
+        let user = null;
 
-        const credentials = db.prepare(`
-          SELECT provider_user_id, credential_transports
-          FROM user_identities
-          WHERE user_id = ? AND provider = 'webauthn' AND is_verified = 1
-        `).all(user.id);
-        if (credentials.length === 0) return res.status(404).json({ error: 'Touch ID is not configured' });
+        if (identifier) {
+          user = findUserByIdentifier(identifier);
+          if (!user) return res.status(404).json({ error: 'Account not found' });
+
+          credentials = db.prepare(`
+            SELECT provider_user_id, credential_transports
+            FROM user_identities
+            WHERE user_id = ? AND provider = 'webauthn' AND is_verified = 1
+          `).all(user.id);
+
+          if (credentials.length === 0) {
+            return res.status(404).json({ error: 'Passkey is not configured for this account' });
+          }
+        }
 
         const options = await generateAuthenticationOptions({
           rpID: process.env.WEBAUTHN_RP_ID || req.hostname,
-          userVerification: 'required',
-          allowCredentials: credentials.map(credential => ({
+          userVerification: 'preferred',
+          allowCredentials: credentials.length > 0 ? credentials.map(credential => ({
             id: credential.provider_user_id,
             transports: credential.credential_transports
               ? JSON.parse(credential.credential_transports)
               : undefined
-          }))
+          })) : undefined
         });
-        saveChallenge(db, challengeKey(user.id, 'authentication'), options.challenge);
-        res.json(options);
+
+        // Save challenge by user ID when identifier provided, and by unique challenge key for discoverable/conditional UI
+        if (user) {
+          saveChallenge(db, challengeKey(user.id, 'authentication'), options.challenge);
+        }
+        const globalChallengeKey = `passkey_challenge_${options.challenge}`;
+        saveChallenge(db, globalChallengeKey, options.challenge);
+
+        res.json({ ...options, challengeKey: globalChallengeKey });
       } catch (error) {
         console.error('WebAuthn authentication options error:', error);
-        res.status(500).json({ error: 'Unable to prepare Touch ID sign-in' });
+        res.status(500).json({ error: 'Unable to prepare Passkey sign-in' });
       }
     },
 
     verifyWebAuthnAuthentication: async (req, res) => {
       try {
-        const { identifier, deviceName, deviceType, response } = req.body;
-        const user = findUserByIdentifier(identifier || '');
-        const challenge = user
-          ? consumeChallenge(db, challengeKey(user.id, 'authentication'))
-          : null;
-        if (!user || !challenge) {
-          return res.status(401).json({ error: 'Touch ID sign-in has expired. Try again.' });
+        const { identifier, deviceName, deviceType, response, challengeKey: clientChallengeKey } = req.body;
+        const credResponse = response || req.body;
+        const credentialId = credResponse.id;
+
+        let user = identifier ? findUserByIdentifier(identifier) : null;
+        let challenge = null;
+
+        if (user) {
+          challenge = consumeChallenge(db, challengeKey(user.id, 'authentication'));
         }
 
-        const credential = db.prepare(`
-          SELECT provider_user_id, credential_public_key, credential_counter, credential_transports
-          FROM user_identities
-          WHERE user_id = ? AND provider = 'webauthn' AND provider_user_id = ? AND is_verified = 1
-        `).get(user.id, response.id);
-        if (!credential) return res.status(401).json({ error: 'Touch ID credential not recognized' });
+        // Try challenge from clientChallengeKey or clientDataJSON challenge if not consumed yet
+        if (!challenge && clientChallengeKey) {
+          challenge = consumeChallenge(db, clientChallengeKey);
+        }
+        if (!challenge && credResponse?.response?.clientDataJSON) {
+          try {
+            const parsedClientData = JSON.parse(Buffer.from(credResponse.response.clientDataJSON, 'base64url').toString('utf8'));
+            if (parsedClientData?.challenge) {
+              challenge = consumeChallenge(db, `passkey_challenge_${parsedClientData.challenge}`);
+            }
+          } catch (e) {}
+        }
+
+        // Locate credential record
+        let credential = null;
+        if (user) {
+          credential = db.prepare(`
+            SELECT id, user_id, provider_user_id, credential_public_key, credential_counter, credential_transports
+            FROM user_identities
+            WHERE user_id = ? AND provider = 'webauthn' AND provider_user_id = ? AND is_verified = 1
+          `).get(user.id, credentialId);
+        }
+
+        // If not found yet (e.g. discoverable login without initial identifier), locate user by credentialId
+        if (!credential && credentialId) {
+          credential = db.prepare(`
+            SELECT id, user_id, provider_user_id, credential_public_key, credential_counter, credential_transports
+            FROM user_identities
+            WHERE provider = 'webauthn' AND provider_user_id = ? AND is_verified = 1
+          `).get(credentialId);
+
+          if (credential) {
+            user = getUserById(credential.user_id);
+            if (!challenge && user) {
+              challenge = consumeChallenge(db, challengeKey(user.id, 'authentication'));
+            }
+          }
+        }
+
+        if (!user || !credential || !challenge) {
+          return res.status(401).json({ error: 'Passkey sign-in has expired or credential is not recognized. Try again.' });
+        }
 
         const verification = await verifyAuthenticationResponse({
-          response,
+          response: credResponse,
           expectedChallenge: challenge,
           expectedOrigin: expectedOrigin(req),
           expectedRPID: process.env.WEBAUTHN_RP_ID || req.hostname,
@@ -514,9 +606,18 @@ module.exports = function(db, permissionsHelper = null) {
               : undefined
           }
         });
-        if (!verification.verified) return res.status(401).json({ error: 'Touch ID verification failed' });
-        db.prepare('UPDATE user_identities SET credential_counter = ? WHERE user_id = ? AND provider_user_id = ?')
-          .run(verification.authenticationInfo.newCounter, user.id, response.id);
+        if (!verification.verified) return res.status(401).json({ error: 'Passkey verification failed' });
+
+        try {
+          db.prepare(`
+            UPDATE user_identities 
+            SET credential_counter = ?, last_used_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+          `).run(verification.authenticationInfo.newCounter, credential.id);
+        } catch (e) {
+          db.prepare('UPDATE user_identities SET credential_counter = ? WHERE id = ?')
+            .run(verification.authenticationInfo.newCounter, credential.id);
+        }
 
         const isWebLogin = typeof req?.get === 'function' && (deviceType || 'Web').toLowerCase() !== 'android';
         if (isWebLogin) {
@@ -530,7 +631,44 @@ module.exports = function(db, permissionsHelper = null) {
         res.json({ success: true, token, user: publicUser(user) });
       } catch (error) {
         console.error('WebAuthn authentication verification error:', error);
-        res.status(401).json({ error: 'Touch ID sign-in failed' });
+        res.status(401).json({ error: 'Passkey sign-in failed' });
+      }
+    },
+
+    listWebAuthnCredentials: async (req, res) => {
+      try {
+        const user = getUserById(req.user.userId);
+        if (!user) return res.status(404).json({ error: 'Account not found' });
+        const credentials = db.prepare(`
+          SELECT id, provider_user_id, friendly_name, aaguid, credential_device_type,
+                 backup_eligible, backup_state, last_used_at, created_at
+          FROM user_identities
+          WHERE user_id = ? AND provider = 'webauthn' AND is_verified = 1
+          ORDER BY created_at DESC
+        `).all(user.id);
+        res.json({ credentials });
+      } catch (error) {
+        console.error('List WebAuthn credentials error:', error);
+        res.status(500).json({ error: 'Unable to list passkeys' });
+      }
+    },
+
+    deleteWebAuthnCredential: async (req, res) => {
+      try {
+        const user = getUserById(req.user.userId);
+        if (!user) return res.status(404).json({ error: 'Account not found' });
+        const credentialId = req.params.credentialId;
+        const result = db.prepare(`
+          DELETE FROM user_identities
+          WHERE user_id = ? AND provider = 'webauthn' AND (id = ? OR provider_user_id = ?)
+        `).run(user.id, credentialId, credentialId);
+        if (result.changes === 0) {
+          return res.status(404).json({ error: 'Passkey not found' });
+        }
+        res.json({ success: true, message: 'Passkey removed' });
+      } catch (error) {
+        console.error('Delete WebAuthn credential error:', error);
+        res.status(500).json({ error: 'Unable to remove passkey' });
       }
     },
 

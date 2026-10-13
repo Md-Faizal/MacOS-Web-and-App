@@ -573,6 +573,8 @@ app.get('/api/auth/webauthn/registration-options', authModule.authMiddleware, au
 app.post('/api/auth/webauthn/registration-verify', authModule.authMiddleware, authModule.verifyWebAuthnRegistration);
 app.get('/api/auth/webauthn/authentication-options', authModule.getWebAuthnAuthenticationOptions);
 app.post('/api/auth/webauthn/authentication-verify', authModule.verifyWebAuthnAuthentication);
+app.get('/api/auth/webauthn/credentials', authModule.authMiddleware, authModule.listWebAuthnCredentials);
+app.delete('/api/auth/webauthn/credentials/:credentialId', authModule.authMiddleware, authModule.deleteWebAuthnCredential);
 app.post('/api/auth/update-security', authModule.authMiddleware, authModule.updateSecurity);
 
 // Owner administration routes

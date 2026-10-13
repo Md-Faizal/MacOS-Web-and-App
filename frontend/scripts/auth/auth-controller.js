@@ -22,6 +22,7 @@ export class AuthController {
     this.initClock();
     this.initEventListeners();
     this.initGoogleAuth();
+    this.initConditionalPasskey();
     this.checkSecurityAndSync();
   }
 
@@ -78,6 +79,7 @@ export class AuthController {
     this.pendingGoogleCredential = null;
     this.pendingWorkerInvite = null;
     this.touchIdRegistrationInFlight = false;
+    this.conditionalPasskeyInFlight = false;
     this.answerVerificationInFlight = false;
     this.loginAutoSubmitTimer = null;
     this.touchIdAutoSubmitTimer = null;
@@ -1126,7 +1128,7 @@ export class AuthController {
      -------------------------------------------------------------------------- */
   handleTouchID() {
     const isEnabled = localStorage.getItem('touchIdEnabled') === 'true';
-    if (localStorage.getItem('macos_remember_account') !== 'true') {
+    if (!isEnabled && localStorage.getItem('macos_remember_account') !== 'true') {
       this.openLoginModal();
       return;
     }
@@ -1167,6 +1169,9 @@ export class AuthController {
       result.response.signature = this.bytesToBase64Url(response.signature);
       result.response.userHandle = response.userHandle ? this.bytesToBase64Url(response.userHandle) : null;
     }
+    if (credential.authenticatorAttachment) {
+      result.authenticatorAttachment = credential.authenticatorAttachment;
+    }
     return result;
   }
 
@@ -1185,6 +1190,61 @@ export class AuthController {
       c.id = this.base64UrlToBytes(c.id);
     });
     return options;
+  }
+
+  async initConditionalPasskey() {
+    if (this.conditionalPasskeyInFlight) return;
+    if (typeof window === 'undefined' || !window.PublicKeyCredential) return;
+    if (typeof PublicKeyCredential.isConditionalMediationAvailable !== 'function') return;
+
+    try {
+      const isAvailable = await PublicKeyCredential.isConditionalMediationAvailable();
+      if (!isAvailable) return;
+
+      const optionsRes = await fetch('/api/auth/webauthn/authentication-options');
+      if (!optionsRes.ok) return;
+      const optionsData = await optionsRes.json();
+      const challengeKey = optionsData.challengeKey;
+      const options = this.prepareAuthenticationOptions(optionsData);
+
+      this.conditionalPasskeyInFlight = true;
+      const assertion = await navigator.credentials.get({
+        publicKey: options,
+        mediation: 'conditional'
+      });
+
+      if (assertion) {
+        const { deviceName, deviceType, clientType } = await this.getDeviceInfo();
+        const response = await fetch('/api/auth/webauthn/authentication-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challengeKey,
+            deviceName,
+            deviceType,
+            clientType,
+            response: this.serializeCredential(assertion)
+          })
+        });
+
+        const resData = await response.json();
+        if (response.ok) {
+          const resolvedIdentifier = resData?.user?.username || resData?.user?.email;
+          if (resolvedIdentifier) {
+            localStorage.setItem('macos_user_identifier', resolvedIdentifier);
+          }
+          localStorage.setItem('touchIdEnabled', 'true');
+          sessionStorage.setItem('macos_session_active', 'true');
+          this.goHome();
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+        console.warn('[Passkey Conditional UI]', err);
+      }
+    } finally {
+      this.conditionalPasskeyInFlight = false;
+    }
   }
 
   async registerBiometrics() {
@@ -1225,49 +1285,64 @@ export class AuthController {
       }
 
       if (!window.PublicKeyCredential) {
-        showTouchIdFailed('Touch ID Unavailable', 'Biometric authentication is not supported by your browser or device.');
+        showTouchIdFailed('Touch ID Unavailable', 'Biometric / Passkey authentication is not supported by your browser or device.');
         return;
       }
 
       const optionsRes = await fetch('/api/auth/webauthn/registration-options');
-      if (!optionsRes.ok) throw new Error('Unable to prepare Touch ID setup');
+      if (!optionsRes.ok) throw new Error('Unable to prepare Passkey setup');
       const options = this.prepareRegistrationOptions(await optionsRes.json());
       const credential = await navigator.credentials.create({ publicKey: options });
 
       if (credential) {
+        const { deviceName } = await this.getDeviceInfo();
+        const friendlyName = navigator.userAgent.includes('Macintosh') ? 'Touch ID (MacBook)' :
+                             navigator.userAgent.includes('Windows') ? 'Windows Hello' :
+                             navigator.userAgent.includes('iPhone') ? 'iCloud Keychain (iPhone)' :
+                             navigator.userAgent.includes('Android') ? 'Android Passkey' : (deviceName || 'Passkey');
+
         const verifyRes = await fetch('/api/auth/webauthn/registration-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.serializeCredential(credential))
+          body: JSON.stringify({
+            ...this.serializeCredential(credential),
+            friendlyName,
+            deviceName
+          })
         });
-        if (!verifyRes.ok) throw new Error('Touch ID registration was not verified');
+        if (!verifyRes.ok) throw new Error('Passkey registration was not verified');
 
         localStorage.setItem('touchIdEnabled', 'true');
         sessionStorage.setItem('macos_session_active', 'true');
 
-        alert('✓ Touch ID setup successful!');
+        alert('✓ Passkey / Touch ID setup successful!');
         this.updateLoginHint();
         this.goHome();
       }
     } catch (err) {
       console.error('Biometric registration failed:', err);
       if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
-        showTouchIdFailed('Touch ID Setup Cancelled', 'Biometric registration was cancelled. You can retry now or continue using your password.');
+        showTouchIdFailed('Touch ID Setup Cancelled', 'Passkey registration was cancelled. You can retry now or continue using your password.');
         return;
       }
-      showTouchIdFailed('Touch ID Setup Failed', err.message || 'Biometric setup could not be completed. You can retry now or continue using your password.');
+      showTouchIdFailed('Touch ID Setup Failed', err.message || 'Passkey setup could not be completed. You can retry now or continue using your password.');
     } finally {
       this.touchIdRegistrationInFlight = false;
     }
   }
 
-  async authenticateBiometrics() {
+  async authenticateBiometrics(autoIdentifier = null) {
     try {
-      const identifier = localStorage.getItem('macos_user_identifier');
-      if (!identifier) throw new Error('Remembered account not found');
-      const optionsRes = await fetch(`/api/auth/webauthn/authentication-options?identifier=${encodeURIComponent(identifier)}`);
-      if (!optionsRes.ok) throw new Error('Touch ID is not configured');
-      const options = this.prepareAuthenticationOptions(await optionsRes.json());
+      const identifier = autoIdentifier || localStorage.getItem('macos_user_identifier') || this.loginIdentifierInput?.value?.trim() || null;
+      const url = identifier
+        ? `/api/auth/webauthn/authentication-options?identifier=${encodeURIComponent(identifier)}`
+        : '/api/auth/webauthn/authentication-options';
+
+      const optionsRes = await fetch(url);
+      if (!optionsRes.ok) throw new Error('Passkey sign-in is not configured');
+      const optionsData = await optionsRes.json();
+      const challengeKey = optionsData.challengeKey;
+      const options = this.prepareAuthenticationOptions(optionsData);
       const assertion = await navigator.credentials.get({ publicKey: options });
 
       if (assertion) {
@@ -1276,7 +1351,8 @@ export class AuthController {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            identifier,
+            identifier: identifier || undefined,
+            challengeKey,
             deviceName,
             deviceType,
             clientType,
@@ -1286,16 +1362,22 @@ export class AuthController {
 
         const resData = await response.json();
         if (response.ok) {
+          const resolvedIdentifier = identifier || resData?.user?.username || resData?.user?.email;
+          if (resolvedIdentifier) {
+            localStorage.setItem('macos_user_identifier', resolvedIdentifier);
+          }
+          localStorage.setItem('touchIdEnabled', 'true');
+          sessionStorage.setItem('macos_session_active', 'true');
           const profile = await this.loadAuthenticatedProfile();
-          this.showRememberAccountPrompt(identifier, profile, resData?.user || null);
+          this.showRememberAccountPrompt(resolvedIdentifier, profile, resData?.user || null);
         } else {
-          alert(resData.error || 'Biometric login failed');
+          alert(resData.error || 'Passkey sign-in failed');
         }
       }
     } catch (err) {
       console.error('Biometric authentication failed:', err);
-      if (err.name !== 'NotAllowedError') {
-        alert('Biometric authentication failed. Please enter your password.');
+      if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        alert(err.message || 'Passkey authentication failed. Please enter your password.');
       }
       this.dialogManager.handleDismissal();
     }
