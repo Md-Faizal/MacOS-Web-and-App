@@ -1,4 +1,4 @@
-﻿/* ===== TRANSACTION HISTORY MODULE (PREMIUM) ===== */
+/* ===== TRANSACTION HISTORY MODULE (PREMIUM) ===== */
 /* Modern transaction timeline aligned with Payment/Credit-Note module */
 
 /* CSS Variables */
@@ -354,6 +354,10 @@
 }
 
 /* ===== LOADING STATE ===== */
+.history-loading-state.hidden,
+.history-loading-state[style*="display: none"] {
+  display: none !important;
+}
 .history-loading-state {
  display: flex;
  flex-direction: column;

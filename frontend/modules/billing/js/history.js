@@ -190,7 +190,9 @@ class HistoryView {
     } finally {
       // Guaranteed dismiss of the loading state
       if (loadingMsg && container && container.style.display === 'block') {
-        loadingMsg.style.display = 'none';
+        loadingMsg.style.setProperty('display', 'none', 'important');
+        loadingMsg.classList.add('hidden');
+        loadingMsg.remove();
       }
     }
   }
@@ -414,7 +416,11 @@ class HistoryView {
     }
 
     // Always ensure loadingMsg is hidden and container is displayed
-    if (loadingMsg) loadingMsg.style.display = 'none';
+    if (loadingMsg) {
+      loadingMsg.style.setProperty('display', 'none', 'important');
+      loadingMsg.classList.add('hidden');
+      loadingMsg.remove();
+    }
     container.style.display = 'block';
 
     // Render Opening Balance View

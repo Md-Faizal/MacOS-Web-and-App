@@ -201,15 +201,22 @@ body.dark-mode .macos-loader-overlay,
 }
 
 .history-loading-state {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 48px 20px !important;
-  color: #64748b !important;
-  font-size: 13px !important;
-  text-align: center !important;
-  gap: 10px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+  gap: 10px;
+}
+
+.history-loading-state.hidden,
+.history-loading-state[style*="display: none"],
+.analytics-loading.hidden,
+.analytics-loading[style*="display: none"] {
+  display: none !important;
 }
 
 /* 3. Manufacturing table loading indicators */
