@@ -56,10 +56,7 @@ class DatabaseManager {
       // 7. Clean up unknown tables and extra columns
       this.cleanupUnknownSchema();
       
-      // 8. Re-apply CREATE IF NOT EXISTS after migrations and schema checks.
-      this.createTables();
-      
-      // 9. Verify database integrity
+      // 8. Verify database integrity
       this.verifyIntegrity();
       
       console.log('✓ Database initialization completed successfully\n');

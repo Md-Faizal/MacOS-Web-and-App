@@ -175,7 +175,7 @@ fi
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
-MAX_RETRIES=30
+MAX_RETRIES="${MAX_RETRIES:-75}"
 COUNT=0
 HEALTHY=false
 
@@ -188,7 +188,11 @@ while [ $COUNT -lt $MAX_RETRIES ]; do
     fi
     sleep 1
     COUNT=$((COUNT + 1))
-    echo -n ".[$HTTP_CODE]"
+    if [ $((COUNT % 5)) -eq 0 ]; then
+        echo -n ".[${COUNT}s:${HTTP_CODE}]"
+    else
+        echo -n "."
+    fi
 done
 echo ""
 
