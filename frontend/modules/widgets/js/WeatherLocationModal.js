@@ -135,6 +135,11 @@ export class WeatherLocationModal {
     const locBtn = this.overlay.querySelector('.current-loc-btn');
     const nearestCityEl = this.overlay.querySelector('#weatherNearestCity');
     
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+
     locBtn.textContent = '⏳';
     locBtn.disabled = true;
     if (nearestCityEl) nearestCityEl.textContent = 'Fetching geolocation...';
@@ -150,7 +155,7 @@ export class WeatherLocationModal {
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
         const data = await response.json();
-        const cityName = data.address.city || data.address.town || data.address.village || data.address.suburb || 'My Location';
+        const cityName = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || 'My Location';
         
         this.overlay.querySelector('.weather-search-input').value = cityName;
         if (nearestCityEl) nearestCityEl.textContent = `Nearest City: ${cityName}`;
@@ -164,11 +169,23 @@ export class WeatherLocationModal {
         locBtn.disabled = false;
       }
     }, (err) => {
-      console.error('Geolocation error:', err);
-      alert('Could not get your location: ' + err.message);
+      console.warn('Geolocation error:', err);
+      let errMsg = 'Could not get your location.';
+      if (err.code === 1) {
+        errMsg = 'Location permission was denied. Please allow location access in your browser or search for your city above.';
+      } else if (err.code === 2) {
+        errMsg = 'Location information is currently unavailable.';
+      } else if (err.code === 3) {
+        errMsg = 'Location request timed out. Please try again or search for your city.';
+      }
+      alert(errMsg);
       locBtn.textContent = '📍';
       locBtn.disabled = false;
       if (nearestCityEl) nearestCityEl.textContent = '';
+    }, {
+      enableHighAccuracy: false,
+      timeout: 10000,
+      maximumAge: 60000
     });
   }
 

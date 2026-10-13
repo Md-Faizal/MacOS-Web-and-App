@@ -6,7 +6,7 @@ The Node API has multiple request controls that solve different problems. Origin
 
 The entrypoint installs request IDs, response helpers, security headers, body parsers, cookie parsing, CSRF/origin checks, a small in-memory rate-limit map, and route-specific auth gates. Middleware ordering and prefix exceptions matter. Verify the exact method, path, cookies, bearer header, origin and nested route handler when debugging a 401/403/429; do not weaken a global control to fix one endpoint.
 
-The global Permissions-Policy allows camera access only to the first-party page (`camera=(self)`) so browser camera features such as QR scanning can request user permission. Microphone and geolocation remain disabled. Camera APIs also require HTTPS or localhost and the user must grant site-level permission.
+The global Permissions-Policy allows camera and geolocation access only to the first-party page (`camera=(self), geolocation=(self)`) so browser features such as QR scanning and the Weather Widget can request user permission. Microphone remains disabled. Camera and Geolocation APIs also require HTTPS or localhost and the user must grant site-level permission.
 
 ## Browser and Mobile Sessions
 
