@@ -1298,7 +1298,16 @@ export class ProfileComponent {
             }
             const optionsData = await optionsRes.json();
             const options = prepareRegistrationOptions(optionsData);
-            const credential = await navigator.credentials.create({ publicKey: options });
+
+            if (window._profileWebAuthnAbort) {
+                try { window._profileWebAuthnAbort.abort('New request'); } catch (e) {}
+            }
+            window._profileWebAuthnAbort = new AbortController();
+
+            const credential = await navigator.credentials.create({
+                publicKey: options,
+                signal: window._profileWebAuthnAbort.signal
+            });
 
             if (credential) {
                 const friendlyName = navigator.userAgent.includes('Macintosh') ? 'Touch ID (MacBook)' :
@@ -1336,7 +1345,7 @@ export class ProfileComponent {
                 btn.textContent = 'Retry Touch ID Setup';
             }
             if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
-                showStatus('Touch ID Setup Cancelled', 'Biometric registration was cancelled. You can retry whenever you are ready.', 'warning');
+                showStatus('Passkey Setup Cancelled', 'The passkey prompt was cancelled or dismissed.', 'info');
             } else if (err.name === 'InvalidStateError') {
                 localStorage.setItem('touchIdEnabled', 'true');
                 showStatus('✓ Touch ID Active', 'Touch ID is recognized and active for this device.', 'success');
@@ -1349,8 +1358,10 @@ export class ProfileComponent {
                     this.render();
                 }, 1200);
             } else {
-                showStatus('Touch ID Setup Failed', err.message || 'Biometric setup could not be completed.', 'error');
+                showStatus('Passkey Setup Failed', err.message || 'An error occurred during passkey configuration.', 'error');
             }
+        } finally {
+            window._profileWebAuthnAbort = null;
         }
     }
 

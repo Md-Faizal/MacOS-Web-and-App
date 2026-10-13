@@ -1126,7 +1126,18 @@ export class AuthController {
   /* --------------------------------------------------------------------------
      WEBAUTHN & BIOMETRICS
      -------------------------------------------------------------------------- */
+  abortPendingWebAuthn() {
+    if (this.webAuthnAbortController) {
+      try {
+        this.webAuthnAbortController.abort('New WebAuthn request initiated');
+      } catch (e) {}
+      this.webAuthnAbortController = null;
+    }
+    this.conditionalPasskeyInFlight = false;
+  }
+
   handleTouchID() {
+    this.abortPendingWebAuthn();
     const isEnabled = localStorage.getItem('touchIdEnabled') === 'true';
     if (!isEnabled && localStorage.getItem('macos_remember_account') !== 'true') {
       this.openLoginModal();
@@ -1207,10 +1218,13 @@ export class AuthController {
       const challengeKey = optionsData.challengeKey;
       const options = this.prepareAuthenticationOptions(optionsData);
 
+      this.abortPendingWebAuthn();
+      this.webAuthnAbortController = new AbortController();
       this.conditionalPasskeyInFlight = true;
       const assertion = await navigator.credentials.get({
         publicKey: options,
-        mediation: 'conditional'
+        mediation: 'conditional',
+        signal: this.webAuthnAbortController.signal
       });
 
       if (assertion) {
@@ -1270,7 +1284,11 @@ export class AuthController {
       this.dialogManager.openModal(this.accountPreferenceModal);
     };
 
+    // Abort any pending conditional mediation request so credentials.create doesn't collide
+    this.abortPendingWebAuthn();
+    this.webAuthnAbortController = new AbortController();
     this.touchIdRegistrationInFlight = true;
+
     try {
       const authRes = await fetch('/api/auth/login', {
         method: 'POST',
@@ -1292,7 +1310,10 @@ export class AuthController {
       const optionsRes = await fetch('/api/auth/webauthn/registration-options');
       if (!optionsRes.ok) throw new Error('Unable to prepare Passkey setup');
       const options = this.prepareRegistrationOptions(await optionsRes.json());
-      const credential = await navigator.credentials.create({ publicKey: options });
+      const credential = await navigator.credentials.create({
+        publicKey: options,
+        signal: this.webAuthnAbortController.signal
+      });
 
       if (credential) {
         const { deviceName } = await this.getDeviceInfo();
@@ -1328,11 +1349,15 @@ export class AuthController {
       showTouchIdFailed('Touch ID Setup Failed', err.message || 'Passkey setup could not be completed. You can retry now or continue using your password.');
     } finally {
       this.touchIdRegistrationInFlight = false;
+      this.webAuthnAbortController = null;
     }
   }
 
   async authenticateBiometrics(autoIdentifier = null) {
     try {
+      this.abortPendingWebAuthn();
+      this.webAuthnAbortController = new AbortController();
+
       const identifier = autoIdentifier || localStorage.getItem('macos_user_identifier') || this.loginIdentifierInput?.value?.trim() || null;
       const url = identifier
         ? `/api/auth/webauthn/authentication-options?identifier=${encodeURIComponent(identifier)}`
@@ -1343,7 +1368,10 @@ export class AuthController {
       const optionsData = await optionsRes.json();
       const challengeKey = optionsData.challengeKey;
       const options = this.prepareAuthenticationOptions(optionsData);
-      const assertion = await navigator.credentials.get({ publicKey: options });
+      const assertion = await navigator.credentials.get({
+        publicKey: options,
+        signal: this.webAuthnAbortController.signal
+      });
 
       if (assertion) {
         const { deviceName, deviceType, clientType } = await this.getDeviceInfo();
@@ -1380,6 +1408,8 @@ export class AuthController {
         alert(err.message || 'Passkey authentication failed. Please enter your password.');
       }
       this.dialogManager.handleDismissal();
+    } finally {
+      this.webAuthnAbortController = null;
     }
   }
 
