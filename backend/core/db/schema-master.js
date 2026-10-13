@@ -84,9 +84,11 @@ CREATE TABLE IF NOT EXISTS note_images (
 -- Quick Notes: Separate storage for desktop widgets
 CREATE TABLE IF NOT EXISTS quick_notes (
   id TEXT PRIMARY KEY,
+  user_id TEXT,
   title TEXT,
   content TEXT,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Auth Credentials: Secure single-user authentication (legacy/backward compatibility)
@@ -755,12 +757,16 @@ CREATE INDEX IF NOT EXISTS idx_quick_notes_updated ON quick_notes(updated_at);
 CREATE TABLE IF NOT EXISTS reminders (
   id TEXT PRIMARY KEY,
   widget_id TEXT NOT NULL,
+  user_id TEXT,
   text TEXT NOT NULL,
   completed INTEGER DEFAULT 0,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminders_widget ON reminders(widget_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+CREATE INDEX IF NOT EXISTS idx_quick_notes_user ON quick_notes(user_id);
 
 -- Cloud Storage: Track uploaded files metadata
 CREATE TABLE IF NOT EXISTS cloud_files (

@@ -172,6 +172,7 @@
         sessionStorage.setItem('macos_user_role', verifyData.user?.role || 'owner');
         if (verifyData.user?.id) {
           sessionStorage.setItem('macos_user_id', verifyData.user.id);
+          localStorage.setItem('macos_active_user_id', verifyData.user.id);
         }
         if (Array.isArray(verifyData.permissions?.allowedApps) && verifyData.permissions.allowedApps.length > 0) {
           sessionStorage.setItem('macos_allowed_apps', JSON.stringify(verifyData.permissions.allowedApps));

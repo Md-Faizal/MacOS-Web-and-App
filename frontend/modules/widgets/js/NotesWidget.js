@@ -46,9 +46,12 @@ export function createNotesWidget(instanceId) {
         const response = await fetch(`/api/quick-notes/${instanceId}`);
         if (response.ok) {
           const data = await response.json();
-          if (data.title !== undefined) {
-            state.title = data.title;
-            state.content = data.content;
+          const serverHasContent = data && ((data.title && data.title.trim()) || (data.content && data.content.trim()));
+          const localHasContent = (state.title && state.title.trim()) || (state.content && state.content.trim());
+          
+          if (serverHasContent) {
+            state.title = data.title || '';
+            state.content = data.content || '';
             
             // Update UI if user isn't actively typing
             if (document.activeElement !== titleEl) titleEl.textContent = state.title;
@@ -57,6 +60,9 @@ export function createNotesWidget(instanceId) {
             // Update local cache
             localStorage.setItem(titleKey, state.title);
             localStorage.setItem(contentKey, state.content);
+          } else if (localHasContent) {
+            // Local storage has notes, but server does not yet: sync up to server instead of wiping!
+            saveServerNote();
           }
         } else {
           console.warn(`NotesWidget: Server returned ${response.status} for fetch`, await response.text());
@@ -71,9 +77,13 @@ export function createNotesWidget(instanceId) {
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(async () => {
         try {
+          const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
+          const headers = { 'Content-Type': 'application/json' };
+          if (csrfToken) headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+
           const response = await fetch(`/api/quick-notes/${instanceId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({
               title: state.title,
               content: state.content
@@ -85,8 +95,26 @@ export function createNotesWidget(instanceId) {
         } catch (e) {
           console.error('NotesWidget: Failed to save to server:', e);
         }
-      }, 1000);
+      }, 500);
     };
+
+    window.addEventListener('beforeunload', () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+        const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
+        const headers = { 'Content-Type': 'application/json' };
+        if (csrfToken) headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+        fetch(`/api/quick-notes/${instanceId}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            title: state.title,
+            content: state.content
+          }),
+          keepalive: true
+        }).catch(() => {});
+      }
+    });
 
     titleEl.addEventListener('input', () => {
       state.title = titleEl.textContent;

@@ -32,20 +32,46 @@ export function createWeatherWidget() {
       if (response.ok) {
         const data = await response.json();
         
-        // If the server says these are default settings, try to get current location
+        // If the server returns default settings (e.g. no saved preference in DB)
         if (data.isDefault) {
+          const localCity = localStorage.getItem(getScopedStorageKey('weather-city'));
+          const localLat = localStorage.getItem(getScopedStorageKey('weather-lat'));
+          const localLon = localStorage.getItem(getScopedStorageKey('weather-lon'));
+          
+          // If the user already has a customized local city, keep it and push to server!
+          if (localCity && localCity !== 'London' && localLat && localLon) {
+            state.city = localCity;
+            state.lat = parseFloat(localLat);
+            state.lon = parseFloat(localLon);
+            saveServerSettings();
+            updateWidget();
+            fetchWeather();
+            return;
+          }
+
+          // Otherwise, try to get current location
           const success = await tryFetchCurrentLocation();
           if (success) return; 
-          // If geolocation fails, continue with defaults
+
+          // If geolocation fails but user had a non-empty city locally
+          if (localCity) {
+            state.city = localCity;
+            state.lat = localLat ? parseFloat(localLat) : state.lat;
+            state.lon = localLon ? parseFloat(localLon) : state.lon;
+            updateWidget();
+            fetchWeather();
+            return;
+          }
         }
 
+        // Server has saved preferences
         state.city = data.city || state.city;
-        state.lat = data.lat || state.lat;
-        state.lon = data.lon || state.lon;
+        state.lat = data.lat !== undefined ? Number(data.lat) : state.lat;
+        state.lon = data.lon !== undefined ? Number(data.lon) : state.lon;
         state.unit = data.unit || state.unit;
         state.isExpanded = !!data.isExpanded;
         
-        // Sync back to local for faster next boot
+        // Sync back to local storage
         localStorage.setItem(getScopedStorageKey('weather-city'), state.city);
         localStorage.setItem(getScopedStorageKey('weather-lat'), state.lat);
         localStorage.setItem(getScopedStorageKey('weather-lon'), state.lon);
@@ -74,7 +100,7 @@ export function createWeatherWidget() {
           // Reverse geocode to get city name
           const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
           const data = await response.json();
-          const cityName = data.address.city || data.address.town || data.address.village || data.address.suburb || 'My Location';
+          const cityName = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || 'My Location';
           
           state.city = cityName;
           state.lat = latitude;
@@ -101,9 +127,13 @@ export function createWeatherWidget() {
 
   const saveServerSettings = async () => {
     try {
+      const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
+      const headers = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+
       await fetch('/api/weather/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           city: state.city,
           lat: state.lat,

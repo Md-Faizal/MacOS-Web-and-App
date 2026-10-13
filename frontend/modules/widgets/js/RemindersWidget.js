@@ -18,9 +18,15 @@ export function createRemindersWidget(id) {
       const response = await fetch(`/api/reminders/${id}`);
       const data = await response.json();
       if (data.success && Array.isArray(data.reminders)) {
-        reminders = data.reminders;
-        localStorage.setItem(storageKey, JSON.stringify(reminders));
-        render();
+        if (data.reminders.length > 0) {
+          reminders = data.reminders;
+          localStorage.setItem(storageKey, JSON.stringify(reminders));
+          render();
+        } else if (reminders.length > 0) {
+          // Local storage has reminders, but server returned empty for this new widget instance:
+          // Sync local reminders to server instead of wiping!
+          saveAndRender();
+        }
       }
     } catch (error) {
       console.warn('RemindersWidget: Failed to fetch from server, using local cache:', error);
@@ -124,9 +130,13 @@ export function createRemindersWidget(id) {
     render();
 
     try {
+      const csrfToken = document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1];
+      const headers = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = decodeURIComponent(csrfToken);
+
       await fetch(`/api/reminders/${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ reminders })
       });
     } catch (error) {

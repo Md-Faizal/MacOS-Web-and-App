@@ -9,7 +9,7 @@ module.exports = function(globalDb, authMiddleware) {
   // GET /api/weather/settings - Retrieve settings for the current user
   router.get('/settings', authMiddleware, (req, res) => {
     try {
-      const userId = req.user.id || 'admin_auth';
+      const userId = req.user?.userId || req.user?.id || 'admin_auth';
       const stmt = globalDb.prepare('SELECT * FROM weather_settings WHERE user_id = ?');
       let settings = stmt.get(userId);
       
@@ -24,7 +24,10 @@ module.exports = function(globalDb, authMiddleware) {
         });
       }
       
-      res.json(settings);
+      res.json({
+        ...settings,
+        isDefault: false
+      });
     } catch (error) {
       console.error('[Weather API] GET /settings error:', error.message);
       res.status(500).json({ error: 'Failed to retrieve weather settings' });
@@ -34,7 +37,7 @@ module.exports = function(globalDb, authMiddleware) {
   // POST /api/weather/settings - Update settings for the current user
   router.post('/settings', authMiddleware, (req, res) => {
     try {
-      const userId = req.user.id || 'admin_auth';
+      const userId = req.user?.userId || req.user?.id || 'admin_auth';
       const { city, lat, lon, unit, isExpanded } = req.body;
       
       const stmt = globalDb.prepare(`
@@ -52,8 +55,8 @@ module.exports = function(globalDb, authMiddleware) {
       stmt.run(
         userId, 
         city || 'London', 
-        lat || 51.5074, 
-        lon || -0.1278, 
+        lat !== undefined ? Number(lat) : 51.5074, 
+        lon !== undefined ? Number(lon) : -0.1278, 
         unit || 'C', 
         isExpanded ? 1 : 0
       );
