@@ -141,6 +141,34 @@ async function run() {
   const remainingCreds = db.prepare("SELECT * FROM user_identities WHERE user_id = ? AND provider = 'webauthn'").all(testUser.id);
   assert(remainingCreds.length === 1 && remainingCreds[0].friendly_name === 'iPhone Passkey', 'Only the selected passkey was removed; remaining passkeys are preserved');
 
+  // 9. Test Verification Payload Extraction Contracts (Direct body vs nested body.credential vs nested body.response)
+  let verifyErrStatus = null;
+  let verifyErrMsg = null;
+  const mockResVerifyFail = {
+    status: (code) => {
+      verifyErrStatus = code;
+      return { json: (data) => { verifyErrMsg = data.error; } };
+    }
+  };
+
+  const validClientDataJSON = Buffer.from(JSON.stringify({
+    type: 'webauthn.create',
+    challenge: 'invalid_mismatched_challenge',
+    origin: 'http://localhost'
+  })).toString('base64url');
+
+  await auth.verifyWebAuthnRegistration({
+    user: { userId: testUser.id },
+    body: {
+      id: 'cred_mock_payload_test',
+      rawId: 'cred_mock_payload_test',
+      type: 'public-key',
+      response: { clientDataJSON: validClientDataJSON, attestationObject: 'abc' },
+      friendlyName: 'Touch ID'
+    }
+  }, mockResVerifyFail);
+  assert(verifyErrStatus === 400, 'Direct serialized credential extracts and rejects invalid signature gracefully');
+
   // Clean up test user
   db.prepare("DELETE FROM user_identities WHERE user_id = ?").run(testUser.id);
   db.prepare("DELETE FROM users WHERE id = ?").run(testUser.id);

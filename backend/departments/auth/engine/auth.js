@@ -19,7 +19,35 @@ function challengeKey(userId, kind) {
 }
 
 function expectedOrigin(req) {
-  return process.env.WEBAUTHN_ORIGIN || req.headers.origin || `${req.protocol}://${req.get('host')}`;
+  if (process.env.WEBAUTHN_ORIGIN) return process.env.WEBAUTHN_ORIGIN;
+  const origins = new Set();
+  if (req?.headers?.origin) origins.add(req.headers.origin);
+  const proto = req?.headers?.['x-forwarded-proto'] || req?.protocol || 'https';
+  const host = req?.headers?.['x-forwarded-host'] || (typeof req?.get === 'function' ? req.get('host') : req?.hostname);
+  if (host) {
+    origins.add(`${proto}://${host}`);
+    origins.add(`https://${host.split(':')[0]}`);
+    origins.add(`http://${host.split(':')[0]}`);
+  }
+  origins.add('https://mac.faizal.uk');
+  origins.add('https://erp.faizal.uk');
+  origins.add('http://localhost:5173');
+  origins.add('http://localhost:3000');
+  origins.add('http://127.0.0.1:5173');
+  origins.add('http://127.0.0.1:3000');
+  return Array.from(origins);
+}
+
+function getExpectedRPID(req) {
+  const rpIDs = new Set();
+  if (process.env.WEBAUTHN_RP_ID) rpIDs.add(process.env.WEBAUTHN_RP_ID);
+  if (req?.hostname) rpIDs.add(req.hostname);
+  const host = (req?.headers?.['x-forwarded-host'] || (typeof req?.get === 'function' ? req.get('host') : '') || '').split(':')[0];
+  if (host) rpIDs.add(host);
+  rpIDs.add('mac.faizal.uk');
+  rpIDs.add('erp.faizal.uk');
+  rpIDs.add('localhost');
+  return Array.from(rpIDs);
 }
 
 function webAuthnUserId(userId) {
@@ -416,12 +444,18 @@ module.exports = function(db, permissionsHelper = null) {
           return res.status(400).json({ error: 'Passkey setup has expired. Try again.' });
         }
 
-        const rawResponse = req.body.credential || req.body.response || req.body;
+        // Extract the full credential payload with id, rawId, type, and response
+        const rawResponse = (req.body && req.body.id ? req.body : null) ||
+          (req.body && req.body.credential && req.body.credential.id ? req.body.credential : null) ||
+          (req.body && req.body.response && req.body.response.id ? req.body.response : null) ||
+          req.body;
+
         const verification = await verifyRegistrationResponse({
           response: rawResponse,
           expectedChallenge: challenge,
           expectedOrigin: expectedOrigin(req),
-          expectedRPID: process.env.WEBAUTHN_RP_ID || req.hostname
+          expectedRPID: getExpectedRPID(req),
+          requireUserVerification: false
         });
         if (!verification.verified || !verification.registrationInfo) {
           return res.status(400).json({ error: 'Passkey registration was not verified' });
@@ -538,9 +572,13 @@ module.exports = function(db, permissionsHelper = null) {
 
     verifyWebAuthnAuthentication: async (req, res) => {
       try {
-        const { identifier, deviceName, deviceType, response, challengeKey: clientChallengeKey } = req.body;
-        const credResponse = response || req.body;
-        const credentialId = credResponse.id;
+        const { identifier, deviceName, deviceType, challengeKey: clientChallengeKey } = req.body;
+        const credResponse = (req.body && req.body.id ? req.body : null) ||
+          (req.body && req.body.credential && req.body.credential.id ? req.body.credential : null) ||
+          (req.body && req.body.response && req.body.response.id ? req.body.response : null) ||
+          req.body.response ||
+          req.body;
+        const credentialId = credResponse?.id;
 
         let user = identifier ? findUserByIdentifier(identifier) : null;
         let challenge = null;
@@ -596,7 +634,8 @@ module.exports = function(db, permissionsHelper = null) {
           response: credResponse,
           expectedChallenge: challenge,
           expectedOrigin: expectedOrigin(req),
-          expectedRPID: process.env.WEBAUTHN_RP_ID || req.hostname,
+          expectedRPID: getExpectedRPID(req),
+          requireUserVerification: false,
           credential: {
             id: credential.provider_user_id,
             publicKey: new Uint8Array(credential.credential_public_key),

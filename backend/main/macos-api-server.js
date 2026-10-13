@@ -97,6 +97,7 @@ const workerGoogleAuth = authDepartment.workerGoogle;
 const adminAuth = departments.admin.create(globalDb);
 
 const app = express();
+app.set('trust proxy', true);
 const cors = require('cors');
 
 const allowedOrigins = [
