@@ -13,7 +13,7 @@
  */
 
 const CACHE_VERSION = 'wallpaper-v6';
-const ASSET_CACHE = 'asset-cache-v4';
+const ASSET_CACHE = 'asset-cache-v5';
 const IMAGE_CACHE = 'image-cache-v4';
 const VIDEO_CACHE = 'video-cache-v3';  // Incremented for new logic
 

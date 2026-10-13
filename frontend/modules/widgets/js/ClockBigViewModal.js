@@ -19,9 +19,13 @@ export class ClockBigViewModal {
         this.overlay = null;
         this.interval = null;
         this.getScopedStorageKey = getScopedStorageKey;
-        this.settings = this.isLocal ? (JSON.parse(localStorage.getItem(getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' }) : null;
+        this.settings = this.isLocal ? (JSON.parse(localStorage.getItem(this.getScopedStorageKey('mac-system-time-settings'))) || { mode: 'auto' }) : null;
         
         this.createModal();
+    }
+
+    getScopedStorageKey(baseKey) {
+        return getScopedStorageKey(baseKey);
     }
 
     createModal() {
