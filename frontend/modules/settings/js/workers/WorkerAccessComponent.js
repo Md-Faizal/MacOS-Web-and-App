@@ -75,6 +75,17 @@ export class WorkerAccessComponent {
         ]
       },
       { 
+        id: 'compliance', 
+        name: 'Directory & Compliance', 
+        icon: '🏛️', 
+        desc: 'Employee directory, KYC document vault, statutory licenses, and renewal deadlines',
+        options: [
+          { key: 'view_staff', label: 'View Staff Directory', desc: 'Worker can view company personnel list', default: true },
+          { key: 'upload_documents', label: 'Upload Documents', desc: 'Worker can upload KYC and health certificates', default: true },
+          { key: 'manage_licenses', label: 'Manage Statutory Licenses', desc: 'Worker can edit corporate licenses & deadlines', default: false }
+        ]
+      },
+      { 
         id: 'analytics', 
         name: 'Analytics', 
         icon: '📊', 

@@ -986,6 +986,161 @@ CREATE TABLE IF NOT EXISTS supplier_payments (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (supplier_id) REFERENCES contacts(id)
 );
+
+-- ====================================================================
+-- DIRECTORY & COMPLIANCE DEPARTMENT TABLES
+-- ====================================================================
+
+-- Company Staff Master (Workers, Office, Technical Staff)
+CREATE TABLE IF NOT EXISTS company_staff (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  emp_code TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  department TEXT NOT NULL DEFAULT 'General',
+  designation TEXT NOT NULL DEFAULT 'Staff',
+  role_type TEXT NOT NULL DEFAULT 'Worker',
+  phone TEXT,
+  email TEXT,
+  date_of_birth DATE,
+  joining_date DATE,
+  blood_group TEXT,
+  emergency_contact TEXT,
+  address TEXT,
+  is_schedule_t_technical INTEGER DEFAULT 0,
+  technical_reg_no TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Staff Verification & KYC Documents
+CREATE TABLE IF NOT EXISTS staff_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id INTEGER NOT NULL,
+  doc_type TEXT NOT NULL,
+  doc_name TEXT NOT NULL,
+  doc_number TEXT,
+  issue_date DATE,
+  expiry_date DATE,
+  file_name TEXT,
+  file_type TEXT,
+  file_data TEXT,
+  verification_status TEXT DEFAULT 'PENDING',
+  verified_by TEXT,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (staff_id) REFERENCES company_staff(id) ON DELETE CASCADE
+);
+
+-- Statutory & Corporate Compliances / Licenses
+CREATE TABLE IF NOT EXISTS company_compliances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'STATUTORY_DRUG',
+  license_number TEXT,
+  issuing_authority TEXT,
+  issue_date DATE,
+  expiry_date DATE,
+  renewal_frequency TEXT DEFAULT 'Annually',
+  officer_in_charge TEXT,
+  statutory_rule_ref TEXT,
+  status TEXT DEFAULT 'ACTIVE',
+  file_name TEXT,
+  file_data TEXT,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Compliance Deadlines & Renewal Timeline
+CREATE TABLE IF NOT EXISTS compliance_deadlines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'GENERAL',
+  deadline_date DATE NOT NULL,
+  reminder_days INTEGER DEFAULT 30,
+  priority TEXT DEFAULT 'HIGH',
+  status TEXT DEFAULT 'PENDING',
+  completed_at DATETIME,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Internal Policies, SOPs & Governance
+CREATE TABLE IF NOT EXISTS internal_policies_sops (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'SOP_MANUFACTURING',
+  code_number TEXT UNIQUE,
+  department TEXT DEFAULT 'All',
+  version TEXT DEFAULT 'v1.0',
+  effective_date DATE,
+  review_deadline DATE,
+  status TEXT DEFAULT 'ACTIVE',
+  summary TEXT,
+  file_name TEXT,
+  file_data TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Company Holy Bible Vault: Virtual Directory Hierarchy
+CREATE TABLE IF NOT EXISTS vault_directories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_id INTEGER,
+  name TEXT NOT NULL,
+  department TEXT NOT NULL DEFAULT 'General',
+  slug TEXT NOT NULL,
+  icon TEXT DEFAULT '📁',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (parent_id) REFERENCES vault_directories(id) ON DELETE CASCADE
+);
+
+-- Company Holy Bible Vault: Document Master Records
+CREATE TABLE IF NOT EXISTS company_vault_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dir_id INTEGER,
+  doc_ref_no TEXT UNIQUE NOT NULL,
+  title TEXT NOT NULL,
+  doc_type TEXT NOT NULL DEFAULT 'LETTER',
+  department TEXT NOT NULL DEFAULT 'General',
+  direction TEXT NOT NULL DEFAULT 'INTERNAL',
+  status TEXT NOT NULL DEFAULT 'DRAFT',
+  sender_party TEXT,
+  recipient_party TEXT,
+  subject TEXT,
+  issue_date DATE,
+  dispatch_mode TEXT,
+  tracking_consignment_no TEXT,
+  content_json TEXT,
+  signatory_name TEXT,
+  signatory_title TEXT,
+  signatory_reg_no TEXT,
+  verification_hash TEXT,
+  is_watermarked INTEGER DEFAULT 1,
+  retention_period_years INTEGER DEFAULT 5,
+  is_legal_hold INTEGER DEFAULT 0,
+  created_by TEXT DEFAULT 'Admin',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (dir_id) REFERENCES vault_directories(id) ON DELETE SET NULL
+);
+
+-- Paper Trail & Causality Linkage Graph
+CREATE TABLE IF NOT EXISTS document_paper_trails (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_doc_id INTEGER NOT NULL,
+  child_doc_id INTEGER NOT NULL,
+  link_relation TEXT NOT NULL DEFAULT 'REPLIED_WITH',
+  matter_thread_name TEXT,
+  notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (parent_doc_id) REFERENCES company_vault_documents(id) ON DELETE CASCADE,
+  FOREIGN KEY (child_doc_id) REFERENCES company_vault_documents(id) ON DELETE CASCADE
+);
 `;
 
 module.exports = { schema };
+

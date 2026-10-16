@@ -1071,4 +1071,131 @@ pub unsafe extern "C" fn suite_render_bmr_dossier_pdf(ptr: *const u8, len: usize
     }
 }
 
+#[derive(Deserialize)]
+struct GenerateEmployeeCodeRequest {
+    #[serde(default)]
+    existing_codes: Vec<String>,
+    #[serde(default)]
+    config: Option<crate::finance::ledger::sequencing::EmployeeCodeConfig>,
+}
+
+#[derive(Serialize)]
+struct GenerateEmployeeCodeResponse {
+    success: bool,
+    employee_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_generate_employee_code(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<GenerateEmployeeCodeRequest>(slice) {
+        Ok(req) => {
+            let next_code = crate::finance::ledger::sequencing::generate_next_employee_code(
+                &req.existing_codes,
+                req.config.as_ref(),
+            );
+            package_response(&GenerateEmployeeCodeResponse {
+                success: true,
+                employee_code: next_code,
+                error: None,
+            })
+        }
+        Err(e) => package_response(&GenerateEmployeeCodeResponse {
+            success: false,
+            employee_code: String::new(),
+            error: Some(e.to_string()),
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+struct GenerateCompanyDocRefRequest {
+    #[serde(default)]
+    existing_refs: Vec<String>,
+    #[serde(default)]
+    config: Option<crate::finance::ledger::sequencing::CompanyDocRefConfig>,
+}
+
+#[derive(Serialize)]
+struct GenerateCompanyDocRefResponse {
+    success: bool,
+    doc_ref_no: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_generate_company_doc_ref(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<GenerateCompanyDocRefRequest>(slice) {
+        Ok(req) => {
+            let default_cfg = crate::finance::ledger::sequencing::CompanyDocRefConfig::default();
+            let cfg = req.config.as_ref().unwrap_or(&default_cfg);
+            let next_ref = crate::finance::ledger::sequencing::generate_next_company_doc_ref(
+                &req.existing_refs,
+                cfg,
+            );
+            package_response(&GenerateCompanyDocRefResponse {
+                success: true,
+                doc_ref_no: next_ref,
+                error: None,
+            })
+        }
+        Err(e) => package_response(&GenerateCompanyDocRefResponse {
+            success: false,
+            doc_ref_no: String::new(),
+            error: Some(e.to_string()),
+        }),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_letterhead_pdf(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::letterhead::LetterheadDocRequest>(slice) {
+        Ok(req) => match crate::documents::pdf::letterhead::render_letterhead_document_pdf(&req) {
+            Ok(pdf_bytes) => {
+                let b64 = bytes_to_base64(&pdf_bytes);
+                #[derive(Serialize)]
+                struct PdfResp {
+                    success: bool,
+                    pdf_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&PdfResp {
+                    success: true,
+                    pdf_base64: b64,
+                    byte_count: pdf_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+
+
 

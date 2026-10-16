@@ -14,6 +14,7 @@ const suggestions = require('./suggestions');
 const wallpaperContent = require('./wallpaper-content');
 const cloudStorage = require('./cloud-storage');
 const manufacturing = require('./manufacturing');
+const compliance = require('./compliance');
 const shared = require('./shared');
 
 module.exports = {
@@ -34,13 +35,14 @@ module.exports = {
   wallpaperContent,
   cloudStorage,
   manufacturing,
+  compliance,
   shared,
   registry: shared,
   list() {
     return [
       'billing', 'analytics', 'product-list', 'contacts', 'auth', 'admin',
       'settings', 'desktop', 'notes', 'calendar', 'logs', 'ai', 'suggestions',
-      'wallpaper-content', 'cloud-storage', 'manufacturing'
+      'wallpaper-content', 'cloud-storage', 'manufacturing', 'compliance'
     ];
   },
   get(name) {

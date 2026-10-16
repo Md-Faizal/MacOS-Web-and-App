@@ -1,0 +1,1150 @@
+/* ==========================================================
+   STAFF VIEW - DIRECTORY & COMPLIANCE APP
+   Exact replication of macOS Contacts App:
+   - Liquid Glass Action Buttons with blur & saturation
+   - Dynamic vibrant color backgrounds with 3-stop gradients
+   - Fixed background avatar with smooth parallax scroll animation
+   - Translucent glass info cards with subtle borders
+   - Master-detail flush layout with zero double-padding
+   ========================================================== */
+
+/* Full-bleed split layout docking directly to window edges */
+.staff-split-layout {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  min-width: 0;
+}
+
+/* ===== LEFT COLUMN: STAFF DIRECTORY SIDEBAR ===== */
+.staff-sidebar-panel {
+  width: 220px;
+  min-width: 200px;
+  max-width: 260px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f5f5f7;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.staff-sidebar-top-bar {
+  padding: 10px 12px 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: #fbfbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.staff-search-box-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.staff-search-input-field {
+  flex: 1 1 0%;
+  min-width: 0;
+  width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px 6px 24px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="%23888" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>') no-repeat 6px center;
+  font-size: 11.5px;
+  color: #333;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.staff-search-input-field:focus {
+  background-color: #ffffff;
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.15);
+}
+
+.staff-icon-button {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  color: #444;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.staff-icon-button:hover {
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(1.05);
+}
+
+.staff-icon-button:active {
+  transform: scale(0.95);
+}
+
+/* Category Filter Chips - Draggable & Edge-to-Edge */
+.staff-filter-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -12px -2px -12px;
+  padding: 4px 12px 6px 12px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+}
+
+.staff-filter-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.staff-filter-chips.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
+}
+
+.staff-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  color: #555;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.staff-chip:hover {
+  background: #ebeef2;
+  color: #111;
+  transform: translateY(-0.5px);
+}
+
+.staff-chip.active {
+  background: #007aff;
+  color: #ffffff;
+  border-color: #007aff;
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+}
+
+/* Staff Items List */
+.staff-list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.staff-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.staff-list-container::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.staff-alphabet-header {
+  padding: 6px 14px 2px 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.staff-list-item-btn {
+  padding: 8px 12px;
+  margin: 1px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 500;
+  font-family: inherit;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+}
+
+.staff-list-item-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.staff-list-item-btn.active {
+  background: #007aff !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.staff-list-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.staff-list-meta-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.staff-list-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staff-list-role {
+  font-size: 10.5px;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.staff-list-item-btn.active .staff-list-role {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.staff-list-status-dot {
+  font-size: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ===== RIGHT COLUMN: CONTACTS CARD PANE WITH LIQUID GLASS ===== */
+.staff-card-pane {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  background: #ffffff;
+  padding: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Empty State */
+.staff-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: #999;
+}
+
+.staff-empty-state-icon {
+  font-size: 68px;
+  margin-bottom: 20px;
+  opacity: 0.6;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.staff-empty-state-text {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: #555;
+}
+
+/* Card Root */
+.staff-contacts-card {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Fixed Avatar Background for Parallax */
+.staff-fixed-bg-avatar {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.staff-large-avatar {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: none;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  transition: transform 0.1s ease-out, opacity 0.1s ease-out;
+  will-change: transform, opacity;
+}
+
+/* Scrolling Content over the Fixed Avatar */
+.staff-details-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 24px 44px 24px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+  padding-top: 185px; /* Creates room for the fixed avatar */
+  transition: background 0.2s, backdrop-filter 0.2s;
+  will-change: transform, backdrop-filter, background;
+}
+
+.staff-details-scroll > * {
+  flex-shrink: 0;
+}
+
+.staff-details-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+.staff-details-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.staff-details-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+/* Profile Header (Name & Liquid Glass Action Buttons) */
+.staff-profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.staff-profile-name {
+  font-size: 30px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  line-height: 1.15;
+  text-align: center;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.staff-profile-title-sub {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  margin-bottom: 20px;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* LIQUID GLASS ACTION BUTTONS */
+.staff-actions-bar {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.staff-liquid-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14), inset 0 2px 4px rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  color: #ffffff;
+  font-size: 20px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+.staff-liquid-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2), inset 0 2px 5px rgba(255, 255, 255, 0.65);
+}
+
+.staff-liquid-btn:active {
+  transform: scale(0.95);
+}
+
+/* Mini Poster Row */
+.staff-poster-glass-row {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.staff-poster-glass-row:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.staff-poster-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.staff-poster-badge-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.staff-poster-chevron {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  font-weight: 300;
+}
+
+/* LIQUID GLASS INFO CARDS */
+.staff-glass-card {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.staff-glass-row {
+  padding: 11px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.staff-glass-row:last-child {
+  border-bottom: none;
+}
+
+.staff-glass-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  text-transform: lowercase;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+
+.staff-glass-value {
+  font-size: 13.5px;
+  color: #ffffff;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.staff-glass-value a {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.staff-section-glass-header {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  margin: 14px 0 6px 4px;
+}
+
+/* Delete Button */
+.staff-delete-glass-container {
+  padding: 20px 0 10px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.staff-delete-glass-btn {
+  background: rgba(255, 59, 48, 0.22);
+  border: 1px solid rgba(255, 59, 48, 0.35);
+  color: #ffe4e4;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+}
+
+.staff-delete-glass-btn:hover {
+  background: rgba(255, 59, 48, 0.45);
+  color: #ffffff;
+  transform: scale(1.02);
+}
+
+/* ===== MODAL DIALOG (CONTACTS APP CLONE) ===== */
+.staff-modal-overlay {
+  position: fixed;
+  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 2147483640; /* Tops all desktop windows, dock, and menu bars */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  animation: staffModalFadeIn 0.2s ease;
+}
+
+@keyframes staffModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.staff-modal-box {
+  width: 90%;
+  max-width: 580px;
+  max-height: calc(100vh - 48px);
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.staff-modal-box form,
+#staffModalForm {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.staff-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fbfbfc;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.staff-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+}
+
+.staff-modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  color: #888;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.staff-modal-close-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111;
+}
+
+.staff-modal-form-content {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+}
+
+.staff-form-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.staff-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.staff-input-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.staff-input-group label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #666;
+}
+
+.staff-input-group input,
+.staff-input-group select,
+.staff-input-group textarea {
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #222;
+  background: #ffffff;
+  outline: none;
+  font-family: inherit;
+}
+
+.staff-input-group input:focus,
+.staff-input-group select:focus,
+.staff-input-group textarea:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.15);
+}
+
+.staff-sidebar-bottom-bar {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  background: #fbfbfc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.staff-sidebar-status-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #888;
+  letter-spacing: -0.1px;
+}
+
+.staff-sidebar-refresh-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #444;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.staff-sidebar-refresh-btn:hover {
+  background: rgba(0, 0, 0, 0.09);
+  color: #111;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.staff-sidebar-refresh-btn:active {
+  transform: scale(0.97);
+}
+
+.staff-refresh-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.staff-refresh-icon.spinning {
+  display: inline-block;
+  animation: staffSpin 0.75s linear infinite;
+}
+
+@keyframes staffSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.staff-modal-actions-footer {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  background: #fbfbfc;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+}
+
+/* Modal Action Buttons: Cancel & Save */
+.cmp-btn-cancel,
+.staff-modal-actions-footer .cmp-btn-cancel {
+  background: #f1f3f5;
+  color: #374151;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 7px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.cmp-btn-cancel:hover,
+.staff-modal-actions-footer .cmp-btn-cancel:hover {
+  background: #e5e7eb;
+  color: #111827;
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.cmp-btn-cancel:active,
+.staff-modal-actions-footer .cmp-btn-cancel:active {
+  transform: scale(0.98);
+}
+
+.cmp-btn-save,
+.staff-modal-actions-footer .cmp-btn-save,
+.staff-modal-actions-footer button[type="submit"] {
+  background: linear-gradient(180deg, #007aff 0%, #0066d6 100%);
+  color: #ffffff;
+  border: 1px solid #005bb5;
+  border-radius: 7px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.15s ease;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.cmp-btn-save:hover,
+.staff-modal-actions-footer .cmp-btn-save:hover,
+.staff-modal-actions-footer button[type="submit"]:hover {
+  background: linear-gradient(180deg, #0084ff 0%, #0070ea 100%);
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.4);
+}
+
+.cmp-btn-save:active,
+.staff-modal-actions-footer .cmp-btn-save:active,
+.staff-modal-actions-footer button[type="submit"]:active {
+  transform: scale(0.98);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== BLURRED DOCUMENT PREVIEW CARDS ===== */
+.staff-docs-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.staff-doc-preview-card {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.staff-doc-preview-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+/* Underlying Simulated Document Sheets */
+.staff-doc-sheet {
+  padding: 12px 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1e293b;
+  position: relative;
+  user-select: none;
+  min-height: 150px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* 1. Aadhaar Card Underlay */
+.staff-doc-sheet.aadhaar {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
+}
+
+.staff-doc-aadhaar-top-stripe {
+  height: 5px;
+  width: calc(100% + 28px);
+  margin: -12px -14px 10px -14px;
+  background: linear-gradient(90deg, #FF9933 33.3%, #ffffff 33.3%, #ffffff 66.6%, #138808 66.6%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.staff-doc-aadhaar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
+
+.staff-doc-aadhaar-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+}
+
+.staff-doc-aadhaar-body {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.staff-doc-aadhaar-photo {
+  width: 44px;
+  height: 52px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.staff-doc-aadhaar-fields {
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #334155;
+}
+
+.staff-doc-aadhaar-number {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #0f172a;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+/* 2. Certificate / BAMS Diploma Underlay */
+.staff-doc-sheet.certificate {
+  background: #fffdf7;
+  border: 1px solid #e2d9c2;
+  box-shadow: inset 0 0 16px rgba(212, 175, 55, 0.08);
+}
+
+.staff-doc-cert-crest {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #854d0e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px double #e2d9c2;
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
+
+.staff-doc-cert-body {
+  font-size: 10.5px;
+  text-align: center;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.staff-doc-cert-recipient {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  font-family: Georgia, serif;
+  margin: 3px 0;
+}
+
+.staff-doc-cert-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding-top: 4px;
+  font-size: 9px;
+  color: #64748b;
+  border-top: 1px dashed #cbd5e1;
+}
+
+/* 3. Form 48 Medical Fitness Underlay */
+.staff-doc-sheet.medical {
+  background: #f8fafc;
+  border-left: 4px solid #10b981;
+}
+
+.staff-doc-med-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 5px;
+  margin-bottom: 6px;
+}
+
+.staff-doc-med-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #065f46;
+  letter-spacing: -0.2px;
+}
+
+.staff-doc-med-body {
+  font-size: 10.5px;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.staff-doc-med-stamp {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px dashed #059669;
+  border-radius: 4px;
+  color: #059669;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* Frosted Privacy Glass Blur Overlay */
+.staff-doc-blur-overlay {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(4.5px) saturate(130%);
+  -webkit-backdrop-filter: blur(4.5px) saturate(130%);
+  background: rgba(15, 23, 42, 0.44);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  text-align: center;
+  gap: 8px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #ffffff;
+  z-index: 2;
+}
+
+.staff-doc-preview-card:hover .staff-doc-blur-overlay {
+  backdrop-filter: blur(2.5px) saturate(120%);
+  -webkit-backdrop-filter: blur(2.5px) saturate(120%);
+  background: rgba(15, 23, 42, 0.3);
+}
+
+.staff-doc-blur-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.staff-doc-blur-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.88);
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.staff-doc-btn-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.staff-doc-action-pill {
+  padding: 5px 12px;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.staff-doc-action-pill:hover {
+  background: #ffffff;
+  transform: scale(1.05);
+}
+
+.staff-doc-action-pill.cloud-pill {
+  background: rgba(0, 122, 255, 0.9);
+  color: #ffffff;
+}
+
+.staff-doc-action-pill.cloud-pill:hover {
+  background: #007aff;
+}
+
+/* Document High-Resolution Inspector Modal */
+.staff-doc-inspect-dialog {
+  width: 92%;
+  max-width: 650px;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+.staff-doc-inspect-paper {
+  padding: 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

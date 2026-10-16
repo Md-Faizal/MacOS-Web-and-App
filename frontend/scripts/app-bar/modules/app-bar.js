@@ -118,6 +118,15 @@ function initializeDock() {
       action: (params) => AppWindow.launchApp('manufacturing', window.ManufacturingApp, 'manufacturingAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
     },
     {
+      id: 'compliance',
+      name: 'Directory',
+      icon: '/assets/Images/Directory.png',
+      alt: 'Directory & Compliance Hub',
+      color: '#d97706',
+      category: 'productivity',
+      action: (params) => AppWindow.launchApp('compliance', window.ComplianceApp, 'complianceAppContainer', { setAppState, recentAppKey: RECENT_APP_KEY, params })
+    },
+    {
       id: 'cloud',
       name: 'Cloud',
       icon: '/assets/Images/Cloud.png',

@@ -71,11 +71,13 @@ const calendarApi = departments.calendar.create(globalDb);
 const settingsApi = departments.settings.create(globalDb);
 const cloudApi = departments.cloudStorage.create(globalDb);
 const manufacturingApi = departments.manufacturing.create(globalDb);
+const complianceApi = departments.compliance.create(globalDb);
 const { router: notesRouter, initializeDatabase: initNotes } = notesApi;
 const { router: calendarRouter, initializeDatabase: initCalendar } = calendarApi;
 const { router: settingsRouter, initializeDatabase: initSettings } = settingsApi;
 const { router: cloudRouter, initializeDatabase: initCloud } = cloudApi;
 const { router: manufacturingRouter, initializeDatabase: initManufacturing } = manufacturingApi;
+const { router: complianceRouter, initializeDatabase: initCompliance } = complianceApi;
 const androidUpdateRouter = require('../core/android-updates');
 
 // Import core/orphaned modules (not tied to specific modules)
@@ -499,7 +501,8 @@ const modules = [
   { name: 'App Logs', init: initLogs },
   { name: 'AI Assistant', init: initAI },
   { name: 'Cloud Storage', init: initCloud },
-  { name: 'Manufacturing', init: initManufacturing }
+  { name: 'Manufacturing', init: initManufacturing },
+  { name: 'Compliance', init: initCompliance }
 ];
 
 console.log('🔧 Initializing APIs...');
@@ -515,7 +518,7 @@ for (const module of modules) {
   }
 }
 
-console.log(`✓ All modules initialized (${initializedModules.length}/16)\n`);
+console.log(`✓ All modules initialized (${initializedModules.length}/17)\n`);
 
 const desktopDepartment = departments.desktop.create(globalDb, authModule.authMiddleware);
 const { router: desktopRouter, clockRouter, weatherRouter: weatherSettingsRouter, quickNotesRouter, remindersRouter } = desktopDepartment;
@@ -541,7 +544,8 @@ const routes = [
   { path: '/api/quick-notes', router: quickNotesRouter },
   { path: '/api/reminders', router: remindersRouter },
   { path: '/api/cloud', router: cloudRouter },
-  { path: '/api/manufacturing', router: manufacturingRouter }
+  { path: '/api/manufacturing', router: manufacturingRouter },
+  { path: '/api/compliance', router: complianceRouter }
 ];
 
 // Mount QR smart links directly under /q
@@ -687,6 +691,14 @@ for (const route of routes) {
     app.use(route.path, (req, res, next) => {
       const publicTelemetry = req.method === 'GET' && (req.path === '/network/telemetry' || req.path === '/health/status');
       if (publicTelemetry) return next();
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
+  } else if (route.path === '/api/compliance') {
+    app.use(route.path, (req, res, next) => {
+      // Allow viewing generated PDFs and reading vault records
+      if (req.method === 'GET' && (req.path.includes('/pdf') || req.path.startsWith('/vault/'))) {
+        return next();
+      }
       authModule.authMiddleware(req, res, next);
     }, route.router);
   } else {

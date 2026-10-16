@@ -201,6 +201,138 @@ pub fn parse_invoice_number(full_number: &str) -> Option<InvoiceNumberParsed> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmployeeCodeConfig {
+    #[serde(default = "default_emp_prefix")]
+    pub prefix: String,
+    #[serde(default = "default_emp_separator")]
+    pub separator: String,
+    #[serde(default = "default_emp_padding")]
+    pub padding: usize,
+}
+
+fn default_emp_prefix() -> String {
+    "EMP".to_string()
+}
+fn default_emp_separator() -> String {
+    "-".to_string()
+}
+fn default_emp_padding() -> usize {
+    3
+}
+
+impl Default for EmployeeCodeConfig {
+    fn default() -> Self {
+        Self {
+            prefix: default_emp_prefix(),
+            separator: default_emp_separator(),
+            padding: default_emp_padding(),
+        }
+    }
+}
+
+/// Format an employee code given config and sequence number (e.g. EMP-001, EMP-042)
+pub fn format_employee_code(config: &EmployeeCodeConfig, seq: u64) -> String {
+    format!(
+        "{}{:0width$}",
+        format!("{}{}", config.prefix, config.separator),
+        seq,
+        width = config.padding
+    )
+}
+
+/// Compute the next sequential employee code given a list of existing employee codes.
+/// Finds the highest numeric suffix matching prefix, or falls back to max(count + 1).
+pub fn generate_next_employee_code(existing_codes: &[String], config: Option<&EmployeeCodeConfig>) -> String {
+    let default_cfg = EmployeeCodeConfig::default();
+    let cfg = config.unwrap_or(&default_cfg);
+
+    let mut max_seq: u64 = 0;
+    for code in existing_codes {
+        let trimmed = code.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(parsed) = parse_invoice_number(trimmed) {
+            if parsed.sequence_num > max_seq {
+                max_seq = parsed.sequence_num;
+            }
+        }
+    }
+
+    let next_seq = max_seq + 1;
+    format_employee_code(cfg, next_seq)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanyDocRefConfig {
+    #[serde(default = "default_company_prefix")]
+    pub company_prefix: String,
+    #[serde(default = "default_dept_code")]
+    pub department_code: String,
+    #[serde(default = "default_ref_year")]
+    pub year: String,
+    #[serde(default = "default_ref_padding")]
+    pub padding: usize,
+}
+
+fn default_company_prefix() -> String {
+    "UCA".to_string()
+}
+fn default_dept_code() -> String {
+    "GEN".to_string()
+}
+fn default_ref_year() -> String {
+    "2026".to_string()
+}
+fn default_ref_padding() -> usize {
+    4
+}
+
+impl Default for CompanyDocRefConfig {
+    fn default() -> Self {
+        Self {
+            company_prefix: default_company_prefix(),
+            department_code: default_dept_code(),
+            year: default_ref_year(),
+            padding: default_ref_padding(),
+        }
+    }
+}
+
+/// Format a company document reference (e.g. UCA/HR/2026/0001, UCA/REG/2026/0042)
+pub fn format_company_doc_ref(config: &CompanyDocRefConfig, seq: u64) -> String {
+    format!(
+        "{}/{}/{}/{:0width$}",
+        config.company_prefix.trim().to_uppercase(),
+        config.department_code.trim().to_uppercase(),
+        config.year.trim(),
+        seq,
+        width = config.padding
+    )
+}
+
+/// Compute the next sequential company document reference based on existing references for that dept & year
+pub fn generate_next_company_doc_ref(existing_refs: &[String], config: &CompanyDocRefConfig) -> String {
+    let mut max_seq: u64 = 0;
+    for r in existing_refs {
+        let trimmed = r.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split('/').collect();
+        if parts.len() >= 4 {
+            if let Ok(seq) = parts[parts.len() - 1].parse::<u64>() {
+                if seq > max_seq {
+                    max_seq = seq;
+                }
+            }
+        }
+    }
+    format_company_doc_ref(config, max_seq + 1)
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NumberingAuditResult {
     pub total_count: usize,
     pub min_seq: Option<u64>,

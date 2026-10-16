@@ -668,6 +668,90 @@ class SuiteCoreBridge {
       computed_at: Date.now()
     };
   }
+
+  /**
+   * Pure Rust Sequential Employee Code Generator
+   * Generates next sequential employee code (e.g. EMP-001 -> EMP-002)
+   */
+  static generateNextEmployeeCode(existingCodes = [], config = null) {
+    const safeCodes = Array.isArray(existingCodes) ? existingCodes.map(c => String(c || '').trim()).filter(Boolean) : [];
+    if (this.isWasmLoaded()) {
+      const res = this.callWasmJson('suite_generate_employee_code', {
+        existing_codes: safeCodes,
+        config: config || undefined
+      });
+      if (res && res.success && res.employee_code) {
+        return res.employee_code;
+      }
+    }
+
+    // Graceful JS fallback: find maximum numeric suffix
+    let maxNum = 0;
+    const prefix = config?.prefix || 'EMP';
+    const separator = config?.separator || '-';
+    const padding = config?.padding || 3;
+
+    for (const code of safeCodes) {
+      const parts = code.split(/[-/_]/);
+      const last = parts[parts.length - 1];
+      const parsed = parseInt(last, 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+
+    const nextSeq = String(maxNum + 1).padStart(padding, '0');
+    return `${prefix}${separator}${nextSeq}`;
+  }
+
+  /**
+   * Pure Rust Company Document Reference Generator (e.g. UCA/HR/2026/0001)
+   */
+  static generateNextCompanyDocRef(existingRefs = [], config = null) {
+    const safeRefs = Array.isArray(existingRefs) ? existingRefs.map(r => String(r || '').trim()).filter(Boolean) : [];
+    if (this.isWasmLoaded()) {
+      const res = this.callWasmJson('suite_generate_company_doc_ref', {
+        existing_refs: safeRefs,
+        config: config || undefined
+      });
+      if (res && res.success && res.doc_ref_no) {
+        return res.doc_ref_no;
+      }
+    }
+
+    const company = config?.company_prefix || 'UCA';
+    const dept = config?.department_code || 'GEN';
+    const year = config?.year || '2026';
+    const padding = config?.padding || 4;
+
+    let maxSeq = 0;
+    for (const r of safeRefs) {
+      const parts = r.split('/');
+      if (parts.length >= 4) {
+        const parsed = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(parsed) && parsed > maxSeq) {
+          maxSeq = parsed;
+        }
+      }
+    }
+    const nextSeq = String(maxSeq + 1).padStart(padding, '0');
+    return `${company.toUpperCase()}/${dept.toUpperCase()}/${year}/${nextSeq}`;
+  }
+
+  /**
+   * Pure Rust Letterhead Document PDF Renderer
+   * Returns base64 or Buffer/Blob of generated PDF
+   */
+  static renderLetterheadPdf(payload = {}) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WASM not initialized for renderLetterheadPdf');
+    }
+    const res = this.callWasmJson('suite_render_letterhead_pdf', payload);
+    if (!res || !res.success) {
+      throw new Error(res?.error || 'Failed to render letterhead document PDF');
+    }
+    return res;
+  }
 }
 
 
