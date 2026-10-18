@@ -21,6 +21,8 @@ Wallpapers/*
 !Wallpapers/.gitkeep
 CloudStorage/*
 !CloudStorage/.gitkeep
+storage/*
+!storage/.gitkeep
 !.gitkeep
 
 # ─── Environment / Secrets ───

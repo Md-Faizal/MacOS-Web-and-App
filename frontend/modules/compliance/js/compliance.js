@@ -71,7 +71,7 @@ export class ComplianceApp extends AppWindow {
 
     // Staff Directory Sub-Module (Cloned from macOS Contacts App)
     this.staffView = new StaffView(this);
-    // Holy Bible Document Vault Explorer Sub-Module
+    // Document Vault Explorer Sub-Module
     this.vaultExplorer = new DocumentVaultExplorer(this);
 
     this.setupUI();

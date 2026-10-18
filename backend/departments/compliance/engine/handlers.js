@@ -1290,7 +1290,8 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           dir_id, doc_ref_no, title, doc_type, department, direction, status,
           sender_party, recipient_party, subject, issue_date, dispatch_mode,
           tracking_consignment_no, content_json, signatory_name, signatory_title,
-          signatory_reg_no, is_watermarked, retention_period_years, parent_trail_doc_id, link_relation
+          signatory_reg_no, is_watermarked, retention_period_years, parent_trail_doc_id, link_relation,
+          file_path, file_name, file_size
         } = req.body;
 
         if (!title || !title.trim()) {
@@ -1315,8 +1316,9 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           INSERT INTO company_vault_documents 
           (dir_id, doc_ref_no, title, doc_type, department, direction, status, sender_party, recipient_party, 
            subject, issue_date, dispatch_mode, tracking_consignment_no, content_json, signatory_name, 
-           signatory_title, signatory_reg_no, verification_hash, is_watermarked, retention_period_years)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           signatory_title, signatory_reg_no, verification_hash, is_watermarked, retention_period_years,
+           file_path, file_name, file_size)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           dir_id || null,
           doc_ref_no.trim(),
@@ -1337,7 +1339,10 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           signatory_reg_no || null,
           verification_hash,
           is_watermarked !== undefined ? (is_watermarked ? 1 : 0) : 1,
-          retention_period_years || 5
+          retention_period_years || 5,
+          file_path || null,
+          file_name || null,
+          file_size || null
         );
 
         const newDocId = info.lastInsertRowid;
@@ -1563,6 +1568,21 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           if (doc.content_json) parsedContent = JSON.parse(doc.content_json);
         } catch (_) {}
 
+        // Serve real file if attached
+        const filePath = doc.file_path || parsedContent.file_path;
+        if (filePath) {
+          const path = require('path');
+          const fs = require('fs');
+          const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, '../../../../', filePath);
+          if (fs.existsSync(resolved)) {
+            const fileName = (doc.file_name || parsedContent.file_name || path.basename(resolved)).replace(/[/\\?%*:|"<>]/g, '_');
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+            return fs.createReadStream(resolved).pipe(res);
+          }
+        }
+
         const payload = {
           doc_ref_no: doc.doc_ref_no,
           title: doc.title,
@@ -1591,11 +1611,69 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           const result = SuiteCoreBridge.renderLetterheadPdf(payload);
           const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
           res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('X-Frame-Options', 'SAMEORIGIN');
           res.setHeader('Content-Disposition', `inline; filename="${doc.doc_ref_no.replace(/[/\\?%*:|"<>]/g, '_')}.pdf"`);
           return res.send(pdfBuffer);
         } else {
           return res.status(500).json({ error: 'Rust SuiteCoreBridge PDF renderer unavailable' });
         }
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Get rendered document thumbnail image (page 1)
+    getVaultDocumentThumbnail: (req, res) => {
+      try {
+        const { id } = req.params;
+        const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const path = require('path');
+        const fs = require('fs');
+        const rootDir = path.resolve(__dirname, '../../../../');
+        const thumbDir = path.join(rootDir, 'storage/vault/.thumbnails');
+        if (!fs.existsSync(thumbDir)) {
+          fs.mkdirSync(thumbDir, { recursive: true });
+        }
+
+        const thumbFile = path.join(thumbDir, `doc_${id}_thumb.jpg`);
+        if (fs.existsSync(thumbFile)) {
+          res.setHeader('Content-Type', 'image/jpeg');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return fs.createReadStream(thumbFile).pipe(res);
+        }
+
+        // Generate on the fly if PDF exists
+        let filePath = doc.file_path;
+        if (doc.content_json) {
+          try {
+            const p = JSON.parse(doc.content_json);
+            if (p.file_path) filePath = p.file_path;
+          } catch (_) {}
+        }
+
+        if (filePath) {
+          const resolvedPdf = path.isAbsolute(filePath) ? filePath : path.join(rootDir, filePath);
+          if (fs.existsSync(resolvedPdf)) {
+            const { execSync } = require('child_process');
+            try {
+              execSync(`python -c "import fitz; doc=fitz.open(r'''${resolvedPdf}'''); page=doc.load_page(0); pix=page.get_pixmap(dpi=100); pix.save(r'''${thumbFile}''', jpg_quality=85)"`, {
+                stdio: 'ignore',
+                timeout: 5000
+              });
+              if (fs.existsSync(thumbFile)) {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return fs.createReadStream(thumbFile).pipe(res);
+              }
+            } catch (e) {
+              console.error('Failed to generate thumbnail for doc', id, e.message);
+            }
+          }
+        }
+
+        return res.status(404).json({ error: 'Thumbnail not available' });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

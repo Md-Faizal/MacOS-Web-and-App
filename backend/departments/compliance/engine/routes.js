@@ -57,6 +57,7 @@ module.exports = function(router, handlers) {
   router.delete('/vault/documents/:id', handlers.deleteVaultDocument);
   router.post('/vault/documents/batch', handlers.batchVaultOperation);
   router.get('/vault/documents/:id/pdf', handlers.renderVaultDocumentPdf);
+  router.get('/vault/documents/:id/thumbnail', handlers.getVaultDocumentThumbnail);
 
   router.get('/vault/documents/:id/trail', handlers.getDocumentPaperTrail);
   router.post('/vault/trail', handlers.linkDocumentPaperTrail);
