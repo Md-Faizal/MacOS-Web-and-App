@@ -1502,6 +1502,114 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
     },
 
     // Paper Trail Linkage Endpoints
+    getUnifiedTimeline: (req, res) => {
+      try {
+        // 1. Fetch all documents in chronological sequence
+        const docs = db.prepare(`
+          SELECT 
+            d.id, d.dir_id, d.doc_ref_no, d.title, d.doc_type, d.department, d.direction,
+            d.issue_date, d.status, d.file_name, d.file_size, d.signatory_name,
+            d.verification_hash, d.created_at
+          FROM company_vault_documents d
+          ORDER BY d.issue_date ASC, d.id ASC
+        `).all();
+
+        // 2. Fetch all causality links
+        const links = db.prepare(`
+          SELECT 
+            t.id, t.parent_doc_id, t.child_doc_id, t.link_relation,
+            t.matter_thread_name, t.notes, t.created_at
+          FROM document_paper_trails t
+          ORDER BY t.id ASC
+        `).all();
+
+        // 3. Compute distinct matters and group memberships
+        const mattersMap = new Map();
+        links.forEach(l => {
+          const matterName = l.matter_thread_name || 'General Statutory Matter';
+          if (!mattersMap.has(matterName)) {
+            mattersMap.set(matterName, {
+              name: matterName,
+              docIds: new Set(),
+              linkCount: 0,
+              earliestDate: null,
+              latestDate: null
+            });
+          }
+          const m = mattersMap.get(matterName);
+          m.docIds.add(l.parent_doc_id);
+          m.docIds.add(l.child_doc_id);
+          m.linkCount++;
+        });
+
+        // 4. Compute lanes for nodes:
+        // Lane 0: Sacred Spine / Core Trunk (Foundational Licenses, Board Resolutions, Regulatory Appointments)
+        // Lane 1: Regulatory Proceedings (Inward Inspection Notices, Outward Formal Replies, Renewal Grants)
+        // Lane 2: Evidence & KYC Dossiers (Identity Credentials, Academic Degrees, Form 48 Clinical Health, Technical Endorsements)
+        const docsMap = new Map(docs.map(d => [d.id, d]));
+        
+        const nodes = docs.map(d => {
+          let lane = 0; // Default Lane: Sacred Spine
+          const text = `${d.title || ''} ${d.doc_ref_no || ''} ${d.category || ''}`.toLowerCase();
+          
+          if (d.direction === 'INWARD' || text.includes('notice') || text.includes('reply') || text.includes('inspection') || text.includes('renewal')) {
+            lane = 1; // Regulatory Inward / Outward Proceeding
+          } else if (text.includes('aadhaar') || text.includes('pan') || text.includes('qualification') || text.includes('degree') || text.includes('evidence') || text.includes('form 48') || text.includes('endorsement')) {
+            lane = 2; // Evidence & KYC Dossiers
+          } else if (text.includes('licence') || text.includes('license') || text.includes('resolution') || text.includes('constitution') || text.includes('appointment')) {
+            lane = 0; // Sacred Spine
+          }
+
+          // Gather which matters this doc belongs to
+          const docMatters = [];
+          for (const [mName, mData] of mattersMap.entries()) {
+            if (mData.docIds.has(d.id)) docMatters.push(mName);
+          }
+
+          return {
+            ...d,
+            lane,
+            matters: docMatters
+          };
+        });
+
+        // Calculate turnaround days for each link
+        const enrichedLinks = links.map(l => {
+          const parent = docsMap.get(l.parent_doc_id);
+          const child = docsMap.get(l.child_doc_id);
+          let turnaroundDays = null;
+          if (parent?.issue_date && child?.issue_date) {
+            const pDate = new Date(parent.issue_date);
+            const cDate = new Date(child.issue_date);
+            if (!isNaN(pDate) && !isNaN(cDate)) {
+              const diffMs = cDate.getTime() - pDate.getTime();
+              turnaroundDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+            }
+          }
+          return {
+            ...l,
+            turnaround_days: turnaroundDays
+          };
+        });
+
+        const mattersList = Array.from(mattersMap.values()).map(m => ({
+          name: m.name,
+          docCount: m.docIds.size,
+          linkCount: m.linkCount,
+          docIds: Array.from(m.docIds)
+        }));
+
+        res.json({
+          success: true,
+          nodes,
+          links: enrichedLinks,
+          matters: mattersList
+        });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
     getDocumentPaperTrail: (req, res) => {
       try {
         const { id } = req.params;
@@ -1536,11 +1644,44 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         if (!parent_doc_id || !child_doc_id) {
           return res.status(400).json({ error: 'Both parent and child document IDs are required' });
         }
-        const info = db.prepare(`
-          INSERT INTO document_paper_trails (parent_doc_id, child_doc_id, link_relation, matter_thread_name, notes)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(parent_doc_id, child_doc_id, link_relation || 'REPLIED_WITH', matter_thread_name || null, notes || null);
-        res.status(201).json({ success: true, id: info.lastInsertRowid });
+        if (Number(parent_doc_id) === Number(child_doc_id)) {
+          return res.status(400).json({ error: 'Cannot link a document to itself' });
+        }
+
+        // Cycle check: verify parent_doc_id is not already a descendant of child_doc_id
+        const visited = new Set();
+        const queue = [Number(child_doc_id)];
+        let hasCycle = false;
+        while (queue.length > 0) {
+          const curr = queue.shift();
+          if (curr === Number(parent_doc_id)) {
+            hasCycle = true;
+            break;
+          }
+          if (!visited.has(curr)) {
+            visited.add(curr);
+            const nextChildren = db.prepare('SELECT child_doc_id FROM document_paper_trails WHERE parent_doc_id = ?').all(curr);
+            nextChildren.forEach(c => queue.push(c.child_doc_id));
+          }
+        }
+        if (hasCycle) {
+          return res.status(400).json({ error: 'Circular causality dependency detected. Action blocked.' });
+        }
+
+        const existing = db.prepare('SELECT id FROM document_paper_trails WHERE parent_doc_id = ? AND child_doc_id = ?').get(parent_doc_id, child_doc_id);
+        let id;
+        if (existing) {
+          db.prepare('UPDATE document_paper_trails SET link_relation = ?, matter_thread_name = ?, notes = ? WHERE id = ?')
+            .run(link_relation || 'REPLIED_WITH', matter_thread_name || null, notes || null, existing.id);
+          id = existing.id;
+        } else {
+          const info = db.prepare(`
+            INSERT INTO document_paper_trails (parent_doc_id, child_doc_id, link_relation, matter_thread_name, notes)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(parent_doc_id, child_doc_id, link_relation || 'REPLIED_WITH', matter_thread_name || null, notes || null);
+          id = info.lastInsertRowid;
+        }
+        res.status(201).json({ success: true, id });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

@@ -3654,4 +3654,620 @@ body:not(.dark-theme) .vault-viewer-notes-area {
   color: #0f172a;
 }
 
+/* ========================================================================= */
+/* SACRED TIMELINE — UNIFIED PAPER TRAIL & CAUSALITY TREE STYLES             */
+/* GitHub Tree Branching Lanes + Loki Cosmic Neon Filaments                  */
+/* ========================================================================= */
+
+.vault-timeline-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 10px 20px 80px;
+  user-select: none;
+}
+
+/* Ambient Sacred Timeline Aura */
+.vault-timeline-ambient {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 250px;
+  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.15), rgba(16, 185, 129, 0.08), transparent 70%);
+  pointer-events: none;
+  filter: blur(50px);
+  z-index: 0;
+}
+
+body:not(.dark-theme) .vault-timeline-ambient {
+  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.12), rgba(6, 182, 212, 0.08), transparent 70%);
+}
+
+/* Top Hero & Case Filter Capsule Bar */
+.vault-timeline-header-hero {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.vault-timeline-hero-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+body:not(.dark-theme) .vault-timeline-hero-title {
+  color: #0f172a;
+}
+
+.vault-timeline-hero-sparkle {
+  color: #f59e0b;
+  font-size: 22px;
+  filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6));
+  animation: vaultSparklePulse 3s ease-in-out infinite;
+}
+
+@keyframes vaultSparklePulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.2) rotate(15deg); opacity: 1; filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.9)); }
+}
+
+.vault-timeline-hero-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+body:not(.dark-theme) .vault-timeline-hero-sub {
+  color: #64748b;
+}
+
+/* Case Filter Capsule Bar */
+.vault-case-filter-bar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.vault-case-pill {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+body:not(.dark-theme) .vault-case-pill {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #334155;
+}
+
+.vault-case-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+body:not(.dark-theme) .vault-case-pill:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+}
+
+.vault-case-pill.active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35));
+  border-color: #f59e0b;
+  color: #fef3c7;
+  font-weight: 700;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
+}
+
+body:not(.dark-theme) .vault-case-pill.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
+.vault-case-pill-btn-add {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 20px;
+  cursor: pointer;
+  background: #0284c7;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vault-case-pill-btn-add:hover {
+  background: #0369a1;
+  box-shadow: 0 0 16px rgba(2, 132, 199, 0.4);
+}
+
+/* Sliding Case Telemetry Banner */
+.vault-case-telemetry {
+  position: relative;
+  z-index: 2;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 14px;
+  padding: 12px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: vaultTelemetryFade 0.25s ease-out;
+}
+
+body:not(.dark-theme) .vault-case-telemetry {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+@keyframes vaultTelemetryFade {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vault-case-telemetry-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vault-case-telemetry-icon {
+  font-size: 20px;
+  color: #f59e0b;
+}
+
+.vault-case-telemetry-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+body:not(.dark-theme) .vault-case-telemetry-title {
+  color: #0f172a;
+}
+
+.vault-case-telemetry-stats {
+  font-size: 11.5px;
+  color: #94a3b8;
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+body:not(.dark-theme) .vault-case-telemetry-stats {
+  color: #64748b;
+}
+
+.vault-case-telemetry-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vault-case-telemetry-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.vault-case-telemetry-clear-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  font-size: 11px;
+  color: #cbd5e1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+body:not(.dark-theme) .vault-case-telemetry-clear-btn {
+  background: rgba(0, 0, 0, 0.06);
+  color: #334155;
+}
+
+.vault-case-telemetry-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* ================= MULTI-LANE CANVAS & SVG FILAMENTS ================= */
+.vault-timeline-canvas {
+  position: relative;
+  width: 100%;
+  min-height: 600px;
+}
+
+/* SVG Overlay for Loki Filaments */
+.vault-filaments-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Filament Lines */
+.vault-filament-path {
+  fill: none;
+  stroke-width: 2.5px;
+  transition: opacity 0.3s ease, stroke-width 0.2s ease;
+}
+
+.vault-filament-path.trunk {
+  stroke: url(#vaultTrunkGrad);
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.5));
+}
+
+.vault-filament-path.regulatory {
+  stroke: url(#vaultRegGrad);
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
+}
+
+.vault-filament-path.evidence {
+  stroke: url(#vaultEvidenceGrad);
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.5));
+}
+
+.vault-filament-path.dimmed {
+  opacity: 0.15;
+}
+
+.vault-filament-path.spotlight {
+  stroke-width: 4px;
+  opacity: 1;
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.8));
+}
+
+/* Flow Particle Pulse Animation */
+.vault-filament-pulse {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 18;
+  animation: vaultFilamentFlow 1.8s linear infinite;
+  opacity: 0.8;
+}
+
+@keyframes vaultFilamentFlow {
+  from { stroke-dashoffset: 48; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* 3 Multi-Track Lanes Header */
+.vault-timeline-lanes-header {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body:not(.dark-theme) .vault-timeline-lanes-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.vault-lane-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body:not(.dark-theme) .vault-lane-badge {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.vault-lane-badge.trunk {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.vault-lane-badge.regulatory {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.vault-lane-badge.evidence {
+  color: #8b5cf6;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.vault-lane-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.vault-lane-dot.trunk { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+.vault-lane-dot.regulatory { background: #10b981; box-shadow: 0 0 8px #10b981; }
+.vault-lane-dot.evidence { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
+
+/* Timeline Chronological Steps Container */
+.vault-timeline-steps-list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* A single Chronological Row containing nodes across lanes */
+.vault-timeline-step-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: center;
+  position: relative;
+}
+
+/* Node Capsule ("Temporal Glyph") */
+.vault-node-card {
+  position: relative;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+body:not(.dark-theme) .vault-node-card {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.vault-node-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  border-color: #38bdf8;
+  box-shadow: 0 12px 32px rgba(56, 189, 248, 0.25);
+}
+
+.vault-node-card.dimmed {
+  opacity: 0.18;
+  filter: grayscale(0.6);
+  pointer-events: none;
+}
+
+.vault-node-card.spotlight {
+  border-color: #f59e0b;
+  box-shadow: 0 0 28px rgba(245, 158, 11, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Node Connector Orb on Rail */
+.vault-node-orb {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  z-index: 4;
+}
+
+.vault-node-card[data-lane="0"] .vault-node-orb {
+  left: -22px;
+  background: #f59e0b;
+  box-shadow: 0 0 10px #f59e0b;
+}
+
+.vault-node-card[data-lane="1"] .vault-node-orb {
+  left: -22px;
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+}
+
+.vault-node-card[data-lane="2"] .vault-node-orb {
+  left: -22px;
+  background: #8b5cf6;
+  box-shadow: 0 0 10px #8b5cf6;
+}
+
+/* Thumbnail miniature */
+.vault-node-thumb-box {
+  width: 48px;
+  height: 62px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.vault-node-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vault-node-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.vault-node-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.vault-node-ref {
+  font-family: monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #38bdf8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vault-node-direction-tag {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vault-node-direction-tag.inward {
+  background: rgba(2, 132, 199, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(2, 132, 199, 0.3);
+}
+
+.vault-node-direction-tag.outward {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.vault-node-direction-tag.internal {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.vault-node-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+body:not(.dark-theme) .vault-node-title {
+  color: #0f172a;
+}
+
+.vault-node-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+body:not(.dark-theme) .vault-node-bottom-row {
+  color: #64748b;
+}
+
+.vault-node-turnaround {
+  font-weight: 700;
+  color: #f59e0b;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.vault-node-hover-actions {
+  display: none;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.vault-node-card:hover .vault-node-hover-actions {
+  display: flex;
+}
+
+.vault-node-action-btn {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+body:not(.dark-theme) .vault-node-action-btn {
+  background: rgba(0, 0, 0, 0.06);
+  color: #334155;
+}
+
+.vault-node-action-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.vault-node-action-btn.delete:hover {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+
 

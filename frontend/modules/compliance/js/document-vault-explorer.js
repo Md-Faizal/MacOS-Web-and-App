@@ -1651,61 +1651,333 @@ export class DocumentVaultExplorer {
   // =========================================================================
   // 3. PAPER TRAILS GRAPH VIEW
   // =========================================================================
-  renderTrailsPage(viewport) {
-    const trailedDocs = this.documents.filter(d => (d.trail_count || 0) > 0);
-
+  // =========================================================================
+  // 3. THE SACRED TIMELINE — UNIFIED PAPER TRAIL & CAUSALITY TREE
+  // GitHub Multi-Track Branching Precision + Loki Cosmic Neon Filaments
+  // =========================================================================
+  async renderTrailsPage(viewport) {
     viewport.innerHTML = `
-      <div style="width: 100%; max-width: 800px; margin: 0 auto;">
-        <div class="gemini-hero-block" style="margin-bottom: 24px;">
-          <h1 class="gemini-hero-title">Trails</h1>
-        </div>
-
-        <div class="trails-node-graph">
-          ${trailedDocs.length === 0 ? `
-            <div class="gemini-empty-grid">
-              <div style="font-size: 28px; margin-bottom: 6px;">🔗</div>
-              <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">No linked document trails</div>
-              <button class="vault-pill-btn primary" id="vaultCreateFirstTrailBtn" style="margin-top: 14px;">＋ Link First Trail</button>
-            </div>
-          ` : trailedDocs.map(doc => `
-            <div class="trail-chain-card">
-              <div class="trail-chain-header">
-                <span class="trail-chain-pill">Causal Chain</span>
-                <button class="file-quick-preview-btn" data-inspect-trail="${doc.id}">Inspect Graph ↗</button>
-              </div>
-
-              <div class="trail-chain-nodes">
-                <div class="trail-node root">
-                  <div class="trail-node-dot"></div>
-                  <div>
-                    <div class="trail-node-title">${doc.doc_ref_no} — ${doc.title}</div>
-                    <div class="trail-node-sub">${doc.direction} • ${doc.issue_date || 'N/A'}</div>
-                  </div>
-                </div>
-
-                <div class="trail-connector-line"></div>
-
-                <div class="trail-node downstream">
-                  <div class="trail-node-dot"></div>
-                  <div>
-                    <div class="trail-node-title">${doc.trail_count} Connected Action(s)</div>
-                    <div class="trail-node-sub">Dispatches, replies & evidence</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+      <div class="vault-timeline-wrapper">
+        <div class="vault-timeline-ambient"></div>
+        <div style="text-align: center; padding: 60px 0;">
+          <div class="vault-viewer-spinner" style="margin: 0 auto 16px;"></div>
+          <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">Illuminating The Sacred Timeline...</div>
         </div>
       </div>
     `;
 
-    viewport.querySelector('#vaultCreateFirstTrailBtn')?.addEventListener('click', () => {
+    let data = { nodes: [], links: [], matters: [] };
+    try {
+      const res = await fetch('/api/compliance/vault/trails/timeline', {
+        headers: this.getAuthHeaders(),
+        credentials: 'same-origin'
+      });
+      if (res.ok) {
+        data = await res.json();
+      }
+    } catch (_) {}
+
+    this.timelineData = data;
+    if (!this.spotlightCase) this.spotlightCase = null;
+
+    const nodes = data.nodes || [];
+    const links = data.links || [];
+    const matters = data.matters || [];
+
+    // Filter bar HTML
+    const totalDocsCount = nodes.length;
+    const filterPillsHtml = `
+      <div class="vault-case-pill ${!this.spotlightCase ? 'active' : ''}" data-case-filter="ALL">
+        <span>✦ All Timeline</span>
+        <span style="font-size: 10px; opacity: 0.7;">(${totalDocsCount})</span>
+      </div>
+      ${matters.map(m => `
+        <div class="vault-case-pill ${this.spotlightCase === m.name ? 'active' : ''}" data-case-filter="${m.name}">
+          <span>⚡ Case: ${m.name}</span>
+          <span style="font-size: 10px; opacity: 0.7;">(${m.docCount} docs)</span>
+        </div>
+      `).join('')}
+      <button class="vault-case-pill-btn-add" id="vaultCreateNewTrailBtn">
+        <span>＋ Link Relation</span>
+      </button>
+    `;
+
+    // Active spotlight telemetry banner
+    const activeMatter = matters.find(m => m.name === this.spotlightCase);
+    const telemetryBannerHtml = activeMatter ? `
+      <div class="vault-case-telemetry" id="vaultCaseTelemetry">
+        <div class="vault-case-telemetry-left">
+          <span class="vault-case-telemetry-icon">⚡</span>
+          <div>
+            <div class="vault-case-telemetry-title">Proceeding Spotlight: ${activeMatter.name}</div>
+            <div class="vault-case-telemetry-stats">
+              <span>● ${activeMatter.docCount} Connected Records</span>
+              <span>● ${activeMatter.linkCount} Causality Filaments</span>
+              <span>● Verified End-to-End Chain-of-Custody</span>
+            </div>
+          </div>
+        </div>
+        <div class="vault-case-telemetry-right">
+          <span class="vault-case-telemetry-badge">🛡️ Cryptographically Sealed</span>
+          <button class="vault-case-telemetry-clear-btn" id="vaultClearSpotlightBtn">✕ Clear Spotlight</button>
+        </div>
+      </div>
+    ` : '';
+
+    // Sort documents chronologically for row generation
+    const sortedDocs = [...nodes].sort((a, b) => {
+      const dateA = a.issue_date ? new Date(a.issue_date).getTime() : 0;
+      const dateB = b.issue_date ? new Date(b.issue_date).getTime() : 0;
+      return dateA - dateB;
+    });
+
+    // Create steps list
+    const stepRowsHtml = sortedDocs.map(doc => {
+      const lane = doc.lane ?? 0;
+      const isDocInSpotlight = !this.spotlightCase || (doc.matters || []).includes(this.spotlightCase);
+      const thumbUrl = `/api/compliance/vault/documents/${doc.id}/thumbnail`;
+      const directionClass = (doc.direction || 'internal').toLowerCase();
+
+      // Find any link where this doc is child to show turnaround delta
+      const incomingLink = links.find(l => Number(l.child_doc_id) === Number(doc.id));
+      let turnaroundHtml = '';
+      if (incomingLink && incomingLink.turnaround_days !== null) {
+        const days = incomingLink.turnaround_days;
+        const sign = days >= 0 ? `+${days}d` : `${days}d`;
+        turnaroundHtml = `<span class="vault-node-turnaround" title="Turnaround interval from parent">⏱ ${sign}</span>`;
+      }
+
+      const cardHtml = `
+        <div class="vault-node-card ${!isDocInSpotlight ? 'dimmed' : ''} ${this.spotlightCase && isDocInSpotlight ? 'spotlight' : ''}" 
+             data-doc-id="${doc.id}" 
+             data-lane="${lane}"
+             data-matters='${JSON.stringify(doc.matters || [])}'>
+          <div class="vault-node-orb" id="orbDoc${doc.id}"></div>
+          
+          <div class="vault-node-thumb-box">
+            <img src="${thumbUrl}" alt="${doc.title}" class="vault-node-thumb-img" loading="lazy" onerror="this.style.display='none';" />
+          </div>
+
+          <div class="vault-node-content">
+            <div class="vault-node-top-row">
+              <span class="vault-node-ref">${doc.doc_ref_no || 'REF'}</span>
+              <span class="vault-node-direction-tag ${directionClass}">${doc.direction || 'INTERNAL'}</span>
+            </div>
+            <div class="vault-node-title" title="${doc.title}">${doc.title}</div>
+            <div class="vault-node-bottom-row">
+              <span>📅 ${doc.issue_date || 'N/A'}</span>
+              ${turnaroundHtml}
+            </div>
+            
+            <div class="vault-node-hover-actions">
+              <button class="vault-node-action-btn" data-node-preview="${doc.id}">Quick Look ↗</button>
+              <button class="vault-node-action-btn" data-node-link="${doc.id}">＋ Link</button>
+              ${incomingLink ? `<button class="vault-node-action-btn delete" data-delete-trail="${incomingLink.id}" title="Sever link">✂ Unlink</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      return `
+        <div class="vault-timeline-step-row" data-row-doc-id="${doc.id}">
+          <div class="vault-lane-col" data-col-lane="0">${lane === 0 ? cardHtml : ''}</div>
+          <div class="vault-lane-col" data-col-lane="1">${lane === 1 ? cardHtml : ''}</div>
+          <div class="vault-lane-col" data-col-lane="2">${lane === 2 ? cardHtml : ''}</div>
+        </div>
+      `;
+    }).join('');
+
+    viewport.innerHTML = `
+      <div class="vault-timeline-wrapper">
+        <div class="vault-timeline-ambient"></div>
+
+        <!-- Header Hero -->
+        <div class="vault-timeline-header-hero">
+          <h1 class="vault-timeline-hero-title">
+            <span class="vault-timeline-hero-sparkle">✦</span>
+            The Sacred Timeline
+          </h1>
+          <div class="vault-timeline-hero-sub">
+            Continuous enterprise causality network & unified multi-track compliance proceedings
+          </div>
+        </div>
+
+        <!-- Case Spotlight Selector -->
+        <div class="vault-case-filter-bar" id="vaultCaseFilterBar">
+          ${filterPillsHtml}
+        </div>
+
+        <!-- Active Case Telemetry Banner -->
+        ${telemetryBannerHtml}
+
+        <!-- 3 Multi-Track Lanes Header -->
+        <div class="vault-timeline-lanes-header">
+          <div class="vault-lane-badge trunk">
+            <span class="vault-lane-dot trunk"></span>
+            Lane 0: Sacred Spine (Core Statutory & Authorizations)
+          </div>
+          <div class="vault-lane-badge regulatory">
+            <span class="vault-lane-dot regulatory"></span>
+            Lane 1: Regulatory Proceedings (Inward / Outward)
+          </div>
+          <div class="vault-lane-badge evidence">
+            <span class="vault-lane-dot evidence"></span>
+            Lane 2: Evidence & KYC Dossiers
+          </div>
+        </div>
+
+        <!-- Canvas with Multi-Track Steps & SVG Filaments Overlay -->
+        <div class="vault-timeline-canvas" id="vaultTimelineCanvas">
+          <svg class="vault-filaments-svg" id="vaultFilamentsSvg">
+            <defs>
+              <linearGradient id="vaultTrunkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.95" />
+                <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.95" />
+              </linearGradient>
+              <linearGradient id="vaultRegGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.95" />
+                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.95" />
+              </linearGradient>
+              <linearGradient id="vaultEvidenceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.95" />
+                <stop offset="100%" stop-color="#c084fc" stop-opacity="0.95" />
+              </linearGradient>
+            </defs>
+            <g id="vaultFilamentsGroup"></g>
+          </svg>
+
+          <div class="vault-timeline-steps-list" id="vaultTimelineStepsList">
+            ${stepRowsHtml}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Render SVG Filaments
+    const drawFilaments = () => {
+      const svgGroup = viewport.querySelector('#vaultFilamentsGroup');
+      const canvas = viewport.querySelector('#vaultTimelineCanvas');
+      if (!svgGroup || !canvas) return;
+
+      svgGroup.innerHTML = '';
+      const canvasRect = canvas.getBoundingClientRect();
+
+      links.forEach(link => {
+        const parentCard = viewport.querySelector(`.vault-node-card[data-doc-id="${link.parent_doc_id}"]`);
+        const childCard = viewport.querySelector(`.vault-node-card[data-doc-id="${link.child_doc_id}"]`);
+        if (!parentCard || !childCard) return;
+
+        const parentOrb = parentCard.querySelector('.vault-node-orb') || parentCard;
+        const childOrb = childCard.querySelector('.vault-node-orb') || childCard;
+
+        const pRect = parentOrb.getBoundingClientRect();
+        const cRect = childOrb.getBoundingClientRect();
+
+        const x1 = (pRect.left + pRect.width / 2) - canvasRect.left;
+        const y1 = (pRect.top + pRect.height / 2) - canvasRect.top;
+        const x2 = (cRect.left + cRect.width / 2) - canvasRect.left;
+        const y2 = (cRect.top + cRect.height / 2) - canvasRect.top;
+
+        const dy = Math.abs(y2 - y1);
+        const c1x = x1;
+        const c1y = y1 + Math.max(25, dy * 0.45);
+        const c2x = x2;
+        const c2y = y2 - Math.max(25, dy * 0.45);
+
+        const pathD = `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`;
+
+        // Lane class
+        const parentLane = Number(parentCard.dataset.lane || 0);
+        const laneClass = parentLane === 0 ? 'trunk' : parentLane === 1 ? 'regulatory' : 'evidence';
+
+        // Check spotlight
+        const isInSpotlight = !this.spotlightCase || link.matter_thread_name === this.spotlightCase;
+        const spotlightClass = this.spotlightCase && isInSpotlight ? 'spotlight' : !isInSpotlight ? 'dimmed' : '';
+
+        // Base filament path
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pathD);
+        path.setAttribute('class', `vault-filament-path ${laneClass} ${spotlightClass}`);
+        svgGroup.appendChild(path);
+
+        // Animated pulse particle if in spotlight or all active
+        if (isInSpotlight) {
+          const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          pulse.setAttribute('d', pathD);
+          pulse.setAttribute('class', 'vault-filament-pulse');
+          svgGroup.appendChild(pulse);
+        }
+      });
+    };
+
+    // Draw filaments after layout paints
+    requestAnimationFrame(() => {
+      setTimeout(drawFilaments, 60);
+    });
+
+    window.removeEventListener('resize', this._timelineResizeHandler);
+    this._timelineResizeHandler = () => drawFilaments();
+    window.addEventListener('resize', this._timelineResizeHandler);
+
+    // Event handlers for Case Filtering / Spotlight
+    viewport.querySelectorAll('[data-case-filter]').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const targetCase = pill.dataset.caseFilter;
+        this.spotlightCase = targetCase === 'ALL' ? null : targetCase;
+        this.renderTrailsPage(viewport);
+      });
+    });
+
+    viewport.querySelector('#vaultClearSpotlightBtn')?.addEventListener('click', () => {
+      this.spotlightCase = null;
+      this.renderTrailsPage(viewport);
+    });
+
+    viewport.querySelector('#vaultCreateNewTrailBtn')?.addEventListener('click', () => {
       this.openNewPaperTrailModal();
     });
 
-    viewport.querySelectorAll('[data-inspect-trail]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.openPaperTrailModal(Number(btn.dataset.inspectTrail));
+    // Node interactions
+    viewport.querySelectorAll('[data-node-preview]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openFileViewer(Number(btn.dataset.nodePreview));
+      });
+    });
+
+    viewport.querySelectorAll('[data-node-link]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openNewPaperTrailModal(Number(btn.dataset.nodeLink));
+      });
+    });
+
+    viewport.querySelectorAll('.vault-node-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.vault-node-action-btn')) return;
+        const docId = Number(card.dataset.docId);
+        this.openFileViewer(docId);
+      });
+    });
+
+    // Unlink handler
+    viewport.querySelectorAll('[data-delete-trail]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const trailId = btn.dataset.deleteTrail;
+        if (!confirm('Sever this causality filament? This will unlink the two records.')) return;
+
+        try {
+          const res = await fetch(`/api/compliance/vault/trail/${trailId}`, {
+            method: 'DELETE',
+            headers: this.getAuthHeaders(),
+            credentials: 'same-origin'
+          });
+          if (res.ok) {
+            this.app?.showNotification('Causality filament severed.', 'info');
+            this.renderTrailsPage(viewport);
+          }
+        } catch (_) {}
       });
     });
   }
@@ -2353,11 +2625,18 @@ export class DocumentVaultExplorer {
       } else if (tabName === 'trail') {
         contentEl.innerHTML = `
           <div>
-            <div class="vault-insp-section-title">Document Lineage & Chain-of-Custody</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div class="vault-insp-section-title" style="margin-bottom: 0;">Causality Lineage & Trail</div>
+              <button class="vault-node-action-btn" id="viewerAddTrailLinkBtn" style="background: #0284c7; color: #ffffff;">＋ Link Relation</button>
+            </div>
             <div id="viewerTrailLoading" style="font-size: 12px; color: #94a3b8;">Loading Paper Trail...</div>
             <div class="vault-trail-timeline" id="viewerTrailTimeline" style="display: none;"></div>
           </div>
         `;
+
+        contentEl.querySelector('#viewerAddTrailLinkBtn')?.addEventListener('click', () => {
+          this.openNewPaperTrailModal(doc.id);
+        });
 
         try {
           const res = await fetch(`/api/compliance/vault/documents/${doc.id}/trail`, {
@@ -2778,7 +3057,7 @@ export class DocumentVaultExplorer {
     overlay.querySelector('#closeVaultTrailBtn')?.addEventListener('click', () => overlay.remove());
   }
 
-  openNewPaperTrailModal() {
+  openNewPaperTrailModal(preselectedParentId = null) {
     const existing = document.getElementById('vaultNewTrailModalOverlay');
     if (existing) existing.remove();
 
@@ -2787,33 +3066,74 @@ export class DocumentVaultExplorer {
     overlay.id = 'vaultNewTrailModalOverlay';
     overlay.style.zIndex = '2147483647';
 
+    // Gather existing matters
+    const existingMatters = Array.from(new Set(
+      (this.timelineData?.matters || []).map(m => m.name).concat([
+        'AYUSH GMP Inspection & Renewal 2026',
+        'Dr. Mohanta Medical Officer Onboarding',
+        'Statutory Manufacturing Licenses 2026'
+      ])
+    ));
+
     overlay.innerHTML = `
-      <div class="staff-modal-box" style="width: 540px; max-width: 95vw;">
+      <div class="staff-modal-box" style="width: 580px; max-width: 95vw;">
         <div class="staff-modal-header">
-          <h3>Link Trail</h3>
+          <h3>⚡ Link Paper Trail Causality</h3>
           <button class="staff-modal-close-btn" id="closeNewTrailBtn">✕</button>
         </div>
 
         <form id="vaultNewTrailForm" style="padding: 20px;">
           <div class="staff-input-group full-width" style="margin-bottom: 12px;">
-            <label>Parent Document *</label>
+            <label>Antecedent / Parent Document *</label>
             <select name="parent_doc_id" required>
-              <option value="">Select document...</option>
-              ${this.documents.map(d => `<option value="${d.id}">${d.doc_ref_no} — ${d.title}</option>`).join('')}
+              <option value="">Select triggering document...</option>
+              ${this.documents.map(d => `
+                <option value="${d.id}" ${Number(preselectedParentId) === Number(d.id) ? 'selected' : ''}>
+                  ${d.doc_ref_no} — ${d.title} (${d.direction})
+                </option>
+              `).join('')}
             </select>
           </div>
 
           <div class="staff-input-group full-width" style="margin-bottom: 12px;">
-            <label>Child Response Document *</label>
-            <select name="child_doc_id" required>
-              <option value="">Select response...</option>
-              ${this.documents.map(d => `<option value="${d.id}">${d.doc_ref_no} — ${d.title}</option>`).join('')}
+            <label>Causality Relationship Type *</label>
+            <select name="link_relation" required>
+              <option value="INWARD_TRIGGER">📥 Inward Regulatory Trigger (Notice / Demand)</option>
+              <option value="REPLIED_WITH" selected>📤 Official Response / Dispatch (Form 48 / Reply)</option>
+              <option value="ATTACHED_EVIDENCE">📎 Supporting Evidence / KYC / Credentials</option>
+              <option value="SUPERSEDES">🔄 Supersedes / Replaces Prior Version</option>
+              <option value="AUTHORIZED_BY">⚖️ Governing Authority / Board Sanction</option>
             </select>
+          </div>
+
+          <div class="staff-input-group full-width" style="margin-bottom: 12px;">
+            <label>Descendant / Child Document *</label>
+            <select name="child_doc_id" required>
+              <option value="">Select connected record or response...</option>
+              ${this.documents.map(d => `
+                <option value="${d.id}" ${Number(preselectedParentId) === Number(d.id) ? 'disabled' : ''}>
+                  ${d.doc_ref_no} — ${d.title} (${d.direction})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="staff-input-group full-width" style="margin-bottom: 12px;">
+            <label>Proceeding / Matter Thread Name</label>
+            <input type="text" name="matter_thread_name" list="vaultMattersList" placeholder="e.g. AYUSH GMP Inspection 2026" value="AYUSH GMP Inspection & Renewal 2026" />
+            <datalist id="vaultMattersList">
+              ${existingMatters.map(m => `<option value="${m}">`).join('')}
+            </datalist>
+          </div>
+
+          <div class="staff-input-group full-width" style="margin-bottom: 12px;">
+            <label>Audit Remarks / Turnaround Notes</label>
+            <input type="text" name="notes" placeholder="e.g. Formal reply submitted within 4 business days" />
           </div>
 
           <div class="staff-modal-actions-footer">
             <button type="button" class="cmp-btn-cancel" id="cancelNewTrailBtn">Cancel</button>
-            <button type="submit" class="cmp-btn-save">Link Documents</button>
+            <button type="submit" class="cmp-btn-save" style="background: linear-gradient(135deg, #0284c7, #38bdf8);">Create Causality Filament</button>
           </div>
         </form>
       </div>
@@ -2830,6 +3150,9 @@ export class DocumentVaultExplorer {
       const form = e.target;
       const parentId = form.parent_doc_id.value;
       const childId = form.child_doc_id.value;
+      const relation = form.link_relation.value;
+      const matter = form.matter_thread_name.value.trim();
+      const notes = form.notes.value.trim();
 
       if (!parentId || !childId || parentId === childId) {
         alert('Please select two distinct documents.');
@@ -2844,14 +3167,17 @@ export class DocumentVaultExplorer {
           body: JSON.stringify({
             parent_doc_id: Number(parentId),
             child_doc_id: Number(childId),
-            link_relation: 'REPLIED_WITH'
+            link_relation: relation,
+            matter_thread_name: matter || null,
+            notes: notes || null
           })
         });
 
         if (res.ok) {
-          this.app?.showNotification('Trail linked.', 'success');
+          this.app?.showNotification('Causality filament created.', 'success');
           closeModal();
           await this.loadData();
+          this.renderActivePage();
         } else {
           const errData = await res.json();
           this.app?.showNotification(errData.error || 'Failed to link', 'error');

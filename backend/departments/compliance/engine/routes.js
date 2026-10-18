@@ -59,6 +59,7 @@ module.exports = function(router, handlers) {
   router.get('/vault/documents/:id/pdf', handlers.renderVaultDocumentPdf);
   router.get('/vault/documents/:id/thumbnail', handlers.getVaultDocumentThumbnail);
 
+  router.get('/vault/trails/timeline', handlers.getUnifiedTimeline);
   router.get('/vault/documents/:id/trail', handlers.getDocumentPaperTrail);
   router.post('/vault/trail', handlers.linkDocumentPaperTrail);
   router.delete('/vault/trail/:trailId', handlers.deletePaperTrailLink);
