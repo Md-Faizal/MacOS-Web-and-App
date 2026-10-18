@@ -5,6 +5,12 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const path = require('path');
+let vaultAi = null;
+try {
+  vaultAi = require('./vault-ai');
+} catch (e) {
+  console.warn('[Compliance] vault-ai require fallback:', e.message);
+}
 let SuiteCoreBridge = null;
 try {
   SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
@@ -162,6 +168,31 @@ module.exports = function createHandlers(db) {
           FOREIGN KEY (child_doc_id) REFERENCES company_vault_documents(id) ON DELETE CASCADE
         );
       `);
+
+      // Ensure Vault AI columns and FTS5 virtual table exist
+      try {
+        const tableInfo = db.prepare('PRAGMA table_info(company_vault_documents)').all();
+        const cols = new Set(tableInfo.map(c => c.name));
+        if (!cols.has('ai_summary')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_summary TEXT').run();
+        if (!cols.has('tags')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN tags TEXT').run();
+        if (!cols.has('suggested_dir_id')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN suggested_dir_id INTEGER').run();
+        if (!cols.has('extracted_text')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN extracted_text TEXT').run();
+        if (!cols.has('ai_processed_at')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_processed_at DATETIME').run();
+
+        db.prepare(`
+          CREATE VIRTUAL TABLE IF NOT EXISTS vault_doc_fts USING fts5(
+            doc_id UNINDEXED,
+            title,
+            doc_ref_no,
+            department,
+            tags,
+            ai_summary,
+            extracted_text
+          );
+        `).run();
+      } catch (schemaErr) {
+        console.warn('[Compliance] Vault AI schema check note:', schemaErr.message);
+      }
 
       // Seed core statutory licenses if table is empty
       const count = db.prepare('SELECT COUNT(*) as c FROM company_compliances').get().c;
@@ -1357,6 +1388,17 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           } catch (_) {}
         }
 
+        // Trigger asynchronous background AI extraction, summarization & auto-tagging
+        if (vaultAi) {
+          setImmediate(async () => {
+            try {
+              await vaultAi.analyzeDocument(db, newDocId);
+            } catch (aiErr) {
+              console.warn('[Compliance Vault] Post-create AI analysis warning:', aiErr.message);
+            }
+          });
+        }
+
         res.status(201).json({ success: true, id: newDocId, doc_ref_no, verification_hash });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1815,6 +1857,68 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         }
 
         return res.status(404).json({ error: 'Thumbnail not available' });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // 9. Document Vault AI Services
+    analyzeDocumentAi: async (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const result = await vaultAi.analyzeDocument(db, id);
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    autoSortDocument: (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const result = vaultAi.autoSortDocument(db, id);
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    autoSortAllPending: (req, res) => {
+      try {
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const result = vaultAi.autoSortAllPending(db);
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    chatWithDocument: async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { question, history } = req.body;
+        if (!question || !question.trim()) {
+          return res.status(400).json({ error: 'Question is required' });
+        }
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const result = await vaultAi.chatWithDocument(db, id, question.trim(), history || []);
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    searchVaultAi: (req, res) => {
+      try {
+        const { q, limit } = req.query;
+        if (!q || !q.trim()) {
+          return res.json({ success: true, results: [] });
+        }
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const results = vaultAi.searchVaultFts(db, q.trim(), Number(limit) || 12);
+        res.json({ success: true, count: results.length, results });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

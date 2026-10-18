@@ -64,5 +64,12 @@ module.exports = function(router, handlers) {
   router.post('/vault/trail', handlers.linkDocumentPaperTrail);
   router.delete('/vault/trail/:trailId', handlers.deletePaperTrailLink);
 
+  // 9. Document Vault AI: Auto-Tagging, Auto-Sort, In-Viewer Copilot & FTS5 Search
+  router.post('/vault/documents/:id/ai-analyze', handlers.analyzeDocumentAi);
+  router.post('/vault/documents/:id/auto-sort', handlers.autoSortDocument);
+  router.post('/vault/documents/auto-sort-pending', handlers.autoSortAllPending);
+  router.post('/vault/documents/:id/chat', handlers.chatWithDocument);
+  router.get('/vault/ai/search', handlers.searchVaultAi);
+
   return router;
 };

@@ -233,8 +233,8 @@ class DatabaseManager {
         AND name NOT LIKE 'sqlite_%'
       `).all().map(t => t.name);
 
-      // 1. Drop unknown tables
-      const unknownTables = existingTables.filter(t => !expectedSchema[t]);
+      // 1. Drop unknown tables (preserving FTS virtual search tables)
+      const unknownTables = existingTables.filter(t => !expectedSchema[t] && !t.includes('_fts'));
       if (unknownTables.length > 0) {
         console.log(`⚠️  Found ${unknownTables.length} unknown table(s): ${unknownTables.join(', ')}`);
         if (['production', 'oraclevm'].includes(process.env.NODE_ENV)) {

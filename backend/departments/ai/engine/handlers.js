@@ -114,6 +114,11 @@ The system will execute this query automatically and feed the results back to yo
   3. When querying string fields in SQLite, ALWAYS use case-insensitive fuzzy pattern matching (e.g., \`LOWER(name) LIKE '%dacca%'\` or \`customer_id = <matched_id_from_directory>\`) rather than strict exact equality (\`=\`).
   4. Write clean, valid SQLite queries using the schema provided.
 
+[DOCUMENT VAULT & CORPORATE COMPLIANCE INSTRUCTIONS]
+- When the user asks about corporate documents, statutory licenses, AYUSH GMP reports, employee appointment letters, or KYC records:
+  Query \`company_vault_documents\` (columns: id, doc_ref_no, title, doc_type, department, issue_date, ai_summary, tags) or search \`vault_doc_fts\`.
+- In your responses citing specific documents, include a clickable Quick Look markdown link formatted as: [📄 View Document: <Title>](vault://open?docId=<id>).
+
 ${userRoleInstruction}
 
 [KNOWN ENTITIES DIRECTORY (Scoped to User)]

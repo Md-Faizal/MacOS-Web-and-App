@@ -33,6 +33,10 @@ export class DocumentVaultExplorer {
     this.history = [];
     this.historyIdx = -1;
 
+    if (typeof window !== 'undefined') {
+      window.DocumentVaultExplorerInstance = this;
+    }
+
     this.ensureStylesheet();
   }
 
@@ -73,8 +77,17 @@ export class DocumentVaultExplorer {
     return { hex: '#06b6d4', bg: 'linear-gradient(135deg, #0e7490, #22d3ee)', tint: 'rgba(6, 182, 212, 0.25)' };
   }
 
-  // Clean tags and summary
+  // Clean tags and summary with AI priority
   generateTagsAndSummary(doc) {
+    if (doc.tags) {
+      try {
+        const parsed = typeof doc.tags === 'string' ? JSON.parse(doc.tags) : doc.tags;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return { tags: parsed, summary: doc.ai_summary || doc.subject || doc.title };
+        }
+      } catch (_) {}
+    }
+
     const text = `${doc.title || ''} ${doc.subject || ''} ${doc.sender_party || ''} ${doc.recipient_party || ''}`.toLowerCase();
     const tags = new Set();
 
@@ -95,7 +108,7 @@ export class DocumentVaultExplorer {
     }
     customTags.forEach(t => tags.add(t));
 
-    const summary = doc.subject || (doc.title ? `${doc.title} (${doc.direction})` : 'Document record');
+    const summary = doc.ai_summary || doc.subject || (doc.title ? `${doc.title} (${doc.direction})` : 'Document record');
 
     return { tags: Array.from(tags), summary };
   }
@@ -2466,6 +2479,7 @@ export class DocumentVaultExplorer {
             <div class="vault-viewer-right-drawer ${this.viewerRightDrawerOpen ? '' : 'collapsed'}" id="viewerRightDrawer">
               <div class="vault-inspector-tab-bar">
                 <button class="vault-inspector-tab-btn ${this.viewerActiveTab === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
+                <button class="vault-inspector-tab-btn ${this.viewerActiveTab === 'copilot' ? 'active' : ''}" data-tab="copilot">AI Copilot 🤖</button>
                 <button class="vault-inspector-tab-btn ${this.viewerActiveTab === 'security' ? 'active' : ''}" data-tab="security">Security</button>
                 <button class="vault-inspector-tab-btn ${this.viewerActiveTab === 'trail' ? 'active' : ''}" data-tab="trail">Paper Trail</button>
                 <button class="vault-inspector-tab-btn ${this.viewerActiveTab === 'tags' ? 'active' : ''}" data-tab="tags">Tags & Notes</button>
@@ -2494,9 +2508,32 @@ export class DocumentVaultExplorer {
 
       const dir = (this.directories || []).find(d => Number(d.id) === Number(doc.dir_id));
       const sizeStr = this.formatFileSize(doc.file_size);
+      const tagsInfo = this.generateTagsAndSummary(doc);
+      const tagsList = tagsInfo.tags || [];
 
       if (tabName === 'overview') {
+        const isMismatched = doc.suggested_dir_id && Number(doc.suggested_dir_id) !== Number(doc.dir_id);
+        const suggestedDir = isMismatched ? (this.directories || []).find(d => Number(d.id) === Number(doc.suggested_dir_id)) : null;
+
         contentEl.innerHTML = `
+          <!-- AI Executive Brief -->
+          <div class="vault-insp-ai-card">
+            <div class="vault-insp-ai-header">
+              <span class="vault-insp-ai-badge">🤖 AI Executive Summary</span>
+              <button class="vault-insp-ai-refresh-btn" id="viewerReanalyzeAiBtn" title="Re-Analyze with Gemini AI">↺ Re-Extract</button>
+            </div>
+            <p class="vault-insp-ai-summary-text">${doc.ai_summary || tagsInfo.summary || 'AI analysis pending. Click Re-Extract to generate summary and tags.'}</p>
+            <div class="vault-insp-tags-row">
+              ${tagsList.map(t => `<span class="vault-insp-tag-pill" data-doc-tag="${t}">#${t}</span>`).join('')}
+            </div>
+            ${suggestedDir ? `
+              <div class="vault-insp-autosort-banner">
+                <span>💡 AI recommends folder: <strong>${suggestedDir.name}</strong></span>
+                <button class="vault-insp-autosort-btn" id="viewerAutoSortBtn">Move Now</button>
+              </div>
+            ` : ''}
+          </div>
+
           <div>
             <div class="vault-insp-section-title">Record Details</div>
             <div class="vault-insp-row">
@@ -2540,6 +2577,139 @@ export class DocumentVaultExplorer {
               <span class="vault-insp-val">${doc.signatory_name || 'Dr. Debabrata Mishra'}</span>
             </div>
           </div>
+        `;
+
+        // Re-Extract AI button handler
+        contentEl.querySelector('#viewerReanalyzeAiBtn')?.addEventListener('click', async () => {
+          const btn = contentEl.querySelector('#viewerReanalyzeAiBtn');
+          if (btn) btn.textContent = '⏳ Analyzing...';
+          try {
+            const res = await fetch(`/api/compliance/vault/documents/${doc.id}/ai-analyze`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              credentials: 'same-origin'
+            });
+            if (res.ok) {
+              const data = await res.json();
+              doc.ai_summary = data.ai_summary;
+              doc.tags = JSON.stringify(data.tags);
+              doc.suggested_dir_id = data.suggested_dir_id;
+              this.app?.showNotification('Document re-analyzed with Gemini AI.', 'success');
+              renderInspectorTab('overview', doc);
+            }
+          } catch (_) {
+            if (btn) btn.textContent = '↺ Re-Extract';
+          }
+        });
+
+        // Auto-sort move button handler
+        contentEl.querySelector('#viewerAutoSortBtn')?.addEventListener('click', async () => {
+          try {
+            const res = await fetch(`/api/compliance/vault/documents/${doc.id}/auto-sort`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              credentials: 'same-origin'
+            });
+            if (res.ok) {
+              const data = await res.json();
+              doc.dir_id = data.new_dir_id;
+              this.app?.showNotification(`Moved to ${data.directory_name}`, 'success');
+              await this.loadData();
+              renderInspectorTab('overview', doc);
+            }
+          } catch (_) {}
+        });
+      } else if (tabName === 'copilot') {
+        contentEl.innerHTML = `
+          <div class="vault-copilot-container">
+            <div class="vault-copilot-header">
+              <div class="vault-copilot-avatar">🤖</div>
+              <div>
+                <div class="vault-copilot-title">Vault Copilot</div>
+                <div class="vault-copilot-subtitle">Powered by Gemini 2.5 Flash • Zero Cost</div>
+              </div>
+            </div>
+
+            <div class="vault-copilot-messages" id="viewerCopilotMessages">
+              <div class="vault-copilot-msg bot">
+                Hello! I am your <strong>Document Copilot</strong> for <em>${doc.title}</em> (${doc.doc_ref_no || 'REF'}).
+                <br><br>
+                What would you like me to inspect, verify, or extract from this document?
+              </div>
+            </div>
+
+            <div class="vault-copilot-chips">
+              <button class="vault-copilot-chip" data-copilot-ask="Summarize key obligations, liabilities, and core clauses">Key Clauses 📜</button>
+              <button class="vault-copilot-chip" data-copilot-ask="List all statutory dates, renewal deadlines, and timelines">Deadlines & Dates ⏱</button>
+              <button class="vault-copilot-chip" data-copilot-ask="What statutory rules, regulations, or inspection acts apply here?">Statutory Rules 🛡️</button>
+            </div>
+
+            <div class="vault-copilot-input-bar">
+              <input type="text" class="vault-copilot-input" id="viewerCopilotInput" placeholder="Ask anything about this document..." />
+              <button class="vault-copilot-send-btn" id="viewerCopilotSendBtn" title="Send question">➤</button>
+            </div>
+          </div>
+        `;
+
+        const messagesBox = contentEl.querySelector('#viewerCopilotMessages');
+        const inputEl = contentEl.querySelector('#viewerCopilotInput');
+        const sendBtn = contentEl.querySelector('#viewerCopilotSendBtn');
+        const history = [];
+
+        const sendCopilotQuestion = async (qText) => {
+          if (!qText || !qText.trim()) return;
+          const question = qText.trim();
+          if (inputEl) inputEl.value = '';
+
+          // Append user question
+          const userMsg = document.createElement('div');
+          userMsg.className = 'vault-copilot-msg user';
+          userMsg.textContent = question;
+          messagesBox?.appendChild(userMsg);
+
+          // Append loading pulse
+          const loadingMsg = document.createElement('div');
+          loadingMsg.className = 'vault-copilot-msg bot';
+          loadingMsg.innerHTML = '<em>Consulting document context...</em>';
+          messagesBox?.appendChild(loadingMsg);
+          if (messagesBox) messagesBox.scrollTop = messagesBox.scrollHeight;
+
+          try {
+            const res = await fetch(`/api/compliance/vault/documents/${doc.id}/chat`, {
+              method: 'POST',
+              headers: this.getAuthHeaders(),
+              credentials: 'same-origin',
+              body: JSON.stringify({ question, history })
+            });
+            const data = await res.json();
+            const answer = data.answer || 'No response returned from document.';
+
+            loadingMsg.innerHTML = answer.replace(/\n/g, '<br>');
+            history.push({ role: 'user', text: question });
+            history.push({ role: 'model', text: answer });
+          } catch (err) {
+            loadingMsg.textContent = `Error: ${err.message}`;
+          }
+
+          if (messagesBox) messagesBox.scrollTop = messagesBox.scrollHeight;
+        };
+
+        sendBtn?.addEventListener('click', () => {
+          sendCopilotQuestion(inputEl?.value);
+        });
+
+        inputEl?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            sendCopilotQuestion(inputEl.value);
+          }
+        });
+
+        contentEl.querySelectorAll('[data-copilot-ask]').forEach(chip => {
+          chip.addEventListener('click', () => {
+            sendCopilotQuestion(chip.dataset.copilotAsk);
+          });
+        });
         `;
       } else if (tabName === 'security') {
         const hash = doc.verification_hash || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';

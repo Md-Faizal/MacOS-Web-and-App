@@ -167,6 +167,22 @@ class AIAssistant {
         if (suggestionDiv) suggestionDiv.innerHTML = '';
       }, 200);
     });
+
+    // Vault document deep-link click handler
+    document.addEventListener('click', (e) => {
+      const vaultLink = e.target.closest('.ai-vault-doc-link');
+      if (vaultLink) {
+        e.preventDefault();
+        const docId = Number(vaultLink.dataset.docId);
+        if (docId) {
+          if (window.DocumentVaultExplorerInstance) {
+            window.DocumentVaultExplorerInstance.openFileViewer(docId);
+          } else {
+            window.open(`/api/compliance/vault/documents/${docId}/pdf`, '_blank');
+          }
+        }
+      }
+    });
   }
 
   toggleChat() {
@@ -534,6 +550,16 @@ class AIAssistant {
     
     // Handle inline code: replace `text` with <code>text</code>
     escaped = escaped.replace(/`(.*?)`/g, '<code>$1</code>');
+
+    // Handle markdown links: [text](url)
+    escaped = escaped.replace(/\[(.*?)\]\((.*?)\)/g, (match, linkText, linkUrl) => {
+      if (linkUrl.startsWith('vault://')) {
+        const docIdMatch = linkUrl.match(/docId=(\d+)/);
+        const docId = docIdMatch ? docIdMatch[1] : '';
+        return `<a href="#" class="ai-vault-doc-link" data-doc-id="${docId}" style="color: #38bdf8; font-weight: 700; text-decoration: underline;">${linkText}</a>`;
+      }
+      return `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa;">${linkText}</a>`;
+    });
     
     const lines = escaped.split('\n');
     let listType = null; // 'ul', 'ol', or null

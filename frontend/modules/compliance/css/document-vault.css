@@ -4262,6 +4262,299 @@ body:not(.dark-theme) .sherlock-track-nav-btn {
   right: 12px;
 }
 
+/* ========================================================================= */
+/* DOCUMENT VAULT AI INSPECTOR & COPILOT STYLES                              */
+/* ========================================================================= */
+
+.vault-insp-ai-card {
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+  backdrop-filter: blur(8px);
+}
+
+body:not(.dark-theme) .vault-insp-ai-card {
+  background: rgba(14, 165, 233, 0.06);
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.vault-insp-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.vault-insp-ai-badge {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #38bdf8;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vault-insp-ai-refresh-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vault-insp-ai-refresh-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+}
+
+.vault-insp-ai-summary-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #e2e8f0;
+  margin: 0 0 10px 0;
+}
+
+body:not(.dark-theme) .vault-insp-ai-summary-text {
+  color: #1e293b;
+}
+
+.vault-insp-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vault-insp-tag-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(2, 132, 199, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(2, 132, 199, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vault-insp-tag-pill:hover {
+  background: #0284c7;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.vault-insp-autosort-banner {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(14, 165, 233, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+
+body:not(.dark-theme) .vault-insp-autosort-banner {
+  color: #475569;
+}
+
+.vault-insp-autosort-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.vault-insp-autosort-btn:hover {
+  background: #059669;
+  transform: scale(1.04);
+}
+
+/* ================= IN-VIEWER COPILOT CHAT STYLES ================= */
+.vault-copilot-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 480px;
+}
+
+.vault-copilot-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 12px;
+}
+
+body:not(.dark-theme) .vault-copilot-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.vault-copilot-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0284c7, #6366f1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+.vault-copilot-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+body:not(.dark-theme) .vault-copilot-title {
+  color: #0f172a;
+}
+
+.vault-copilot-subtitle {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+
+.vault-copilot-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+  margin-bottom: 12px;
+  max-height: 340px;
+  scrollbar-width: thin;
+}
+
+.vault-copilot-msg {
+  max-width: 90%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.vault-copilot-msg.bot {
+  align-self: flex-start;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+body:not(.dark-theme) .vault-copilot-msg.bot {
+  background: #f1f5f9;
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+}
+
+.vault-copilot-msg.user {
+  align-self: flex-end;
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.vault-copilot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.vault-copilot-chip {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+body:not(.dark-theme) .vault-copilot-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #475569;
+}
+
+.vault-copilot-chip:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #38bdf8;
+}
+
+.vault-copilot-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 4px 6px 4px 14px;
+}
+
+body:not(.dark-theme) .vault-copilot-input-bar {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.vault-copilot-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: #f1f5f9;
+}
+
+body:not(.dark-theme) .vault-copilot-input {
+  color: #0f172a;
+}
+
+.vault-copilot-send-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0284c7;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.vault-copilot-send-btn:hover {
+  background: #0369a1;
+  transform: scale(1.08);
+}
+
+
 
 
 

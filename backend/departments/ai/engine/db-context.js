@@ -130,6 +130,11 @@ function generateSystemContext() {
         module: "Credit Notes",
         description: "Manage credit notes and adjustments",
         endpoints: ["/api/creditnotes/*"]
+      },
+      {
+        module: "Document Vault & Legal Compliance",
+        description: "Company Holy Bible Vault: Statutory Licenses, KYC Records, Form 25, Schedule T GMP inspection reports, employee agreements, and official corporate paper trails",
+        endpoints: ["/api/compliance/vault/*"]
       }
     ],
     queryCapabilities: [
@@ -139,7 +144,8 @@ function generateSystemContext() {
       "Check order status and payment history",
       "Suggest products based on customer profile",
       "Calculate totals and summaries",
-      "Identify trends and patterns in data"
+      "Identify trends and patterns in data",
+      "Search and summarize official corporate documents, statutory licenses, AYUSH GMP reports, employee appointments, and paper trails in the Document Vault"
     ]
   };
 }
