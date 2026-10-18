@@ -3655,512 +3655,460 @@ body:not(.dark-theme) .vault-viewer-notes-area {
 }
 
 /* ========================================================================= */
-/* SACRED TIMELINE — UNIFIED PAPER TRAIL & CAUSALITY TREE STYLES             */
-/* GitHub Tree Branching Lanes + Loki Cosmic Neon Filaments                  */
+/* HORIZONTAL SHERLOCK HOLMES PAPER TRAIL — ENTERPRISE EVIDENCE CHAIN         */
+/* Linear left-to-right evidence board used by top-tier legal & compliance   */
 /* ========================================================================= */
 
-.vault-timeline-wrapper {
+.sherlock-trail-wrapper {
   position: relative;
   width: 100%;
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 10px 20px 80px;
+  padding: 10px 24px 60px;
   user-select: none;
 }
 
-/* Ambient Sacred Timeline Aura */
-.vault-timeline-ambient {
+/* Ambient Subtle Lighting */
+.sherlock-trail-ambient {
   position: absolute;
-  top: -40px;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 800px;
-  height: 250px;
-  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.15), rgba(16, 185, 129, 0.08), transparent 70%);
+  width: 900px;
+  height: 200px;
+  background: radial-gradient(ellipse at center, rgba(2, 132, 199, 0.12), rgba(245, 158, 11, 0.06), transparent 70%);
   pointer-events: none;
-  filter: blur(50px);
+  filter: blur(60px);
   z-index: 0;
 }
 
-body:not(.dark-theme) .vault-timeline-ambient {
-  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.12), rgba(6, 182, 212, 0.08), transparent 70%);
-}
-
-/* Top Hero & Case Filter Capsule Bar */
-.vault-timeline-header-hero {
+/* Top Case Selector & Breadcrumb Header */
+.sherlock-case-header {
   position: relative;
   z-index: 2;
-  text-align: center;
   margin-bottom: 24px;
 }
 
-.vault-timeline-hero-title {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.6px;
-  color: #ffffff;
-  margin: 0 0 6px 0;
+.sherlock-case-tabs-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
 }
 
-body:not(.dark-theme) .vault-timeline-hero-title {
-  color: #0f172a;
+.sherlock-case-tabs-bar::-webkit-scrollbar {
+  display: none;
 }
 
-.vault-timeline-hero-sparkle {
-  color: #f59e0b;
-  font-size: 22px;
-  filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6));
-  animation: vaultSparklePulse 3s ease-in-out infinite;
-}
-
-@keyframes vaultSparklePulse {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.2) rotate(15deg); opacity: 1; filter: drop-shadow(0 0 16px rgba(245, 158, 11, 0.9)); }
-}
-
-.vault-timeline-hero-sub {
+.sherlock-case-tab {
+  padding: 8px 18px;
   font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-body:not(.dark-theme) .vault-timeline-hero-sub {
-  color: #64748b;
-}
-
-/* Case Filter Capsule Bar */
-.vault-case-filter-bar {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.vault-case-pill {
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 20px;
+  font-weight: 700;
+  border-radius: 24px;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cbd5e1;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #94a3b8;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  white-space: nowrap;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 
-body:not(.dark-theme) .vault-case-pill {
+body:not(.dark-theme) .sherlock-case-tab {
   background: rgba(0, 0, 0, 0.04);
   border-color: rgba(0, 0, 0, 0.1);
-  color: #334155;
+  color: #475569;
 }
 
-.vault-case-pill:hover {
+.sherlock-case-tab:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   transform: translateY(-1px);
 }
 
-body:not(.dark-theme) .vault-case-pill:hover {
+body:not(.dark-theme) .sherlock-case-tab:hover {
   background: rgba(0, 0, 0, 0.08);
   color: #0f172a;
 }
 
-.vault-case-pill.active {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35));
-  border-color: #f59e0b;
-  color: #fef3c7;
-  font-weight: 700;
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.3);
-}
-
-body:not(.dark-theme) .vault-case-pill.active {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
-}
-
-.vault-case-pill-btn-add {
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 20px;
-  cursor: pointer;
+.sherlock-case-tab.active {
   background: #0284c7;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-color: #38bdf8;
   color: #ffffff;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.35);
+}
+
+.sherlock-case-tab-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sherlock-case-tab-btn-add {
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 24px;
+  cursor: pointer;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.vault-case-pill-btn-add:hover {
-  background: #0369a1;
-  box-shadow: 0 0 16px rgba(2, 132, 199, 0.4);
-}
-
-/* Sliding Case Telemetry Banner */
-.vault-case-telemetry {
-  position: relative;
-  z-index: 2;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 14px;
-  padding: 12px 20px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  animation: vaultTelemetryFade 0.25s ease-out;
-}
-
-body:not(.dark-theme) .vault-case-telemetry {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(245, 158, 11, 0.4);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-}
-
-@keyframes vaultTelemetryFade {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.vault-case-telemetry-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.vault-case-telemetry-icon {
-  font-size: 20px;
-  color: #f59e0b;
-}
-
-.vault-case-telemetry-title {
-  font-size: 13.5px;
-  font-weight: 700;
+.sherlock-case-tab-btn-add:hover {
+  background: #10b981;
   color: #ffffff;
 }
 
-body:not(.dark-theme) .vault-case-telemetry-title {
+/* Active Matter Dossier Hero Card */
+.sherlock-dossier-card {
+  position: relative;
+  z-index: 2;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+body:not(.dark-theme) .sherlock-dossier-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+}
+
+.sherlock-dossier-left {
+  max-width: 720px;
+}
+
+.sherlock-dossier-tag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sherlock-dossier-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.3px;
+}
+
+body:not(.dark-theme) .sherlock-dossier-title {
   color: #0f172a;
 }
 
-.vault-case-telemetry-stats {
-  font-size: 11.5px;
+.sherlock-dossier-subtitle {
+  font-size: 13px;
   color: #94a3b8;
-  display: flex;
-  gap: 12px;
-  margin-top: 2px;
+  line-height: 1.4;
 }
 
-body:not(.dark-theme) .vault-case-telemetry-stats {
+body:not(.dark-theme) .sherlock-dossier-subtitle {
   color: #64748b;
 }
 
-.vault-case-telemetry-right {
+.sherlock-dossier-stats {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.vault-case-telemetry-badge {
-  font-size: 11px;
+.sherlock-stat-pill {
+  font-size: 12px;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f1f5f9;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body:not(.dark-theme) .sherlock-stat-pill {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #1e293b;
+}
+
+.sherlock-stat-pill.success {
   background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.35);
   color: #10b981;
 }
 
-.vault-case-telemetry-clear-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  font-size: 11px;
-  color: #cbd5e1;
-  padding: 4px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-body:not(.dark-theme) .vault-case-telemetry-clear-btn {
-  background: rgba(0, 0, 0, 0.06);
-  color: #334155;
-}
-
-.vault-case-telemetry-clear-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-}
-
-/* ================= MULTI-LANE CANVAS & SVG FILAMENTS ================= */
-.vault-timeline-canvas {
+/* ================= HORIZONTAL SHERLOCK TRAIL STAGE ================= */
+.sherlock-trail-stage {
   position: relative;
   width: 100%;
-  min-height: 600px;
-}
-
-/* SVG Overlay for Loki Filaments */
-.vault-filaments-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Filament Lines */
-.vault-filament-path {
-  fill: none;
-  stroke-width: 2.5px;
-  transition: opacity 0.3s ease, stroke-width 0.2s ease;
-}
-
-.vault-filament-path.trunk {
-  stroke: url(#vaultTrunkGrad);
-  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.5));
-}
-
-.vault-filament-path.regulatory {
-  stroke: url(#vaultRegGrad);
-  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
-}
-
-.vault-filament-path.evidence {
-  stroke: url(#vaultEvidenceGrad);
-  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.5));
-}
-
-.vault-filament-path.dimmed {
-  opacity: 0.15;
-}
-
-.vault-filament-path.spotlight {
-  stroke-width: 4px;
-  opacity: 1;
-  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.8));
-}
-
-/* Flow Particle Pulse Animation */
-.vault-filament-pulse {
-  fill: none;
-  stroke: #ffffff;
-  stroke-width: 2.5px;
-  stroke-dasharray: 6 18;
-  animation: vaultFilamentFlow 1.8s linear infinite;
-  opacity: 0.8;
-}
-
-@keyframes vaultFilamentFlow {
-  from { stroke-dashoffset: 48; }
-  to { stroke-dashoffset: 0; }
-}
-
-/* 3 Multi-Track Lanes Header */
-.vault-timeline-lanes-header {
-  position: relative;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin-bottom: 24px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-body:not(.dark-theme) .vault-timeline-lanes-header {
-  border-bottom-color: rgba(0, 0, 0, 0.08);
-}
-
-.vault-lane-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  background: rgba(9, 13, 22, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 0;
+  overflow: hidden;
 }
 
-body:not(.dark-theme) .vault-lane-badge {
-  background: rgba(0, 0, 0, 0.03);
+body:not(.dark-theme) .sherlock-trail-stage {
+  background: rgba(248, 250, 252, 0.85);
   border-color: rgba(0, 0, 0, 0.08);
 }
 
-.vault-lane-badge.trunk {
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-.vault-lane-badge.regulatory {
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.vault-lane-badge.evidence {
-  color: #8b5cf6;
-  border-color: rgba(139, 92, 246, 0.3);
-}
-
-.vault-lane-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.vault-lane-dot.trunk { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-.vault-lane-dot.regulatory { background: #10b981; box-shadow: 0 0 8px #10b981; }
-.vault-lane-dot.evidence { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
-
-/* Timeline Chronological Steps Container */
-.vault-timeline-steps-list {
-  position: relative;
-  z-index: 2;
+/* Scroll Viewport */
+.sherlock-trail-scroll-track {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 36px 30px;
   display: flex;
-  flex-direction: column;
-  gap: 28px;
+  align-items: stretch;
+  gap: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scroll-behavior: smooth;
 }
 
-/* A single Chronological Row containing nodes across lanes */
-.vault-timeline-step-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+.sherlock-trail-scroll-track::-webkit-scrollbar {
+  height: 8px;
+}
+
+.sherlock-trail-scroll-track::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+body:not(.dark-theme) .sherlock-trail-scroll-track::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* A single Evidence Step Block (Card + Outgoing Arrow) */
+.sherlock-step-block {
+  display: flex;
   align-items: center;
-  position: relative;
+  flex-shrink: 0;
 }
 
-/* Node Capsule ("Temporal Glyph") */
-.vault-node-card {
-  position: relative;
-  background: rgba(15, 23, 42, 0.88);
+/* The Evidence Document Card */
+.sherlock-doc-card {
+  width: 250px;
+  background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
+  position: relative;
 }
 
-body:not(.dark-theme) .vault-node-card {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+body:not(.dark-theme) .sherlock-doc-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.vault-node-card:hover {
-  transform: translateY(-3px) scale(1.02);
-  border-color: #38bdf8;
-  box-shadow: 0 12px 32px rgba(56, 189, 248, 0.25);
+.sherlock-doc-card:hover {
+  transform: translateY(-6px);
+  border-color: #0284c7;
+  box-shadow: 0 18px 40px rgba(2, 132, 199, 0.25);
 }
 
-.vault-node-card.dimmed {
-  opacity: 0.18;
-  filter: grayscale(0.6);
-  pointer-events: none;
-}
-
-.vault-node-card.spotlight {
-  border-color: #f59e0b;
-  box-shadow: 0 0 28px rgba(245, 158, 11, 0.4);
-  transform: translateY(-2px);
-}
-
-/* Node Connector Orb on Rail */
-.vault-node-orb {
+/* Brass Pin on top of card */
+.sherlock-pin-head {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 8px;
+  right: 10px;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  z-index: 4;
+  background: radial-gradient(circle at 30% 30%, #fef08a, #ca8a04);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 5;
 }
 
-.vault-node-card[data-lane="0"] .vault-node-orb {
-  left: -22px;
-  background: #f59e0b;
-  box-shadow: 0 0 10px #f59e0b;
+/* Card Header Strip */
+.sherlock-doc-header {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.vault-node-card[data-lane="1"] .vault-node-orb {
-  left: -22px;
-  background: #10b981;
-  box-shadow: 0 0 10px #10b981;
+body:not(.dark-theme) .sherlock-doc-header {
+  background: rgba(0, 0, 0, 0.03);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
 }
 
-.vault-node-card[data-lane="2"] .vault-node-orb {
-  left: -22px;
-  background: #8b5cf6;
-  box-shadow: 0 0 10px #8b5cf6;
+.sherlock-step-number {
+  font-size: 11px;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
-/* Thumbnail miniature */
-.vault-node-thumb-box {
-  width: 48px;
-  height: 62px;
-  border-radius: 6px;
-  overflow: hidden;
+.sherlock-role-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.sherlock-role-tag.trigger {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.sherlock-role-tag.reply {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.sherlock-role-tag.evidence {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.sherlock-role-tag.resolution {
+  background: rgba(2, 132, 199, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(2, 132, 199, 0.35);
+}
+
+/* Document Thumbnail Area */
+.sherlock-doc-thumb-stage {
+  height: 180px;
   background: #090d16;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
   position: relative;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.vault-node-thumb-img {
+body:not(.dark-theme) .sherlock-doc-thumb-stage {
+  background: #f1f5f9;
+}
+
+.sherlock-thumb-fallback {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #64748b;
+  z-index: 1;
+}
+
+.sherlock-fallback-icon {
+  font-size: 38px;
+  opacity: 0.8;
+}
+
+.sherlock-fallback-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+body:not(.dark-theme) .sherlock-fallback-badge {
+  background: rgba(0, 0, 0, 0.06);
+  color: #475569;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.sherlock-doc-thumb-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  z-index: 2;
 }
 
-.vault-node-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.vault-node-top-row {
+.sherlock-doc-hover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 4px;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 3;
 }
 
-.vault-node-ref {
+.sherlock-doc-card:hover .sherlock-doc-hover-overlay {
+  opacity: 1;
+}
+
+.sherlock-quicklook-pill {
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+}
+
+/* Card Body Details */
+.sherlock-doc-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sherlock-doc-ref {
   font-family: monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   color: #38bdf8;
   white-space: nowrap;
@@ -4168,106 +4116,152 @@ body:not(.dark-theme) .vault-node-card {
   text-overflow: ellipsis;
 }
 
-.vault-node-direction-tag {
-  font-size: 9px;
-  font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.vault-node-direction-tag.inward {
-  background: rgba(2, 132, 199, 0.2);
-  color: #38bdf8;
-  border: 1px solid rgba(2, 132, 199, 0.3);
-}
-
-.vault-node-direction-tag.outward {
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.vault-node-direction-tag.internal {
-  background: rgba(139, 92, 246, 0.2);
-  color: #c084fc;
-  border: 1px solid rgba(139, 92, 246, 0.3);
-}
-
-.vault-node-title {
-  font-size: 12px;
-  font-weight: 600;
+.sherlock-doc-title {
+  font-size: 12.5px;
+  font-weight: 700;
   color: #f1f5f9;
   line-height: 1.3;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
+  height: 33px;
 }
 
-body:not(.dark-theme) .vault-node-title {
+body:not(.dark-theme) .sherlock-doc-title {
   color: #0f172a;
 }
 
-.vault-node-bottom-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10px;
+.sherlock-doc-date {
+  font-size: 11px;
   color: #94a3b8;
+  margin-top: 4px;
 }
 
-body:not(.dark-theme) .vault-node-bottom-row {
+body:not(.dark-theme) .sherlock-doc-date {
   color: #64748b;
 }
 
-.vault-node-turnaround {
-  font-weight: 700;
-  color: #f59e0b;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.vault-node-hover-actions {
-  display: none;
-  gap: 6px;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.08);
-}
-
-.vault-node-card:hover .vault-node-hover-actions {
+/* ================= HORIZONTAL CAUSALITY CONNECTOR RIBBON ================= */
+.sherlock-connector {
+  width: 150px;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  position: relative;
+  flex-shrink: 0;
 }
 
-.vault-node-action-btn {
+/* The Central String Line */
+.sherlock-string-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  z-index: 1;
+}
+
+.sherlock-connector-badge {
+  position: relative;
+  z-index: 2;
+  background: #0f172a;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #f59e0b;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  margin-bottom: 6px;
+}
+
+body:not(.dark-theme) .sherlock-connector-badge {
+  background: #ffffff;
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.sherlock-connector-label {
+  position: relative;
+  z-index: 2;
   font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.3;
+  max-width: 140px;
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body:not(.dark-theme) .sherlock-connector-label {
+  color: #64748b;
+}
+
+.sherlock-connector-arrow {
+  position: absolute;
+  right: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #ef4444;
+  font-size: 12px;
+  z-index: 2;
+}
+
+/* Horizontal Track Navigation Controls (Left/Right Arrows) */
+.sherlock-track-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 20px;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
   cursor: pointer;
-  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
 }
 
-body:not(.dark-theme) .vault-node-action-btn {
-  background: rgba(0, 0, 0, 0.06);
-  color: #334155;
+body:not(.dark-theme) .sherlock-track-nav-btn {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #0f172a;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
 }
 
-.vault-node-action-btn:hover {
+.sherlock-track-nav-btn:hover {
   background: #0284c7;
   color: #ffffff;
+  transform: translateY(-50%) scale(1.1);
 }
 
-.vault-node-action-btn.delete:hover {
-  background: #ef4444;
-  color: #ffffff;
+.sherlock-track-nav-btn.left {
+  left: 12px;
 }
+
+.sherlock-track-nav-btn.right {
+  right: 12px;
+}
+
 
 
 

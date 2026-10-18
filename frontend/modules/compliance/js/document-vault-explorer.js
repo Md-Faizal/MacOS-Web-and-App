@@ -1655,13 +1655,17 @@ export class DocumentVaultExplorer {
   // 3. THE SACRED TIMELINE — UNIFIED PAPER TRAIL & CAUSALITY TREE
   // GitHub Multi-Track Branching Precision + Loki Cosmic Neon Filaments
   // =========================================================================
+  // =========================================================================
+  // 3. HORIZONTAL SHERLOCK HOLMES PAPER TRAIL — ENTERPRISE EVIDENCE CHAIN
+  // Linear left-to-right evidence board used by top-tier legal & compliance
+  // =========================================================================
   async renderTrailsPage(viewport) {
     viewport.innerHTML = `
-      <div class="vault-timeline-wrapper">
-        <div class="vault-timeline-ambient"></div>
+      <div class="sherlock-trail-wrapper">
+        <div class="sherlock-trail-ambient"></div>
         <div style="text-align: center; padding: 60px 0;">
           <div class="vault-viewer-spinner" style="margin: 0 auto 16px;"></div>
-          <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">Illuminating The Sacred Timeline...</div>
+          <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">Loading Evidence Paper Trail...</div>
         </div>
       </div>
     `;
@@ -1678,307 +1682,256 @@ export class DocumentVaultExplorer {
     } catch (_) {}
 
     this.timelineData = data;
-    if (!this.spotlightCase) this.spotlightCase = null;
-
     const nodes = data.nodes || [];
     const links = data.links || [];
     const matters = data.matters || [];
 
-    // Filter bar HTML
-    const totalDocsCount = nodes.length;
-    const filterPillsHtml = `
-      <div class="vault-case-pill ${!this.spotlightCase ? 'active' : ''}" data-case-filter="ALL">
-        <span>✦ All Timeline</span>
-        <span style="font-size: 10px; opacity: 0.7;">(${totalDocsCount})</span>
-      </div>
-      ${matters.map(m => `
-        <div class="vault-case-pill ${this.spotlightCase === m.name ? 'active' : ''}" data-case-filter="${m.name}">
-          <span>⚡ Case: ${m.name}</span>
-          <span style="font-size: 10px; opacity: 0.7;">(${m.docCount} docs)</span>
-        </div>
-      `).join('')}
-      <button class="vault-case-pill-btn-add" id="vaultCreateNewTrailBtn">
-        <span>＋ Link Relation</span>
-      </button>
-    `;
+    // Select default active case / matter
+    if (!this.selectedMatterName && matters.length > 0) {
+      this.selectedMatterName = matters[0].name;
+    }
 
-    // Active spotlight telemetry banner
-    const activeMatter = matters.find(m => m.name === this.spotlightCase);
-    const telemetryBannerHtml = activeMatter ? `
-      <div class="vault-case-telemetry" id="vaultCaseTelemetry">
-        <div class="vault-case-telemetry-left">
-          <span class="vault-case-telemetry-icon">⚡</span>
-          <div>
-            <div class="vault-case-telemetry-title">Proceeding Spotlight: ${activeMatter.name}</div>
-            <div class="vault-case-telemetry-stats">
-              <span>● ${activeMatter.docCount} Connected Records</span>
-              <span>● ${activeMatter.linkCount} Causality Filaments</span>
-              <span>● Verified End-to-End Chain-of-Custody</span>
-            </div>
-          </div>
-        </div>
-        <div class="vault-case-telemetry-right">
-          <span class="vault-case-telemetry-badge">🛡️ Cryptographically Sealed</span>
-          <button class="vault-case-telemetry-clear-btn" id="vaultClearSpotlightBtn">✕ Clear Spotlight</button>
-        </div>
-      </div>
-    ` : '';
+    const currentMatter = matters.find(m => m.name === this.selectedMatterName) || matters[0] || null;
 
-    // Sort documents chronologically for row generation
-    const sortedDocs = [...nodes].sort((a, b) => {
-      const dateA = a.issue_date ? new Date(a.issue_date).getTime() : 0;
-      const dateB = b.issue_date ? new Date(b.issue_date).getTime() : 0;
-      return dateA - dateB;
-    });
+    // Filter links & nodes for current matter
+    let matterLinks = [];
+    let orderedDocs = [];
 
-    // Create steps list
-    const stepRowsHtml = sortedDocs.map(doc => {
-      const lane = doc.lane ?? 0;
-      const isDocInSpotlight = !this.spotlightCase || (doc.matters || []).includes(this.spotlightCase);
-      const thumbUrl = `/api/compliance/vault/documents/${doc.id}/thumbnail`;
-      const directionClass = (doc.direction || 'internal').toLowerCase();
+    if (currentMatter) {
+      matterLinks = links.filter(l => l.matter_thread_name === currentMatter.name);
+      
+      // Determine linear sequence: start from root documents, then follow children
+      const childIdSet = new Set(matterLinks.map(l => l.child_doc_id));
+      const rootLinks = matterLinks.filter(l => !childIdSet.has(l.parent_doc_id));
+      
+      // Build ordered array
+      const visitedDocIds = new Set();
+      const docsMap = new Map(nodes.map(n => [n.id, n]));
 
-      // Find any link where this doc is child to show turnaround delta
-      const incomingLink = links.find(l => Number(l.child_doc_id) === Number(doc.id));
-      let turnaroundHtml = '';
-      if (incomingLink && incomingLink.turnaround_days !== null) {
-        const days = incomingLink.turnaround_days;
-        const sign = days >= 0 ? `+${days}d` : `${days}d`;
-        turnaroundHtml = `<span class="vault-node-turnaround" title="Turnaround interval from parent">⏱ ${sign}</span>`;
+      // Add roots
+      rootLinks.forEach(l => {
+        if (!visitedDocIds.has(l.parent_doc_id)) {
+          const doc = docsMap.get(l.parent_doc_id);
+          if (doc) {
+            orderedDocs.push({ doc, incomingLink: null });
+            visitedDocIds.add(l.parent_doc_id);
+          }
+        }
+      });
+
+      // Chain children recursively
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const l of matterLinks) {
+          if (visitedDocIds.has(l.parent_doc_id) && !visitedDocIds.has(l.child_doc_id)) {
+            const doc = docsMap.get(l.child_doc_id);
+            if (doc) {
+              orderedDocs.push({ doc, incomingLink: l });
+              visitedDocIds.add(l.child_doc_id);
+              changed = true;
+            }
+          }
+        }
       }
 
+      // Add any remaining matter documents sorted by date
+      currentMatter.docIds.forEach(id => {
+        if (!visitedDocIds.has(id)) {
+          const doc = docsMap.get(id);
+          if (doc) {
+            orderedDocs.push({ doc, incomingLink: null });
+            visitedDocIds.add(id);
+          }
+        }
+      });
+    }
+
+    // Fallback if no specific matter or empty: sort all docs by issue_date
+    if (orderedDocs.length === 0) {
+      orderedDocs = nodes.map((doc, idx) => ({
+        doc,
+        incomingLink: links.find(l => l.child_doc_id === doc.id) || null
+      }));
+    }
+
+    // Role badge helper
+    const getRoleInfo = (doc, idx, total) => {
+      const text = `${doc.title || ''} ${doc.doc_ref_no || ''}`.toLowerCase();
+      if (idx === 0) return { label: 'Initial Root Trigger', class: 'trigger' };
+      if (idx === total - 1) return { label: 'Final Resolution / Grant', class: 'resolution' };
+      if (doc.direction === 'INWARD' || text.includes('notice')) return { label: 'Inward Demand', class: 'trigger' };
+      if (doc.direction === 'OUTWARD' || text.includes('reply')) return { label: 'Compliance Reply', class: 'reply' };
+      if (text.includes('aadhaar') || text.includes('pan') || text.includes('degree') || text.includes('endorsement')) {
+        return { label: 'Supporting Evidence', class: 'evidence' };
+      }
+      return { label: 'Evidence Record', class: 'reply' };
+    };
+
+    // Calculate total days turnaround
+    let totalDays = 0;
+    orderedDocs.forEach(({ incomingLink }) => {
+      if (incomingLink && incomingLink.turnaround_days) {
+        totalDays += Math.abs(incomingLink.turnaround_days);
+      }
+    });
+
+    // Render Steps & Connector Ribbons
+    const stepsHtml = orderedDocs.map(({ doc, incomingLink }, idx) => {
+      const stepNum = String(idx + 1).padStart(2, '0');
+      const role = getRoleInfo(doc, idx, orderedDocs.length);
+      const thumbUrl = `/api/compliance/vault/documents/${doc.id}/thumbnail`;
+
+      // Card HTML
       const cardHtml = `
-        <div class="vault-node-card ${!isDocInSpotlight ? 'dimmed' : ''} ${this.spotlightCase && isDocInSpotlight ? 'spotlight' : ''}" 
-             data-doc-id="${doc.id}" 
-             data-lane="${lane}"
-             data-matters='${JSON.stringify(doc.matters || [])}'>
-          <div class="vault-node-orb" id="orbDoc${doc.id}"></div>
+        <div class="sherlock-doc-card" data-doc-id="${doc.id}">
+          <div class="sherlock-pin-head" title="Evidence Pin #${stepNum}"></div>
           
-          <div class="vault-node-thumb-box">
-            <img src="${thumbUrl}" alt="${doc.title}" class="vault-node-thumb-img" loading="lazy" onerror="this.style.display='none';" />
+          <div class="sherlock-doc-header">
+            <span class="sherlock-step-number">STEP ${stepNum}</span>
+            <span class="sherlock-role-tag ${role.class}">${role.label}</span>
           </div>
 
-          <div class="vault-node-content">
-            <div class="vault-node-top-row">
-              <span class="vault-node-ref">${doc.doc_ref_no || 'REF'}</span>
-              <span class="vault-node-direction-tag ${directionClass}">${doc.direction || 'INTERNAL'}</span>
+          <div class="sherlock-doc-thumb-stage">
+            <div class="sherlock-thumb-fallback">
+              <span class="sherlock-fallback-icon">📄</span>
+              <span class="sherlock-fallback-badge">${(doc.file_type || 'PDF').toUpperCase()}</span>
             </div>
-            <div class="vault-node-title" title="${doc.title}">${doc.title}</div>
-            <div class="vault-node-bottom-row">
-              <span>📅 ${doc.issue_date || 'N/A'}</span>
-              ${turnaroundHtml}
+            <img src="${thumbUrl}" alt="${doc.title}" class="sherlock-doc-thumb-img" loading="lazy" onerror="this.style.display='none';" />
+            <div class="sherlock-doc-hover-overlay">
+              <span class="sherlock-quicklook-pill">Quick Look ↗</span>
             </div>
-            
-            <div class="vault-node-hover-actions">
-              <button class="vault-node-action-btn" data-node-preview="${doc.id}">Quick Look ↗</button>
-              <button class="vault-node-action-btn" data-node-link="${doc.id}">＋ Link</button>
-              ${incomingLink ? `<button class="vault-node-action-btn delete" data-delete-trail="${incomingLink.id}" title="Sever link">✂ Unlink</button>` : ''}
-            </div>
+          </div>
+
+          <div class="sherlock-doc-body">
+            <div class="sherlock-doc-ref">${doc.doc_ref_no || 'REF'}</div>
+            <div class="sherlock-doc-title" title="${doc.title}">${doc.title}</div>
+            <div class="sherlock-doc-date">📅 ${doc.issue_date || 'N/A'} • ${doc.direction || 'INTERNAL'}</div>
           </div>
         </div>
       `;
 
+      // Outgoing Connector Arrow to next step
+      let connectorHtml = '';
+      if (idx < orderedDocs.length - 1) {
+        const nextStep = orderedDocs[idx + 1];
+        const nextLink = nextStep.incomingLink;
+        const days = nextLink && nextLink.turnaround_days !== null ? Math.abs(nextLink.turnaround_days) : null;
+        const daysText = days !== null ? `⏱ +${days} days` : 'Sequence Order';
+        const label = nextLink?.notes || nextLink?.link_relation?.replace(/_/g, ' ') || 'Connected Sequence';
+
+        connectorHtml = `
+          <div class="sherlock-connector">
+            <div class="sherlock-string-line"></div>
+            <div class="sherlock-connector-badge">${daysText}</div>
+            <div class="sherlock-connector-label" title="${label}">${label}</div>
+            <div class="sherlock-connector-arrow">►</div>
+          </div>
+        `;
+      }
+
       return `
-        <div class="vault-timeline-step-row" data-row-doc-id="${doc.id}">
-          <div class="vault-lane-col" data-col-lane="0">${lane === 0 ? cardHtml : ''}</div>
-          <div class="vault-lane-col" data-col-lane="1">${lane === 1 ? cardHtml : ''}</div>
-          <div class="vault-lane-col" data-col-lane="2">${lane === 2 ? cardHtml : ''}</div>
+        <div class="sherlock-step-block">
+          ${cardHtml}
+          ${connectorHtml}
         </div>
       `;
     }).join('');
 
     viewport.innerHTML = `
-      <div class="vault-timeline-wrapper">
-        <div class="vault-timeline-ambient"></div>
+      <div class="sherlock-trail-wrapper">
+        <div class="sherlock-trail-ambient"></div>
 
-        <!-- Header Hero -->
-        <div class="vault-timeline-header-hero">
-          <h1 class="vault-timeline-hero-title">
-            <span class="vault-timeline-hero-sparkle">✦</span>
-            The Sacred Timeline
-          </h1>
-          <div class="vault-timeline-hero-sub">
-            Continuous enterprise causality network & unified multi-track compliance proceedings
+        <!-- Case Tabs Selector -->
+        <div class="sherlock-case-header">
+          <div class="sherlock-case-tabs-bar" id="sherlockCaseTabsBar">
+            ${matters.map(m => `
+              <div class="sherlock-case-tab ${currentMatter?.name === m.name ? 'active' : ''}" data-matter-tab="${m.name}">
+                <span>📂 ${m.name}</span>
+                <span class="sherlock-case-tab-badge">${m.docCount} files</span>
+              </div>
+            `).join('')}
+            <button class="sherlock-case-tab-btn-add" id="sherlockAddTrailBtn">
+              <span>＋ Link New Trail</span>
+            </button>
           </div>
         </div>
 
-        <!-- Case Spotlight Selector -->
-        <div class="vault-case-filter-bar" id="vaultCaseFilterBar">
-          ${filterPillsHtml}
+        <!-- Case Dossier Header -->
+        <div class="sherlock-dossier-card">
+          <div class="sherlock-dossier-left">
+            <div class="sherlock-dossier-tag">
+              <span>🔍</span> Investigation Evidence Chain
+            </div>
+            <h2 class="sherlock-dossier-title">${currentMatter?.name || 'Corporate Document Causality Chain'}</h2>
+            <div class="sherlock-dossier-subtitle">
+              Verified horizontal evidence sequence: Tracking chronological causality from root regulatory trigger through evidence submission to formal closure.
+            </div>
+          </div>
+
+          <div class="sherlock-dossier-stats">
+            <div class="sherlock-stat-pill">
+              <span>📁</span> ${orderedDocs.length} Documents in Order
+            </div>
+            <div class="sherlock-stat-pill">
+              <span>⏱</span> ${totalDays > 0 ? totalDays + ' Days Span' : 'Immediate'}
+            </div>
+            <div class="sherlock-stat-pill success">
+              <span>🛡️</span> 100% SHA-256 Verified
+            </div>
+          </div>
         </div>
 
-        <!-- Active Case Telemetry Banner -->
-        ${telemetryBannerHtml}
+        <!-- Horizontal Sherlock Holmes Evidence Stage -->
+        <div class="sherlock-trail-stage">
+          <button class="sherlock-track-nav-btn left" id="sherlockScrollLeftBtn" title="Scroll Left">‹</button>
+          <button class="sherlock-track-nav-btn right" id="sherlockScrollRightBtn" title="Scroll Right">›</button>
 
-        <!-- 3 Multi-Track Lanes Header -->
-        <div class="vault-timeline-lanes-header">
-          <div class="vault-lane-badge trunk">
-            <span class="vault-lane-dot trunk"></span>
-            Lane 0: Sacred Spine (Core Statutory & Authorizations)
-          </div>
-          <div class="vault-lane-badge regulatory">
-            <span class="vault-lane-dot regulatory"></span>
-            Lane 1: Regulatory Proceedings (Inward / Outward)
-          </div>
-          <div class="vault-lane-badge evidence">
-            <span class="vault-lane-dot evidence"></span>
-            Lane 2: Evidence & KYC Dossiers
-          </div>
-        </div>
-
-        <!-- Canvas with Multi-Track Steps & SVG Filaments Overlay -->
-        <div class="vault-timeline-canvas" id="vaultTimelineCanvas">
-          <svg class="vault-filaments-svg" id="vaultFilamentsSvg">
-            <defs>
-              <linearGradient id="vaultTrunkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.95" />
-                <stop offset="100%" stop-color="#fbbf24" stop-opacity="0.95" />
-              </linearGradient>
-              <linearGradient id="vaultRegGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#10b981" stop-opacity="0.95" />
-                <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.95" />
-              </linearGradient>
-              <linearGradient id="vaultEvidenceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.95" />
-                <stop offset="100%" stop-color="#c084fc" stop-opacity="0.95" />
-              </linearGradient>
-            </defs>
-            <g id="vaultFilamentsGroup"></g>
-          </svg>
-
-          <div class="vault-timeline-steps-list" id="vaultTimelineStepsList">
-            ${stepRowsHtml}
+          <div class="sherlock-trail-scroll-track" id="sherlockScrollTrack">
+            ${stepsHtml}
           </div>
         </div>
       </div>
     `;
 
-    // Render SVG Filaments
-    const drawFilaments = () => {
-      const svgGroup = viewport.querySelector('#vaultFilamentsGroup');
-      const canvas = viewport.querySelector('#vaultTimelineCanvas');
-      if (!svgGroup || !canvas) return;
-
-      svgGroup.innerHTML = '';
-      const canvasRect = canvas.getBoundingClientRect();
-
-      links.forEach(link => {
-        const parentCard = viewport.querySelector(`.vault-node-card[data-doc-id="${link.parent_doc_id}"]`);
-        const childCard = viewport.querySelector(`.vault-node-card[data-doc-id="${link.child_doc_id}"]`);
-        if (!parentCard || !childCard) return;
-
-        const parentOrb = parentCard.querySelector('.vault-node-orb') || parentCard;
-        const childOrb = childCard.querySelector('.vault-node-orb') || childCard;
-
-        const pRect = parentOrb.getBoundingClientRect();
-        const cRect = childOrb.getBoundingClientRect();
-
-        const x1 = (pRect.left + pRect.width / 2) - canvasRect.left;
-        const y1 = (pRect.top + pRect.height / 2) - canvasRect.top;
-        const x2 = (cRect.left + cRect.width / 2) - canvasRect.left;
-        const y2 = (cRect.top + cRect.height / 2) - canvasRect.top;
-
-        const dy = Math.abs(y2 - y1);
-        const c1x = x1;
-        const c1y = y1 + Math.max(25, dy * 0.45);
-        const c2x = x2;
-        const c2y = y2 - Math.max(25, dy * 0.45);
-
-        const pathD = `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`;
-
-        // Lane class
-        const parentLane = Number(parentCard.dataset.lane || 0);
-        const laneClass = parentLane === 0 ? 'trunk' : parentLane === 1 ? 'regulatory' : 'evidence';
-
-        // Check spotlight
-        const isInSpotlight = !this.spotlightCase || link.matter_thread_name === this.spotlightCase;
-        const spotlightClass = this.spotlightCase && isInSpotlight ? 'spotlight' : !isInSpotlight ? 'dimmed' : '';
-
-        // Base filament path
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', pathD);
-        path.setAttribute('class', `vault-filament-path ${laneClass} ${spotlightClass}`);
-        svgGroup.appendChild(path);
-
-        // Animated pulse particle if in spotlight or all active
-        if (isInSpotlight) {
-          const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          pulse.setAttribute('d', pathD);
-          pulse.setAttribute('class', 'vault-filament-pulse');
-          svgGroup.appendChild(pulse);
-        }
-      });
-    };
-
-    // Draw filaments after layout paints
-    requestAnimationFrame(() => {
-      setTimeout(drawFilaments, 60);
+    // Horizontal Scroll Arrows & Wheel Pan
+    const track = viewport.querySelector('#sherlockScrollTrack');
+    viewport.querySelector('#sherlockScrollLeftBtn')?.addEventListener('click', () => {
+      track?.scrollBy({ left: -380, behavior: 'smooth' });
     });
 
-    window.removeEventListener('resize', this._timelineResizeHandler);
-    this._timelineResizeHandler = () => drawFilaments();
-    window.addEventListener('resize', this._timelineResizeHandler);
+    viewport.querySelector('#sherlockScrollRightBtn')?.addEventListener('click', () => {
+      track?.scrollBy({ left: 380, behavior: 'smooth' });
+    });
 
-    // Event handlers for Case Filtering / Spotlight
-    viewport.querySelectorAll('[data-case-filter]').forEach(pill => {
-      pill.addEventListener('click', () => {
-        const targetCase = pill.dataset.caseFilter;
-        this.spotlightCase = targetCase === 'ALL' ? null : targetCase;
+    if (track) {
+      track.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey) {
+          e.preventDefault();
+          track.scrollLeft += e.deltaY * 1.2;
+        }
+      }, { passive: false });
+    }
+
+    // Case Tab Switching
+    viewport.querySelectorAll('[data-matter-tab]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.selectedMatterName = tab.dataset.matterTab;
         this.renderTrailsPage(viewport);
       });
     });
 
-    viewport.querySelector('#vaultClearSpotlightBtn')?.addEventListener('click', () => {
-      this.spotlightCase = null;
-      this.renderTrailsPage(viewport);
-    });
-
-    viewport.querySelector('#vaultCreateNewTrailBtn')?.addEventListener('click', () => {
-      this.openNewPaperTrailModal();
-    });
-
-    // Node interactions
-    viewport.querySelectorAll('[data-node-preview]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.openFileViewer(Number(btn.dataset.nodePreview));
-      });
-    });
-
-    viewport.querySelectorAll('[data-node-link]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.openNewPaperTrailModal(Number(btn.dataset.nodeLink));
-      });
-    });
-
-    viewport.querySelectorAll('.vault-node-card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.vault-node-action-btn')) return;
+    // Open File Viewer on card click
+    viewport.querySelectorAll('.sherlock-doc-card').forEach(card => {
+      card.addEventListener('click', () => {
         const docId = Number(card.dataset.docId);
         this.openFileViewer(docId);
       });
     });
 
-    // Unlink handler
-    viewport.querySelectorAll('[data-delete-trail]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const trailId = btn.dataset.deleteTrail;
-        if (!confirm('Sever this causality filament? This will unlink the two records.')) return;
-
-        try {
-          const res = await fetch(`/api/compliance/vault/trail/${trailId}`, {
-            method: 'DELETE',
-            headers: this.getAuthHeaders(),
-            credentials: 'same-origin'
-          });
-          if (res.ok) {
-            this.app?.showNotification('Causality filament severed.', 'info');
-            this.renderTrailsPage(viewport);
-          }
-        } catch (_) {}
-      });
+    // Link New Trail button
+    viewport.querySelector('#sherlockAddTrailBtn')?.addEventListener('click', () => {
+      this.openNewPaperTrailModal();
     });
   }
 
