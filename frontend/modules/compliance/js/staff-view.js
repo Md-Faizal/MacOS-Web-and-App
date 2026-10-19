@@ -635,6 +635,40 @@ export class StaffView {
           ` : ''}
         </div>
 
+        <!-- 3b. Digital Signature & Auto-Signing Authority -->
+        <div class="staff-section-glass-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <span>Digital Signature & Auto-Sign Seal</span>
+          <button class="staff-doc-action-pill" id="staffUpdateSignatureBtn" style="padding: 3px 10px; font-size: 11px; background: rgba(255,255,255,0.22); color: #fff;">
+            ${staff.signature_data ? '✏️ Change Signature' : '🖋️ Upload Signature'}
+          </button>
+        </div>
+        <div class="staff-glass-card">
+          <div class="staff-glass-row">
+            <span class="staff-glass-label">signing status</span>
+            <span class="staff-glass-value" style="font-weight: 700;">
+              ${staff.is_authorized_signatory || staff.is_schedule_t_technical ? '✓ Authorized Signatory for Official Documents' : 'Not Configured for Auto-Signing'}
+            </span>
+          </div>
+          <div class="staff-glass-row">
+            <span class="staff-glass-label">signature designation</span>
+            <span class="staff-glass-value">${staff.signature_title || staff.designation || 'Authorized Signatory'}</span>
+          </div>
+          <div class="staff-glass-row" style="align-items: center;">
+            <span class="staff-glass-label">specimen signature</span>
+            <div class="staff-glass-value" style="padding: 6px 0;">
+              ${staff.signature_data ? `
+                <div style="background: rgba(255,255,255,0.92); padding: 8px 16px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                  <img src="${staff.signature_data}" alt="Signature" style="max-height: 48px; max-width: 180px; object-fit: contain; filter: contrast(1.1);">
+                </div>
+              ` : `
+                <div style="font-size: 12px; color: rgba(255,255,255,0.7); font-style: italic;">
+                  No specimen signature uploaded. Click "Upload Signature" above to draw or upload PNG.
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+
         <!-- 4. Attached KYC & Documents Vault with Blurred Previews -->
         <div class="staff-section-glass-header">Verified Digital Credentials & Cloud Vault (Blurred Previews)</div>
         <div class="staff-docs-preview-grid">
@@ -725,6 +759,11 @@ export class StaffView {
 
     card.querySelector('#staffPosterRow')?.addEventListener('click', () => {
       this.openEditStaffModal(staff);
+    });
+
+    card.querySelector('#staffUpdateSignatureBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openSignatureModal(staff);
     });
 
     // Document Inspector & Cloud listeners
@@ -953,6 +992,8 @@ export class StaffView {
         address: form.address.value.trim(),
         is_schedule_t_technical: form.is_schedule_t_technical.checked ? 1 : 0,
         technical_reg_no: form.technical_reg_no.value.trim(),
+        signature_title: form.signature_title ? form.signature_title.value.trim() : (staffData.signature_title || form.designation.value.trim()),
+        is_authorized_signatory: form.is_authorized_signatory ? (form.is_authorized_signatory.checked ? 1 : 0) : (staffData.is_authorized_signatory || 0),
         status: 'ACTIVE'
       };
 
@@ -1032,6 +1073,254 @@ export class StaffView {
     this.renderSidebarList();
     this.renderDetailCard();
     this.app?.showNotification?.('Staff member deleted.', 'info');
+  }
+
+  // Signature Upload & Drawing Modal
+  openSignatureModal(staff) {
+    const existing = document.getElementById('staffSignatureModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'staff-modal-overlay';
+    overlay.id = 'staffSignatureModal';
+    overlay.style.zIndex = '2147483647';
+
+    overlay.innerHTML = `
+      <div class="staff-modal-box" style="max-width: 540px;">
+        <div class="staff-modal-header">
+          <h3>Digital Signature Specimen</h3>
+          <button class="staff-modal-close-btn" id="closeSigModalBtn">✕</button>
+        </div>
+        <div class="staff-modal-form-content">
+          <div style="font-size: 13px; color: #475569; margin-bottom: 12px; line-height: 1.5;">
+            Upload or draw the authorized signature for <strong>${staff.full_name}</strong> (${staff.emp_code}). This signature will be applied automatically when generating sealed company documents and letters.
+          </div>
+
+          <div class="staff-input-group" style="margin-bottom: 12px;">
+            <label>Signature Designation Title</label>
+            <input type="text" id="sigTitleInput" value="${staff.signature_title || staff.designation || 'Authorized Signatory'}" placeholder="e.g. Chief Medical Officer / Managing Director">
+          </div>
+
+          <!-- Tabs: Draw vs Upload -->
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 8px;">
+            <button type="button" class="staff-chip active" id="tabDrawSig" style="font-size: 12px;">✏️ Draw Signature</button>
+            <button type="button" class="staff-chip" id="tabUploadSig" style="font-size: 12px;">📁 Upload Image (PNG/JPG)</button>
+          </div>
+
+          <!-- Drawing Canvas Pane -->
+          <div id="sigDrawPane">
+            <div style="border: 2px dashed #cbd5e1; border-radius: 8px; background: #ffffff; position: relative; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);">
+              <canvas id="sigCanvas" width="480" height="180" style="width: 100%; height: 180px; display: block; cursor: crosshair; touch-action: none;"></canvas>
+              <div style="position: absolute; bottom: 8px; left: 12px; font-size: 11px; color: #94a3b8; pointer-events: none;">
+                Sign above with mouse, stylus, or touch
+              </div>
+              <button type="button" id="clearSigCanvasBtn" style="position: absolute; top: 8px; right: 8px; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer;">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- Upload Pane -->
+          <div id="sigUploadPane" style="display: none;">
+            <div style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 24px; text-align: center; background: #f8fafc;">
+              <input type="file" id="sigFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;">
+              <button type="button" id="triggerSigUploadBtn" class="cmp-btn-cancel" style="margin-bottom: 8px; background: #fff;">
+                Select Signature Image ↗
+              </button>
+              <div style="font-size: 12px; color: #64748b;">Recommended transparent PNG, max 1MB</div>
+              <div id="sigUploadPreviewContainer" style="margin-top: 12px; display: none;">
+                <img id="sigUploadPreview" src="" alt="Preview" style="max-height: 80px; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px; background: #fff;">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="sigAuthBox" checked style="width: auto;">
+            <label for="sigAuthBox" style="font-size: 13px; font-weight: 600; color: #1e293b; cursor: pointer; margin-bottom: 0;">
+              Authorize this signature for automated batch seals & letterhead issuance
+            </label>
+          </div>
+        </div>
+
+        <div class="staff-modal-actions-footer">
+          <button type="button" class="cmp-btn-cancel" id="cancelSigModalBtn">Cancel</button>
+          <button type="button" class="cmp-btn-save" id="saveSignatureBtn">Save Specimen Signature</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeModal = () => overlay.remove();
+    overlay.querySelector('#closeSigModalBtn')?.addEventListener('click', closeModal);
+    overlay.querySelector('#cancelSigModalBtn')?.addEventListener('click', closeModal);
+
+    // Tab Switching
+    const tabDraw = overlay.querySelector('#tabDrawSig');
+    const tabUpload = overlay.querySelector('#tabUploadSig');
+    const drawPane = overlay.querySelector('#sigDrawPane');
+    const uploadPane = overlay.querySelector('#sigUploadPane');
+
+    tabDraw?.addEventListener('click', () => {
+      tabDraw.classList.add('active');
+      tabUpload.classList.remove('active');
+      drawPane.style.display = 'block';
+      uploadPane.style.display = 'none';
+    });
+
+    tabUpload?.addEventListener('click', () => {
+      tabUpload.classList.add('active');
+      tabDraw.classList.remove('active');
+      drawPane.style.display = 'none';
+      uploadPane.style.display = 'block';
+    });
+
+    // Canvas Drawing Logic
+    const canvas = overlay.querySelector('#sigCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+
+    let isDrawing = false;
+    let hasDrawn = false;
+
+    const getPos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    };
+
+    const startDraw = (e) => {
+      isDrawing = true;
+      hasDrawn = true;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      e.preventDefault();
+    };
+
+    const draw = (e) => {
+      if (!isDrawing) return;
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      e.preventDefault();
+    };
+
+    const stopDraw = () => {
+      if (isDrawing) {
+        ctx.closePath();
+        isDrawing = false;
+      }
+    };
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseleave', stopDraw);
+
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDraw);
+
+    overlay.querySelector('#clearSigCanvasBtn')?.addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawn = false;
+    });
+
+    // File Upload Logic
+    let uploadedBase64 = null;
+    const fileInput = overlay.querySelector('#sigFileInput');
+    const triggerUploadBtn = overlay.querySelector('#triggerSigUploadBtn');
+    const previewContainer = overlay.querySelector('#sigUploadPreviewContainer');
+    const previewImg = overlay.querySelector('#sigUploadPreview');
+
+    triggerUploadBtn?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          uploadedBase64 = event.target.result;
+          previewImg.src = uploadedBase64;
+          previewContainer.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Save Signature Action
+    overlay.querySelector('#saveSignatureBtn')?.addEventListener('click', async () => {
+      let finalSignatureData = null;
+      if (tabUpload.classList.contains('active')) {
+        finalSignatureData = uploadedBase64;
+      } else {
+        if (hasDrawn) {
+          finalSignatureData = canvas.toDataURL('image/png');
+        }
+      }
+
+      if (!finalSignatureData && !staff.signature_data) {
+        alert('Please draw a signature or upload an image file first.');
+        return;
+      }
+
+      const sigTitle = overlay.querySelector('#sigTitleInput').value.trim();
+      const isAuth = overlay.querySelector('#sigAuthBox').checked;
+
+      await this.saveStaffSignature(staff.id, {
+        signature_data: finalSignatureData || staff.signature_data,
+        signature_title: sigTitle,
+        is_authorized_signatory: isAuth ? 1 : 0
+      });
+
+      closeModal();
+    });
+  }
+
+  // API Call to save signature specifically
+  async saveStaffSignature(staffId, data) {
+    try {
+      const token = typeof window !== 'undefined'
+        ? (localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || localStorage.getItem('token'))
+        : null;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/compliance/staff/${staffId}/signature`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+        credentials: 'same-origin'
+      });
+
+      if (res.ok) {
+        await this.loadStaffFromAPI();
+        this.selectedStaffId = staffId;
+        this.renderSidebarList();
+        this.renderDetailCard();
+        this.app?.showNotification?.('Digital signature registered and authorized.', 'success');
+      } else {
+        // Local fallback update
+        const idx = this.staffList.findIndex(s => Number(s.id) === Number(staffId));
+        if (idx !== -1) {
+          this.staffList[idx] = { ...this.staffList[idx], ...data };
+          this.renderSidebarList();
+          this.renderDetailCard();
+          this.app?.showNotification?.('Digital signature saved locally.', 'success');
+        }
+      }
+    } catch (err) {
+      console.warn('[StaffView] Save signature error:', err.message);
+    }
   }
 
   // Render Blurred Document Preview Cards

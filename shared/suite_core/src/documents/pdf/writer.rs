@@ -64,11 +64,18 @@ pub struct LinkAnnotation {
     pub url: String,
 }
 
+pub struct PdfImage {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
 pub struct PdfCanvas {
     pub width: f64,
     pub height: f64,
     stream: String,
     pages: Vec<PdfPage>,
+    images: Vec<PdfImage>,
     current_stroke: PdfColor,
     current_fill: PdfColor,
     current_line_width: f64,
@@ -91,6 +98,7 @@ impl PdfCanvas {
             height: 595.28,
             stream: String::with_capacity(16384),
             pages: Vec::new(),
+            images: Vec::new(),
             current_stroke: PdfColor::BLACK,
             current_fill: PdfColor::BLACK,
             current_line_width: 1.0,
@@ -104,6 +112,7 @@ impl PdfCanvas {
             height: 841.89,
             stream: String::with_capacity(16384),
             pages: Vec::new(),
+            images: Vec::new(),
             current_stroke: PdfColor::BLACK,
             current_fill: PdfColor::BLACK,
             current_line_width: 1.0,
@@ -134,6 +143,41 @@ impl PdfCanvas {
                 height,
                 url: url.to_string(),
             });
+        }
+    }
+
+    /// Register a JPEG image in the PDF catalog. Returns 1-based image_id.
+    pub fn add_jpeg_image(&mut self, data: Vec<u8>, width: u32, height: u32) -> Result<usize, String> {
+        let (w, h) = if width > 0 && height > 0 {
+            (width, height)
+        } else {
+            parse_jpeg_size(&data).ok_or_else(|| "Failed to parse JPEG dimensions".to_string())?
+        };
+        self.images.push(PdfImage {
+            width: w,
+            height: h,
+            data,
+        });
+        Ok(self.images.len())
+    }
+
+    /// Draw a registered image at bottom-left `(x, y)` with given dimensions in points.
+    pub fn draw_image(&mut self, image_id: usize, x: f64, y: f64, width: f64, height: f64) {
+        if image_id > 0 && image_id <= self.images.len() {
+            self.stream.push_str(&format!(
+                "q {:.2} 0 0 {:.2} {:.2} {:.2} cm /Im{} Do Q\n",
+                width, height, x, y, image_id
+            ));
+        }
+    }
+
+    /// Retrieve the parsed dimensions (width, height) of a registered image.
+    pub fn get_image_size(&self, image_id: usize) -> Option<(u32, u32)> {
+        if image_id > 0 && image_id <= self.images.len() {
+            let img = &self.images[image_id - 1];
+            Some((img.width, img.height))
+        } else {
+            None
         }
     }
 
@@ -661,6 +705,19 @@ impl PdfCanvas {
             /GS_a100 << /Type /ExtGState /ca 1.00 /CA 1.00 >> \
         >>";
 
+        let image_base_id = next_annot_id;
+        let xobjects_entry = if self.images.is_empty() {
+            String::new()
+        } else {
+            let mut s = String::from(" /XObject << ");
+            for (i, _) in self.images.iter().enumerate() {
+                let img_id = image_base_id + i;
+                s.push_str(&format!("/Im{} {} 0 R ", i + 1, img_id));
+            }
+            s.push_str(">>");
+            s
+        };
+
         // Page + Stream objects (obj 15/16, 17/18, …)
         for (index, page) in self.pages.iter().enumerate() {
             let page_id = page_object_ids[index];
@@ -680,7 +737,7 @@ impl PdfCanvas {
 
             objects.push(
                 format!(
-                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 10 0 R >> /ExtGState {ext_gstate} >> /Contents {stream_id} 0 R{annots_entry} >>",
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 10 0 R >>{xobjects_entry} /ExtGState {ext_gstate} >> /Contents {stream_id} 0 R{annots_entry} >>",
                     page.width, page.height
                 )
                 .into_bytes(),
@@ -708,6 +765,17 @@ impl PdfCanvas {
                 let _ = page_idx; // used implicitly through iteration order
                 objects.push(obj.into_bytes());
             }
+        }
+
+        // Image objects (/XObject /Image /Filter /DCTDecode)
+        for image in &self.images {
+            let mut img_obj = format!(
+                "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n",
+                image.width, image.height, image.data.len()
+            ).into_bytes();
+            img_obj.extend_from_slice(&image.data);
+            img_obj.extend_from_slice(b"\nendstream");
+            objects.push(img_obj);
         }
 
         // ── Phase 3: serialise objects & cross-reference table ──
@@ -837,4 +905,46 @@ fn char_width(font: PdfFont, c: char) -> f64 {
             _ => 556.0,
         },
     }
+}
+
+pub fn parse_jpeg_size(data: &[u8]) -> Option<(u32, u32)> {
+    let mut i = 2;
+    let len = data.len();
+    if len < 4 || data[0] != 0xFF || data[1] != 0xD8 {
+        return None;
+    }
+    while i + 4 < len {
+        if data[i] != 0xFF {
+            i += 1;
+            continue;
+        }
+        let marker = data[i + 1];
+        i += 2;
+        if marker == 0xFF || marker == 0x00 {
+            continue;
+        }
+        if matches!(marker, 0xC0..=0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF) {
+            if i + 7 < len {
+                let h = u16::from_be_bytes([data[i + 3], data[i + 4]]) as u32;
+                let w = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
+                if w > 0 && h > 0 {
+                    return Some((w, h));
+                }
+            }
+            return None;
+        }
+        if marker == 0xDA || marker == 0xD9 {
+            break;
+        }
+        if i + 2 <= len {
+            let seg_len = u16::from_be_bytes([data[i], data[i + 1]]) as usize;
+            if seg_len < 2 {
+                break;
+            }
+            i += seg_len;
+        } else {
+            break;
+        }
+    }
+    None
 }

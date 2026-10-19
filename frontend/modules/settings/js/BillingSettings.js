@@ -233,6 +233,65 @@ export class BillingSettingsComponent {
                             <label class="billing-label" for="settingCompanyOfficeAddr">Office / Correspondence Address</label>
                             <input type="text" id="settingCompanyOfficeAddr" class="billing-input" value="${this.escapeHtml(officeAddr)}" placeholder="e.g. D1, Basera Complex, Dumduma, BBSR - 751019" />
                         </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyAyush">AYUSH Drug Mfg Lic (Form 25D)</label>
+                            <input type="text" id="settingCompanyAyush" class="billing-input" value="${this.escapeHtml(this.settings.company_ayush_license || 'OR-02/AYUR')}" placeholder="e.g. OR-02/AYUR" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyGmp">GMP / Schedule T Ref</label>
+                            <input type="text" id="settingCompanyGmp" class="billing-input" value="${this.escapeHtml(this.settings.company_gmp_ref || 'GMP-OD-AYU-2024-08')}" placeholder="e.g. GMP-OD-AYU-2024-08" />
+                        </div>
+
+                        <div class="billing-field-group" style="grid-column: span 2;">
+                            <label class="billing-label" for="settingCompanyEmail">Official Compliance / Billing Email</label>
+                            <input type="email" id="settingCompanyEmail" class="billing-input" value="${this.escapeHtml(this.settings.company_email || 'compliance@utkalchemical.com')}" placeholder="e.g. compliance@utkalchemical.com" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2b. Proprietor Specimen Signature & Authorized Seal -->
+                <div class="billing-card">
+                    <div class="billing-card-header">
+                        <div>
+                            <div class="billing-card-title">
+                                <span>🖋️</span>
+                                <span>Proprietor Specimen Signature & Digital Authority Seal</span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                Used automatically when generating official company letters, notices, authorized invoices, and credit notes.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="billing-grid-2">
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingProprietorName">Proprietor / Signatory Full Name</label>
+                            <input type="text" id="settingProprietorName" class="billing-input" value="${this.escapeHtml(this.settings.proprietor_name || 'MD  FAIZAL')}" placeholder="e.g. MD  FAIZAL" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingProprietorTitle">Designation / Signing Authority Title</label>
+                            <input type="text" id="settingProprietorTitle" class="billing-input" value="${this.escapeHtml(this.settings.proprietor_title || 'Proprietor & Managing Director')}" placeholder="e.g. Proprietor & Managing Director" />
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
+                        <div class="billing-label" style="margin-bottom: 8px;">Specimen Signature (Drawn or Uploaded Transparent PNG)</div>
+                        <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+                            <div style="border: 1.5px dashed var(--settings-row-border, rgba(255, 255, 255, 0.2)); border-radius: 8px; background: rgba(255, 255, 255, 0.95); padding: 8px; width: 320px; height: 110px; display: flex; align-items: center; justify-content: center; position: relative;">
+                                <canvas id="proprietorSigCanvas" width="300" height="94" style="width: 300px; height: 94px; cursor: crosshair; touch-action: none;"></canvas>
+                                <button type="button" id="clearProprietorSigBtn" style="position: absolute; top: 4px; right: 4px; font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">Clear</button>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+                                <input type="file" id="proprietorSigFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                                <button type="button" id="uploadProprietorSigBtn" class="billing-save-btn" style="padding: 6px 14px; font-size: 12px; background: rgba(255,255,255,0.12); color: var(--settings-text, #fff); border: 1px solid var(--settings-row-border, rgba(255,255,255,0.2));">
+                                    <span>📁</span> <span>Upload Signature Image</span>
+                                </button>
+                                <span style="font-size: 11px; opacity: 0.7;">Or draw your signature on the pad to the left.</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -475,6 +534,87 @@ export class BillingSettingsComponent {
     }
 
     attachEventListeners() {
+        // Proprietor Signature Canvas & Upload Binding
+        const propCanvas = this.container.querySelector('#proprietorSigCanvas');
+        if (propCanvas) {
+            const ctx = propCanvas.getContext('2d');
+            ctx.lineWidth = 2.2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#0f172a';
+
+            if (this.settings.proprietor_signature_data) {
+                const img = new Image();
+                img.onload = () => {
+                    ctx.clearRect(0, 0, propCanvas.width, propCanvas.height);
+                    ctx.drawImage(img, 10, 10, propCanvas.width - 20, propCanvas.height - 20);
+                };
+                img.src = this.settings.proprietor_signature_data;
+            }
+
+            let isDrawing = false;
+            const getPos = (e) => {
+                const rect = propCanvas.getBoundingClientRect();
+                const scaleX = propCanvas.width / rect.width;
+                const scaleY = propCanvas.height / rect.height;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+            };
+            const startDraw = (e) => {
+                isDrawing = true;
+                const pos = getPos(e);
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                e.preventDefault();
+            };
+            const draw = (e) => {
+                if (!isDrawing) return;
+                const pos = getPos(e);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+                e.preventDefault();
+            };
+            const stopDraw = () => {
+                if (isDrawing) {
+                    ctx.closePath();
+                    isDrawing = false;
+                    this.settings.proprietor_signature_data = propCanvas.toDataURL('image/png');
+                }
+            };
+            propCanvas.addEventListener('mousedown', startDraw);
+            propCanvas.addEventListener('mousemove', draw);
+            propCanvas.addEventListener('mouseup', stopDraw);
+            propCanvas.addEventListener('mouseleave', stopDraw);
+            propCanvas.addEventListener('touchstart', startDraw, { passive: false });
+            propCanvas.addEventListener('touchmove', draw, { passive: false });
+            propCanvas.addEventListener('touchend', stopDraw);
+
+            this.container.querySelector('#clearProprietorSigBtn')?.addEventListener('click', () => {
+                ctx.clearRect(0, 0, propCanvas.width, propCanvas.height);
+                this.settings.proprietor_signature_data = '';
+            });
+
+            const uploadBtn = this.container.querySelector('#uploadProprietorSigBtn');
+            const fileInput = this.container.querySelector('#proprietorSigFileInput');
+            uploadBtn?.addEventListener('click', () => fileInput?.click());
+            fileInput?.addEventListener('change', (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        this.settings.proprietor_signature_data = ev.target.result;
+                        const img = new Image();
+                        img.onload = () => {
+                            ctx.clearRect(0, 0, propCanvas.width, propCanvas.height);
+                            ctx.drawImage(img, 10, 10, propCanvas.width - 20, propCanvas.height - 20);
+                        };
+                        img.src = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
         // 1. Duplex Printing Toggle
         const toggleDuplexBtn = this.container.querySelector('#toggleDuplexPrint');
         if (toggleDuplexBtn) {
@@ -803,6 +943,12 @@ export class BillingSettingsComponent {
             company_pan: (this.container.querySelector('#settingCompanyPan')?.value?.trim() || 'AIDPF4446J').toUpperCase(),
             company_address_factory: this.container.querySelector('#settingCompanyFactAddr')?.value?.trim() || '',
             company_address_office: this.container.querySelector('#settingCompanyOfficeAddr')?.value?.trim() || '',
+            company_email: this.container.querySelector('#settingCompanyEmail')?.value?.trim() || '',
+            company_ayush_license: this.container.querySelector('#settingCompanyAyush')?.value?.trim() || '',
+            company_gmp_ref: this.container.querySelector('#settingCompanyGmp')?.value?.trim() || '',
+            proprietor_name: this.container.querySelector('#settingProprietorName')?.value?.trim() || 'MD  FAIZAL',
+            proprietor_title: this.container.querySelector('#settingProprietorTitle')?.value?.trim() || 'Proprietor & Managing Director',
+            proprietor_signature_data: this.settings.proprietor_signature_data || '',
             bank_show_mmid: showMmid,
             payment_upi_id: this.container.querySelector('#settingUpiId')?.value || '',
             portal_base_url: this.container.querySelector('#settingPortalUrl')?.value || '',

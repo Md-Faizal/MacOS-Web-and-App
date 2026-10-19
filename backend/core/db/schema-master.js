@@ -1009,6 +1009,9 @@ CREATE TABLE IF NOT EXISTS company_staff (
   address TEXT,
   is_schedule_t_technical INTEGER DEFAULT 0,
   technical_reg_no TEXT,
+  signature_data TEXT,
+  signature_title TEXT,
+  is_authorized_signatory INTEGER DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'ACTIVE',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -1118,8 +1121,12 @@ CREATE TABLE IF NOT EXISTS company_vault_documents (
   signatory_name TEXT,
   signatory_title TEXT,
   signatory_reg_no TEXT,
+  signature_image TEXT,
+  signatory_staff_id INTEGER,
   verification_hash TEXT,
   is_watermarked INTEGER DEFAULT 1,
+  retention_period_years INTEGER DEFAULT 5,
+  is_legal_hold INTEGER DEFAULT 0,
   file_path TEXT,
   file_name TEXT,
   file_size INTEGER,
@@ -1132,6 +1139,16 @@ CREATE TABLE IF NOT EXISTS company_vault_documents (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (dir_id) REFERENCES vault_directories(id) ON DELETE SET NULL
+);
+
+-- Application Settings Master
+CREATE TABLE IF NOT EXISTS app_settings (
+  id TEXT PRIMARY KEY,
+  setting_key TEXT NOT NULL UNIQUE,
+  setting_value TEXT NOT NULL,
+  setting_type TEXT DEFAULT 'string',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Paper Trail & Causality Linkage Graph

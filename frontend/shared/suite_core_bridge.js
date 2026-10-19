@@ -49,21 +49,24 @@ class SuiteCoreBridge {
   /**
    * Browser asynchronous initialization with deduplicated promise
    */
-  static async initBrowser(customUrl = null) {
-    if (this.isWasmLoaded()) return true;
-    if (wasmInitPromise) return wasmInitPromise;
+  static async initBrowser(customUrl = null, forceReload = false) {
+    if (this.isWasmLoaded() && !forceReload) return true;
+    if (wasmInitPromise && !forceReload) return wasmInitPromise;
     wasmInitPromise = (async () => {
-      const candidates = customUrl ? [customUrl] : ['/suite_core.wasm', '/shared/suite_core.wasm', '/public/suite_core.wasm'];
+      const vTag = `v=${Date.now()}`;
+      const candidates = customUrl 
+        ? [customUrl.includes('?') ? customUrl : `${customUrl}?${vTag}`] 
+        : [`/shared/suite_core.wasm?${vTag}`, `/suite_core.wasm?${vTag}`, `/public/suite_core.wasm?${vTag}`];
       for (const url of candidates) {
         try {
-          const response = await fetch(url);
+          const response = await fetch(url, { cache: 'no-cache' });
           if (response.ok) {
             const bytes = await response.arrayBuffer();
             const { instance } = await WebAssembly.instantiate(bytes, {});
             wasmInstance = instance;
             wasmMemory = instance.exports.memory;
             if (typeof console !== 'undefined' && console.debug) {
-              console.debug(`[LOAD] suite_core_bridge.js: WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
+              console.debug(`[LOAD] suite_core_bridge.js: Fresh WebAssembly Core Loaded from ${url} (WASM Accelerated: YES)`);
             }
             return true;
           }
@@ -742,13 +745,51 @@ class SuiteCoreBridge {
    * Pure Rust Letterhead Document PDF Renderer
    * Returns base64 or Buffer/Blob of generated PDF
    */
+  static _normalizeLetterheadPayload(payload = {}) {
+    return {
+      ...payload,
+      is_watermarked: Boolean(payload.is_watermarked === true || payload.is_watermarked === 1),
+      show_page_numbers: payload.show_page_numbers !== false && payload.show_page_numbers !== 0
+    };
+  }
+
   static renderLetterheadPdf(payload = {}) {
     if (!this.isWasmLoaded()) {
       throw new Error('[SuiteCoreBridge] WASM not initialized for renderLetterheadPdf');
     }
-    const res = this.callWasmJson('suite_render_letterhead_pdf', payload);
+    const res = this.callWasmJson('suite_render_letterhead_pdf', this._normalizeLetterheadPayload(payload));
     if (!res || !res.success) {
       throw new Error(res?.error || 'Failed to render letterhead document PDF');
+    }
+    return res;
+  }
+
+  /**
+   * Pure Rust Letterhead Word (.docx) Document Renderer
+   * Returns base64 of generated DOCX OpenXML zip package
+   */
+  static renderLetterheadDocx(payload = {}) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WASM not initialized for renderLetterheadDocx');
+    }
+    const res = this.callWasmJson('suite_render_letterhead_docx', this._normalizeLetterheadPayload(payload));
+    if (!res || !res.success) {
+      throw new Error(res?.error || 'Failed to render letterhead Word (.docx) document');
+    }
+    return res;
+  }
+
+  /**
+   * Pure Rust Letterhead Vector SVG Renderer
+   * Returns instant SVG string with 100% pixel-accurate layout of PDF
+   */
+  static renderLetterheadSvg(payload = {}) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WASM not initialized for renderLetterheadSvg');
+    }
+    const res = this.callWasmJson('suite_render_letterhead_svg', this._normalizeLetterheadPayload(payload));
+    if (!res || !res.success) {
+      throw new Error(res?.error || 'Failed to render letterhead vector SVG');
     }
     return res;
   }

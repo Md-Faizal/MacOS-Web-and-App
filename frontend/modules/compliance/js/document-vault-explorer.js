@@ -15,12 +15,12 @@ export class DocumentVaultExplorer {
     this.container = null;
     this.directories = [];
     this.documents = [];
-    this.currentNavPage = 'dashboard'; // 'dashboard', 'all', 'inward', 'outward', 'trails'
+    this.currentNavPage = 'dashboard'; // 'dashboard', 'all', 'inward', 'outward', 'internal', 'trails'
     this.selectedDirId = null;
     this.selectedDocIds = new Set();
     this.searchQuery = '';
     this.activeFilterChip = 'ALL';
-    this.activeSort = 'recent'; // 'recent', 'name', 'inward', 'outward'
+    this.activeSort = 'recent'; // 'recent', 'name', 'inward', 'outward', 'internal'
     this.breadcrumbPath = []; // [{ id, name }]
     this.viewMode = 'grid'; // 'grid' | 'list' | 'columns'
     this.expandedDirs = new Set([1, 9]); // Default expand HR and Dr. Jashobanta so users see the tree
@@ -28,6 +28,10 @@ export class DocumentVaultExplorer {
     this.selectedColumnFile = null;
     this.sidebarCollapsed = false;
     this.fabMenuOpen = false;
+    this.showPageNumbers = true;
+    this.activeEditingDraftId = null;
+    this.activeEditingDoc = null;
+    this.originalDocSnapshot = null;
 
     // History navigation stack
     this.history = [];
@@ -63,6 +67,13 @@ export class DocumentVaultExplorer {
       : null;
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    if (typeof document !== 'undefined' && document.cookie) {
+      const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+      if (match && match[1]) {
+        headers['x-csrf-token'] = decodeURIComponent(match[1]);
+      }
+    }
     return headers;
   }
 
@@ -93,6 +104,7 @@ export class DocumentVaultExplorer {
 
     if (doc.direction === 'INWARD') tags.add('Inward');
     if (doc.direction === 'OUTWARD') tags.add('Outward');
+    if (doc.direction === 'INTERNAL') tags.add('Internal');
     if (text.includes('ayush') || text.includes('drug')) tags.add('AYUSH');
     if (text.includes('inspection') || text.includes('audit')) tags.add('Inspection');
     if (text.includes('gmp') || text.includes('schedule t')) tags.add('GMP');
@@ -185,6 +197,7 @@ export class DocumentVaultExplorer {
         <!-- Floating Selection Capsule Bar (Appears when items checked) -->
         <div class="vault-floating-batch-bar" id="vaultBatchToolbar" style="display: none;">
           <span class="vault-batch-count" id="vaultBatchCount">0 Selected</span>
+          <button type="button" class="vault-batch-btn" id="vaultBatchEditBtn" style="background: rgba(2, 132, 199, 0.15); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.35); font-weight: 700; display: none;">✏️ Edit in Studio</button>
           <button class="vault-batch-btn" data-batch="MOVE">Move</button>
           <button class="vault-batch-btn" data-batch="SEAL">Seal</button>
           <button class="vault-batch-btn danger" data-batch="DELETE">Delete</button>
@@ -224,10 +237,20 @@ export class DocumentVaultExplorer {
                 <span>Outward</span>
                 <span class="vault-nav-badge" id="vaultNavOutwardCount">0</span>
               </button>
+              <button class="vault-nav-item" data-page="internal">
+                <span>🏢</span>
+                <span>Internal Office Docs</span>
+                <span class="vault-nav-badge" id="vaultNavInternalCount">0</span>
+              </button>
               <button class="vault-nav-item" data-page="trails">
                 <span>🔗</span>
                 <span>Trails</span>
                 <span class="vault-nav-badge" id="vaultNavTrailsCount">0</span>
+              </button>
+              <button class="vault-nav-item" data-page="create">
+                <span>✍️</span>
+                <span>Create Doc</span>
+                <span class="vault-nav-badge" style="background: #2563eb; color: #fff;">Word</span>
               </button>
             </nav>
 
@@ -371,6 +394,16 @@ export class DocumentVaultExplorer {
       });
     });
 
+    this.container.querySelector('#vaultBatchEditBtn')?.addEventListener('click', () => {
+      const docIds = Array.from(this.selectedDocIds);
+      if (docIds.length === 1) {
+        const id = docIds[0];
+        this.selectedDocIds.clear();
+        this.updateBatchBar();
+        this.editDocumentInStudio(id);
+      }
+    });
+
     // Keyboard shortcuts
     this.keyHandler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -452,11 +485,13 @@ export class DocumentVaultExplorer {
     const allEl = this.container.querySelector('#vaultNavAllCount');
     const inwardEl = this.container.querySelector('#vaultNavInwardCount');
     const outwardEl = this.container.querySelector('#vaultNavOutwardCount');
+    const internalEl = this.container.querySelector('#vaultNavInternalCount');
     const trailsEl = this.container.querySelector('#vaultNavTrailsCount');
 
     if (allEl) allEl.textContent = this.documents.length;
     if (inwardEl) inwardEl.textContent = this.documents.filter(d => d.direction === 'INWARD').length;
     if (outwardEl) outwardEl.textContent = this.documents.filter(d => d.direction === 'OUTWARD').length;
+    if (internalEl) internalEl.textContent = this.documents.filter(d => d.direction === 'INTERNAL').length;
     if (trailsEl) trailsEl.textContent = this.documents.filter(d => (d.trail_count || 0) > 0).length;
 
     const listEl = this.container.querySelector('#vaultSidebarFolderList');
@@ -546,9 +581,2338 @@ export class DocumentVaultExplorer {
       this.renderDashboard(viewport);
     } else if (this.currentNavPage === 'trails') {
       this.renderTrailsPage(viewport);
+    } else if (this.currentNavPage === 'create') {
+      this.renderWordDocumentCreatorView(viewport);
     } else {
       this.renderDirectoryFileManager(viewport);
     }
+  }
+
+  editDocumentInStudio(docId) {
+    const doc = (this.documents || []).find(d => Number(d.id) === Number(docId));
+    if (!doc) {
+      this.app?.showNotification('Document record not found in vault.', 'error');
+      return;
+    }
+
+    this.initialDocToEdit = doc;
+    this.activeEditingDraftId = doc.id;
+    this.activeEditingDoc = doc;
+    this.originalDocSnapshot = JSON.parse(JSON.stringify(doc));
+    this.currentNavPage = 'create';
+    this.syncSidebarActiveNav();
+    this.renderActivePage();
+  }
+
+  // =========================================================================
+  // WORD-STYLE DOCUMENT CREATOR WITH PREAPPLIED LETTERHEAD & AUTO-SIGNING
+  // =========================================================================
+  async renderWordDocumentCreatorView(viewport) {
+    let nextRef = 'UCA/COR/2026/0001';
+    try {
+      const res = await fetch('/api/compliance/vault/next-ref', {
+        headers: this.getAuthHeaders(),
+        credentials: 'same-origin'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.doc_ref_no) nextRef = data.doc_ref_no;
+      }
+    } catch (_) {}
+
+    // Load signatories for auto-signing dropdown
+    let signatories = [];
+    try {
+      const sRes = await fetch('/api/compliance/staff/signatories');
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        signatories = sData.signatories || [];
+      }
+    } catch (_) {}
+
+    // Load company settings from app-settings (single source of truth)
+    let companySettings = {
+      company_name: 'UTKAL CHEMICAL AUSHADHALAYA',
+      ayush_license: 'OR-02/AYUR',
+      gstin: '21AAAAU1234C1Z5',
+      gmp_ref: 'GMP-OD-AYU-2024-08',
+      address: 'Industrial Estate, Rasulgarh, Bhubaneswar, Odisha - 751010',
+      email: 'compliance@utkalchemical.com',
+      phone: '+91 (0674) 2580123',
+      proprietor_name: 'MD  FAIZAL',
+      proprietor_title: 'Proprietor',
+      proprietor_signature_data: ''
+    };
+    try {
+      const appSetRes = await fetch('/api/settings/app-settings');
+      if (appSetRes.ok) {
+        const appSet = await appSetRes.json();
+        if (appSet.company_legal_name) companySettings.company_name = appSet.company_legal_name;
+        if (appSet.company_ayush_license) companySettings.ayush_license = appSet.company_ayush_license;
+        if (appSet.company_gstin) companySettings.gstin = appSet.company_gstin;
+        if (appSet.company_gmp_ref) companySettings.gmp_ref = appSet.company_gmp_ref;
+        if (appSet.company_address) companySettings.address = appSet.company_address;
+        if (appSet.company_email) companySettings.email = appSet.company_email;
+        if (appSet.company_phone) companySettings.phone = appSet.company_phone;
+        if (appSet.proprietor_name) companySettings.proprietor_name = appSet.proprietor_name;
+        if (appSet.proprietor_title) companySettings.proprietor_title = appSet.proprietor_title;
+        if (appSet.proprietor_signature_data) companySettings.proprietor_signature_data = appSet.proprietor_signature_data;
+      }
+    } catch (_) {}
+
+    // Prepend Proprietor as master authorized signatory authority
+    const proprietorSigner = {
+      id: 'proprietor',
+      full_name: companySettings.proprietor_name || 'MD  FAIZAL',
+      designation: companySettings.proprietor_title || 'Proprietor',
+      signature_title: companySettings.proprietor_title || 'Proprietor',
+      signature_data: companySettings.proprietor_signature_data || '',
+      is_authorized_signatory: 1
+    };
+    signatories = [proprietorSigner, ...signatories];
+
+    let cachedHeaderBase64 = '';
+    try {
+      const hRes = await fetch('/assets/uca-letterhead-header.jpg');
+      if (hRes.ok) {
+        const hBlob = await hRes.blob();
+        const reader = new FileReader();
+        cachedHeaderBase64 = await new Promise((res) => {
+          reader.onloadend = () => {
+            const r = reader.result || '';
+            res(r.includes(';base64,') ? r.split(';base64,')[1] : r);
+          };
+          reader.readAsDataURL(hBlob);
+        });
+      }
+    } catch (_) {}
+
+    const selectedSigner = signatories[0];
+    this.creatorZoom = this.creatorZoom || 100;
+    let updateTelemetry = () => {};
+    let triggerLiveWasmSync = () => {};
+    let checkPageAutoOverflow = () => {};
+    let insertPageBreakAtSelection = () => {};
+
+    viewport.innerHTML = `
+      <div class="vault-word-creator-container">
+        
+        <!-- Word Ribbon Toolbar -->
+        <div class="vault-word-ribbon">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="wrdBackToVaultBtn" class="vault-word-tool-btn" title="Back to Vault" style="font-weight: 700; color: #0284c7; background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.2); padding: 5px 10px;">
+              ‹ Vault
+            </button>
+            <span style="font-weight: 800; font-size: 13.5px; color: #1e3a8a; display: flex; align-items: center; gap: 5px; margin-right: 4px;">
+              <span id="wrdStudioTitleIcon" style="font-size: 16px;">${this.activeEditingDraftId ? (this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? '✏️' : '📝') : '📄'}</span>
+              <span id="wrdStudioTitleText">${this.activeEditingDraftId ? (this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? 'Document Editor' : 'Draft Editor') : 'Document Creator'}</span>
+            </span>
+            <span id="wrdStatusPill" style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px; background: #e0f2fe; color: #0369a1; border: 1px solid rgba(2, 132, 199, 0.2);">
+              ${this.activeEditingDraftId ? (this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? `Editing Official Record #${this.activeEditingDraftId}` : `Editing Draft #${this.activeEditingDraftId}`) : 'New Document'}
+            </span>
+            <select id="wrdDirSelect" required style="padding: 4px 8px; font-size: 11.5px; border-radius: 6px; border: 1.5px solid #cbd5e1; background: #ffffff; outline: none; font-weight: 600;">
+              <option value="">📁 Choose Vault Folder * (Required)</option>
+              ${this.directories.map(d => `<option value="${d.id}" ${Number(this.selectedDirId) === Number(d.id) ? 'selected' : ''}>${d.name}</option>`).join('')}
+            </select>
+            <select id="wrdDirectionSelect" style="padding: 4px 8px; font-size: 11.5px; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; outline: none; font-weight: 500;">
+              <option value="OUTWARD">📤 Outward Official Letter</option>
+              <option value="INTERNAL">🏢 Internal Office Note</option>
+              <option value="INWARD">📥 Inward Regulatory Record</option>
+            </select>
+            <select id="wrdSignerSelect" title="Select Authorized Signatory for this document" style="padding: 4px 8px; font-size: 11.5px; border-radius: 6px; border: 1.5px solid #0284c7; background: #f0f9ff; color: #0369a1; outline: none; font-weight: 700;">
+              ${signatories.map(s => `
+                <option value="${s.id}" ${String(selectedSigner?.id) === String(s.id) ? 'selected' : ''}>
+                  ✍️ ${s.full_name} (${s.designation || 'Signatory'}${s.signature_data ? ' ✓' : ''})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Quick Text Formatting Controls -->
+          <div class="vault-creator-tool-group">
+            <button type="button" class="vault-word-tool-btn" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+            <span style="color: #cbd5e1; margin: 0 2px;">|</span>
+            <button type="button" class="vault-word-tool-btn" data-cmd="insertUnorderedList" title="Bullet List">• List</button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="insertOrderedList" title="Numbered List">1. List</button>
+            <span style="color: #cbd5e1; margin: 0 2px;">|</span>
+            <button type="button" class="vault-word-tool-btn" data-cmd="justifyLeft" title="Align Left">Left</button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="justifyCenter" title="Align Center">Center</button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="justifyRight" title="Align Right">Right</button>
+            <button type="button" class="vault-word-tool-btn" data-cmd="removeFormat" title="Clear Formatting">✕ Clear</button>
+            <span style="color: #cbd5e1; margin: 0 2px;">|</span>
+            <button type="button" id="wrdTogglePageNoBtn" class="vault-word-tool-btn" style="display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 11.5px; padding: 4px 9px;" title="Toggle Page Numbers on/off">
+              <span>📄</span>
+              <span id="wrdPageNoBtnLabel">Page Nos: ${this.showPageNumbers !== false ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" id="wrdAiDraftBtn" style="font-size: 12px; padding: 6px 12px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 5px rgba(79, 70, 229, 0.25);">
+              <span>✨</span>
+              <span>Draft with AI</span>
+            </button>
+
+            <button type="button" id="wrdToggleDraftsBtn" class="vault-word-tool-btn" style="border: 1px solid #cbd5e1; background: #ffffff; font-weight: 600; padding: 5px 10px;">
+              <span>📑 Drafts</span>
+              <span id="wrdDraftsBadge" style="background: #0284c7; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 2px;">0</span>
+            </button>
+
+            <!-- Revert / Discard Unsaved Changes Button -->
+            <button type="button" id="wrdRevertBtn" class="vault-word-tool-btn" style="display: ${this.activeEditingDraftId ? 'inline-flex' : 'none'}; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-weight: 700; padding: 5px 10px;" title="Discard unsaved edits and restore original document state">
+              ↺ <span id="wrdRevertBtnText">Revert</span>
+            </button>
+
+            <button type="button" id="wrdDraftBtn" class="vault-word-tool-btn" style="border: 1px solid #cbd5e1; background: #ffffff; font-weight: 700; padding: 5px 12px;">
+              <span id="wrdDraftBtnIcon">${this.activeEditingDraftId && this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? '📋' : '💾'}</span> <span id="wrdDraftBtnText">${this.activeEditingDraftId ? (this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? 'Save as Copy' : 'Update Draft') : 'Save Draft'}</span>
+            </button>
+
+            <!-- Single-click Instant Pure Rust Vector WASM Proof Toggle -->
+            <button type="button" id="wrdToggleProofBtn" class="vault-word-tool-btn" style="border: 1.5px solid #0284c7; background: #f0f9ff; color: #0284c7; font-weight: 700; padding: 5px 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;" title="Proof exact layout rendered by Pure Rust WASM Vector Engine">
+              <span id="wrdToggleProofIcon">👁️</span>
+              <span id="wrdToggleProofText">Vector Proof</span>
+            </button>
+
+            <!-- Export Dropdown Menu Wrapper -->
+            <div class="vault-export-menu-wrapper">
+              <button type="button" id="wrdExportMenuBtn" class="vault-word-tool-btn" style="background: #f8fafc; border: 1px solid #cbd5e1; font-weight: 700; padding: 5px 10px;">
+                <span>📤 Export</span>
+                <span style="font-size: 10px;">▼</span>
+              </button>
+              <div class="vault-export-dropdown" id="wrdExportDropdown">
+                <button type="button" class="vault-export-item" id="wrdExportPdfBtn">
+                  <span style="font-size: 15px;">📄</span>
+                  <div>
+                    <div style="font-weight: 700;">Export PDF</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Pure Rust Vector Engine (Letterhead & Seal)</div>
+                  </div>
+                </button>
+                <button type="button" class="vault-export-item" id="wrdExportDocxBtn">
+                  <span style="font-size: 15px;">📝</span>
+                  <div>
+                    <div style="font-weight: 700;">Export Word (.docx)</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Pure Rust OpenXML with Embedded Letterhead</div>
+                  </div>
+                </button>
+                <button type="button" class="vault-export-item" id="wrdExportJpegBtn">
+                  <span style="font-size: 15px;">🖼️</span>
+                  <div>
+                    <div style="font-weight: 700;">Export High-Res JPEG</div>
+                    <div style="font-size: 10.5px; color: #64748b;">200 DPI Master Letterhead Print Graphic</div>
+                  </div>
+                </button>
+                <div style="border-top: 1px solid #f1f5f9; margin: 4px 0;"></div>
+                <button type="button" class="vault-export-item" id="wrdPrintBtn">
+                  <span style="font-size: 15px;">🖨️</span>
+                  <div>
+                    <div style="font-weight: 700;">Print Document</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Direct browser printing dialog</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <button type="button" id="wrdSealBtn" style="font-size: 12px; padding: 6px 14px; background: ${this.activeEditingDraftId && this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' : 'linear-gradient(135deg, #059669 0%, #10b981 100%)'}; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 5px ${this.activeEditingDraftId && this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? 'rgba(2, 132, 199, 0.25)' : 'rgba(5, 150, 105, 0.25)'};">
+              <span id="wrdSealBtnIcon">${this.activeEditingDraftId && this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? '💾' : '🔏'}</span>
+              <span id="wrdSealBtnText">${this.activeEditingDraftId && this.activeEditingDoc?.status === 'SEALED_OFFICIAL' ? 'Save Changes' : 'Issue & Seal'}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Master Document Desk with Responsive Viewport & Zoom Scaling -->
+        <div class="vault-creator-desk" id="wrdCreatorDesk">
+          <!-- Floating Selection Format Capsule (Medium / Notion / Google Docs style) -->
+          <div class="vault-bubble-toolbar hidden" id="wrdBubbleToolbar">
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+            <div class="vault-bubble-divider"></div>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="formatBlock" data-bubble-val="h2" title="Heading 2">H2</button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="insertUnorderedList" title="Bullet List">• List</button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="insertOrderedList" title="Numbered List">1. List</button>
+            <div class="vault-bubble-divider"></div>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="hiliteColor" data-bubble-val="#fef08a" title="Highlight">🖍️</button>
+            <button type="button" class="vault-bubble-btn" data-bubble-cmd="removeFormat" title="Clear Formatting">🧹</button>
+          </div>
+
+          <!-- Slash Command Menu Dropdown -->
+          <div class="vault-slash-menu hidden" id="wrdSlashMenu" style="display: none;"></div>
+
+          <!-- Real-Time Pure Rust Vector WASM Proof Container (Exact Same Layout & Geometry) -->
+          <div class="vault-creator-scale-wrapper" id="wrdSvgScaleWrapper" style="display: none; transform: scale(${this.creatorZoom / 100}); transform-origin: top center; margin: 0 auto 36px auto; width: 794px;">
+            <div id="wrdSvgPreviewContainer" style="width: 794px; background: #ffffff; box-shadow: 0 14px 38px -8px rgba(0,0,0,0.16), 0 0 1px 1px rgba(0,0,0,0.06); border-radius: 2px; overflow: hidden;">
+            </div>
+          </div>
+
+          <div class="vault-creator-scale-wrapper" id="wrdScaleWrapper" style="transform: scale(${this.creatorZoom / 100});">
+            
+            <div class="vault-pages-container" id="wrdPagesContainer">
+              <!-- Page 1 (Master Sheet with Letterhead Header) -->
+              <div class="vault-page-sheet" data-page-index="0" id="wrdPageSheet_0">
+                
+                <!-- Preapplied Company Letterhead Header (Authentic High-Resolution Asset - Edge to Edge) -->
+                <div class="vault-word-letterhead-header" style="position: relative; width: 100%; height: 218px; margin: 0; padding: 0; line-height: 0; border: none; overflow: hidden;">
+                  <img src="/assets/uca-letterhead-header.png" alt="Utkal Chemical Aushadhalaya Letterhead" style="width: 100%; height: 218px; object-fit: cover; display: block; margin: 0; padding: 0; border: none;" onerror="this.onerror=null; this.src='/assets/uca-letterhead-header.jpg';">
+                  
+                  <!-- Dynamic Reference Number Input overlaid directly onto header's Ref. field at exact Rust coordinate (x=73pt/97px, y=103pt/137px) -->
+                  <input type="text" id="wrdRefNo" value="${nextRef}" title="Document Reference Number" placeholder="Ref No" style="position: absolute; left: 97px; top: 137px; width: 195px; height: 20px; line-height: 18px; background: rgba(255, 255, 255, 0.95); border: 1px dashed rgba(148, 163, 184, 0.7); border-radius: 3px; padding: 1px 6px; font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: 11.3px; color: #141e33; box-shadow: 0 1px 2px rgba(0,0,0,0.04); outline: none;">
+                  
+                  <!-- Dynamic Issue Date Input overlaid directly onto header's Date field at exact Rust coordinate (x=464pt/619px, y=103pt/137px) -->
+                  <input type="date" id="wrdIssueDate" value="${new Date().toISOString().split('T')[0]}" title="Document Issue Date" style="position: absolute; left: 619px; top: 137px; width: 125px; height: 20px; line-height: 18px; background: rgba(255, 255, 255, 0.95); border: 1px dashed rgba(148, 163, 184, 0.7); border-radius: 3px; padding: 1px 6px; font-family: Helvetica, Arial, sans-serif; font-weight: 700; font-size: 11.3px; color: #141e33; box-shadow: 0 1px 2px rgba(0,0,0,0.04); outline: none;">
+                </div>
+
+                <!-- Letter Body Container calibrated to exact Rust content start (175pt = 233px from top -> margin-top: 15px) and margins (50pt = 67px) -->
+                <div class="vault-word-body-content" style="margin-top: 15px; padding: 0 67px; position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column;">
+                  <!-- Recipient Party, Subject & Title Inputs (Crisp document typography matching PDF layout) -->
+                  <div style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 14px;">
+                    <div>
+                      <div style="font-weight: 700; font-size: 14px; color: #000000; margin-bottom: 2px; font-family: Helvetica, Arial, sans-serif;">To,</div>
+                      <input type="text" id="wrdRecipient" placeholder="Recipient Authority / Name (e.g. The State Licensing Authority, AYUSH)" style="width: 100%; border: 1px dashed rgba(148, 163, 184, 0.6); border-radius: 4px; padding: 3px 6px; font-size: 14.7px; line-height: 18.7px; font-weight: 700; color: #142647; outline: none; background: rgba(248, 250, 252, 0.6); font-family: Helvetica, Arial, sans-serif;">
+                    </div>
+
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                      <span style="font-weight: 700; font-size: 14.7px; color: #142e59; letter-spacing: 0.2px; margin-top: 3px; white-space: nowrap; font-family: Helvetica, Arial, sans-serif;">SUB:</span>
+                      <textarea id="wrdSubject" rows="1" placeholder="Formal Subject Line (e.g. Compliance Report for Form 25D renewal)" style="flex: 1; border: 1px dashed rgba(148, 163, 184, 0.6); border-radius: 4px; padding: 3px 6px; font-size: 14.7px; line-height: 18.7px; font-weight: 700; color: #142e59; outline: none; background: rgba(248, 250, 252, 0.6); resize: none; overflow-y: hidden; font-family: Helvetica, Arial, sans-serif; box-sizing: border-box; text-transform: uppercase;"></textarea>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="font-weight: 700; font-size: 14.7px; color: #142647; letter-spacing: 0.2px; white-space: nowrap; font-family: Helvetica, Arial, sans-serif;">TITLE:</span>
+                      <input type="text" id="wrdTitle" placeholder="Document Title (e.g. Annual Technical Compliance Submission)" style="flex: 1; border: 1px dashed rgba(148, 163, 184, 0.6); border-radius: 4px; padding: 3px 6px; font-size: 14.7px; line-height: 18.7px; font-weight: 700; color: #142647; outline: none; background: rgba(248, 250, 252, 0.6); text-transform: uppercase; font-family: Helvetica, Arial, sans-serif;">
+                    </div>
+                  </div>
+
+                  <!-- Page 1 ContentEditable Body (Calibrated to exact Rust font-size 9.0pt/12px and line-height 14.0pt/18.7px) -->
+                  <div id="wrdEditorBody" class="wrd-page-editor" data-page-index="0" contenteditable="true" spellcheck="true" style="min-height: 300px; outline: none; line-height: 18.7px; font-size: 12.0px; color: #1f242e; padding: 4px 0; border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; font-family: Helvetica, Arial, sans-serif;">
+                    <p style="margin-bottom: 16px;">Dear Sir / Madam,</p>
+                    <p style="margin-bottom: 10.7px;">With reference to statutory requirements and regulatory guidelines under the Drugs & Cosmetics Rules 1945 and Schedule T governance, we hereby submit the official documentation for your kind record and consideration.</p>
+                    <p style="margin-bottom: 10.7px;">The manufacturing premises and operations continue to strictly comply with all prescribed standard operating procedures (SOPs), quality control validations, and batch manufacturing records (BMR).</p>
+                    <p style="margin-bottom: 10.7px;">Kindly acknowledge receipt and issue regulatory confirmation accordingly.</p>
+                  </div>
+                </div>
+
+                <!-- Auto-Signing Authority Section (Positioned at exact Rust WASM coordinates: with sig top 893px = 669.89pt, without sig top 925px = 693.89pt, right 67px = 50pt, width 273px = 205pt) -->
+                <div id="wrdSignatorySection" style="position: absolute; ${selectedSigner?.signature_data ? 'top: 893px;' : 'top: 925px;'} right: 67px; width: 273px; text-align: left; z-index: 5;">
+                  <div style="font-size: 12.7px; font-weight: 700; color: #0d3366; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 6px 0;">
+                    For ${companySettings.company_name},
+                  </div>
+
+                  <!-- Specimen Signature Canvas / Clearance Box (Exact 52pt/69px Rust WASM Geometry - Vertically Centered) -->
+                  <div id="wrdSignaturePreviewBox" style="${selectedSigner?.signature_data ? 'height: 60px; min-height: 60px; max-height: 60px; margin: 4px 0 4px 0; display: flex; align-items: center; justify-content: flex-start;' : 'height: 51px; min-height: 51px; max-height: 51px; margin: 0 0 13px 0; display: flex; align-items: flex-end; justify-content: flex-start;'} width: 100%; padding: 0;">
+                    ${selectedSigner?.signature_data ? `
+                      <img id="wrdSignatureImg" src="${selectedSigner.signature_data}" alt="Authorized Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">
+                    ` : `
+                      <div id="wrdNoSigNotice" style="width: 160px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">
+                        (Authorized Signatory)
+                      </div>
+                    `}
+                  </div>
+
+                  <div id="wrdSignerName" style="font-weight: 700; font-size: 14px; color: #000000; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 1px 0;">
+                    ${selectedSigner?.full_name || 'MD  FAIZAL'}
+                  </div>
+                  <div id="wrdSignerTitle" style="font-size: 12px; color: #59616b; font-family: Helvetica, Arial, sans-serif; line-height: 15px; margin: 0 0 1px 0;">
+                    ${selectedSigner?.signature_title || selectedSigner?.designation || 'Proprietor'}
+                  </div>
+                  <div id="wrdSignerReg" style="font-size: 10px; color: #14664d; font-weight: 700; line-height: 13px; margin: 0; font-family: monospace;">
+                    ${selectedSigner?.technical_reg_no ? `Reg: ${selectedSigner.technical_reg_no}` : ''}
+                  </div>
+                </div>
+
+                <!-- Page 1 Footer -->
+                <div class="vault-page-footer" data-page-footer="0" style="display: ${this.showPageNumbers !== false ? 'flex' : 'none'}; justify-content: flex-end;">
+                  <span class="wrd-page-number-label" style="font-size: 11px; font-weight: 700; color: #475569;">Page 1 of <span class="wrd-total-pages-count">1</span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add Continuation Page Desk Control (Centered below pages container) -->
+            <div style="display: flex; justify-content: center; width: 794px; margin: 20px 0 36px 0;">
+              <button type="button" id="wrdAddPageBtn" class="vault-add-page-btn">
+                <span style="font-size: 16px;">➕</span> Add Continuation Page
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Slide-over Saved Drafts Drawer -->
+        <div class="vault-drafts-drawer" id="wrdDraftsDrawer">
+          <div style="padding: 14px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
+            <div style="font-weight: 800; font-size: 14px; color: #0f172a; display: flex; align-items: center; gap: 6px;">
+              <span>📑 Saved Drafts</span>
+              <span id="wrdDrawerDraftCount" style="font-size: 11px; background: #e0f2fe; color: #0284c7; padding: 2px 7px; border-radius: 10px;">0</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" id="wrdNewDocBtn" style="font-size: 11px; font-weight: 700; background: #0284c7; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                + New Blank
+              </button>
+              <button type="button" id="wrdCloseDraftsBtn" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #64748b;">✕</button>
+            </div>
+          </div>
+          <div id="wrdDraftsList" style="flex: 1; overflow-y: auto; padding: 14px;">
+            <div style="text-align: center; color: #94a3b8; font-size: 12px; padding: 20px;">Loading drafts...</div>
+          </div>
+        </div>
+
+        <!-- Floating Status Bar with Telemetry & Zoom -->
+        <div class="vault-creator-footer" id="wrdCreatorFooter">
+          <div style="display: flex; align-items: center; gap: 12px;" id="wrdTelemetryStats">
+            <span id="wrdPageCount" style="font-weight: 700; color: #0284c7;">Page 1 of 1</span>
+            <span>•</span>
+            <span id="wrdWordCount">0 words</span>
+            <span>•</span>
+            <span id="wrdCharCount">0 characters</span>
+            <span>•</span>
+            <span id="wrdReadTime">0 min read</span>
+            <span>•</span>
+            <span id="wrdWasmStatus" style="font-size: 11px; color: #059669; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+              <span style="font-size: 12px;">⚡</span> WASM Vector Proof: In Sync
+            </span>
+          </div>
+
+          <div id="wrdAutoSaveStatus" style="font-weight: 500; color: #059669; display: flex; align-items: center; gap: 4px;">
+            <span>☁️</span> Auto-save ready
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button type="button" id="wrdZoomOutBtn" style="background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer;" title="Zoom Out (-)">−</button>
+            <span id="wrdZoomLabel" style="min-width: 42px; text-align: center; font-weight: 700; font-size: 11px; cursor: pointer;" title="Reset Zoom to 100%">${this.creatorZoom}%</span>
+            <button type="button" id="wrdZoomInBtn" style="background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer;" title="Zoom In (+)">+</button>
+            <button type="button" id="wrdZoomFitBtn" style="background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 7px; font-size: 11px; cursor: pointer;" title="Fit Width">Fit</button>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    // Setup Text Formatting Tools
+    viewport.querySelectorAll('.vault-word-tool-btn[data-cmd]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        if (cmd) {
+          document.execCommand(cmd, false, null);
+          updateTelemetry();
+        }
+      });
+    });
+
+    // Navigation back to Vault
+    viewport.querySelector('#wrdBackToVaultBtn')?.addEventListener('click', () => {
+      this.currentNavPage = 'dashboard';
+      this.container.querySelectorAll('.vault-nav-item').forEach(b => {
+        b.classList.toggle('active', b.dataset.page === 'dashboard');
+      });
+      this.renderActivePage();
+    });
+
+    // Zoom Controls
+    const scaleWrapper = viewport.querySelector('#wrdScaleWrapper');
+    const svgScaleWrapper = viewport.querySelector('#wrdSvgScaleWrapper');
+    const zoomLabel = viewport.querySelector('#wrdZoomLabel');
+    const applyZoom = (val) => {
+      this.creatorZoom = Math.max(50, Math.min(180, Math.round(val)));
+      if (scaleWrapper) scaleWrapper.style.transform = `scale(${this.creatorZoom / 100})`;
+      if (svgScaleWrapper) svgScaleWrapper.style.transform = `scale(${this.creatorZoom / 100})`;
+      if (zoomLabel) zoomLabel.textContent = `${this.creatorZoom}%`;
+    };
+
+    viewport.querySelector('#wrdZoomInBtn')?.addEventListener('click', () => applyZoom(this.creatorZoom + 10));
+    viewport.querySelector('#wrdZoomOutBtn')?.addEventListener('click', () => applyZoom(this.creatorZoom - 10));
+    viewport.querySelector('#wrdZoomLabel')?.addEventListener('click', () => applyZoom(100));
+    viewport.querySelector('#wrdZoomFitBtn')?.addEventListener('click', () => {
+      const desk = viewport.querySelector('#wrdCreatorDesk');
+      if (desk) {
+        const availableWidth = desk.clientWidth - 48;
+        const fitZoom = (availableWidth / 794) * 100;
+        applyZoom(fitZoom);
+      }
+    });
+
+    // Desk & Container References
+    const desk = viewport.querySelector('#wrdCreatorDesk');
+    const pagesContainer = viewport.querySelector('#wrdPagesContainer');
+    const signatorySection = viewport.querySelector('#wrdSignatorySection');
+    const bubbleToolbar = viewport.querySelector('#wrdBubbleToolbar');
+    const slashMenu = viewport.querySelector('#wrdSlashMenu');
+
+    // ================= SLASH COMMAND PALETTE DEFINITIONS =================
+    const SLASH_COMMANDS = [
+      {
+        id: 'text',
+        title: 'Text Paragraph',
+        desc: 'Plain text paragraph with standard line spacing',
+        badge: 'P',
+        icon: '📝',
+        keywords: ['text', 'paragraph', 'normal', 'p', 'body'],
+        action: () => document.execCommand('formatBlock', false, '<p>')
+      },
+      {
+        id: 'h1',
+        title: 'Heading 1',
+        desc: 'Top-level document section heading',
+        badge: 'H1',
+        icon: '🏷️',
+        keywords: ['h1', 'heading', 'title', 'section', 'header'],
+        action: () => document.execCommand('formatBlock', false, '<h2>')
+      },
+      {
+        id: 'h2',
+        title: 'Heading 2',
+        desc: 'Sub-heading for technical sub-clauses',
+        badge: 'H2',
+        icon: '📌',
+        keywords: ['h2', 'subheading', 'subtitle', 'clause'],
+        action: () => document.execCommand('formatBlock', false, '<h3>')
+      },
+      {
+        id: 'bullet_list',
+        title: 'Bullet List',
+        desc: 'Standard un-ordered regulatory item list',
+        badge: 'UL',
+        icon: '•',
+        keywords: ['bullet', 'list', 'ul', 'points'],
+        action: () => document.execCommand('insertUnorderedList', false, null)
+      },
+      {
+        id: 'numbered_list',
+        title: 'Numbered List',
+        desc: 'Sequential protocol or procedural step list',
+        badge: 'OL',
+        icon: '1.',
+        keywords: ['numbered', 'list', 'ol', 'steps', 'sequence'],
+        action: () => document.execCommand('insertOrderedList', false, null)
+      },
+      {
+        id: 'table',
+        title: 'Regulatory QA Table',
+        desc: 'Standard 3x3 quality release & test matrix',
+        badge: 'Table',
+        icon: '📊',
+        keywords: ['table', 'qa', 'test', 'matrix', 'grid', 'specification'],
+        action: () => {
+          const tableHtml = `
+            <table class="vault-editor-table">
+              <thead>
+                <tr>
+                  <th style="width: 28%;">Test Parameter</th>
+                  <th style="width: 44%;">Statutory Standard (API / Pharmacopoeial)</th>
+                  <th style="width: 28%;">Observed Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Description &amp; Character</td><td>Homogeneous classical Ayurvedic preparation</td><td>Complies standard</td></tr>
+                <tr><td>Assay / Active Marker</td><td>Not less than 95.0% w/w</td><td>98.4% w/w (Pass)</td></tr>
+                <tr><td>Microbial Contamination</td><td>Total aerobic microbial count &lt; 10³ CFU/g</td><td>&lt; 10² CFU/g (Pass)</td></tr>
+              </tbody>
+            </table>
+            <p><br></p>
+          `;
+          document.execCommand('insertHTML', false, tableHtml);
+        }
+      },
+      {
+        id: 'schedule_t',
+        title: 'Schedule T GMP Clause',
+        desc: 'Statutory Good Manufacturing Practices warranty statement',
+        badge: 'Statutory',
+        icon: '🛡️',
+        keywords: ['schedule', 'gmp', 't', 'compliance', 'statutory'],
+        action: () => {
+          const clauseHtml = `
+            <p style="margin: 10px 0; background: #f0f9ff; border-left: 3px solid #0284c7; padding: 6px 12px; font-style: italic; font-size: 11.5px; color: #0f172a;">
+              <strong>Statutory Schedule T Compliance:</strong> The manufacturing operations, aseptic handling, in-process testing, and batch manufacturing records (BMR) strictly adhere to Schedule T of the Drugs &amp; Cosmetics Rules 1945, ensuring full technical compliance and quality assurance.
+            </p>
+            <p><br></p>
+          `;
+          document.execCommand('insertHTML', false, clauseHtml);
+        }
+      },
+      {
+        id: 'form_25d',
+        title: 'Form 25D Licensing Clause',
+        desc: 'Official Ayurvedic manufacturing license affirmation',
+        badge: 'License',
+        icon: '📜',
+        keywords: ['form', '25d', 'license', 'ayush', 'authority'],
+        action: () => {
+          const clauseHtml = `
+            <p style="margin: 10px 0; background: #ecfdf5; border-left: 3px solid #059669; padding: 6px 12px; font-style: italic; font-size: 11.5px; color: #064e3b;">
+              <strong>Statutory Licensing Clause:</strong> Manufactured under valid Ayurvedic Drug License issued on Form 25D by the State Licensing Authority (AYUSH), maintained in full active standing and compliance with statutory inspection protocols.
+            </p>
+            <p><br></p>
+          `;
+          document.execCommand('insertHTML', false, clauseHtml);
+        }
+      },
+      {
+        id: 'raw_material_qc',
+        title: 'Raw Material QC Statement',
+        desc: 'Botanical authentication & pharmacopoeial assay clearance',
+        badge: 'QC Test',
+        icon: '🔬',
+        keywords: ['raw', 'material', 'qc', 'herbal', 'purity', 'testing', 'assay'],
+        action: () => {
+          const clauseHtml = `
+            <p style="margin: 10px 0; background: #fffbeb; border-left: 3px solid #d97706; padding: 6px 12px; font-style: italic; font-size: 11.5px; color: #78350f;">
+              <strong>Raw Material QC Clearance:</strong> All herbal inputs, mineral ingredients, and excipients used in this batch have passed rigorous botanical identity authentication, assay, heavy metal screening, and pesticide residue testing prior to production.
+            </p>
+            <p><br></p>
+          `;
+          document.execCommand('insertHTML', false, clauseHtml);
+        }
+      },
+      {
+        id: 'date_stamp',
+        title: 'Current Date Stamp',
+        desc: 'Inserts current official formatted date',
+        badge: 'Date',
+        icon: '📅',
+        keywords: ['date', 'today', 'stamp', 'time', 'now'],
+        action: () => {
+          const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+          document.execCommand('insertText', false, today);
+        }
+      },
+      {
+        id: 'page_break',
+        title: 'Page Break',
+        desc: 'Pushes content following caret cleanly to a continuation sheet',
+        badge: 'Break',
+        icon: '✂️',
+        keywords: ['page', 'break', 'new', 'sheet', 'continuation', 'split'],
+        action: () => insertPageBreakAtSelection()
+      }
+    ];
+
+    // ================= SLASH COMMAND PALETTE CONTROLLER =================
+    let slashActive = false;
+    let slashQuery = '';
+    let slashFilteredCommands = [...SLASH_COMMANDS];
+    let selectedSlashIdx = 0;
+    let slashAnchorNode = null;
+    let slashAnchorOffset = 0;
+
+    const renderSlashMenu = () => {
+      if (!slashMenu) return;
+      if (slashFilteredCommands.length === 0) {
+        slashMenu.innerHTML = `
+          <div class="vault-slash-header">Commands</div>
+          <div style="padding: 10px; font-size: 11.5px; color: #94a3b8; text-align: center;">No matching block or clause</div>
+        `;
+        return;
+      }
+
+      let html = '<div class="vault-slash-header">Insert Block or Statutory Clause</div>';
+      slashFilteredCommands.forEach((cmd, i) => {
+        const isSelected = i === selectedSlashIdx;
+        html += `
+          <button type="button" class="vault-slash-item ${isSelected ? 'selected' : ''}" data-slash-idx="${i}">
+            <div class="vault-slash-icon">${cmd.icon}</div>
+            <div class="vault-slash-text-col">
+              <div class="vault-slash-title">${cmd.title}</div>
+              <div class="vault-slash-desc">${cmd.desc}</div>
+            </div>
+            <span class="vault-slash-badge">${cmd.badge}</span>
+          </button>
+        `;
+      });
+      slashMenu.innerHTML = html;
+
+      slashMenu.querySelectorAll('.vault-slash-item').forEach(btn => {
+        btn.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const idx = Number(btn.dataset.slashIdx);
+          executeSlashCommand(slashFilteredCommands[idx]);
+        });
+      });
+    };
+
+    const openSlashMenu = (rect) => {
+      if (!slashMenu || !desk) return;
+      slashActive = true;
+      slashQuery = '';
+      slashFilteredCommands = [...SLASH_COMMANDS];
+      selectedSlashIdx = 0;
+      renderSlashMenu();
+
+      const deskRect = desk.getBoundingClientRect();
+      const left = Math.max(16, Math.min(desk.scrollWidth - 340, (rect.left - deskRect.left) + desk.scrollLeft));
+      const top = (rect.bottom - deskRect.top) + desk.scrollTop + 6;
+
+      slashMenu.style.left = `${left}px`;
+      slashMenu.style.top = `${top}px`;
+      slashMenu.style.display = 'flex';
+      slashMenu.classList.remove('hidden');
+    };
+
+    const closeSlashMenu = () => {
+      slashActive = false;
+      slashQuery = '';
+      if (slashMenu) {
+        slashMenu.style.display = 'none';
+        slashMenu.classList.add('hidden');
+      }
+    };
+
+    const executeSlashCommand = (cmd) => {
+      if (!cmd) return;
+      const sel = window.getSelection();
+      if (slashAnchorNode && sel && sel.containsNode(slashAnchorNode, true)) {
+        try {
+          const text = slashAnchorNode.nodeValue || '';
+          const before = text.substring(0, Math.max(0, slashAnchorOffset - 1));
+          const after = text.substring(slashAnchorOffset + slashQuery.length);
+          slashAnchorNode.nodeValue = before + after;
+          const range = document.createRange();
+          range.setStart(slashAnchorNode, before.length);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch (_) {}
+      }
+      closeSlashMenu();
+      cmd.action();
+      updateTelemetry();
+      const activeEd = document.activeElement?.closest('.wrd-page-editor') || viewport.querySelector('#wrdEditorBody');
+      if (activeEd) checkPageAutoOverflow(activeEd);
+      triggerLiveWasmSync();
+    };
+
+    // ================= FLOATING SELECTION BUBBLE TOOLBAR =================
+    const updateBubbleToolbar = () => {
+      if (!bubbleToolbar || !desk) return;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        bubbleToolbar.classList.add('hidden');
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (text.length === 0) {
+        bubbleToolbar.classList.add('hidden');
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      const commonNode = range.commonAncestorContainer;
+      const editor = commonNode.nodeType === Node.ELEMENT_NODE
+        ? commonNode.closest('.wrd-page-editor')
+        : commonNode.parentElement?.closest('.wrd-page-editor');
+
+      if (!editor) {
+        bubbleToolbar.classList.add('hidden');
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      const deskRect = desk.getBoundingClientRect();
+      const toolbarWidth = bubbleToolbar.offsetWidth || 340;
+      const toolbarHeight = bubbleToolbar.offsetHeight || 38;
+
+      const centerLeft = (rect.left - deskRect.left) + desk.scrollLeft + (rect.width / 2);
+      const targetLeft = Math.max(20, Math.min(desk.scrollWidth - toolbarWidth - 20, centerLeft - (toolbarWidth / 2)));
+      const targetTop = Math.max(10, (rect.top - deskRect.top) + desk.scrollTop - toolbarHeight - 12);
+
+      bubbleToolbar.style.left = `${targetLeft}px`;
+      bubbleToolbar.style.top = `${targetTop}px`;
+      bubbleToolbar.classList.remove('hidden');
+
+      bubbleToolbar.querySelectorAll('.vault-bubble-btn[data-bubble-cmd]').forEach(b => {
+        const cmd = b.dataset.bubbleCmd;
+        if (cmd === 'bold' || cmd === 'italic' || cmd === 'underline' || cmd === 'strikeThrough') {
+          b.classList.toggle('active', document.queryCommandState(cmd));
+        }
+      });
+    };
+
+    bubbleToolbar?.querySelectorAll('.vault-bubble-btn').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const cmd = btn.dataset.bubbleCmd;
+        const val = btn.dataset.bubbleVal || null;
+        if (cmd) {
+          document.execCommand(cmd, false, val);
+          updateTelemetry();
+          updateBubbleToolbar();
+          triggerLiveWasmSync();
+        }
+      });
+    });
+
+    document.addEventListener('selectionchange', () => {
+      if (desk && !desk.contains(document.activeElement)) {
+        bubbleToolbar?.classList.add('hidden');
+        return;
+      }
+      updateBubbleToolbar();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#wrdSlashMenu')) {
+        closeSlashMenu();
+      }
+    });
+
+    // ================= LIVE TELEMETRY (Words, Chars, Pages, Read Time) =================
+    updateTelemetry = () => {
+      const editors = viewport.querySelectorAll('.wrd-page-editor');
+      let text = '';
+      editors.forEach(ed => {
+        text += ' ' + (ed.innerText || ed.textContent || '');
+      });
+      text = text.trim();
+      const words = text ? text.split(/\s+/).filter(w => w.length > 0).length : 0;
+      const chars = text.length;
+      const readMinutes = Math.max(1, Math.ceil(words / 200));
+
+      const wordEl = viewport.querySelector('#wrdWordCount');
+      const charEl = viewport.querySelector('#wrdCharCount');
+      const readEl = viewport.querySelector('#wrdReadTime');
+      const pageCountEl = viewport.querySelector('#wrdPageCount');
+
+      if (wordEl) wordEl.textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
+      if (charEl) charEl.textContent = `${chars} ${chars === 1 ? 'character' : 'characters'}`;
+      if (readEl) readEl.textContent = words > 0 ? `${readMinutes} min read` : '0 min read';
+
+      if (pageCountEl && pagesContainer) {
+        const sheets = pagesContainer.querySelectorAll('.vault-page-sheet');
+        const activeSheet = document.activeElement?.closest('.vault-page-sheet');
+        const curPage = activeSheet ? (Number(activeSheet.dataset.pageIndex || 0) + 1) : 1;
+        pageCountEl.textContent = `Page ${curPage} of ${Math.max(1, sheets.length)}`;
+      }
+    };
+
+    // ================= MULTIPAGE MANAGEMENT & NUMBERING =================
+    const updatePageFootersAndNumbers = () => {
+      if (!pagesContainer) return;
+      const sheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+      const totalPages = Math.max(1, sheets.length);
+      const currentRef = viewport.querySelector('#wrdRefNo')?.value || '';
+      const currentDt = viewport.querySelector('#wrdIssueDate')?.value || '';
+
+      sheets.forEach((sheet, idx) => {
+        sheet.dataset.pageIndex = idx;
+        const pageNum = idx + 1;
+
+        const badge = sheet.querySelector('.wrd-page-badge');
+        if (badge) badge.textContent = `📑 Page ${pageNum}`;
+
+        const refOverlay = sheet.querySelector('.wrd-continuation-ref-overlay');
+        const dateOverlay = sheet.querySelector('.wrd-continuation-date-overlay');
+        if (refOverlay) refOverlay.textContent = currentRef;
+        if (dateOverlay) dateOverlay.textContent = currentDt;
+
+        const refDateEl = sheet.querySelector('.wrd-continuation-ref-date');
+        if (refDateEl) {
+          refDateEl.textContent = `${currentRef}  •  ${currentDt}`;
+        }
+
+        const upBtn = sheet.querySelector('.wrd-move-page-up');
+        const downBtn = sheet.querySelector('.wrd-move-page-down');
+        if (upBtn) upBtn.disabled = idx === 1;
+        if (downBtn) downBtn.disabled = idx === totalPages - 1;
+
+        const footer = sheet.querySelector('.vault-page-footer');
+        if (footer) {
+          footer.style.display = this.showPageNumbers !== false ? 'flex' : 'none';
+          const label = footer.querySelector('.wrd-page-number-label');
+          if (label) {
+            label.innerHTML = `Page ${pageNum} of <span class="wrd-total-pages-count">${totalPages}</span>`;
+          }
+        }
+      });
+
+      // Move Signatory block strictly to the last page ONLY
+      if (signatorySection && sheets.length > 0) {
+        const lastSheet = sheets[sheets.length - 1];
+        if (signatorySection.parentElement !== lastSheet) {
+          lastSheet.appendChild(signatorySection);
+        }
+      }
+
+      updateTelemetry();
+    };
+
+    const reshufflePages = (fromIdx, toIdx) => {
+      const sheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+      const fromEd = sheets[fromIdx]?.querySelector('.wrd-page-editor');
+      const toEd = sheets[toIdx]?.querySelector('.wrd-page-editor');
+      if (fromEd && toEd) {
+        const temp = fromEd.innerHTML;
+        fromEd.innerHTML = toEd.innerHTML;
+        toEd.innerHTML = temp;
+        updatePageFootersAndNumbers();
+        this.app?.showNotification(`Swapped Page ${fromIdx + 1} with Page ${toIdx + 1}`, 'info');
+      }
+    };
+
+    // ================= CONTINUOUS BI-DIRECTIONAL AUTO-PAGINATION ENGINE =================
+    let isSpilling = false;
+    checkPageAutoOverflow = (editor) => {
+      if (isSpilling || !editor) return;
+      const idx = Number(editor.dataset.pageIndex || 0);
+      const sheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+      const isLastSheet = idx === sheets.length - 1;
+      const maxAllowedHeight = idx === 0 ? 490 : (isLastSheet ? 520 : 660);
+
+      // 1. Forward Overflow: push trailing block elements to next sheet
+      if (editor.scrollHeight > maxAllowedHeight + 15) {
+        isSpilling = true;
+        try {
+          const children = Array.from(editor.children);
+          if (children.length > 1) {
+            let splitIdx = children.length - 1;
+            for (let i = 0; i < children.length; i++) {
+              const childBottom = children[i].offsetTop + children[i].offsetHeight;
+              if (childBottom > maxAllowedHeight) {
+                splitIdx = Math.max(1, i);
+                break;
+              }
+            }
+            const overflowing = children.slice(splitIdx);
+            if (overflowing.length > 0) {
+              const overflowHtml = overflowing.map(c => c.outerHTML).join('');
+              overflowing.forEach(c => c.remove());
+
+              if (idx + 1 < sheets.length) {
+                const nextEd = sheets[idx + 1].querySelector('.wrd-page-editor');
+                if (nextEd) {
+                  nextEd.innerHTML = overflowHtml + nextEd.innerHTML;
+                  checkPageAutoOverflow(nextEd);
+                }
+              } else {
+                addContinuationPage(overflowHtml, false);
+              }
+            }
+          }
+        } finally {
+          isSpilling = false;
+          updatePageFootersAndNumbers();
+        }
+      } else if (editor.scrollHeight < maxAllowedHeight - 80 && idx + 1 < sheets.length) {
+        // 2. Backward Underflow: pull first block of next sheet back if space is available
+        const nextSheet = sheets[idx + 1];
+        const nextEd = nextSheet?.querySelector('.wrd-page-editor');
+        if (nextEd && nextEd.firstElementChild) {
+          const candidate = nextEd.firstElementChild;
+          editor.appendChild(candidate.cloneNode(true));
+          if (editor.scrollHeight <= maxAllowedHeight) {
+            candidate.remove();
+            const remainingText = (nextEd.innerText || '').trim();
+            if (!remainingText && nextEd.querySelectorAll('img, table').length === 0) {
+              nextSheet.remove();
+            }
+            updatePageFootersAndNumbers();
+          } else {
+            editor.lastElementChild?.remove();
+          }
+        }
+      }
+    };
+
+    // ================= PAGE BREAK INSERTION =================
+    insertPageBreakAtSelection = () => {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const activeEd = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? range.commonAncestorContainer.closest('.wrd-page-editor')
+        : range.commonAncestorContainer.parentElement?.closest('.wrd-page-editor');
+      if (!activeEd) return;
+
+      const pageIdx = Number(activeEd.dataset.pageIndex || 0);
+      const sheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+
+      const tailRange = document.createRange();
+      tailRange.setStart(range.endContainer, range.endOffset);
+      tailRange.setEndAfter(activeEd.lastChild);
+      const frag = tailRange.extractContents();
+
+      const tempDiv = document.createElement('div');
+      tempDiv.appendChild(frag);
+      const tailHtml = tempDiv.innerHTML.trim() || '<p><br></p>';
+
+      if (pageIdx + 1 < sheets.length) {
+        const nextEd = sheets[pageIdx + 1].querySelector('.wrd-page-editor');
+        nextEd.innerHTML = tailHtml + nextEd.innerHTML;
+        nextEd.focus();
+      } else {
+        addContinuationPage(tailHtml, true);
+      }
+      updatePageFootersAndNumbers();
+      triggerLiveWasmSync();
+    };
+
+    // ================= ATTACH RICH EDITOR EVENT LISTENERS =================
+    const attachEditorEvents = (editor) => {
+      if (!editor || editor._eventsAttached) return;
+      editor._eventsAttached = true;
+
+      editor.addEventListener('input', () => {
+        updateTelemetry();
+        if (slashActive) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount && slashAnchorNode) {
+            const currentText = slashAnchorNode.nodeValue || '';
+            slashQuery = currentText.substring(slashAnchorOffset, sel.anchorOffset).toLowerCase().trim();
+            slashFilteredCommands = SLASH_COMMANDS.filter(c =>
+              c.title.toLowerCase().includes(slashQuery) ||
+              c.desc.toLowerCase().includes(slashQuery) ||
+              c.keywords.some(k => k.includes(slashQuery))
+            );
+            selectedSlashIdx = 0;
+            renderSlashMenu();
+          }
+        }
+        checkPageAutoOverflow(editor);
+        triggerLiveWasmSync();
+      });
+
+      editor.addEventListener('paste', () => {
+        setTimeout(() => {
+          updateTelemetry();
+          checkPageAutoOverflow(editor);
+          triggerLiveWasmSync();
+        }, 50);
+      });
+
+      editor.addEventListener('keydown', (e) => {
+        // Slash Menu Navigation
+        if (slashActive) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedSlashIdx = (selectedSlashIdx + 1) % Math.max(1, slashFilteredCommands.length);
+            renderSlashMenu();
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedSlashIdx = (selectedSlashIdx - 1 + slashFilteredCommands.length) % Math.max(1, slashFilteredCommands.length);
+            renderSlashMenu();
+            return;
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (slashFilteredCommands[selectedSlashIdx]) {
+              executeSlashCommand(slashFilteredCommands[selectedSlashIdx]);
+            }
+            return;
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSlashMenu();
+            return;
+          }
+        }
+
+        // Trigger Slash on '/'
+        if (e.key === '/' && !slashActive) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            slashAnchorNode = range.startContainer;
+            slashAnchorOffset = range.startOffset + 1;
+            setTimeout(() => {
+              const caretRect = range.getBoundingClientRect();
+              openSlashMenu(caretRect);
+            }, 10);
+          }
+        }
+
+        // Smart Keyboard: Tab and Shift+Tab indent/outdent
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          if (e.shiftKey) {
+            document.execCommand('outdent', false, null);
+          } else {
+            const sel = window.getSelection();
+            const node = sel?.anchorNode;
+            if (node && (node.closest?.('li') || node.parentElement?.closest('li'))) {
+              document.execCommand('indent', false, null);
+            } else {
+              document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+            }
+          }
+          updateTelemetry();
+          checkPageAutoOverflow(editor);
+          triggerLiveWasmSync();
+          return;
+        }
+
+        // Smart Keyboard: Ctrl+Enter / Cmd+Enter for Page Break
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          insertPageBreakAtSelection();
+          return;
+        }
+      });
+
+      editor.addEventListener('focus', () => {
+        updateTelemetry();
+      });
+
+      editor.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (!slashMenu?.matches(':hover')) {
+            closeSlashMenu();
+          }
+        }, 150);
+      });
+    };
+
+    // ================= ADD CONTINUATION PAGE =================
+    const addContinuationPage = (initialHtml = '<p><br></p>', focusAfter = true) => {
+      const sheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+      const newIdx = sheets.length;
+      const ref = viewport.querySelector('#wrdRefNo')?.value || '';
+      const dt = viewport.querySelector('#wrdIssueDate')?.value || '';
+
+      const pageEl = document.createElement('div');
+      pageEl.className = 'vault-page-sheet';
+      pageEl.dataset.pageIndex = newIdx;
+      pageEl.id = `wrdPageSheet_${newIdx}`;
+      pageEl.innerHTML = `
+        <div class="vault-page-action-bar">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="wrd-page-badge" style="font-weight: 700; font-size: 12px; color: #0284c7;">📑 Page ${newIdx + 1}</span>
+            <span style="font-size: 11px; color: #64748b;">(Continuation Sheet)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button type="button" class="vault-page-btn wrd-move-page-up" data-page="${newIdx}" title="Move Page Up">▲ Up</button>
+            <button type="button" class="vault-page-btn wrd-move-page-down" data-page="${newIdx}" title="Move Page Down">▼ Down</button>
+            <button type="button" class="vault-page-btn danger wrd-delete-page" data-page="${newIdx}" title="Remove This Page">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <!-- Authentic Company Letterhead Header matching Page 1 exactly -->
+        <div class="vault-word-letterhead-header" style="position: relative; width: 100%; margin: 0; padding: 0; line-height: 0; border: none;">
+          <img src="/assets/uca-letterhead-header.png" alt="Utkal Chemical Aushadhalaya Letterhead" style="width: 100%; height: auto; display: block; margin: 0; padding: 0; border: none;" onerror="this.onerror=null; this.src='/assets/uca-letterhead-header.jpg';">
+          
+          <!-- Overlaid Reference Number matching Page 1 at exact Rust coordinate -->
+          <div class="wrd-continuation-ref-overlay" style="position: absolute; left: 117px; top: 162px; width: 195px; height: 22px; line-height: 20px; background: rgba(255, 255, 255, 0.9); border: 1px dashed rgba(148, 163, 184, 0.7); border-radius: 3px; padding: 1px 6px; font-family: monospace; font-weight: 700; font-size: 11.5px; color: #0f172a; box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center;">${ref}</div>
+          
+          <!-- Overlaid Issue Date matching Page 1 at exact Rust coordinate -->
+          <div class="wrd-continuation-date-overlay" style="position: absolute; left: 615px; top: 162px; width: 125px; height: 22px; line-height: 20px; background: rgba(255, 255, 255, 0.9); border: 1px dashed rgba(148, 163, 184, 0.7); border-radius: 3px; padding: 1px 6px; font-family: inherit; font-weight: 600; font-size: 11.5px; color: #0f172a; box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: flex; align-items: center;">${dt}</div>
+        </div>
+
+        <div class="vault-word-body-content" style="margin-top: 49px; position: relative; z-index: 2; padding: 0 67px 24px 67px; flex: 1; display: flex; flex-direction: column;">
+          <div class="wrd-page-editor" data-page-index="${newIdx}" contenteditable="true" spellcheck="true" style="max-height: 520px; min-height: 480px; outline: none; line-height: 18.7px; font-size: 12.7px; color: #2d3748; padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-family: Helvetica, Arial, sans-serif;">
+            ${initialHtml}
+          </div>
+        </div>
+
+        <!-- Continuation Page Footer (Zero Statutory text, clean numbering) -->
+        <div class="vault-page-footer" data-page-footer="${newIdx}" style="display: ${this.showPageNumbers !== false ? 'flex' : 'none'}; justify-content: flex-end;">
+          <span class="wrd-page-number-label" style="font-size: 11px; font-weight: 700; color: #475569;">Page ${newIdx + 1} of <span class="wrd-total-pages-count">${newIdx + 1}</span></span>
+        </div>
+      `;
+
+      pagesContainer.appendChild(pageEl);
+
+      const editor = pageEl.querySelector('.wrd-page-editor');
+      attachEditorEvents(editor);
+
+      pageEl.querySelector('.wrd-move-page-up')?.addEventListener('click', () => {
+        const idx = Number(pageEl.dataset.pageIndex);
+        if (idx > 1) {
+          reshufflePages(idx, idx - 1);
+          triggerLiveWasmSync();
+        }
+      });
+      pageEl.querySelector('.wrd-move-page-down')?.addEventListener('click', () => {
+        const idx = Number(pageEl.dataset.pageIndex);
+        const sheetsNow = pagesContainer.querySelectorAll('.vault-page-sheet');
+        if (idx < sheetsNow.length - 1) {
+          reshufflePages(idx, idx + 1);
+          triggerLiveWasmSync();
+        }
+      });
+      pageEl.querySelector('.wrd-delete-page')?.addEventListener('click', () => {
+        if (confirm(`Delete Page ${Number(pageEl.dataset.pageIndex) + 1}?`)) {
+          pageEl.remove();
+          updatePageFootersAndNumbers();
+          triggerLiveWasmSync();
+        }
+      });
+
+      updatePageFootersAndNumbers();
+
+      if (focusAfter) {
+        editor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      return pageEl;
+    };
+
+    // Attach to Page 1 Editor
+    const page1Editor = viewport.querySelector('#wrdEditorBody');
+    if (page1Editor) {
+      attachEditorEvents(page1Editor);
+    }
+
+    // Add Page Button Click
+    viewport.querySelector('#wrdAddPageBtn')?.addEventListener('click', () => {
+      addContinuationPage('<p><br></p>', true);
+      triggerLiveWasmSync();
+      this.app?.showNotification('Added new continuation page.', 'success');
+    });
+
+    // Toggle Page Numbers Button
+    viewport.querySelector('#wrdTogglePageNoBtn')?.addEventListener('click', () => {
+      this.showPageNumbers = !this.showPageNumbers;
+      const lbl = viewport.querySelector('#wrdPageNoBtnLabel');
+      if (lbl) lbl.textContent = `Page Nos: ${this.showPageNumbers ? 'ON' : 'OFF'}`;
+      updatePageFootersAndNumbers();
+      triggerLiveWasmSync();
+      this.app?.showNotification(`Page numbers turned ${this.showPageNumbers ? 'ON' : 'OFF'}.`, 'info');
+    });
+
+    viewport.querySelector('#wrdTitle')?.addEventListener('input', () => {
+      updateTelemetry();
+      triggerLiveWasmSync();
+    });
+    viewport.querySelector('#wrdRecipient')?.addEventListener('input', triggerLiveWasmSync);
+    viewport.querySelector('#wrdSubject')?.addEventListener('input', triggerLiveWasmSync);
+    viewport.querySelector('#wrdRefNo')?.addEventListener('input', () => {
+      updatePageFootersAndNumbers();
+      triggerLiveWasmSync();
+    });
+    viewport.querySelector('#wrdIssueDate')?.addEventListener('input', () => {
+      updatePageFootersAndNumbers();
+      triggerLiveWasmSync();
+    });
+    updateTelemetry();
+
+    // Export Dropdown Toggle
+    const exportDropdown = viewport.querySelector('#wrdExportDropdown');
+    const exportBtn = viewport.querySelector('#wrdExportMenuBtn');
+    exportBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportDropdown?.classList.toggle('show');
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.vault-export-menu-wrapper')) {
+        exportDropdown?.classList.remove('show');
+      }
+    });
+
+    // Handle Signatory Switching
+    const signerSelect = viewport.querySelector('#wrdSignerSelect');
+    signerSelect?.addEventListener('change', () => {
+      const val = signerSelect.value;
+      const chosen = signatories.find(s => String(s.id) === String(val));
+      if (chosen) {
+        const nameEl = viewport.querySelector('#wrdSignerName');
+        const titleEl = viewport.querySelector('#wrdSignerTitle');
+        const regEl = viewport.querySelector('#wrdSignerReg');
+        if (nameEl) nameEl.textContent = chosen.full_name;
+        if (titleEl) titleEl.textContent = chosen.signature_title || chosen.designation || 'Proprietor';
+        if (regEl) regEl.textContent = chosen.technical_reg_no ? `Reg: ${chosen.technical_reg_no}` : '';
+
+        const previewBox = viewport.querySelector('#wrdSignaturePreviewBox');
+        const signatorySec = viewport.querySelector('#wrdSignatorySection');
+        if (previewBox) {
+          if (chosen.signature_data) {
+            if (signatorySec) signatorySec.style.top = '893px';
+            previewBox.style.height = '60px';
+            previewBox.style.minHeight = '60px';
+            previewBox.style.maxHeight = '60px';
+            previewBox.style.marginTop = '4px';
+            previewBox.style.marginBottom = '4px';
+            previewBox.style.alignItems = 'center';
+            previewBox.innerHTML = `<img id="wrdSignatureImg" src="${chosen.signature_data}" alt="Authorized Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">`;
+          } else {
+            if (signatorySec) signatorySec.style.top = '925px';
+            previewBox.style.height = '51px';
+            previewBox.style.minHeight = '51px';
+            previewBox.style.maxHeight = '51px';
+            previewBox.style.marginBottom = '13px';
+            previewBox.style.alignItems = 'flex-end';
+            previewBox.innerHTML = `<div id="wrdNoSigNotice" style="width: 160px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">(Authorized Signatory)</div>`;
+          }
+        }
+      }
+      triggerLiveWasmSync();
+    });
+
+    // Helper: Collect Active Form Data
+    const getActiveDocumentPayload = (isSealed = false) => {
+      const title = viewport.querySelector('#wrdTitle')?.value.trim() || 'Untitled Letter';
+      const signerVal = signerSelect?.value;
+      const chosenSigner = signatories.find(s => String(s.id) === String(signerVal));
+      const refNo = viewport.querySelector('#wrdRefNo')?.value.trim() || nextRef;
+      const issueDate = viewport.querySelector('#wrdIssueDate')?.value || new Date().toISOString().split('T')[0];
+      const recipient = viewport.querySelector('#wrdRecipient')?.value.trim() || '';
+      const subject = viewport.querySelector('#wrdSubject')?.value.trim() || '';
+      const dirVal = viewport.querySelector('#wrdDirSelect')?.value;
+      const dirId = dirVal ? Number(dirVal) : null;
+      const direction = viewport.querySelector('#wrdDirectionSelect')?.value || 'OUTWARD';
+
+      // Gather content across all pages in order
+      const pageSheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
+      const pages = [];
+      const allParagraphs = [];
+      let combinedHtml = '';
+
+      pageSheets.forEach((sheet, idx) => {
+        const ed = sheet.querySelector('.wrd-page-editor');
+        if (!ed) return;
+        const pHtml = ed.innerHTML || '';
+        combinedHtml += (idx > 0 ? '<hr class="page-break" />' : '') + pHtml;
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = pHtml;
+        const pNodes = tempDiv.querySelectorAll('p, div, li');
+        let paras = [];
+        if (pNodes.length > 0) {
+          pNodes.forEach(p => {
+            const t = p.textContent.trim();
+            if (t) paras.push(t);
+          });
+        }
+        if (paras.length === 0) {
+          const plain = tempDiv.textContent.trim();
+          if (plain) paras.push(plain);
+        }
+
+        pages.push({
+          page_index: idx,
+          html: pHtml,
+          paragraphs: paras
+        });
+        allParagraphs.push(...paras);
+      });
+
+      if (allParagraphs.length === 0) {
+        allParagraphs.push('No content provided.');
+      }
+
+      return {
+        id: this.activeEditingDraftId || null,
+        dir_id: dirId,
+        doc_ref_no: refNo,
+        title: title,
+        doc_type: 'LETTER',
+        direction: direction,
+        status: isSealed ? 'SEALED_OFFICIAL' : 'DRAFT',
+        sender_party: companySettings.company_name,
+        recipient_party: recipient,
+        subject: subject,
+        issue_date: issueDate,
+        show_page_numbers: this.showPageNumbers !== false,
+        content_json: {
+          pages: pages,
+          html: combinedHtml,
+          paragraphs: allParagraphs,
+          recipient_name: recipient,
+          subject: subject,
+          show_page_numbers: this.showPageNumbers !== false,
+          signature_image: chosenSigner?.signature_data || null
+        },
+        signatory_staff_id: (signerVal && signerVal !== 'proprietor' && !isNaN(signerVal)) ? Number(signerVal) : null,
+        signatory_name: chosenSigner?.full_name || companySettings.proprietor_name || 'Authorized Signatory',
+        signatory_title: chosenSigner?.signature_title || chosenSigner?.designation || 'Proprietor',
+        signatory_reg_no: chosenSigner?.technical_reg_no || '',
+        signature_image: chosenSigner?.signature_data || null,
+        is_watermarked: isSealed ? 0 : 1
+      };
+    };
+
+    // Helper: Convert any image (PNG, WebP, canvas dataURL) to clean JPEG base64 with white background
+    const convertImageToJpegBase64 = (imgSrc) => {
+      if (!imgSrc || typeof imgSrc !== 'string' || !imgSrc.trim()) return Promise.resolve('');
+      return new Promise((resolve) => {
+        if (imgSrc.startsWith('/9j/')) {
+          return resolve(imgSrc);
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width || 300;
+            canvas.height = img.naturalHeight || img.height || 100;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            resolve(dataUrl.split(',')[1] || '');
+          } catch (e) {
+            const b64 = imgSrc.includes(';base64,') ? imgSrc.split(';base64,')[1] : imgSrc;
+            resolve(b64);
+          }
+        };
+        img.onerror = () => {
+          const b64 = imgSrc.includes(';base64,') ? imgSrc.split(';base64,')[1] : imgSrc;
+          resolve(b64);
+        };
+        img.src = imgSrc;
+      });
+    };
+
+    // Helper: Build Rust SuiteCore Letterhead Request Payload
+    const buildRustLetterheadRequest = async (payload) => {
+      let headerBase64 = cachedHeaderBase64 || '';
+      if (!headerBase64) {
+        const headerImg = viewport.querySelector('.vault-word-letterhead-header img, #wrdSheetCanvas img');
+        if (headerImg && headerImg.src && headerImg.src.startsWith('data:image')) {
+          headerBase64 = headerImg.src.split(',')[1] || '';
+        }
+      }
+
+      let sigBase64 = '';
+      if (payload.signature_image) {
+        sigBase64 = await convertImageToJpegBase64(payload.signature_image);
+      }
+
+      return {
+        doc_ref_no: payload.doc_ref_no,
+        title: payload.title,
+        date: payload.issue_date,
+        department: payload.direction === 'OUTWARD' ? 'Corporate Office' : 'Statutory Affairs',
+        recipient_name: payload.recipient_party || '',
+        recipient_title: '',
+        recipient_address: '',
+        subject: payload.subject || payload.title,
+        salutation: 'Dear Sir / Madam,',
+        paragraphs: payload.content_json?.paragraphs || [],
+        terms_clauses: [],
+        signatory_name: payload.signatory_name || 'Authorized Signatory',
+        signatory_title: payload.signatory_title || 'Proprietor',
+        signatory_reg_no: payload.signatory_reg_no || '',
+        header_image_base64: headerBase64,
+        signature_image_base64: sigBase64,
+        is_watermarked: payload.is_watermarked === 1 && payload.status === 'DRAFT',
+        watermark_text: (payload.is_watermarked === 1 && payload.status === 'DRAFT') ? 'DRAFT - NOT FOR REGULATORY RELEASE' : '',
+        matter_thread_ref: '',
+        verification_hash: ''
+      };
+    };
+
+    // Dynamic Studio Ribbon State Manager (Adapts buttons, labels, and actions to editing context)
+    const updateStudioRibbonState = () => {
+      const titleIconEl = viewport.querySelector('#wrdStudioTitleIcon');
+      const titleTextEl = viewport.querySelector('#wrdStudioTitleText');
+      const statusPill = viewport.querySelector('#wrdStatusPill');
+      const sealBtn = viewport.querySelector('#wrdSealBtn');
+      const sealBtnIcon = viewport.querySelector('#wrdSealBtnIcon');
+      const sealBtnText = viewport.querySelector('#wrdSealBtnText');
+      const draftBtn = viewport.querySelector('#wrdDraftBtn');
+      const draftBtnIcon = viewport.querySelector('#wrdDraftBtnIcon');
+      const draftBtnText = viewport.querySelector('#wrdDraftBtnText');
+      const revertBtn = viewport.querySelector('#wrdRevertBtn');
+
+      const isEditing = !!this.activeEditingDraftId;
+      const isSealed = isEditing && (this.activeEditingDoc?.status === 'SEALED_OFFICIAL');
+
+      if (isSealed) {
+        if (titleIconEl) titleIconEl.textContent = '✏️';
+        if (titleTextEl) titleTextEl.textContent = 'Document Editor';
+        if (statusPill) {
+          statusPill.textContent = `Editing Official Record #${this.activeEditingDraftId} (${this.activeEditingDoc?.doc_ref_no || 'SEALED'})`;
+          statusPill.style.background = '#fef3c7';
+          statusPill.style.color = '#92400e';
+          statusPill.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+        }
+        if (sealBtn) {
+          sealBtn.style.background = 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)';
+          sealBtn.style.boxShadow = '0 2px 5px rgba(2, 132, 199, 0.3)';
+          sealBtn.title = 'Save changes directly to this sealed document record';
+        }
+        if (sealBtnIcon) sealBtnIcon.textContent = '💾';
+        if (sealBtnText) sealBtnText.textContent = 'Save Changes';
+
+        if (draftBtn) {
+          draftBtn.title = 'Save as a new copy with next sequence reference without altering this sealed document';
+        }
+        if (draftBtnIcon) draftBtnIcon.textContent = '📋';
+        if (draftBtnText) draftBtnText.textContent = 'Save as Copy';
+
+        if (revertBtn) revertBtn.style.display = 'inline-flex';
+      } else if (isEditing) {
+        if (titleIconEl) titleIconEl.textContent = '📝';
+        if (titleTextEl) titleTextEl.textContent = 'Draft Editor';
+        if (statusPill) {
+          statusPill.textContent = `Editing Draft #${this.activeEditingDraftId}`;
+          statusPill.style.background = '#e0f2fe';
+          statusPill.style.color = '#0369a1';
+          statusPill.style.border = '1px solid rgba(2, 132, 199, 0.2)';
+        }
+        if (sealBtn) {
+          sealBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          sealBtn.style.boxShadow = '0 2px 5px rgba(5, 150, 105, 0.25)';
+          sealBtn.title = 'Officially seal and issue this draft into the vault';
+        }
+        if (sealBtnIcon) sealBtnIcon.textContent = '🔏';
+        if (sealBtnText) sealBtnText.textContent = 'Issue & Seal';
+
+        if (draftBtn) {
+          draftBtn.title = 'Update draft changes in vault';
+        }
+        if (draftBtnIcon) draftBtnIcon.textContent = '💾';
+        if (draftBtnText) draftBtnText.textContent = 'Update Draft';
+
+        if (revertBtn) revertBtn.style.display = 'inline-flex';
+      } else {
+        if (titleIconEl) titleIconEl.textContent = '📄';
+        if (titleTextEl) titleTextEl.textContent = 'Document Creator';
+        if (statusPill) {
+          statusPill.textContent = 'New Document';
+          statusPill.style.background = '#e0f2fe';
+          statusPill.style.color = '#0369a1';
+          statusPill.style.border = '1px solid rgba(2, 132, 199, 0.2)';
+        }
+        if (sealBtn) {
+          sealBtn.style.background = 'linear-gradient(135deg, #059669 0%, #10b981 100%)';
+          sealBtn.style.boxShadow = '0 2px 5px rgba(5, 150, 105, 0.25)';
+          sealBtn.title = 'Officially seal and issue document';
+        }
+        if (sealBtnIcon) sealBtnIcon.textContent = '🔏';
+        if (sealBtnText) sealBtnText.textContent = 'Issue & Seal';
+
+        if (draftBtn) {
+          draftBtn.title = 'Save draft';
+        }
+        if (draftBtnIcon) draftBtnIcon.textContent = '💾';
+        if (draftBtnText) draftBtnText.textContent = 'Save Draft';
+
+        if (revertBtn) revertBtn.style.display = 'none';
+      }
+    };
+
+    // Save as a New Copy (Branches from current doc with next sequence reference number)
+    const saveAsNewCopy = async () => {
+      try {
+        let copyRef = 'UCA/COR/2026/0001';
+        const res = await fetch('/api/compliance/vault/next-ref', {
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.doc_ref_no) copyRef = data.doc_ref_no;
+        }
+
+        const refInput = viewport.querySelector('#wrdRefNo');
+        if (refInput) refInput.value = copyRef;
+
+        const titleInput = viewport.querySelector('#wrdTitle');
+        if (titleInput && !titleInput.value.includes('(Copy)')) {
+          titleInput.value = `${titleInput.value.trim()} (Copy)`;
+        }
+
+        // Clear active editing ID so saveDocument performs a new document POST
+        this.activeEditingDraftId = null;
+        this.activeEditingDoc = null;
+
+        const newId = await saveDocument(false);
+        if (newId) {
+          this.activeEditingDraftId = newId;
+          this.activeEditingDoc = { id: newId, status: 'DRAFT', doc_ref_no: copyRef };
+          this.originalDocSnapshot = getActiveDocumentPayload(false);
+          updateStudioRibbonState();
+          this.app?.showNotification(`Saved as new draft copy ${copyRef}`, 'success');
+        }
+      } catch (err) {
+        alert('Failed to save copy: ' + err.message);
+      }
+    };
+
+    // Save or Update Document in Database
+    const saveDocument = async (isSealed = false) => {
+      const isUpdate = !!this.activeEditingDraftId;
+      const isSealedRecord = this.activeEditingDoc?.status === 'SEALED_OFFICIAL';
+      const effectiveSealed = isSealedRecord ? true : isSealed;
+      const payload = getActiveDocumentPayload(effectiveSealed);
+
+      if (!payload.title || payload.title === 'Untitled Letter') {
+        const titleInput = viewport.querySelector('#wrdTitle');
+        if (!titleInput.value.trim()) {
+          alert('Please enter a document title.');
+          titleInput.focus();
+          return null;
+        }
+      }
+
+      if (!payload.dir_id) {
+        const dirSelect = viewport.querySelector('#wrdDirSelect');
+        if (dirSelect) {
+          dirSelect.style.borderColor = '#ef4444';
+          dirSelect.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.25)';
+          dirSelect.focus();
+        }
+        alert('Please choose a Vault Folder for this document (* Required). Every document must be assigned to a vault folder so it is organized properly in the directory.');
+        return null;
+      }
+
+      const url = isUpdate ? `/api/compliance/vault/documents/${this.activeEditingDraftId}` : '/api/compliance/vault/documents';
+      const method = isUpdate ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin',
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const resData = await res.json();
+          if (!isUpdate && resData.id) {
+            this.activeEditingDraftId = resData.id;
+          }
+
+          if (this.activeEditingDoc) {
+            this.activeEditingDoc.status = effectiveSealed ? 'SEALED_OFFICIAL' : 'DRAFT';
+            this.activeEditingDoc.doc_ref_no = payload.doc_ref_no;
+          } else {
+            this.activeEditingDoc = { id: this.activeEditingDraftId, status: effectiveSealed ? 'SEALED_OFFICIAL' : 'DRAFT', doc_ref_no: payload.doc_ref_no };
+          }
+          this.originalDocSnapshot = JSON.parse(JSON.stringify(payload));
+
+          updateStudioRibbonState();
+
+          const statusPill = viewport.querySelector('#wrdStatusPill');
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          if (statusPill) {
+            statusPill.textContent = `✓ Saved (${timeStr})`;
+            setTimeout(() => updateStudioRibbonState(), 4000);
+          }
+
+          this.app?.showNotification(
+            isUpdate 
+              ? `Changes to ${payload.doc_ref_no} saved successfully.`
+              : (effectiveSealed ? `Document ${payload.doc_ref_no} sealed & officially recorded!` : `Draft ${payload.doc_ref_no} saved successfully.`),
+            'success'
+          );
+
+          await this.loadData();
+          loadDraftsList();
+
+          // Only redirect back to dashboard if creating a brand new document and sealing it
+          if (effectiveSealed && !isUpdate) {
+            this.currentNavPage = 'dashboard';
+            this.container.querySelectorAll('.vault-nav-item').forEach(b => {
+              b.classList.toggle('active', b.dataset.page === 'dashboard');
+            });
+            this.renderActivePage();
+          }
+
+          return this.activeEditingDraftId;
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Failed to save document');
+          return null;
+        }
+      } catch (err) {
+        alert(err.message);
+        return null;
+      }
+    };
+
+    // Auto-save logic (local storage backup)
+    let autoSaveTimer = null;
+    const triggerLocalAutoSave = () => {
+      try {
+        const payload = getActiveDocumentPayload(false);
+        localStorage.setItem('vault_creator_autosave', JSON.stringify({
+          draftId: this.activeEditingDraftId,
+          timestamp: Date.now(),
+          payload
+        }));
+        const statusEl = viewport.querySelector('#wrdAutoSaveStatus');
+        if (statusEl) {
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          statusEl.innerHTML = `<span>☁️</span> Auto-saved locally (${timeStr})`;
+        }
+      } catch (_) {}
+    };
+
+    autoSaveTimer = setInterval(triggerLocalAutoSave, 15000);
+
+    // ================= DRAFTS DRAWER LOGIC =================
+    const draftsDrawer = viewport.querySelector('#wrdDraftsDrawer');
+    const draftsList = viewport.querySelector('#wrdDraftsList');
+    const draftsBadge = viewport.querySelector('#wrdDraftsBadge');
+    const drawerDraftCount = viewport.querySelector('#wrdDrawerDraftCount');
+
+    const loadDraftsList = async () => {
+      try {
+        const res = await fetch('/api/compliance/vault/drafts', {
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin'
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const drafts = data.drafts || [];
+
+        if (draftsBadge) draftsBadge.textContent = drafts.length;
+        if (drawerDraftCount) drawerDraftCount.textContent = drafts.length;
+
+        if (drafts.length === 0) {
+          draftsList.innerHTML = `
+            <div style="text-align: center; color: #94a3b8; font-size: 12.5px; padding: 40px 16px;">
+              <span style="font-size: 32px; display: block; margin-bottom: 8px;">📁</span>
+              No active drafts in vault.<br>Save your work as a draft to resume later.
+            </div>
+          `;
+          return;
+        }
+
+        draftsList.innerHTML = drafts.map(d => {
+          const isActive = this.activeEditingDraftId === d.id;
+          return `
+            <div class="vault-draft-card ${isActive ? 'active' : ''}" data-draft-card-id="${d.id}">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                <span style="font-weight: 700; font-size: 12.5px; color: #0284c7; font-family: monospace;">${d.doc_ref_no || 'UCA/DRAFT'}</span>
+                <span style="font-size: 10px; color: #94a3b8;">${d.issue_date || ''}</span>
+              </div>
+              <div style="font-weight: 700; font-size: 13px; color: #0f172a; margin-bottom: 3px; line-height: 1.3;">${d.title}</div>
+              <div style="font-size: 11px; color: #64748b; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${d.recipient_party ? `To: ${d.recipient_party}` : 'No recipient specified'}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 8px;">
+                <button type="button" class="wrd-resume-draft-btn" data-resume-id="${d.id}" style="font-size: 11px; font-weight: 700; background: #0284c7; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer;">
+                  ${isActive ? 'Currently Editing' : 'Resume / Edit ↗'}
+                </button>
+                <button type="button" class="wrd-delete-draft-btn" data-delete-id="${d.id}" style="font-size: 11px; background: none; border: 1px solid #fca5a5; color: #dc2626; padding: 3px 8px; border-radius: 4px; cursor: pointer;">
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Wire Resume Buttons
+        draftsList.querySelectorAll('.wrd-resume-draft-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const draftId = Number(btn.dataset.resumeId);
+            const found = drafts.find(d => d.id === draftId);
+            if (found) {
+              resumeDraft(found);
+              draftsDrawer.classList.remove('open');
+            }
+          });
+        });
+
+        // Wire Delete Buttons
+        draftsList.querySelectorAll('.wrd-delete-draft-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const draftId = Number(btn.dataset.deleteId);
+            if (confirm(`Permanently delete draft record #${draftId}?`)) {
+              try {
+                const dRes = await fetch(`/api/compliance/vault/documents/${draftId}`, {
+                  method: 'DELETE',
+                  headers: this.getAuthHeaders(),
+                  credentials: 'same-origin'
+                });
+                if (dRes.ok) {
+                  this.app?.showNotification(`Draft #${draftId} deleted.`, 'info');
+                  if (this.activeEditingDraftId === draftId) {
+                    resetToNewDocument();
+                  }
+                  loadDraftsList();
+                  await this.loadData();
+                }
+              } catch (err) {
+                alert(err.message);
+              }
+            }
+          });
+        });
+
+      } catch (_) {}
+    };
+
+    // Resume an existing draft or document into the editor
+    const resumeDraft = (draft) => {
+      this.activeEditingDraftId = draft.id;
+      this.activeEditingDoc = draft;
+      this.originalDocSnapshot = JSON.parse(JSON.stringify(draft));
+
+      if (viewport.querySelector('#wrdTitle')) viewport.querySelector('#wrdTitle').value = draft.title || '';
+      if (viewport.querySelector('#wrdRecipient')) viewport.querySelector('#wrdRecipient').value = draft.recipient_party || '';
+      if (viewport.querySelector('#wrdSubject')) {
+        const sEl = viewport.querySelector('#wrdSubject');
+        sEl.value = draft.subject || '';
+        sEl.dispatchEvent(new Event('input'));
+      }
+      if (viewport.querySelector('#wrdRefNo')) viewport.querySelector('#wrdRefNo').value = draft.doc_ref_no || nextRef;
+      if (viewport.querySelector('#wrdIssueDate')) viewport.querySelector('#wrdIssueDate').value = draft.issue_date || new Date().toISOString().split('T')[0];
+      if (viewport.querySelector('#wrdDirectionSelect')) viewport.querySelector('#wrdDirectionSelect').value = draft.direction || 'OUTWARD';
+      if (viewport.querySelector('#wrdDirSelect')) viewport.querySelector('#wrdDirSelect').value = draft.dir_id || '';
+
+      let content = {};
+      try {
+        content = typeof draft.content_json === 'string' ? JSON.parse(draft.content_json) : (draft.content_json || {});
+      } catch (_) {}
+
+      // Clean up any existing continuation pages first
+      pagesContainer.querySelectorAll('.vault-page-sheet:not(#wrdPageSheet_0)').forEach(p => p.remove());
+
+      if (typeof content.show_page_numbers === 'boolean') {
+        this.showPageNumbers = content.show_page_numbers;
+      } else if (typeof draft.show_page_numbers === 'boolean') {
+        this.showPageNumbers = draft.show_page_numbers;
+      }
+      const pageNoLbl = viewport.querySelector('#wrdPageNoBtnLabel');
+      if (pageNoLbl) pageNoLbl.textContent = `Page Nos: ${this.showPageNumbers !== false ? 'ON' : 'OFF'}`;
+
+      const editor = viewport.querySelector('#wrdEditorBody');
+      if (content.pages && Array.isArray(content.pages) && content.pages.length > 0) {
+        if (editor) editor.innerHTML = content.pages[0].html || (content.pages[0].paragraphs ? content.pages[0].paragraphs.map(p => `<p>${p}</p>`).join('') : '<p><br></p>');
+        for (let i = 1; i < content.pages.length; i++) {
+          const pg = content.pages[i];
+          const pgHtml = pg.html || (pg.paragraphs ? pg.paragraphs.map(p => `<p>${p}</p>`).join('') : '<p><br></p>');
+          addContinuationPage(pgHtml, false);
+        }
+      } else if (editor) {
+        if (content.html) {
+          editor.innerHTML = content.html;
+        } else if (content.paragraphs && Array.isArray(content.paragraphs)) {
+          editor.innerHTML = content.paragraphs.map(p => `<p>${p}</p>`).join('');
+        }
+      }
+
+      if (draft.signatory_staff_id && signerSelect) {
+        signerSelect.value = draft.signatory_staff_id;
+        signerSelect.dispatchEvent(new Event('change'));
+      } else if (signerSelect) {
+        const matched = signatories.find(s => s.full_name?.toLowerCase() === draft.signatory_name?.toLowerCase());
+        if (matched) {
+          signerSelect.value = matched.id;
+          signerSelect.dispatchEvent(new Event('change'));
+        }
+      }
+
+      updateStudioRibbonState();
+      updatePageFootersAndNumbers();
+      updateTelemetry();
+      this.app?.showNotification(`Document ${draft.doc_ref_no || '#' + draft.id} loaded into Studio.`, 'success');
+    };
+
+    // Reset editor to a blank document
+    const resetToNewDocument = () => {
+      this.activeEditingDraftId = null;
+      this.initialDocToEdit = null;
+      this.activeEditingDoc = null;
+      this.originalDocSnapshot = null;
+      // Remove all continuation sheets
+      pagesContainer.querySelectorAll('.vault-page-sheet:not(#wrdPageSheet_0)').forEach(p => p.remove());
+
+      if (viewport.querySelector('#wrdTitle')) viewport.querySelector('#wrdTitle').value = '';
+      if (viewport.querySelector('#wrdRecipient')) viewport.querySelector('#wrdRecipient').value = '';
+      if (viewport.querySelector('#wrdSubject')) {
+        const sEl = viewport.querySelector('#wrdSubject');
+        sEl.value = '';
+        sEl.dispatchEvent(new Event('input'));
+      }
+      if (viewport.querySelector('#wrdRefNo')) viewport.querySelector('#wrdRefNo').value = nextRef;
+      if (viewport.querySelector('#wrdIssueDate')) viewport.querySelector('#wrdIssueDate').value = new Date().toISOString().split('T')[0];
+      if (viewport.querySelector('#wrdEditorBody')) {
+        viewport.querySelector('#wrdEditorBody').innerHTML = `
+          <p style="margin-bottom: 16px;">Dear Sir / Madam,</p>
+          <p style="margin-bottom: 10.7px;">With reference to statutory requirements and regulatory guidelines under the Drugs & Cosmetics Rules 1945 and Schedule T governance, we hereby submit the official documentation for your kind record and consideration.</p>
+          <p style="margin-bottom: 10.7px;">The manufacturing premises and operations continue to strictly comply with all prescribed standard operating procedures (SOPs), quality control validations, and batch manufacturing records (BMR).</p>
+          <p style="margin-bottom: 10.7px;">Kindly acknowledge receipt and issue regulatory confirmation accordingly.</p>
+        `;
+      }
+
+      updateStudioRibbonState();
+      updatePageFootersAndNumbers();
+      updateTelemetry();
+    };
+
+    // Drafts Drawer Toggle Handlers
+    viewport.querySelector('#wrdToggleDraftsBtn')?.addEventListener('click', () => {
+      draftsDrawer?.classList.toggle('open');
+      if (draftsDrawer?.classList.contains('open')) loadDraftsList();
+    });
+    viewport.querySelector('#wrdCloseDraftsBtn')?.addEventListener('click', () => {
+      draftsDrawer?.classList.remove('open');
+    });
+    viewport.querySelector('#wrdNewDocBtn')?.addEventListener('click', () => {
+      resetToNewDocument();
+      draftsDrawer?.classList.remove('open');
+    });
+
+    loadDraftsList();
+
+    if (this.initialDocToEdit) {
+      resumeDraft(this.initialDocToEdit);
+      this.initialDocToEdit = null;
+    } else {
+      updateStudioRibbonState();
+    }
+
+    // ================= MULTI-FORMAT EXPORT HANDLERS =================
+    // Helper: Trigger browser file download from Blob
+    const downloadBlob = (blob, filename) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 500);
+    };
+
+    // Direct Multi-Format Document Exporter (Zero database save needed)
+    const exportDocumentAs = async (format) => {
+      exportDropdown?.classList.remove('show');
+      const formatLabels = { pdf: 'PDF', docx: 'Word (.docx)', jpeg: 'High-Res Image (.jpg)' };
+      const label = formatLabels[format] || format.toUpperCase();
+      this.app?.showNotification(`Exporting ${label}...`, 'info');
+
+      try {
+        const payload = getActiveDocumentPayload(false);
+
+        // Client-side WASM fast paths if available
+        if (format === 'pdf' && window.SuiteCoreBridge && typeof window.SuiteCoreBridge.renderLetterheadPdf === 'function') {
+          try {
+            const rustReq = await buildRustLetterheadRequest(payload);
+            const result = window.SuiteCoreBridge.renderLetterheadPdf(rustReq);
+            if (result && result.pdf_base64) {
+              const byteChars = atob(result.pdf_base64);
+              const byteNums = new Array(byteChars.length);
+              for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+              const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' });
+              downloadBlob(blob, `${(payload.doc_ref_no || 'UCA_DOCUMENT').replace(/[/\\?%*:|"<>]/g, '_')}.pdf`);
+              this.app?.showNotification('PDF exported via Pure Rust WASM Engine!', 'success');
+              return;
+            }
+          } catch (wasmErr) {
+            console.warn('[Vault] Client-side WASM PDF fallback to server:', wasmErr);
+          }
+        }
+
+        if (format === 'docx' && window.SuiteCoreBridge && typeof window.SuiteCoreBridge.renderLetterheadDocx === 'function') {
+          try {
+            const rustReq = await buildRustLetterheadRequest(payload);
+            const result = window.SuiteCoreBridge.renderLetterheadDocx(rustReq);
+            if (result && result.docx_base64) {
+              const byteChars = atob(result.docx_base64);
+              const byteNums = new Array(byteChars.length);
+              for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+              const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+              downloadBlob(blob, `${(payload.doc_ref_no || 'UCA_DOCUMENT').replace(/[/\\?%*:|"<>]/g, '_')}.docx`);
+              this.app?.showNotification('Word (.docx) package generated via Pure Rust!', 'success');
+              return;
+            }
+          } catch (wasmErr) {
+            console.warn('[Vault] Client-side WASM DOCX fallback to server:', wasmErr);
+          }
+        }
+
+        // Direct Server-Side Rust Export Route
+        const res = await fetch(`/api/compliance/vault/export/${format}`, {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin',
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const blob = await res.blob();
+          const ext = format === 'jpeg' ? 'jpg' : format;
+          downloadBlob(blob, `${(payload.doc_ref_no || 'UCA_DOCUMENT').replace(/[/\\?%*:|"<>]/g, '_')}.${ext}`);
+          this.app?.showNotification(`${label} exported successfully!`, 'success');
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert(`Export failed: ${errData.error || res.statusText}`);
+        }
+      } catch (err) {
+        alert(`Export ${format.toUpperCase()} error: ${err.message}`);
+      }
+    };
+
+    // Wire Export Dropdown Buttons
+    viewport.querySelector('#wrdExportPdfBtn')?.addEventListener('click', () => exportDocumentAs('pdf'));
+    viewport.querySelector('#wrdExportDocxBtn')?.addEventListener('click', () => exportDocumentAs('docx'));
+    viewport.querySelector('#wrdExportJpegBtn')?.addEventListener('click', () => exportDocumentAs('jpeg'));
+
+    // Print Document Handler
+    viewport.querySelector('#wrdPrintBtn')?.addEventListener('click', () => {
+      exportDropdown?.classList.remove('show');
+      window.print();
+    });
+
+    // ================= REAL-TIME SHARED WASM VECTOR PROOF & SYNC =================
+    let isProofMode = false;
+    let wasmSyncTimer = null;
+    const svgPreviewContainer = viewport.querySelector('#wrdSvgPreviewContainer');
+    const toggleProofBtn = viewport.querySelector('#wrdToggleProofBtn');
+    const toggleProofText = viewport.querySelector('#wrdToggleProofText');
+    const toggleProofIcon = viewport.querySelector('#wrdToggleProofIcon');
+
+    const updateVectorWasmProof = async () => {
+      const wasmStatusEl = viewport.querySelector('#wrdWasmStatus');
+      if (wasmStatusEl) {
+        wasmStatusEl.innerHTML = '<span style="font-size: 12px; color: #0284c7;">⚡</span> <span style="color: #0284c7; font-weight: 600;">WASM Vector Proof: Syncing...</span>';
+      }
+      const payload = getActiveDocumentPayload(false);
+      try {
+        let svgResult = null;
+        if (window.SuiteCoreBridge && typeof window.SuiteCoreBridge.renderLetterheadSvg === 'function') {
+          try {
+            const rustReq = await buildRustLetterheadRequest(payload);
+            svgResult = window.SuiteCoreBridge.renderLetterheadSvg(rustReq);
+          } catch (wasmErr) {
+            console.warn('[Studio] Client-side WASM SVG error:', wasmErr);
+          }
+        }
+        if (svgResult && svgResult.svg) {
+          if (svgPreviewContainer) {
+            svgPreviewContainer.innerHTML = svgResult.svg;
+          }
+          if (wasmStatusEl) {
+            wasmStatusEl.innerHTML = '<span style="font-size: 12px; color: #059669;">⚡</span> <span style="color: #059669; font-weight: 600;">WASM Vector Proof: In Sync (100% Parity)</span>';
+          }
+        }
+      } catch (e) {
+        console.warn('[Studio] Vector proof generation error:', e);
+      }
+    };
+
+    triggerLiveWasmSync = () => {
+      // Dynamic signature anchoring in editor to prevent overlap with long body content
+      const editorEl = viewport.querySelector('#wrdEditorBody');
+      const sigEl = viewport.querySelector('#wrdSignatorySection');
+      if (editorEl && sigEl) {
+        const editorBottom = editorEl.offsetTop + editorEl.offsetHeight;
+        const targetTop = Math.max(893, editorBottom + 16);
+        sigEl.style.top = `${targetTop}px`;
+      }
+
+      if (wasmSyncTimer) clearTimeout(wasmSyncTimer);
+      wasmSyncTimer = setTimeout(() => {
+        updateVectorWasmProof();
+      }, 60);
+    };
+
+    const toggleProofMode = async () => {
+      isProofMode = !isProofMode;
+      if (isProofMode) {
+        if (scaleWrapper) scaleWrapper.style.display = 'none';
+        if (svgScaleWrapper) svgScaleWrapper.style.display = 'block';
+        if (toggleProofBtn) {
+          toggleProofBtn.style.background = '#0284c7';
+          toggleProofBtn.style.color = '#ffffff';
+          toggleProofBtn.style.borderColor = '#0284c7';
+        }
+        if (toggleProofText) toggleProofText.textContent = 'Back to Editor';
+        if (toggleProofIcon) toggleProofIcon.textContent = '✏️';
+        await updateVectorWasmProof();
+      } else {
+        if (scaleWrapper) scaleWrapper.style.display = 'flex';
+        if (svgScaleWrapper) svgScaleWrapper.style.display = 'none';
+        if (toggleProofBtn) {
+          toggleProofBtn.style.background = '#f0f9ff';
+          toggleProofBtn.style.color = '#0284c7';
+          toggleProofBtn.style.borderColor = '#0284c7';
+        }
+        if (toggleProofText) toggleProofText.textContent = 'Vector Proof';
+        if (toggleProofIcon) toggleProofIcon.textContent = '👁️';
+      }
+    };
+
+    toggleProofBtn?.addEventListener('click', toggleProofMode);
+
+    // Smart Multi-Line Auto-Expanding Subject Handler
+    const wrdSubjectEl = viewport.querySelector('#wrdSubject');
+    const autoResizeSubject = () => {
+      if (!wrdSubjectEl) return;
+      wrdSubjectEl.style.height = 'auto';
+      wrdSubjectEl.style.height = Math.max(34, wrdSubjectEl.scrollHeight) + 'px';
+    };
+    wrdSubjectEl?.addEventListener('input', autoResizeSubject);
+    autoResizeSubject();
+
+    // Reset error highlight on folder select when user chooses a vault folder
+    const wrdDirEl = viewport.querySelector('#wrdDirSelect');
+    wrdDirEl?.addEventListener('change', () => {
+      if (wrdDirEl.value) {
+        wrdDirEl.style.borderColor = '#cbd5e1';
+        wrdDirEl.style.boxShadow = 'none';
+      }
+    });
+
+    // Wire Primary Action Buttons
+    viewport.querySelector('#wrdAiDraftBtn')?.addEventListener('click', () => this.openAiDocumentCreatorModal(viewport));
+
+    viewport.querySelector('#wrdDraftBtn')?.addEventListener('click', () => {
+      if (this.activeEditingDoc?.status === 'SEALED_OFFICIAL') {
+        saveAsNewCopy();
+      } else {
+        saveDocument(false);
+      }
+    });
+
+    viewport.querySelector('#wrdSealBtn')?.addEventListener('click', () => {
+      saveDocument(true);
+    });
+
+    viewport.querySelector('#wrdRevertBtn')?.addEventListener('click', () => {
+      if (!this.originalDocSnapshot) {
+        this.app?.showNotification('No original snapshot found to revert.', 'info');
+        return;
+      }
+      if (confirm('Discard all unsaved edits and revert back to the original document state?')) {
+        resumeDraft(this.originalDocSnapshot);
+        this.app?.showNotification('Reverted document to original state.', 'info');
+      }
+    });
+  }
+
+  // AI Legal & Statutory Document Drafter Modal (Anti-Slop Guaranteed)
+  openAiDocumentCreatorModal(viewport) {
+    const existing = document.getElementById('vaultAiCreatorModalOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'staff-modal-overlay';
+    overlay.id = 'vaultAiCreatorModalOverlay';
+    overlay.style.zIndex = '2147483647';
+
+    overlay.innerHTML = `
+      <div class="staff-modal-box" style="width: 760px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
+        
+        <!-- Header -->
+        <div class="staff-modal-header" style="background: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%); color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 20px;">✨</span>
+            <div>
+              <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #fff;">AI Legal & Compliance Document Drafter</h3>
+              <div style="font-size: 11px; color: #c7d2fe; margin-top: 2px; display: flex; align-items: center; gap: 6px;">
+                <span>Autonomous Regulatory Draft Engine</span>
+                <span style="background: rgba(16, 185, 129, 0.25); color: #6ee7b7; padding: 1px 6px; border-radius: 4px; font-weight: 600; font-size: 10px;">
+                  🛡️ Anti-Slop Filter Active (Zero Buzzwords • Pure Facts)
+                </span>
+              </div>
+            </div>
+          </div>
+          <button class="staff-modal-close-btn" id="closeVaultAiCreatorBtn" style="color: #c7d2fe; font-size: 18px; cursor: pointer; background: none; border: none;">✕</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; background: #f8fafc;">
+          
+          <!-- Quick Statutory Presets -->
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+              Quick Statutory Scenarios:
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="vault-ai-preset-btn" data-prompt="Draft an application to the State Licensing Authority for renewal and endorsement of Form 25D Ayurvedic Drug Manufacturing License OR-02/AYUR under Rule 154." style="font-size: 11px; padding: 5px 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 16px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s ease;">
+                🏛️ AYUSH Form 25D Renewal
+              </button>
+              <button type="button" class="vault-ai-preset-btn" data-prompt="Draft official submission of Schedule T GMP annual air handling unit (AHU) environmental validation, particulate count, and filter integrity audit reports." style="font-size: 11px; padding: 5px 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 16px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s ease;">
+                🏭 Schedule T GMP Audit
+              </button>
+              <button type="button" class="vault-ai-preset-btn" data-prompt="Draft a formal Notice of Quality Control Rejection to botanical raw materials vendor due to moisture content exceeding 8.0% w/w under Ayurvedic Pharmacopoeia of India standards, demanding immediate quarantined batch replacement." style="font-size: 11px; padding: 5px 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 16px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s ease;">
+                🌿 Raw Material QC Rejection
+              </button>
+              <button type="button" class="vault-ai-preset-btn" data-prompt="Draft an official communication to the Divisional Forest Officer requesting inspection and transit pass endorsement for inward consignment of raw forest produce (Triphala constituents) for pharmaceutical processing." style="font-size: 11px; padding: 5px 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 16px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s ease;">
+                🌲 Forest Transit Pass Request
+              </button>
+              <button type="button" class="vault-ai-preset-btn" data-prompt="Draft an Internal Technical SOP Office Circular regarding mandatory 100% in-process batch recording (BMR) and retention sample preservation under Schedule T Part I governance." style="font-size: 11px; padding: 5px 10px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 16px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s ease;">
+                📋 Internal SOP Circular
+              </button>
+            </div>
+          </div>
+
+          <!-- Prompt Input -->
+          <div class="staff-input-group full-width" style="margin-bottom: 0;">
+            <label style="font-weight: 700; color: #1e293b; font-size: 12px; display: flex; justify-content: space-between;">
+              <span>Document Requirements & Context:</span>
+              <span style="font-weight: 400; color: #64748b; font-size: 11px;">Specify recipient, purpose, and key facts</span>
+            </label>
+            <textarea id="vaultAiPromptInput" rows="3" placeholder="e.g. Draft an official compliance reply to the State Drug Controller answering audit observation No. 3 regarding secondary packaging area sanitation..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; resize: vertical; outline: none; background: #ffffff;"></textarea>
+          </div>
+
+          <!-- Tone Selector & Generate Button Row -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-size: 12px; font-weight: 600; color: #475569;">Tone / Framework:</label>
+              <select id="vaultAiToneSelect" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: #ffffff;">
+                <option value="REGULATORY">Authoritative Regulatory (AYUSH / Drug Control)</option>
+                <option value="STRICT_LEGAL">Strict Commercial & Legal Notice</option>
+                <option value="INTERNAL_SOP">Internal SOP & Operations Directive</option>
+              </select>
+            </div>
+
+            <button type="button" id="vaultAiGenerateBtn" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; border: none; padding: 8px 18px; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);">
+              <span id="vaultAiGenSpinner" style="display: none;">⏳</span>
+              <span id="vaultAiGenIcon">🚀</span>
+              <span id="vaultAiGenText">Generate Slop-Free Draft</span>
+            </button>
+          </div>
+
+          <!-- Generated Preview Container -->
+          <div id="vaultAiPreviewContainer" style="display: none; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin-top: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 12px;">
+              <span style="font-size: 12px; font-weight: 700; color: #059669; display: flex; align-items: center; gap: 4px;">
+                <span>✓</span> Slop-Free Draft Ready
+              </span>
+              <span id="vaultAiPreviewDirectionBadge" style="font-size: 11px; background: #e0f2fe; color: #0284c7; padding: 2px 8px; border-radius: 12px; font-weight: 700;">OUTWARD</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-bottom: 12px;">
+              <div>
+                <span style="color: #64748b; font-weight: 600;">Title:</span>
+                <div id="vaultAiPreviewTitle" style="font-weight: 700; color: #0f172a; margin-top: 2px;"></div>
+              </div>
+              <div>
+                <span style="color: #64748b; font-weight: 600;">Recipient:</span>
+                <div id="vaultAiPreviewRecipient" style="font-weight: 700; color: #0f172a; margin-top: 2px;"></div>
+              </div>
+              <div style="grid-column: span 2;">
+                <span style="color: #64748b; font-weight: 600;">Subject:</span>
+                <div id="vaultAiPreviewSubject" style="font-style: italic; color: #334155; margin-top: 2px;"></div>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid #f1f5f9; padding-top: 10px;">
+              <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Body Content Preview:</div>
+              <div id="vaultAiPreviewBody" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-size: 13px; line-height: 1.6; color: #1e293b; max-height: 180px; overflow-y: auto;"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer Actions -->
+        <div style="padding: 12px 20px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="cmp-btn-cancel" id="cancelVaultAiModalBtn">Cancel</button>
+          <button type="button" id="applyVaultAiDraftBtn" disabled style="background: #059669; color: #ffffff; border: none; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: not-allowed; opacity: 0.5; display: flex; align-items: center; gap: 6px;">
+            <span>📥</span> Apply to Document
+          </button>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const closeModal = () => overlay.remove();
+    overlay.querySelector('#closeVaultAiCreatorBtn')?.addEventListener('click', closeModal);
+    overlay.querySelector('#cancelVaultAiModalBtn')?.addEventListener('click', closeModal);
+
+    // Preset button clicks
+    overlay.querySelectorAll('.vault-ai-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const promptInput = overlay.querySelector('#vaultAiPromptInput');
+        if (promptInput) {
+          promptInput.value = btn.dataset.prompt;
+          promptInput.focus();
+        }
+      });
+    });
+
+    let generatedDoc = null;
+
+    // Generate click
+    overlay.querySelector('#vaultAiGenerateBtn')?.addEventListener('click', async () => {
+      const promptText = overlay.querySelector('#vaultAiPromptInput').value.trim();
+      if (!promptText) {
+        alert('Please specify your document requirements or choose a scenario.');
+        overlay.querySelector('#vaultAiPromptInput').focus();
+        return;
+      }
+
+      const tone = overlay.querySelector('#vaultAiToneSelect').value;
+      const genBtn = overlay.querySelector('#vaultAiGenerateBtn');
+      const genText = overlay.querySelector('#vaultAiGenText');
+      const genSpinner = overlay.querySelector('#vaultAiGenSpinner');
+      const genIcon = overlay.querySelector('#vaultAiGenIcon');
+      const applyBtn = overlay.querySelector('#applyVaultAiDraftBtn');
+
+      genBtn.disabled = true;
+      genText.textContent = 'Drafting Slop-Free Content...';
+      genSpinner.style.display = 'inline';
+      genIcon.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/compliance/vault/ai/generate-document', {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin',
+          body: JSON.stringify({ prompt: promptText, tone })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          generatedDoc = data;
+          
+          const previewBox = overlay.querySelector('#vaultAiPreviewContainer');
+          previewBox.style.display = 'block';
+          overlay.querySelector('#vaultAiPreviewTitle').textContent = data.title || '';
+          overlay.querySelector('#vaultAiPreviewRecipient').textContent = data.recipient || '';
+          overlay.querySelector('#vaultAiPreviewSubject').textContent = data.subject || '';
+          overlay.querySelector('#vaultAiPreviewBody').innerHTML = data.html || '';
+          overlay.querySelector('#vaultAiPreviewDirectionBadge').textContent = data.direction || 'OUTWARD';
+
+          applyBtn.disabled = false;
+          applyBtn.style.cursor = 'pointer';
+          applyBtn.style.opacity = '1';
+        } else {
+          const errData = await res.json();
+          alert(errData.error || 'Failed to generate document');
+        }
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        genBtn.disabled = false;
+        genText.textContent = 'Re-Generate';
+        genSpinner.style.display = 'none';
+        genIcon.style.display = 'inline';
+      }
+    });
+
+    // Apply button click
+    overlay.querySelector('#applyVaultAiDraftBtn')?.addEventListener('click', () => {
+      if (!generatedDoc) return;
+
+      if (generatedDoc.title) {
+        const el = viewport.querySelector('#wrdTitle');
+        if (el) el.value = generatedDoc.title;
+      }
+      if (generatedDoc.recipient) {
+        const el = viewport.querySelector('#wrdRecipient');
+        if (el) el.value = generatedDoc.recipient;
+      }
+      if (generatedDoc.subject) {
+        const el = viewport.querySelector('#wrdSubject');
+        if (el) {
+          el.value = generatedDoc.subject;
+          el.dispatchEvent(new Event('input'));
+        }
+      }
+      if (generatedDoc.direction) {
+        const el = viewport.querySelector('#wrdDirectionSelect');
+        if (el) el.value = generatedDoc.direction;
+      }
+      if (generatedDoc.html) {
+        const el = viewport.querySelector('#wrdEditorBody');
+        if (el) el.innerHTML = generatedDoc.html;
+      }
+
+      this.app?.showNotification('AI document draft applied cleanly to letterhead.', 'success');
+      closeModal();
+    });
   }
 
   // =========================================================================
@@ -571,6 +2935,8 @@ export class DocumentVaultExplorer {
       docs = docs.filter(d => d.direction === 'INWARD');
     } else if (this.activeFilterChip === 'OUTWARD') {
       docs = docs.filter(d => d.direction === 'OUTWARD');
+    } else if (this.activeFilterChip === 'INTERNAL') {
+      docs = docs.filter(d => d.direction === 'INTERNAL');
     } else if (this.activeFilterChip === 'SEALED') {
       docs = docs.filter(d => d.status === 'SEALED_OFFICIAL');
     }
@@ -581,6 +2947,8 @@ export class DocumentVaultExplorer {
       docs.sort((a, b) => (a.direction === 'INWARD' ? -1 : 1));
     } else if (this.activeSort === 'outward') {
       docs.sort((a, b) => (a.direction === 'OUTWARD' ? -1 : 1));
+    } else if (this.activeSort === 'internal') {
+      docs.sort((a, b) => (a.direction === 'INTERNAL' ? -1 : 1));
     }
 
     let rootDirs = this.directories.filter(d => !d.parent_id);
@@ -620,6 +2988,7 @@ export class DocumentVaultExplorer {
             <option value="name" ${this.activeSort === 'name' ? 'selected' : ''}>Name A–Z</option>
             <option value="inward" ${this.activeSort === 'inward' ? 'selected' : ''}>Inward</option>
             <option value="outward" ${this.activeSort === 'outward' ? 'selected' : ''}>Outward</option>
+            <option value="internal" ${this.activeSort === 'internal' ? 'selected' : ''}>Internal</option>
           </select>
         </div>
 
@@ -629,6 +2998,7 @@ export class DocumentVaultExplorer {
           <button class="gemini-chip ${this.activeFilterChip === 'FOLDERS' ? 'active' : ''}" data-chip="FOLDERS">Folders</button>
           <button class="gemini-chip ${this.activeFilterChip === 'INWARD' ? 'active' : ''}" data-chip="INWARD">Inward</button>
           <button class="gemini-chip ${this.activeFilterChip === 'OUTWARD' ? 'active' : ''}" data-chip="OUTWARD">Outward</button>
+          <button class="gemini-chip ${this.activeFilterChip === 'INTERNAL' ? 'active' : ''}" data-chip="INTERNAL">Internal</button>
           <button class="gemini-chip ${this.activeFilterChip === 'SEALED' ? 'active' : ''}" data-chip="SEALED">Sealed</button>
         </div>
 
@@ -1034,6 +3404,8 @@ export class DocumentVaultExplorer {
       currentFiles = this.documents.filter(d => d.direction === 'INWARD');
     } else if (this.currentNavPage === 'outward') {
       currentFiles = this.documents.filter(d => d.direction === 'OUTWARD');
+    } else if (this.currentNavPage === 'internal') {
+      currentFiles = this.documents.filter(d => d.direction === 'INTERNAL');
     } else if (!isRoot) {
       currentFiles = this.documents.filter(doc => Number(doc.dir_id) === Number(this.selectedDirId));
     }
@@ -1056,6 +3428,14 @@ export class DocumentVaultExplorer {
       currentFiles.sort((a, b) => (b.id || 0) - (a.id || 0));
     }
 
+    const rootLabel = this.currentNavPage === 'inward' 
+      ? 'Inward' 
+      : this.currentNavPage === 'outward' 
+      ? 'Outward' 
+      : this.currentNavPage === 'internal' 
+      ? 'Internal Office Docs' 
+      : 'Vault';
+
     viewport.innerHTML = `
       <div style="position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;">
         <!-- Floating Dynamic Liquid Glass Top Navigation Capsule (macOS Finder Toolbar) -->
@@ -1068,7 +3448,7 @@ export class DocumentVaultExplorer {
 
           <!-- Breadcrumbs Path -->
           <div class="vault-nav-breadcrumbs">
-            <button class="vault-bc-btn ${isRoot ? 'current' : ''}" id="vaultBcRootBtn">Vault</button>
+            <button class="vault-bc-btn ${isRoot ? 'current' : ''}" id="vaultBcRootBtn">${rootLabel}</button>
             ${this.breadcrumbPath.map((b, idx) => `
               <span class="vault-bc-sep">›</span>
               <button class="vault-bc-btn ${idx === this.breadcrumbPath.length - 1 ? 'current' : ''}" data-bc-idx="${idx}">${b.name}</button>
@@ -1123,7 +3503,7 @@ export class DocumentVaultExplorer {
         <div class="gemini-empty-grid">
           <div style="font-size: 32px; margin-bottom: 6px;">📂</div>
           <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">
-            ${isRoot ? 'No folders in Vault. Click "＋ Folder" to create one.' : 'This folder is empty.'}
+            ${this.currentNavPage === 'inward' ? 'No Inward documents in Vault.' : this.currentNavPage === 'outward' ? 'No Outward documents in Vault.' : this.currentNavPage === 'internal' ? 'No Internal Office documents in Vault.' : isRoot ? 'No folders in Vault. Click "＋ Folder" to create one.' : 'This folder is empty.'}
           </div>
         </div>
       `;
@@ -1160,7 +3540,9 @@ export class DocumentVaultExplorer {
       return `
         <div class="gemini-empty-grid">
           <div style="font-size: 32px; margin-bottom: 6px;">📄</div>
-          <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">Empty folder</div>
+          <div style="font-size: 13.5px; font-weight: 600; color: #94a3b8;">
+            ${this.currentNavPage === 'inward' ? 'No Inward documents' : this.currentNavPage === 'outward' ? 'No Outward documents' : this.currentNavPage === 'internal' ? 'No Internal Office documents' : 'Empty folder'}
+          </div>
         </div>
       `;
     }
@@ -1457,6 +3839,9 @@ export class DocumentVaultExplorer {
             <button class="vault-pill-btn primary" data-quick-pdf="${doc.id}" style="justify-content: center; width: 100%; padding: 10px;">
               <span>Preview PDF ↗</span>
             </button>
+            <button class="vault-pill-btn" data-edit-in-studio="${doc.id}" style="justify-content: center; width: 100%; padding: 10px; background: rgba(2, 132, 199, 0.08); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.25); font-weight: 700;">
+              <span>✏️ Edit in Studio</span>
+            </button>
             <a href="/api/compliance/vault/documents/${doc.id}/pdf" target="_blank" class="vault-pill-btn" style="text-decoration: none; justify-content: center; width: 100%; padding: 10px;">
               <span>Download File ⤓</span>
             </a>
@@ -1632,6 +4017,14 @@ export class DocumentVaultExplorer {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.openPdfPreviewModal(Number(btn.dataset.quickPdf));
+      });
+    });
+
+    // Edit in Studio
+    viewport.querySelectorAll('[data-edit-in-studio]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.editDocumentInStudio(Number(btn.dataset.editInStudio));
       });
     });
 
@@ -1951,12 +4344,16 @@ export class DocumentVaultExplorer {
   updateBatchBar() {
     const bar = this.container.querySelector('#vaultBatchToolbar');
     const countEl = this.container.querySelector('#vaultBatchCount');
+    const editBtn = this.container.querySelector('#vaultBatchEditBtn');
     if (!bar || !countEl) return;
 
     const count = this.selectedDocIds.size;
     if (count > 0) {
       bar.style.display = 'inline-flex';
       countEl.textContent = `${count} Selected`;
+      if (editBtn) {
+        editBtn.style.display = count === 1 ? 'inline-flex' : 'none';
+      }
     } else {
       bar.style.display = 'none';
     }
@@ -2384,10 +4781,164 @@ export class DocumentVaultExplorer {
       }
 
       const sizeStr = this.formatFileSize(targetDoc.file_size);
+      const isNative = !targetDoc.file_path;
+      const filePath = targetDoc.file_path || '';
+      const rawExt = filePath ? filePath.split('.').pop().toLowerCase() : '';
+      const isPdf = rawExt === 'pdf';
+      const isImage = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff'].includes(rawExt);
+      const isWord = ['docx', 'doc'].includes(rawExt);
+
+      const downloadUrl = `/api/compliance/vault/documents/${targetDoc.id}/download`;
       const pdfUrl = `/api/compliance/vault/documents/${targetDoc.id}/pdf`;
+      const docxUrl = `/api/compliance/vault/documents/${targetDoc.id}/docx`;
+      const jpegUrl = `/api/compliance/vault/documents/${targetDoc.id}/jpeg`;
       const thumbUrl = `/api/compliance/vault/documents/${targetDoc.id}/thumbnail`;
+      const baseFilename = (targetDoc.doc_ref_no || targetDoc.title || 'document').replace(/[/\\?%*:|"<>]/g, '_');
+      const originalFileName = (targetDoc.file_name || (rawExt ? `${baseFilename}.${rawExt}` : `${baseFilename}.pdf`)).replace(/[/\\?%*:|"<>]/g, '_');
+
+      let exportDropdownHtml = '';
+      if (isNative) {
+        exportDropdownHtml = `
+          <div style="padding: 7px 12px; font-size: 10.5px; font-weight: 700; color: #0369a1; background: #f0f9ff; border-bottom: 1px solid #e0f2fe; border-radius: 6px 6px 0 0; display: flex; align-items: center; gap: 5px;">
+            <span>✦</span> <span>Compliance Studio Letterhead</span>
+          </div>
+          <a href="${pdfUrl}" download="${baseFilename}.pdf" class="vault-export-item" id="viewerExportPdfLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📄</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #0284c7;">Export as PDF</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Pure Rust Vector Engine • High Fidelity</div>
+            </div>
+          </a>
+          <a href="${docxUrl}" download="${baseFilename}.docx" class="vault-export-item" id="viewerExportDocxLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📝</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #059669;">Export as Word (.docx)</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Editable OpenXML with Header & Table</div>
+            </div>
+          </a>
+          <a href="${jpegUrl}" download="${baseFilename}.jpg" class="vault-export-item" id="viewerExportJpegLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">🖼️</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #d97706;">Export as Image (.jpg)</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Rasterized 200 DPI Letterhead</div>
+            </div>
+          </a>
+        `;
+      } else if (isPdf) {
+        exportDropdownHtml = `
+          <div style="padding: 7px 12px; font-size: 10.5px; font-weight: 700; color: #475569; background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 6px 6px 0 0; display: flex; align-items: center; gap: 5px;">
+            <span>📁</span> <span>Uploaded PDF Document (${sizeStr})</span>
+          </div>
+          <a href="${downloadUrl}" download="${originalFileName}" class="vault-export-item" id="viewerDownloadOriginalLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📥</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #0284c7;">Download Original PDF</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Authentic uploaded file • ${sizeStr}</div>
+            </div>
+          </a>
+          <a href="${jpegUrl}" download="${baseFilename}.jpg" class="vault-export-item" id="viewerExportJpegLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">🖼️</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #d97706;">Export as High-Res Image (.jpg)</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">200 DPI PyMuPDF rasterization</div>
+            </div>
+          </a>
+          <div class="vault-export-item" style="opacity: 0.55; cursor: not-allowed; background: #f8fafc;" title="Word export requires structured studio documents, not scanned or external PDF files.">
+            <span class="vault-export-icon">📝</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 600; color: #94a3b8;">Export as Word (.docx)</div>
+              <div class="vault-export-desc" style="font-size: 10px; color: #94a3b8;">Unavailable for uploaded PDF scans</div>
+            </div>
+          </div>
+        `;
+      } else if (isImage) {
+        exportDropdownHtml = `
+          <div style="padding: 7px 12px; font-size: 10.5px; font-weight: 700; color: #475569; background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 6px 6px 0 0; display: flex; align-items: center; gap: 5px;">
+            <span>📁</span> <span>Uploaded Image (${sizeStr})</span>
+          </div>
+          <a href="${downloadUrl}" download="${originalFileName}" class="vault-export-item" id="viewerDownloadOriginalLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📥</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #d97706;">Download Original Image</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Original resolution image • ${sizeStr}</div>
+            </div>
+          </a>
+          <a href="${pdfUrl}" download="${baseFilename}.pdf" class="vault-export-item" id="viewerExportPdfLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📄</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #0284c7;">Convert & Export as PDF</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Lossless A4 printable document</div>
+            </div>
+          </a>
+        `;
+      } else if (isWord) {
+        exportDropdownHtml = `
+          <div style="padding: 7px 12px; font-size: 10.5px; font-weight: 700; color: #475569; background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 6px 6px 0 0; display: flex; align-items: center; gap: 5px;">
+            <span>📁</span> <span>Uploaded Word Document (${sizeStr})</span>
+          </div>
+          <a href="${downloadUrl}" download="${originalFileName}" class="vault-export-item" id="viewerDownloadOriginalLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📥</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #059669;">Download Original Word (.docx)</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Original editable document • ${sizeStr}</div>
+            </div>
+          </a>
+          <a href="${pdfUrl}" download="${baseFilename}.pdf" class="vault-export-item" id="viewerExportPdfLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📄</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #0284c7;">Convert & Export as PDF</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Automated server-side conversion</div>
+            </div>
+          </a>
+          <a href="${jpegUrl}" download="${baseFilename}.jpg" class="vault-export-item" id="viewerExportJpegLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">🖼️</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #d97706;">Export as Image (.jpg)</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">Rasterized 200 DPI JPEG</div>
+            </div>
+          </a>
+        `;
+      } else {
+        exportDropdownHtml = `
+          <a href="${downloadUrl}" download="${originalFileName}" class="vault-export-item" id="viewerDownloadOriginalLink" style="text-decoration: none; color: inherit;">
+            <span class="vault-export-icon">📥</span>
+            <div>
+              <div class="vault-export-name" style="font-weight: 700; color: #0284c7;">Download Original File</div>
+              <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">${originalFileName} • ${sizeStr}</div>
+            </div>
+          </a>
+        `;
+      }
+
+      exportDropdownHtml += `
+        <button type="button" class="vault-export-item" id="viewerDirectPrintBtn" style="border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 8px;">
+          <span class="vault-export-icon">⎙</span>
+          <div>
+            <div class="vault-export-name" style="font-weight: 700; color: #475569;">Print Document</div>
+            <div class="vault-export-desc" style="font-size: 11px; color: #64748b;">System Print Dialog</div>
+          </div>
+        </button>
+      `;
+
       const dir = (this.directories || []).find(d => Number(d.id) === Number(targetDoc.dir_id));
       const dirName = dir ? dir.name : 'Corporate Vault';
+
+      const totalPagesCount = (parsedContent?.pages && Array.isArray(parsedContent.pages) && parsedContent.pages.length > 0)
+        ? parsedContent.pages.length
+        : 1;
+
+      let pagesThumbHtml = '';
+      for (let pIdx = 0; pIdx < totalPagesCount; pIdx++) {
+        pagesThumbHtml += `
+          <div class="vault-page-thumb-card ${pIdx === 0 ? 'active' : ''}">
+            <div class="vault-page-mini-sheet">
+              <img src="${pIdx === 0 ? thumbUrl : thumbUrl + '?page=' + (pIdx + 1)}" alt="Page ${pIdx + 1}" class="vault-page-mini-img" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
+              <div class="vault-page-mini-fallback" style="display:none; width:100%; height:100%; align-items:center; justify-content:center; background:#fff; font-size:18px;">📄</div>
+            </div>
+            <span class="vault-page-num-tag">Page ${pIdx + 1}</span>
+          </div>
+        `;
+      }
 
       overlay.innerHTML = `
         <div class="vault-viewer-window" id="vaultViewerWindow">
@@ -2419,18 +4970,26 @@ export class DocumentVaultExplorer {
 
             <!-- Right: Action Buttons -->
             <div class="vault-viewer-top-right">
+              <button class="vault-viewer-tool-btn" id="viewerEditInStudioBtn" title="Edit in Document Creation Studio" style="background: rgba(2, 132, 199, 0.14); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.35); font-weight: 700;">
+                <span>✏️</span> Edit in Studio
+              </button>
               <button class="vault-viewer-tool-btn ${this.viewerLeftRailOpen ? 'active' : ''}" id="viewerToggleThumbnailsBtn" title="Toggle Pages Rail (T)">
-                <span>📑</span> Pages
+                <span>📑</span> Pages (${totalPagesCount})
               </button>
               <button class="vault-viewer-tool-btn ${this.viewerRightDrawerOpen ? 'active' : ''}" id="viewerToggleInspectorBtn" title="Toggle Compliance Inspector (I)">
                 <span>ℹ️</span> Inspector
               </button>
-              <button class="vault-viewer-tool-btn" id="viewerPrintBtn" title="Print (P)">
+              <button class="vault-viewer-tool-btn" id="viewerPrintBtn" title="Print Document (P)">
                 <span>⎙</span> Print
               </button>
-              <a href="${pdfUrl}" download class="vault-viewer-tool-btn vault-viewer-download-link" title="Download File (D)">
-                <span>⬇</span> Download
-              </a>
+              <div class="vault-export-menu-wrapper" style="position: relative;">
+                <button type="button" class="vault-viewer-tool-btn" id="viewerExportMenuBtn" title="Export in multiple formats">
+                  <span>🚀</span> Export ▾
+                </button>
+                <div class="vault-export-dropdown" id="viewerExportDropdown" style="position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 1000; min-width: 250px;">
+                  ${exportDropdownHtml}
+                </div>
+              </div>
               <button class="vault-file-nav-btn" id="viewerHeaderCloseBtn" title="Close (Esc)" style="margin-left: 6px;">✕</button>
             </div>
           </div>
@@ -2439,14 +4998,9 @@ export class DocumentVaultExplorer {
           <div class="vault-viewer-body">
             <!-- Column 1: Left Rail (Thumbnails Filmstrip) -->
             <div class="vault-viewer-left-rail ${this.viewerLeftRailOpen ? '' : 'collapsed'}" id="viewerLeftRail">
-              <div class="vault-rail-header">Pages (Page 1)</div>
+              <div class="vault-rail-header">Pages (${totalPagesCount})</div>
               <div class="vault-rail-pages-list">
-                <div class="vault-page-thumb-card active">
-                  <div class="vault-page-mini-sheet">
-                    <img src="${thumbUrl}" alt="Page 1" class="vault-page-mini-img" loading="lazy" />
-                  </div>
-                  <span class="vault-page-num-tag">Page 1</span>
-                </div>
+                ${pagesThumbHtml}
               </div>
             </div>
 
@@ -2576,8 +5130,19 @@ export class DocumentVaultExplorer {
               <span class="vault-insp-label">Signatory Authority</span>
               <span class="vault-insp-val">${doc.signatory_name || 'Dr. Debabrata Mishra'}</span>
             </div>
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
+              <button class="vault-pill-btn" id="viewerInspEditInStudioBtn" style="justify-content: center; width: 100%; padding: 8px 12px; background: rgba(2, 132, 199, 0.1); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.25); font-weight: 700; cursor: pointer;">
+                <span>✏️ Open & Edit in Studio</span>
+              </button>
+            </div>
           </div>
         `;
+
+        contentEl.querySelector('#viewerInspEditInStudioBtn')?.addEventListener('click', () => {
+          const overlayEl = document.getElementById('vaultPdfPreviewOverlay');
+          if (overlayEl) overlayEl.remove();
+          this.editDocumentInStudio(doc.id);
+        });
 
         // Re-Extract AI button handler
         contentEl.querySelector('#viewerReanalyzeAiBtn')?.addEventListener('click', async () => {
@@ -2922,6 +5487,7 @@ export class DocumentVaultExplorer {
     };
 
     const attachViewerEvents = (doc) => {
+      const pdfUrl = `/api/compliance/vault/documents/${doc.id}/pdf`;
       // Stream PDF via Blob URL to bypass browser iframe cross-origin / header quirks
       const loadPdfStream = async () => {
         const frame = overlay.querySelector('#viewerPdfFrame');
@@ -3032,13 +5598,38 @@ export class DocumentVaultExplorer {
         });
       });
 
-      // Print document
-      overlay.querySelector('#viewerPrintBtn')?.addEventListener('click', () => {
-        const frame = overlay.querySelector('#viewerPdfFrame');
-        if (frame && frame.contentWindow) {
-          frame.contentWindow.print();
+      // Viewer Export Dropdown Handler
+      const vExportDropdown = overlay.querySelector('#viewerExportDropdown');
+      const vExportBtn = overlay.querySelector('#viewerExportMenuBtn');
+      vExportBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        vExportDropdown?.classList.toggle('show');
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#viewerExportDropdown') && !e.target.closest('#viewerExportMenuBtn')) {
+          vExportDropdown?.classList.remove('show');
         }
       });
+      overlay.querySelectorAll('.vault-export-item').forEach(item => {
+        item.addEventListener('click', () => {
+          vExportDropdown?.classList.remove('show');
+        });
+      });
+
+      // Print document
+      const triggerPrint = () => {
+        const frame = overlay.querySelector('#viewerPdfFrame');
+        if (frame && frame.contentWindow) {
+          try {
+            frame.contentWindow.print();
+            return;
+          } catch (_) {}
+        }
+        window.print();
+      };
+
+      overlay.querySelector('#viewerPrintBtn')?.addEventListener('click', triggerPrint);
+      overlay.querySelector('#viewerDirectPrintBtn')?.addEventListener('click', triggerPrint);
 
       // Prev / Next file switcher
       overlay.querySelector('#viewerPrevFileBtn')?.addEventListener('click', () => {
@@ -3068,6 +5659,11 @@ export class DocumentVaultExplorer {
 
       overlay.querySelector('#viewerTrafficClose')?.addEventListener('click', closeViewer);
       overlay.querySelector('#viewerHeaderCloseBtn')?.addEventListener('click', closeViewer);
+
+      overlay.querySelector('#viewerEditInStudioBtn')?.addEventListener('click', () => {
+        closeViewer();
+        this.editDocumentInStudio(doc.id);
+      });
 
       // Keyboard accelerators
       const keyListener = (e) => {
@@ -3620,6 +6216,7 @@ export class DocumentVaultExplorer {
         } else {
           actionsEl.innerHTML = `
             <button class="coverflow-action-btn primary" id="coverflowOpenActiveBtn">Quick Look ↗</button>
+            <button class="coverflow-action-btn secondary" id="coverflowEditActiveBtn" style="color: #0284c7; font-weight: 700;">Edit in Studio ✏️</button>
             <a href="/api/compliance/vault/documents/${activeItem.id}/download" download class="coverflow-action-btn secondary" style="text-decoration: none;">Download ⬇</a>
           `;
         }
@@ -3627,6 +6224,13 @@ export class DocumentVaultExplorer {
         actionsEl.querySelector('#coverflowOpenActiveBtn')?.addEventListener('click', (e) => {
           e.stopPropagation();
           handleOpenActive();
+        });
+
+        actionsEl.querySelector('#coverflowEditActiveBtn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const docId = activeItem.id;
+          closeCoverflow();
+          this.editDocumentInStudio(docId);
         });
       }
     };

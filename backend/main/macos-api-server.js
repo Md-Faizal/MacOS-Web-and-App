@@ -695,8 +695,9 @@ for (const route of routes) {
     }, route.router);
   } else if (route.path === '/api/compliance') {
     app.use(route.path, (req, res, next) => {
-      // Allow viewing generated PDFs and reading vault records
-      if (req.method === 'GET' && (req.path.includes('/pdf') || req.path.startsWith('/vault/'))) {
+      // Allow viewing generated PDFs, reading vault records, and direct document rendering exports
+      if ((req.method === 'GET' && (req.path.includes('/pdf') || req.path.startsWith('/vault/'))) ||
+          req.path.startsWith('/vault/export/')) {
         return next();
       }
       authModule.authMiddleware(req, res, next);

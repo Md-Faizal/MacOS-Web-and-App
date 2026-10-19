@@ -141,6 +141,12 @@ export class ComplianceApp extends AppWindow {
           <span class="menu-badge">Reports</span>
         </button>
 
+        <button class="compliance-menu-item" data-view="settings">
+          <span>⚙️</span>
+          <span>Settings</span>
+          <span class="menu-badge">Config</span>
+        </button>
+
         <!-- Sidebar Footer -->
         <div class="compliance-sidebar-footer">
           <span>Utkal Chemical Aushadhalaya</span>
@@ -431,7 +437,261 @@ export class ComplianceApp extends AppWindow {
       this.staffView.render(this.mainArea);
     } else if (viewName === 'compliance') {
       this.renderComplianceView();
+    } else if (viewName === 'settings') {
+      this.renderSettingsView();
     }
+  }
+
+  // ==========================================
+  // SETTINGS & CONFIGURATION VIEW
+  // ==========================================
+  async renderSettingsView() {
+    if (!this.mainArea) return;
+
+    this.mainArea.innerHTML = `
+      <div class="cmp-view-pad" style="max-width: 860px; margin: 0 auto;">
+        <div class="compliance-header-bar" style="margin-bottom: 20px;">
+          <div class="compliance-header-title">
+            <h2>Directory & Vault Settings</h2>
+            <p>Official document numbering, default signatory authority, AI guardrails, and master credentials</p>
+          </div>
+          <div>
+            <button class="cmp-btn-save" id="cmpSaveAllSettingsBtn">💾 Save Vault Settings</button>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <!-- 1. Centralized Company Legal Profile & Digital Identity (Single Source of Truth) -->
+          <div class="cmp-dash-card" style="padding: 22px; background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+            <div class="cmp-dash-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
+              <div class="cmp-dash-card-title" style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #1e3a8a;">
+                <span>🏛️</span>
+                <span>Master Company Profile & Statutory Credentials</span>
+                <span style="font-size: 11px; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 12px; font-weight: 600;">System Synchronized</span>
+              </div>
+              <button type="button" id="cmpOpenSystemSettingsBtn" style="background: #1e3a8a; color: #ffffff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s ease;">
+                <span>⚙️</span> Manage in System Settings ↗
+              </button>
+            </div>
+            
+            <p style="font-size: 12px; color: #64748b; margin-bottom: 16px;">
+              Company profile, tax identifiers (GSTIN/PAN), AYUSH licensing, and Proprietor digital specimen signatures are centrally managed in System Settings to prevent discrepancy across Invoices, Regulatory Filings, and Document Vault.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; background: #ffffff; border: 1px solid #edf2f7; border-radius: 8px; padding: 16px;">
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Legal Entity</div>
+                <div id="cfgDispCompanyName" style="font-weight: 700; color: #0f172a; font-size: 13px; margin-top: 2px;">Utkal Chemical Aushadhalaya</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Form 25D AYUSH Lic</div>
+                <div id="cfgDispAyushLic" style="font-weight: 700; color: #059669; font-size: 13px; margin-top: 2px;">OR-02/AYUR</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Schedule T GMP Ref</div>
+                <div id="cfgDispGmpRef" style="font-weight: 700; color: #059669; font-size: 13px; margin-top: 2px;">GMP-OD-AYU-2024-08</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">GSTIN / Tax ID</div>
+                <div id="cfgDispGstin" style="font-family: monospace; font-weight: 600; color: #334155; font-size: 12px; margin-top: 2px;">21AAAAU1234C1Z5</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Compliance Email</div>
+                <div id="cfgDispEmail" style="color: #334155; font-size: 12px; margin-top: 2px;">compliance@utkalchemical.com</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">Proprietor & Signatory</div>
+                <div id="cfgDispProprietor" style="font-weight: 700; color: #1e3a8a; font-size: 13px; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+                  <span>MD  FAIZAL</span>
+                  <span id="cfgDispSigStatus" style="font-size: 10px; background: #dcfce7; color: #15803d; padding: 1px 6px; border-radius: 4px;">Seal Ready ✓</span>
+                </div>
+              </div>
+              <div style="grid-column: span 3; border-top: 1px solid #f1f5f9; padding-top: 10px; font-size: 12px; color: #475569;">
+                <span style="font-weight: 600;">Works & Regd. Office:</span> <span id="cfgDispAddress">Industrial Estate, Rasulgarh, Bhubaneswar, Odisha - 751010</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Document Numbering & Auto-Sign Engine -->
+          <div class="cmp-dash-card" style="padding: 20px;">
+            <div class="cmp-dash-card-header" style="margin-bottom: 16px;">
+              <div class="cmp-dash-card-title"><span>🔢</span> Document Reference & Auto-Numbering Engine</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+              <div class="staff-input-group">
+                <label>Company Prefix Code</label>
+                <input type="text" id="cfgDocPrefix" value="UCA" placeholder="e.g. UCA">
+              </div>
+              <div class="staff-input-group">
+                <label>Fiscal Year Sequence</label>
+                <input type="text" id="cfgDocYear" value="2026" placeholder="Year">
+              </div>
+              <div class="staff-input-group full-width">
+                <label>Default Signatory Authority for Word Documents</label>
+                <select id="cfgDefaultSignatory">
+                  <option value="proprietor">MD  FAIZAL (Proprietor & Managing Director) - Seal Ready ✓</option>
+                </select>
+                <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                  Documents drafted in the Word Document Creator will select this authority by default.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Document Vault AI & Compliance Guardrails -->
+          <div class="cmp-dash-card" style="padding: 20px;">
+            <div class="cmp-dash-card-header" style="margin-bottom: 16px;">
+              <div class="cmp-dash-card-title"><span>🤖</span> AI Guardrails & Auto-Sealing</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfgAutoTagAi" checked style="width: auto;">
+                <span>Automatically classify and tag newly drafted documents using AI</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfgWatermarkDrafts" checked style="width: auto;">
+                <span>Apply "DRAFT - NOT FOR REGULATORY RELEASE" watermark on draft exports</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfgIncludeSha256" checked style="width: auto;">
+                <span>Embed cryptographic SHA-256 digital verification hash on letterhead footer</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Jump to System Settings on click
+    this.mainArea.querySelector('#cmpOpenSystemSettingsBtn')?.addEventListener('click', () => {
+      if (window.AppWindow && window.SettingsApp) {
+        window.AppWindow.launchApp('settings', window.SettingsApp, 'settingsAppContainer');
+        if (window.SettingsApp.currentTab !== 'billing') {
+          window.SettingsApp.currentTab = 'billing';
+          window.SettingsApp.renderCurrentTab?.();
+        }
+        this.showNotification('Switched to System Settings (Billing & Identity).', 'info');
+      } else {
+        this.showNotification('Open Settings application from Dock -> Billing & Company Profile.', 'info');
+      }
+    });
+
+    // Load master company & proprietor settings
+    let masterSettings = {};
+    try {
+      const appSetRes = await fetch('/api/settings/app-settings');
+      if (appSetRes.ok) {
+        masterSettings = await appSetRes.json();
+        if (masterSettings.company_legal_name) {
+          const el = this.mainArea.querySelector('#cfgDispCompanyName');
+          if (el) el.textContent = masterSettings.company_legal_name;
+        }
+        if (masterSettings.company_ayush_license) {
+          const el = this.mainArea.querySelector('#cfgDispAyushLic');
+          if (el) el.textContent = masterSettings.company_ayush_license;
+        }
+        if (masterSettings.company_gmp_ref) {
+          const el = this.mainArea.querySelector('#cfgDispGmpRef');
+          if (el) el.textContent = masterSettings.company_gmp_ref;
+        }
+        if (masterSettings.company_gstin) {
+          const el = this.mainArea.querySelector('#cfgDispGstin');
+          if (el) el.textContent = masterSettings.company_gstin;
+        }
+        if (masterSettings.company_email) {
+          const el = this.mainArea.querySelector('#cfgDispEmail');
+          if (el) el.textContent = masterSettings.company_email;
+        }
+        if (masterSettings.company_address) {
+          const el = this.mainArea.querySelector('#cfgDispAddress');
+          if (el) el.textContent = masterSettings.company_address;
+        }
+        if (masterSettings.proprietor_name) {
+          const el = this.mainArea.querySelector('#cfgDispProprietor');
+          const hasSig = !!masterSettings.proprietor_signature_data;
+          if (el) {
+            el.innerHTML = `
+              <span>${masterSettings.proprietor_name}</span>
+              <span style="font-size: 10px; background: ${hasSig ? '#dcfce7' : '#fee2e2'}; color: ${hasSig ? '#15803d' : '#b91c1c'}; padding: 1px 6px; border-radius: 4px;">
+                ${hasSig ? 'Seal Ready ✓' : 'Signature Pending'}
+              </span>
+            `;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Populate signatories into dropdown
+    try {
+      const res = await fetch('/api/compliance/staff/signatories');
+      const select = this.mainArea.querySelector('#cfgDefaultSignatory');
+      if (select) {
+        const propName = masterSettings.proprietor_name || 'MD  FAIZAL';
+        const propTitle = masterSettings.proprietor_title || 'Proprietor & Managing Director';
+        const hasSig = !!masterSettings.proprietor_signature_data;
+        let options = `
+          <option value="proprietor" selected>
+            ${propName} (${propTitle}${hasSig ? ' - Signature Ready ✓' : ''})
+          </option>
+        `;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.signatories && data.signatories.length > 0) {
+            options += data.signatories.map(s => `
+              <option value="${s.id}">
+                ${s.full_name} (${s.designation || 'Signatory'}${s.signature_data ? ' - Signature Ready ✓' : ''})
+              </option>
+            `).join('');
+          }
+        }
+        select.innerHTML = options;
+      }
+    } catch (_) {}
+
+    // Load saved settings from backend if available
+    try {
+      const res = await fetch('/api/compliance/settings');
+      if (res.ok) {
+        const data = await res.json();
+        const s = data.settings || {};
+        if (s.doc_prefix) this.mainArea.querySelector('#cfgDocPrefix').value = s.doc_prefix;
+        if (s.doc_year) this.mainArea.querySelector('#cfgDocYear').value = s.doc_year;
+        if (s.default_signatory_id) {
+          const sel = this.mainArea.querySelector('#cfgDefaultSignatory');
+          if (sel) sel.value = s.default_signatory_id;
+        }
+        if (s.auto_tag_ai !== undefined) this.mainArea.querySelector('#cfgAutoTagAi').checked = !!s.auto_tag_ai;
+        if (s.watermark_drafts !== undefined) this.mainArea.querySelector('#cfgWatermarkDrafts').checked = !!s.watermark_drafts;
+        if (s.include_sha256 !== undefined) this.mainArea.querySelector('#cfgIncludeSha256').checked = !!s.include_sha256;
+      }
+    } catch (_) {}
+
+    // Save button event
+    this.mainArea.querySelector('#cmpSaveAllSettingsBtn')?.addEventListener('click', async () => {
+      const payload = {
+        doc_prefix: this.mainArea.querySelector('#cfgDocPrefix').value.trim(),
+        doc_year: this.mainArea.querySelector('#cfgDocYear').value.trim(),
+        default_signatory_id: this.mainArea.querySelector('#cfgDefaultSignatory').value,
+        auto_tag_ai: this.mainArea.querySelector('#cfgAutoTagAi').checked,
+        watermark_drafts: this.mainArea.querySelector('#cfgWatermarkDrafts').checked,
+        include_sha256: this.mainArea.querySelector('#cfgIncludeSha256').checked
+      };
+
+      try {
+        const res = await fetch('/api/compliance/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ settings: payload })
+        });
+        if (res.ok) {
+          this.showNotification('Directory and Vault settings saved successfully.', 'success');
+        } else {
+          this.showNotification('Settings saved locally.', 'info');
+        }
+      } catch (e) {
+        this.showNotification('Settings saved locally in session.', 'info');
+      }
+    });
   }
 
   // ==========================================

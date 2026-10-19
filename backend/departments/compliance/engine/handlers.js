@@ -19,6 +19,181 @@ try {
 }
 
 module.exports = function createHandlers(db) {
+  const _normalizeSignatureToJpegBase64 = async (rawSig) => {
+    if (!rawSig || typeof rawSig !== 'string' || !rawSig.trim()) return '';
+    try {
+      let b64 = rawSig.trim();
+      if (b64.includes(';base64,')) {
+        b64 = b64.split(';base64,')[1];
+      }
+      const buf = Buffer.from(b64, 'base64');
+      if (buf.length < 10) return '';
+
+      const sharp = require('sharp');
+      const imgInstance = sharp(buf);
+      const meta = await imgInstance.metadata();
+
+      let pipeline = imgInstance;
+      if (meta.hasAlpha) {
+        // Transparent PNG/canvas signature: flatten over pure white paper
+        pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } });
+      } else {
+        // Document Scanner Paper Bleaching for phone/camera photos:
+        // Automatically remove paper shadows, off-white/yellow tints and camera noise:
+        const rawInfo = await imgInstance.raw().toBuffer({ resolveWithObject: true });
+        const rawBuf = rawInfo.data;
+        const width = rawInfo.info.width;
+        const height = rawInfo.info.height;
+        const channels = rawInfo.info.channels;
+
+        // Sample paper brightness from corners/edges
+        let paperSum = 0;
+        let samples = 0;
+        const checkPoints = [
+          0,
+          (width - 1) * channels,
+          ((height - 1) * width) * channels,
+          ((height - 1) * width + width - 1) * channels,
+          Math.floor(width / 2) * channels,
+          ((height - 1) * width + Math.floor(width / 2)) * channels
+        ];
+        for (const idx of checkPoints) {
+          if (idx < rawBuf.length) {
+            paperSum += (rawBuf[idx] * 0.299 + rawBuf[idx+1] * 0.587 + rawBuf[idx+2] * 0.114);
+            samples++;
+          }
+        }
+        const paperLum = samples > 0 ? (paperSum / samples) : 200;
+        const threshold = Math.max(130, paperLum - 30);
+
+        // Bleach paper to pure white (255, 255, 255) and deepen ink
+        const cleaned = Buffer.alloc(width * height * 3);
+        for (let i = 0, j = 0; i < rawBuf.length; i += channels, j += 3) {
+          const r = rawBuf[i], g = rawBuf[i+1], b = rawBuf[i+2];
+          const lum = r * 0.299 + g * 0.587 + b * 0.114;
+          if (lum >= threshold) {
+            // Background paper -> pure white
+            cleaned[j] = 255;
+            cleaned[j+1] = 255;
+            cleaned[j+2] = 255;
+          } else {
+            // Ink stroke -> deepen rich pen contrast
+            const factor = Math.pow(lum / threshold, 1.2);
+            cleaned[j] = Math.floor(r * factor);
+            cleaned[j+1] = Math.floor(g * factor);
+            cleaned[j+2] = Math.floor(b * factor);
+          }
+        }
+        pipeline = sharp(cleaned, { raw: { width, height, channels: 3 } }).sharpen({ sigma: 0.8 });
+      }
+
+      // Automatically trim empty dead borders around signature ink and add clean breathing padding
+      try {
+        pipeline = pipeline
+          .trim({ background: '#ffffff', threshold: 18 })
+          .extend({ top: 6, bottom: 6, left: 10, right: 10, background: { r: 255, g: 255, b: 255 } });
+      } catch (_) {}
+
+      const jpgBuf = await pipeline.jpeg({ quality: 95 }).toBuffer();
+      return jpgBuf.toString('base64');
+    } catch (e) {
+      console.warn('[Compliance] Failed to normalize signature via sharp:', e.message);
+      return rawSig.includes(';base64,') ? rawSig.split(';base64,')[1] : rawSig;
+    }
+  };
+
+  const _buildLetterheadPayload = async (doc) => {
+    const fs = require('fs');
+    const path = require('path');
+    const rootDir = path.resolve(__dirname, '../../../../');
+    
+    let parsedContent = {};
+    try {
+      if (doc.content_json) parsedContent = typeof doc.content_json === 'string' ? JSON.parse(doc.content_json) : doc.content_json;
+    } catch (_) {}
+
+    let headerBase64 = '';
+    const headerPath = path.join(rootDir, 'frontend/assets/uca-letterhead-header.jpg');
+    if (fs.existsSync(headerPath)) {
+      try {
+        headerBase64 = fs.readFileSync(headerPath).toString('base64');
+      } catch (_) {}
+    }
+
+    let signatureBase64 = doc.signature_image || parsedContent.signature_image || '';
+    if (signatureBase64) {
+      signatureBase64 = await _normalizeSignatureToJpegBase64(signatureBase64);
+    }
+
+    let paragraphs = [];
+    if (parsedContent.pages && Array.isArray(parsedContent.pages) && parsedContent.pages.length > 0) {
+      for (const pg of parsedContent.pages) {
+        if (pg && pg.paragraphs && Array.isArray(pg.paragraphs)) {
+          paragraphs.push(...pg.paragraphs.filter(p => p && p.trim()));
+        } else if (pg && typeof pg.html === 'string') {
+          const pgParas = pg.html
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<br\s*[\/]?>/gi, '\n')
+            .replace(/<[^>]*>?/gm, '')
+            .split('\n')
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+          paragraphs.push(...pgParas);
+        }
+      }
+    } else if (parsedContent.paragraphs && Array.isArray(parsedContent.paragraphs) && parsedContent.paragraphs.length > 0) {
+      paragraphs = parsedContent.paragraphs;
+    } else if (parsedContent.html) {
+      paragraphs = parsedContent.html
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<br\s*[\/]?>/gi, '\n')
+        .replace(/<[^>]*>?/gm, '')
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+    }
+    if (!paragraphs || paragraphs.length === 0) {
+      paragraphs = [
+        doc.subject || 'Official company document issued under Utkal Chemical Aushadhalaya governance.',
+        'Please find the attached formal statutory record and references.'
+      ];
+    } else {
+      // Deduplicate salutation if paragraphs[0] is already the salutation
+      const p0 = paragraphs[0].trim().toLowerCase();
+      if (p0 === 'dear sir / madam,' || p0 === 'dear sir/madam,' || p0 === 'dear sir / madam' || p0.startsWith('dear sir') || p0.startsWith('dear madam')) {
+        paragraphs.shift();
+      }
+    }
+
+    const showPageNumbers = typeof doc.show_page_numbers === 'boolean'
+      ? doc.show_page_numbers
+      : (typeof parsedContent.show_page_numbers === 'boolean' ? parsedContent.show_page_numbers : true);
+
+    return {
+      doc_ref_no: doc.doc_ref_no || 'UCA/DOC/2026/0001',
+      title: doc.title,
+      date: doc.issue_date || 'October 18, 2026',
+      department: doc.department || 'General',
+      recipient_name: parsedContent.recipient_name || doc.recipient_party || '',
+      recipient_title: parsedContent.recipient_title || '',
+      recipient_address: parsedContent.recipient_address || '',
+      subject: doc.subject || parsedContent.subject || doc.title,
+      salutation: parsedContent.salutation || 'Dear Sir / Madam,',
+      paragraphs: paragraphs,
+      terms_clauses: parsedContent.terms_clauses || [],
+      signatory_name: doc.signatory_name || 'Authorized Signatory',
+      signatory_title: doc.signatory_title || 'Proprietor',
+      signatory_reg_no: doc.signatory_reg_no || '',
+      header_image_base64: headerBase64,
+      signature_image_base64: signatureBase64,
+      is_watermarked: doc.status === 'DRAFT' || doc.is_watermarked === 1,
+      watermark_text: doc.status === 'DRAFT' ? 'DRAFT - NOT FOR REGULATORY RELEASE' : '',
+      show_page_numbers: showPageNumbers,
+      matter_thread_ref: doc.tracking_consignment_no || '',
+      verification_hash: doc.verification_hash || ''
+    };
+  };
+
   return {
     initDatabase() {
       // 1. Staff Master
@@ -169,30 +344,52 @@ module.exports = function createHandlers(db) {
         );
       `);
 
-      // Ensure Vault AI columns and FTS5 virtual table exist
-      try {
-        const tableInfo = db.prepare('PRAGMA table_info(company_vault_documents)').all();
-        const cols = new Set(tableInfo.map(c => c.name));
-        if (!cols.has('ai_summary')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_summary TEXT').run();
-        if (!cols.has('tags')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN tags TEXT').run();
-        if (!cols.has('suggested_dir_id')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN suggested_dir_id INTEGER').run();
-        if (!cols.has('extracted_text')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN extracted_text TEXT').run();
-        if (!cols.has('ai_processed_at')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_processed_at DATETIME').run();
+        // Ensure Vault AI columns and FTS5 virtual table exist
+        try {
+          const tableInfo = db.prepare('PRAGMA table_info(company_vault_documents)').all();
+          const cols = new Set(tableInfo.map(c => c.name));
+          if (!cols.has('ai_summary')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_summary TEXT').run();
+          if (!cols.has('tags')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN tags TEXT').run();
+          if (!cols.has('suggested_dir_id')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN suggested_dir_id INTEGER').run();
+          if (!cols.has('extracted_text')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN extracted_text TEXT').run();
+          if (!cols.has('ai_processed_at')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN ai_processed_at DATETIME').run();
+          if (!cols.has('signature_image')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN signature_image TEXT').run();
+          if (!cols.has('signatory_staff_id')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN signatory_staff_id INTEGER').run();
+          if (!cols.has('retention_period_years')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN retention_period_years INTEGER DEFAULT 5').run();
+          if (!cols.has('is_legal_hold')) db.prepare('ALTER TABLE company_vault_documents ADD COLUMN is_legal_hold INTEGER DEFAULT 0').run();
 
-        db.prepare(`
-          CREATE VIRTUAL TABLE IF NOT EXISTS vault_doc_fts USING fts5(
-            doc_id UNINDEXED,
-            title,
-            doc_ref_no,
-            department,
-            tags,
-            ai_summary,
-            extracted_text
-          );
-        `).run();
-      } catch (schemaErr) {
-        console.warn('[Compliance] Vault AI schema check note:', schemaErr.message);
-      }
+          const staffInfo = db.prepare('PRAGMA table_info(company_staff)').all();
+          const staffCols = new Set(staffInfo.map(c => c.name));
+          if (!staffCols.has('signature_data')) db.prepare('ALTER TABLE company_staff ADD COLUMN signature_data TEXT').run();
+          if (!staffCols.has('signature_title')) db.prepare('ALTER TABLE company_staff ADD COLUMN signature_title TEXT').run();
+          if (!staffCols.has('is_authorized_signatory')) db.prepare('ALTER TABLE company_staff ADD COLUMN is_authorized_signatory INTEGER DEFAULT 0').run();
+
+          // Ensure app_settings table exists
+          db.prepare(`
+            CREATE TABLE IF NOT EXISTS app_settings (
+              id TEXT PRIMARY KEY,
+              setting_key TEXT NOT NULL UNIQUE,
+              setting_value TEXT NOT NULL,
+              setting_type TEXT DEFAULT 'string',
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+          `).run();
+
+          db.prepare(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS vault_doc_fts USING fts5(
+              doc_id UNINDEXED,
+              title,
+              doc_ref_no,
+              department,
+              tags,
+              ai_summary,
+              extracted_text
+            );
+          `).run();
+        } catch (schemaErr) {
+          console.warn('[Compliance] Vault AI/Signature schema check note:', schemaErr.message);
+        }
 
       // Seed core statutory licenses if table is empty
       const count = db.prepare('SELECT COUNT(*) as c FROM company_compliances').get().c;
@@ -659,7 +856,8 @@ module.exports = function createHandlers(db) {
         let {
           emp_code, full_name, department, designation, role_type,
           phone, email, date_of_birth, joining_date, blood_group,
-          emergency_contact, address, is_schedule_t_technical, technical_reg_no, user_id
+          emergency_contact, address, is_schedule_t_technical, technical_reg_no,
+          signature_data, signature_title, is_authorized_signatory, user_id
         } = req.body;
 
         if (!full_name || !full_name.trim()) {
@@ -693,8 +891,8 @@ module.exports = function createHandlers(db) {
           INSERT INTO company_staff 
           (emp_code, full_name, department, designation, role_type, phone, email, date_of_birth, 
            joining_date, blood_group, emergency_contact, address, is_schedule_t_technical, 
-           technical_reg_no, user_id, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+           technical_reg_no, signature_data, signature_title, is_authorized_signatory, user_id, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
         `).run(
           emp_code.trim(),
           full_name.trim(),
@@ -710,6 +908,9 @@ module.exports = function createHandlers(db) {
           address || null,
           is_schedule_t_technical ? 1 : 0,
           technical_reg_no || null,
+          signature_data || null,
+          signature_title || designation || null,
+          is_authorized_signatory ? 1 : (is_schedule_t_technical ? 1 : 0),
           user_id || null
         );
 
@@ -742,7 +943,8 @@ module.exports = function createHandlers(db) {
         const {
           full_name, department, designation, role_type, phone, email,
           date_of_birth, joining_date, blood_group, emergency_contact,
-          address, is_schedule_t_technical, technical_reg_no, status, user_id
+          address, is_schedule_t_technical, technical_reg_no,
+          signature_data, signature_title, is_authorized_signatory, status, user_id
         } = req.body;
 
         db.prepare(`
@@ -760,6 +962,9 @@ module.exports = function createHandlers(db) {
             address = COALESCE(?, address),
             is_schedule_t_technical = COALESCE(?, is_schedule_t_technical),
             technical_reg_no = COALESCE(?, technical_reg_no),
+            signature_data = COALESCE(?, signature_data),
+            signature_title = COALESCE(?, signature_title),
+            is_authorized_signatory = COALESCE(?, is_authorized_signatory),
             status = COALESCE(?, status),
             user_id = COALESCE(?, user_id),
             updated_at = CURRENT_TIMESTAMP
@@ -767,10 +972,58 @@ module.exports = function createHandlers(db) {
         `).run(
           full_name, department, designation, role_type, phone, email,
           date_of_birth, joining_date, blood_group, emergency_contact,
-          address, is_schedule_t_technical, technical_reg_no, status, user_id, id
+          address, is_schedule_t_technical, technical_reg_no,
+          signature_data, signature_title, is_authorized_signatory, status, user_id, id
         );
 
         res.json({ success: true });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Dedicated staff signature upload endpoint
+    uploadStaffSignature: (req, res) => {
+      try {
+        const { id } = req.params;
+        const { signature_data, signature_title, is_authorized_signatory } = req.body;
+        if (!signature_data) {
+          return res.status(400).json({ error: 'Signature data is required' });
+        }
+
+        db.prepare(`
+          UPDATE company_staff SET
+            signature_data = ?,
+            signature_title = COALESCE(?, signature_title, designation),
+            is_authorized_signatory = COALESCE(?, 1),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(
+          signature_data,
+          signature_title || null,
+          is_authorized_signatory !== undefined ? (is_authorized_signatory ? 1 : 0) : 1,
+          id
+        );
+
+        res.json({ success: true, message: 'Signature updated successfully' });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Signatories list for Auto-Signing documents
+    getSignatories: (req, res) => {
+      try {
+        const signatories = db.prepare(`
+          SELECT id, emp_code, full_name, designation, department, technical_reg_no,
+                 signature_data, signature_title, is_authorized_signatory, is_schedule_t_technical
+          FROM company_staff
+          WHERE (signature_data IS NOT NULL AND signature_data != '')
+             OR is_authorized_signatory = 1
+             OR is_schedule_t_technical = 1
+          ORDER BY is_authorized_signatory DESC, full_name ASC
+        `).all();
+        res.json({ success: true, signatories });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }
@@ -1315,18 +1568,38 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
       }
     },
 
-    createVaultDocument: (req, res) => {
+    createVaultDocument: async (req, res) => {
       try {
         let {
           dir_id, doc_ref_no, title, doc_type, department, direction, status,
           sender_party, recipient_party, subject, issue_date, dispatch_mode,
           tracking_consignment_no, content_json, signatory_name, signatory_title,
-          signatory_reg_no, is_watermarked, retention_period_years, parent_trail_doc_id, link_relation,
+          signatory_reg_no, signature_image, signatory_staff_id, is_watermarked, retention_period_years, parent_trail_doc_id, link_relation,
           file_path, file_name, file_size
         } = req.body;
 
         if (!title || !title.trim()) {
           return res.status(400).json({ error: 'Document title is required' });
+        }
+
+        // If signatory_staff_id is provided, auto-populate signature and details if missing
+        if (signatory_staff_id && (!signature_image || !signatory_name)) {
+          const signer = db.prepare('SELECT * FROM company_staff WHERE id = ?').get(signatory_staff_id);
+          if (signer) {
+            signatory_name = signatory_name || signer.full_name;
+            signatory_title = signatory_title || signer.signature_title || signer.designation;
+            signatory_reg_no = signatory_reg_no || signer.technical_reg_no;
+            signature_image = signature_image || signer.signature_data;
+          }
+        }
+
+        if (signature_image) {
+          try {
+            const normalized = await _normalizeSignatureToJpegBase64(signature_image);
+            if (normalized) {
+              signature_image = `data:image/jpeg;base64,${normalized}`;
+            }
+          } catch (_) {}
         }
 
         if (!doc_ref_no || !doc_ref_no.trim()) {
@@ -1347,9 +1620,9 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           INSERT INTO company_vault_documents 
           (dir_id, doc_ref_no, title, doc_type, department, direction, status, sender_party, recipient_party, 
            subject, issue_date, dispatch_mode, tracking_consignment_no, content_json, signatory_name, 
-           signatory_title, signatory_reg_no, verification_hash, is_watermarked, retention_period_years,
+           signatory_title, signatory_reg_no, signature_image, signatory_staff_id, verification_hash, is_watermarked, retention_period_years,
            file_path, file_name, file_size)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           dir_id || null,
           doc_ref_no.trim(),
@@ -1368,6 +1641,8 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           signatory_name || null,
           signatory_title || null,
           signatory_reg_no || null,
+          signature_image || null,
+          signatory_staff_id || null,
           verification_hash,
           is_watermarked !== undefined ? (is_watermarked ? 1 : 0) : 1,
           retention_period_years || 5,
@@ -1405,14 +1680,24 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
       }
     },
 
-    updateVaultDocument: (req, res) => {
+    updateVaultDocument: async (req, res) => {
       try {
         const { id } = req.params;
-        const {
+        let {
           title, doc_type, department, direction, status, sender_party, recipient_party,
           subject, issue_date, dispatch_mode, tracking_consignment_no, content_json,
-          signatory_name, signatory_title, signatory_reg_no, is_watermarked, dir_id
+          signatory_name, signatory_title, signatory_reg_no, signature_image, signatory_staff_id,
+          is_watermarked, dir_id
         } = req.body;
+
+        if (signature_image) {
+          try {
+            const normalized = await _normalizeSignatureToJpegBase64(signature_image);
+            if (normalized) {
+              signature_image = `data:image/jpeg;base64,${normalized}`;
+            }
+          } catch (_) {}
+        }
 
         db.prepare(`
           UPDATE company_vault_documents
@@ -1431,6 +1716,8 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
               signatory_name = COALESCE(?, signatory_name),
               signatory_title = COALESCE(?, signatory_title),
               signatory_reg_no = COALESCE(?, signatory_reg_no),
+              signature_image = COALESCE(?, signature_image),
+              signatory_staff_id = COALESCE(?, signatory_staff_id),
               is_watermarked = COALESCE(?, is_watermarked),
               dir_id = COALESCE(?, dir_id),
               updated_at = CURRENT_TIMESTAMP
@@ -1441,6 +1728,7 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           dispatch_mode || null, tracking_consignment_no || null,
           typeof content_json === 'object' ? JSON.stringify(content_json) : (content_json || null),
           signatory_name || null, signatory_title || null, signatory_reg_no || null,
+          signature_image || null, signatory_staff_id || null,
           is_watermarked !== undefined ? (is_watermarked ? 1 : 0) : null,
           dir_id || null, id
         );
@@ -1456,6 +1744,54 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         const { id } = req.params;
         db.prepare('DELETE FROM company_vault_documents WHERE id = ?').run(id);
         res.json({ success: true });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // 10. General Application / Company Settings
+    getAppSettings: (req, res) => {
+      try {
+        const rows = db.prepare('SELECT setting_key, setting_value, setting_type FROM app_settings').all();
+        const settings = {};
+        for (const r of rows) {
+          try {
+            settings[r.setting_key] = r.setting_type === 'json' ? JSON.parse(r.setting_value) : r.setting_value;
+          } catch (_) {
+            settings[r.setting_key] = r.setting_value;
+          }
+        }
+        res.json({ success: true, settings });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    updateAppSettings: (req, res) => {
+      try {
+        const { settings } = req.body;
+        if (!settings || typeof settings !== 'object') {
+          return res.status(400).json({ error: 'Settings object required' });
+        }
+
+        const insertOrReplace = db.prepare(`
+          INSERT INTO app_settings (id, setting_key, setting_value, setting_type, updated_at)
+          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(setting_key) DO UPDATE SET
+            setting_value = excluded.setting_value,
+            setting_type = excluded.setting_type,
+            updated_at = CURRENT_TIMESTAMP
+        `);
+
+        db.transaction(() => {
+          for (const [key, val] of Object.entries(settings)) {
+            const isJson = typeof val === 'object' && val !== null;
+            const strVal = isJson ? JSON.stringify(val) : String(val ?? '');
+            insertOrReplace.run(key, key, strVal, isJson ? 'json' : 'string');
+          }
+        })();
+
+        res.json({ success: true, message: 'Settings updated' });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }
@@ -1739,8 +2075,21 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
       }
     },
 
-    // Render & Export Document via Rust Letterhead Engine
-    renderVaultDocumentPdf: (req, res) => {
+    // 8.1 Drafts Lifecycle
+    getVaultDrafts: (req, res) => {
+      try {
+        const drafts = db.prepare("SELECT * FROM company_vault_documents WHERE status = 'DRAFT' ORDER BY updated_at DESC").all();
+        res.json({ drafts });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Helper to build Letterhead Payload with authentic header and signature
+    _buildLetterheadPayload: async (doc) => await _buildLetterheadPayload(doc),
+
+    // Render & Export Document as PDF via Rust Letterhead Engine or original file converter
+    renderVaultDocumentPdf: async function(req, res) {
       try {
         const { id } = req.params;
         const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
@@ -1748,7 +2097,7 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
 
         let parsedContent = {};
         try {
-          if (doc.content_json) parsedContent = JSON.parse(doc.content_json);
+          if (doc.content_json) parsedContent = typeof doc.content_json === 'string' ? JSON.parse(doc.content_json) : doc.content_json;
         } catch (_) {}
 
         // Serve real file if attached
@@ -1758,38 +2107,53 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           const fs = require('fs');
           const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, '../../../../', filePath);
           if (fs.existsSync(resolved)) {
+            const ext = path.extname(resolved).toLowerCase();
             const fileName = (doc.file_name || parsedContent.file_name || path.basename(resolved)).replace(/[/\\?%*:|"<>]/g, '_');
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-            return fs.createReadStream(resolved).pipe(res);
+            
+            if (ext === '.pdf') {
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+              res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+              return fs.createReadStream(resolved).pipe(res);
+            } else if (['.jpg', '.jpeg', '.png', '.webp', '.bmp'].includes(ext)) {
+              // Convert image to A4 PDF on the fly via fitz
+              const tempDir = path.join(__dirname, '../../../../storage/vault/.thumbnails');
+              if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+              const outPdf = path.join(tempDir, `img_pdf_${id}.pdf`);
+              if (!fs.existsSync(outPdf)) {
+                const { execSync } = require('child_process');
+                execSync(`python -c "import fitz; doc=fitz.open(); rect=fitz.paper_rect('a4'); page=doc.new_page(width=rect.width, height=rect.height); page.insert_image(rect, filename=r'''${resolved}''', keep_proportion=True); doc.save(r'''${outPdf}'''); doc.close()"`, { timeout: 10000 });
+              }
+              if (fs.existsSync(outPdf)) {
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+                res.setHeader('Content-Disposition', `inline; filename="${fileName.replace(/\.[^.]+$/, '')}.pdf"`);
+                return fs.createReadStream(outPdf).pipe(res);
+              }
+            } else if (['.docx', '.doc'].includes(ext)) {
+              // Convert Word to PDF if COM is available
+              const tempDir = path.join(__dirname, '../../../../storage/vault/.thumbnails');
+              if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+              const outPdf = path.join(tempDir, `docx_pdf_${id}.pdf`);
+              if (!fs.existsSync(outPdf)) {
+                try {
+                  const { execSync } = require('child_process');
+                  execSync(`python -c "import win32com.client, os, pythoncom; pythoncom.CoInitialize(); w=win32com.client.Dispatch('Word.Application'); w.Visible=False; d=w.Documents.Open(os.path.abspath(r'''${resolved}''')); d.SaveAs(os.path.abspath(r'''${outPdf}'''), FileFormat=17); d.Close(False); w.Quit()"`, { timeout: 15000 });
+                } catch (ce) {
+                  console.warn('[Vault] Word COM conversion failed:', ce.message);
+                }
+              }
+              if (fs.existsSync(outPdf)) {
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+                res.setHeader('Content-Disposition', `inline; filename="${fileName.replace(/\.[^.]+$/, '')}.pdf"`);
+                return fs.createReadStream(outPdf).pipe(res);
+              }
+            }
           }
         }
 
-        const payload = {
-          doc_ref_no: doc.doc_ref_no,
-          title: doc.title,
-          date: doc.issue_date || 'October 16, 2026',
-          department: doc.department || 'General',
-          recipient_name: parsedContent.recipient_name || doc.recipient_party || '',
-          recipient_title: parsedContent.recipient_title || '',
-          recipient_address: parsedContent.recipient_address || '',
-          subject: doc.subject || parsedContent.subject || doc.title,
-          salutation: parsedContent.salutation || 'Dear Sir / Madam,',
-          paragraphs: parsedContent.paragraphs || [
-            doc.subject || 'Official company document issued under Utkal Chemical Aushadhalaya governance.',
-            'Please find the attached formal statutory record and references.'
-          ],
-          terms_clauses: parsedContent.terms_clauses || [],
-          signatory_name: doc.signatory_name || 'Authorized Signatory',
-          signatory_title: doc.signatory_title || 'Designated Authority',
-          signatory_reg_no: doc.signatory_reg_no || '',
-          is_watermarked: doc.status === 'DRAFT' || doc.is_watermarked === 1,
-          watermark_text: doc.status === 'DRAFT' ? 'DRAFT - NOT FOR REGULATORY RELEASE' : '',
-          matter_thread_ref: doc.tracking_consignment_no || '',
-          verification_hash: doc.verification_hash || ''
-        };
-
+        const payload = await _buildLetterheadPayload(doc);
         if (SuiteCoreBridge && typeof SuiteCoreBridge.renderLetterheadPdf === 'function') {
           const result = SuiteCoreBridge.renderLetterheadPdf(payload);
           const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
@@ -1805,8 +2169,307 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
       }
     },
 
+    // Export Document as Word (.docx) via Pure Rust Engine or original Word stream
+    renderVaultDocumentDocx: async function(req, res) {
+      try {
+        const { id } = req.params;
+        const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        let parsedContent = {};
+        try {
+          if (doc.content_json) parsedContent = typeof doc.content_json === 'string' ? JSON.parse(doc.content_json) : doc.content_json;
+        } catch (_) {}
+
+        const filePath = doc.file_path || parsedContent.file_path;
+        if (filePath) {
+          const path = require('path');
+          const fs = require('fs');
+          const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, '../../../../', filePath);
+          if (fs.existsSync(resolved)) {
+            const ext = path.extname(resolved).toLowerCase();
+            const fileName = (doc.file_name || parsedContent.file_name || path.basename(resolved)).replace(/[/\\?%*:|"<>]/g, '_');
+            if (['.docx', '.doc'].includes(ext)) {
+              res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+              res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+              return fs.createReadStream(resolved).pipe(res);
+            } else {
+              return res.status(422).json({
+                error: 'Word (.docx) export is only available for native studio documents or uploaded Word files, not scanned PDFs or images.'
+              });
+            }
+          }
+        }
+
+        const payload = await _buildLetterheadPayload(doc);
+        if (SuiteCoreBridge && typeof SuiteCoreBridge.renderLetterheadDocx === 'function') {
+          const result = SuiteCoreBridge.renderLetterheadDocx(payload);
+          const docxBuffer = Buffer.from(result.docx_base64, 'base64');
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_ref_no.replace(/[/\\?%*:|"<>]/g, '_')}.docx"`);
+          return res.send(docxBuffer);
+        } else {
+          return res.status(500).json({ error: 'Rust SuiteCoreBridge DOCX renderer unavailable' });
+        }
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Export Document as High-DPI JPEG via Rust PDF Engine + Rasterizer (or direct image/PDF rasterizer)
+    renderVaultDocumentJpeg: async function(req, res) {
+      try {
+        const { id } = req.params;
+        const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        const path = require('path');
+        const fs = require('fs');
+        const rootDir = path.resolve(__dirname, '../../../../');
+        const thumbDir = path.join(rootDir, 'storage/vault/.thumbnails');
+        if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
+
+        let parsedContent = {};
+        try {
+          if (doc.content_json) parsedContent = typeof doc.content_json === 'string' ? JSON.parse(doc.content_json) : doc.content_json;
+        } catch (_) {}
+
+        // If uploaded file exists, rasterize or stream actual uploaded file!
+        const filePath = doc.file_path || parsedContent.file_path;
+        if (filePath) {
+          const resolved = path.isAbsolute(filePath) ? filePath : path.join(rootDir, filePath);
+          if (fs.existsSync(resolved)) {
+            const ext = path.extname(resolved).toLowerCase();
+            const fileName = (doc.file_name || parsedContent.file_name || path.basename(resolved)).replace(/[/\\?%*:|"<>]/g, '_');
+            const cleanName = fileName.replace(/\.[^.]+$/, '') + '.jpg';
+
+            if (['.jpg', '.jpeg'].includes(ext)) {
+              res.setHeader('Content-Type', 'image/jpeg');
+              res.setHeader('Content-Disposition', `attachment; filename="${cleanName}"`);
+              return fs.createReadStream(resolved).pipe(res);
+            } else if (['.png', '.webp', '.bmp'].includes(ext)) {
+              const sharp = require('sharp');
+              const buf = await sharp(resolved).jpeg({ quality: 95 }).toBuffer();
+              res.setHeader('Content-Type', 'image/jpeg');
+              res.setHeader('Content-Disposition', `attachment; filename="${cleanName}"`);
+              return res.send(buf);
+            } else if (ext === '.pdf') {
+              const outJpg = path.join(thumbDir, `pdf_export_${id}.jpg`);
+              if (!fs.existsSync(outJpg)) {
+                const { spawnSync } = require('child_process');
+                const pyCode = `import fitz
+doc = fitz.open(r'''${resolved}''')
+if doc.page_count == 1:
+    doc.load_page(0).get_pixmap(dpi=200).save(r'''${outJpg}''', jpg_quality=95)
+else:
+    from PIL import Image
+    import io
+    imgs = [Image.open(io.BytesIO(doc.load_page(i).get_pixmap(dpi=200).tobytes('jpeg'))) for i in range(min(doc.page_count, 10))]
+    tw = max(im.width for im in imgs)
+    th = sum(im.height for im in imgs)
+    stitched = Image.new('RGB', (tw, th), (255, 255, 255))
+    y = 0
+    for im in imgs:
+        stitched.paste(im, (0, y))
+        y += im.height
+    stitched.save(r'''${outJpg}''', 'JPEG', quality=95)
+`;
+                spawnSync('python', ['-c', pyCode], { stdio: 'ignore', timeout: 15000 });
+              }
+              if (fs.existsSync(outJpg)) {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Content-Disposition', `attachment; filename="${cleanName}"`);
+                return fs.createReadStream(outJpg).pipe(res);
+              }
+            }
+          }
+        }
+
+        // Native Letterhead Document Path
+        const jpegFile = path.join(thumbDir, `export_${id}_full.jpg`);
+        if (fs.existsSync(jpegFile)) {
+          res.setHeader('Content-Type', 'image/jpeg');
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_ref_no.replace(/[/\\?%*:|"<>]/g, '_')}.jpg"`);
+          return fs.createReadStream(jpegFile).pipe(res);
+        }
+
+        const payload = await _buildLetterheadPayload(doc);
+        const result = SuiteCoreBridge.renderLetterheadPdf(payload);
+        const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
+        const tempPdf = path.join(thumbDir, `temp_exp_${id}.pdf`);
+        fs.writeFileSync(tempPdf, pdfBuffer);
+
+        const { execSync } = require('child_process');
+        try {
+          execSync(`python -c "import fitz; doc=fitz.open(r'''${tempPdf}'''); page=doc.load_page(0); pix=page.get_pixmap(dpi=200); pix.save(r'''${jpegFile}''', jpg_quality=95)"`, {
+            stdio: 'ignore',
+            timeout: 8000
+          });
+        } finally {
+          if (fs.existsSync(tempPdf)) fs.unlinkSync(tempPdf);
+        }
+
+        if (fs.existsSync(jpegFile)) {
+          res.setHeader('Content-Type', 'image/jpeg');
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_ref_no.replace(/[/\\?%*:|"<>]/g, '_')}.jpg"`);
+          return fs.createReadStream(jpegFile).pipe(res);
+        }
+        res.status(500).json({ error: 'Failed to generate JPEG export' });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Download Original Uploaded File (or PDF Master if native)
+    downloadVaultDocumentOriginal: async function(req, res) {
+      try {
+        const { id } = req.params;
+        const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
+        if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+        let parsedContent = {};
+        try {
+          if (doc.content_json) parsedContent = typeof doc.content_json === 'string' ? JSON.parse(doc.content_json) : doc.content_json;
+        } catch (_) {}
+
+        const filePath = doc.file_path || parsedContent.file_path;
+        if (filePath) {
+          const path = require('path');
+          const fs = require('fs');
+          const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, '../../../../', filePath);
+          if (fs.existsSync(resolved)) {
+            const fileName = (doc.file_name || parsedContent.file_name || path.basename(resolved)).replace(/[/\\?%*:|"<>]/g, '_');
+            const ext = path.extname(resolved).toLowerCase();
+            const mimeMap = {
+              '.pdf': 'application/pdf',
+              '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              '.doc': 'application/msword',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.png': 'image/png',
+              '.webp': 'image/webp'
+            };
+            const contentType = mimeMap[ext] || 'application/octet-stream';
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            return fs.createReadStream(resolved).pipe(res);
+          }
+        }
+
+        // Fallback for native document: serve Master PDF
+        const payload = await _buildLetterheadPayload(doc);
+        if (SuiteCoreBridge && typeof SuiteCoreBridge.renderLetterheadPdf === 'function') {
+          const result = SuiteCoreBridge.renderLetterheadPdf(payload);
+          const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_ref_no.replace(/[/\\?%*:|"<>]/g, '_')}.pdf"`);
+          return res.send(pdfBuffer);
+        } else {
+          return res.status(500).json({ error: 'Renderer unavailable' });
+        }
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    // Direct Export from any active document payload without requiring DB save first
+    exportDocumentDirect: async function(req, res) {
+      try {
+        const { format } = req.params; // 'pdf' | 'docx' | 'jpeg'
+        const rawDoc = req.body || {};
+        const payload = await _buildLetterheadPayload(rawDoc);
+
+        if (typeof rawDoc.show_page_numbers === 'boolean') {
+          payload.show_page_numbers = rawDoc.show_page_numbers;
+        } else if (rawDoc.content_json && typeof rawDoc.content_json.show_page_numbers === 'boolean') {
+          payload.show_page_numbers = rawDoc.content_json.show_page_numbers;
+        }
+
+        if (rawDoc.is_watermarked === 0 || rawDoc.is_watermarked === false || rawDoc.status === 'SEALED_OFFICIAL') {
+          payload.is_watermarked = false;
+          payload.watermark_text = '';
+        }
+
+        const refNo = (payload.doc_ref_no || 'UCA_DOCUMENT').replace(/[/\\?%*:|"<>]/g, '_');
+
+        if (format === 'docx') {
+          if (!SuiteCoreBridge || typeof SuiteCoreBridge.renderLetterheadDocx !== 'function') {
+            return res.status(500).json({ error: 'Rust SuiteCoreBridge DOCX renderer unavailable' });
+          }
+          const result = SuiteCoreBridge.renderLetterheadDocx(payload);
+          const docxBuffer = Buffer.from(result.docx_base64, 'base64');
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          res.setHeader('Content-Disposition', `attachment; filename="${refNo}.docx"`);
+          return res.send(docxBuffer);
+        } else if (format === 'jpeg' || format === 'jpg') {
+          if (!SuiteCoreBridge || typeof SuiteCoreBridge.renderLetterheadPdf !== 'function') {
+            return res.status(500).json({ error: 'Rust SuiteCoreBridge PDF renderer unavailable' });
+          }
+          const result = SuiteCoreBridge.renderLetterheadPdf(payload);
+          const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
+          const fs = require('fs');
+          const path = require('path');
+          const rootDir = path.resolve(__dirname, '../../../../');
+          const thumbDir = path.join(rootDir, 'storage/vault/.thumbnails');
+          if (!fs.existsSync(thumbDir)) fs.mkdirSync(thumbDir, { recursive: true });
+          const tempPdf = path.join(thumbDir, `temp_direct_${Date.now()}_${Math.random().toString(36).substring(7)}.pdf`);
+          const tempJpg = tempPdf.replace('.pdf', '.jpg');
+          fs.writeFileSync(tempPdf, pdfBuffer);
+          try {
+            const { spawnSync } = require('child_process');
+            const pyCode = `import fitz
+doc = fitz.open(r'''${tempPdf}''')
+if doc.page_count == 1:
+    doc.load_page(0).get_pixmap(dpi=200).save(r'''${tempJpg}''', jpg_quality=95)
+else:
+    from PIL import Image
+    import io
+    imgs = [Image.open(io.BytesIO(doc.load_page(i).get_pixmap(dpi=200).tobytes('jpeg'))) for i in range(doc.page_count)]
+    tw = max(im.width for im in imgs)
+    th = sum(im.height for im in imgs)
+    stitched = Image.new('RGB', (tw, th), (255, 255, 255))
+    y = 0
+    for im in imgs:
+        stitched.paste(im, (0, y))
+        y += im.height
+    stitched.save(r'''${tempJpg}''', 'JPEG', quality=95)
+`;
+            spawnSync('python', ['-c', pyCode], {
+              stdio: 'ignore',
+              timeout: 12000
+            });
+            if (fs.existsSync(tempJpg)) {
+              res.setHeader('Content-Type', 'image/jpeg');
+              res.setHeader('Content-Disposition', `attachment; filename="${refNo}.jpg"`);
+              const jpgBuffer = fs.readFileSync(tempJpg);
+              try { fs.unlinkSync(tempJpg); } catch (_) {}
+              return res.send(jpgBuffer);
+            }
+          } catch (e) {
+            console.warn('[Compliance] Direct JPEG rasterization fallback:', e.message);
+          } finally {
+            try { if (fs.existsSync(tempPdf)) fs.unlinkSync(tempPdf); } catch (_) {}
+          }
+          return res.status(500).json({ error: 'Failed to rasterize document image' });
+        } else {
+          // Default to PDF
+          if (!SuiteCoreBridge || typeof SuiteCoreBridge.renderLetterheadPdf !== 'function') {
+            return res.status(500).json({ error: 'Rust SuiteCoreBridge PDF renderer unavailable' });
+          }
+          const result = SuiteCoreBridge.renderLetterheadPdf(payload);
+          const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+          res.setHeader('Content-Disposition', `attachment; filename="${refNo}.pdf"`);
+          return res.send(pdfBuffer);
+        }
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
     // Get rendered document thumbnail image (page 1)
-    getVaultDocumentThumbnail: (req, res) => {
+    getVaultDocumentThumbnail: async function(req, res) {
       try {
         const { id } = req.params;
         const doc = db.prepare('SELECT * FROM company_vault_documents WHERE id = ?').get(id);
@@ -1827,7 +2490,7 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
           return fs.createReadStream(thumbFile).pipe(res);
         }
 
-        // Generate on the fly if PDF exists
+        // Generate on the fly if physical PDF exists
         let filePath = doc.file_path;
         if (doc.content_json) {
           try {
@@ -1854,9 +2517,56 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
               console.error('Failed to generate thumbnail for doc', id, e.message);
             }
           }
+        } else if (SuiteCoreBridge && typeof SuiteCoreBridge.renderLetterheadPdf === 'function') {
+          // Render via unified Rust letterhead engine
+          const payload = await _buildLetterheadPayload(doc);
+          try {
+            const result = SuiteCoreBridge.renderLetterheadPdf(payload);
+            if (result && result.pdf_base64) {
+              const pdfBuffer = Buffer.from(result.pdf_base64, 'base64');
+              const tempPdf = path.join(thumbDir, `temp_render_${id}.pdf`);
+              fs.writeFileSync(tempPdf, pdfBuffer);
+              const { execSync } = require('child_process');
+              try {
+                execSync(`python -c "import fitz; doc=fitz.open(r'''${tempPdf}'''); page=doc.load_page(0); pix=page.get_pixmap(dpi=100); pix.save(r'''${thumbFile}''', jpg_quality=85)"`, {
+                  stdio: 'ignore',
+                  timeout: 5000
+                });
+              } finally {
+                if (fs.existsSync(tempPdf)) fs.unlinkSync(tempPdf);
+              }
+              if (fs.existsSync(thumbFile)) {
+                res.setHeader('Content-Type', 'image/jpeg');
+                res.setHeader('Cache-Control', 'public, max-age=86400');
+                return fs.createReadStream(thumbFile).pipe(res);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to generate letterhead thumbnail for doc', id, e.message);
+          }
         }
 
-        return res.status(404).json({ error: 'Thumbnail not available' });
+        // Clean SVG thumbnail fallback so client never gets an unhandled 404
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(`
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297" width="210" height="297" style="background:#fff;">
+            <rect width="210" height="297" fill="#ffffff" />
+            <rect x="0" y="0" width="210" height="42" fill="#003366" />
+            <text x="105" y="26" fill="#ffffff" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">UTKAL CHEMICAL</text>
+            <rect x="20" y="60" width="80" height="4" fill="#e2e8f0" rx="2" />
+            <rect x="140" y="60" width="50" height="4" fill="#e2e8f0" rx="2" />
+            <rect x="20" y="80" width="170" height="5" fill="#cbd5e1" rx="2" />
+            <rect x="20" y="95" width="170" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="20" y="105" width="170" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="20" y="115" width="150" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="20" y="125" width="165" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="20" y="145" width="170" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="20" y="155" width="140" height="2" fill="#f1f5f9" rx="1" />
+            <rect x="120" y="240" width="60" height="20" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="2 2" rx="2" />
+            <text x="150" y="253" fill="#94a3b8" font-family="sans-serif" font-size="6" text-anchor="middle">AUTHORIZED</text>
+          </svg>
+        `);
       } catch (err) {
         res.status(500).json({ error: err.message });
       }
@@ -1919,6 +2629,20 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
         const results = vaultAi.searchVaultFts(db, q.trim(), Number(limit) || 12);
         res.json({ success: true, count: results.length, results });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    generateDocumentAi: async (req, res) => {
+      try {
+        const { prompt, tone, doc_type } = req.body;
+        if (!prompt || !prompt.trim()) {
+          return res.status(400).json({ error: 'Drafting prompt or instructions required' });
+        }
+        if (!vaultAi) return res.status(503).json({ error: 'Vault AI engine unavailable' });
+        const result = await vaultAi.generateOfficialDocument(prompt.trim(), { tone, doc_type });
+        res.json(result);
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

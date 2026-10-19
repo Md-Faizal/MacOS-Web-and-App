@@ -10,10 +10,16 @@ module.exports = function(router, handlers) {
   // 2. Staff Directory (Workers, Office, Technical Staff)
   router.get('/staff', handlers.getStaffList);
   router.get('/staff/next-emp-code', handlers.getNextEmployeeCode);
+  router.get('/staff/signatories', handlers.getSignatories);
   router.post('/staff', handlers.createStaff);
   router.get('/staff/:id', handlers.getStaffById);
   router.put('/staff/:id', handlers.updateStaff);
   router.delete('/staff/:id', handlers.deleteStaff);
+  router.post('/staff/:id/signature', handlers.uploadStaffSignature);
+
+  // 2b. Application & Letterhead Settings
+  router.get('/settings', handlers.getAppSettings);
+  router.post('/settings', handlers.updateAppSettings);
 
   // 3. Worker KYC & Document Vault
   router.get('/staff/:id/documents', handlers.getStaffDocuments);
@@ -56,7 +62,12 @@ module.exports = function(router, handlers) {
   router.put('/vault/documents/:id', handlers.updateVaultDocument);
   router.delete('/vault/documents/:id', handlers.deleteVaultDocument);
   router.post('/vault/documents/batch', handlers.batchVaultOperation);
+  router.get('/vault/drafts', handlers.getVaultDrafts);
   router.get('/vault/documents/:id/pdf', handlers.renderVaultDocumentPdf);
+  router.get('/vault/documents/:id/docx', handlers.renderVaultDocumentDocx);
+  router.get('/vault/documents/:id/jpeg', handlers.renderVaultDocumentJpeg);
+  router.get('/vault/documents/:id/download', handlers.downloadVaultDocumentOriginal);
+  router.post('/vault/export/:format', handlers.exportDocumentDirect);
   router.get('/vault/documents/:id/thumbnail', handlers.getVaultDocumentThumbnail);
 
   router.get('/vault/trails/timeline', handlers.getUnifiedTimeline);
@@ -70,6 +81,7 @@ module.exports = function(router, handlers) {
   router.post('/vault/documents/auto-sort-pending', handlers.autoSortAllPending);
   router.post('/vault/documents/:id/chat', handlers.chatWithDocument);
   router.get('/vault/ai/search', handlers.searchVaultAi);
+  router.post('/vault/ai/generate-document', handlers.generateDocumentAi);
 
   return router;
 };

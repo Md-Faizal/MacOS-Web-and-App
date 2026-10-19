@@ -1196,6 +1196,97 @@ pub unsafe extern "C" fn suite_render_letterhead_pdf(ptr: *const u8, len: usize)
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_letterhead_docx(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::letterhead::LetterheadDocRequest>(slice) {
+        Ok(req) => match crate::documents::docx::render_letterhead_document_docx(&req) {
+            Ok(docx_bytes) => {
+                let b64 = bytes_to_base64(&docx_bytes);
+                #[derive(Serialize)]
+                struct DocxResp {
+                    success: bool,
+                    docx_base64: String,
+                    byte_count: usize,
+                }
+                package_response(&DocxResp {
+                    success: true,
+                    docx_base64: b64,
+                    byte_count: docx_bytes.len(),
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_render_letterhead_svg(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<crate::documents::pdf::letterhead::LetterheadDocRequest>(slice) {
+        Ok(req) => match crate::documents::pdf::letterhead::render_letterhead_document_svg(&req) {
+            Ok(svg_content) => {
+                #[derive(Serialize)]
+                struct SvgResp {
+                    success: bool,
+                    svg: String,
+                    byte_count: usize,
+                }
+                let len = svg_content.len();
+                package_response(&SvgResp {
+                    success: true,
+                    svg: svg_content,
+                    byte_count: len,
+                })
+            }
+            Err(error) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    success: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    success: false,
+                    error,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+
 
 
 
