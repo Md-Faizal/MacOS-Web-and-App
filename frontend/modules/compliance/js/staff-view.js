@@ -28,82 +28,8 @@ export class StaffView {
       '#34495e'  // Slate
     ];
 
-    this.staffList = [
-      {
-        id: 1,
-        emp_code: 'EMP-001',
-        full_name: 'Dr. Debabrata Mishra',
-        department: 'Manufacturing',
-        designation: 'Chief Ayurvedic Medical Officer',
-        role_type: 'Technical Person',
-        phone: '+91 94370 12345',
-        email: 'dr.mishra@utkalchemical.com',
-        joining_date: '2018-02-01',
-        blood_group: 'B+',
-        emergency_contact: 'Mrs. Mishra (+91 94370 99999)',
-        address: 'Madhupatna, Cuttack, Odisha',
-        is_schedule_t_technical: 1,
-        technical_reg_no: 'BAMS-OR-4521',
-        status: 'ACTIVE',
-        document_count: 3
-      },
-      {
-        id: 2,
-        emp_code: 'EMP-002',
-        full_name: 'Vaidya Ananya Tripathy',
-        department: 'QC & Analytical',
-        designation: 'QC Head & Analytical Chemist',
-        role_type: 'Technical Person',
-        phone: '+91 98610 23456',
-        email: 'ananya.tripathy@utkalchemical.com',
-        joining_date: '2020-07-15',
-        blood_group: 'O+',
-        emergency_contact: 'Mr. Tripathy (+91 98610 88888)',
-        address: 'CDA Sector 9, Cuttack',
-        is_schedule_t_technical: 1,
-        technical_reg_no: 'M.Sc Chem / QC-784',
-        status: 'ACTIVE',
-        document_count: 2
-      },
-      {
-        id: 3,
-        emp_code: 'EMP-003',
-        full_name: 'Ramesh Chandra Barik',
-        department: 'Manufacturing',
-        designation: 'Senior Boiler & Extraction Operator',
-        role_type: 'Worker',
-        phone: '+91 91240 34567',
-        email: 'ramesh.barik@utkalchemical.com',
-        joining_date: '2021-11-10',
-        blood_group: 'A+',
-        emergency_contact: 'Son (+91 91240 77777)',
-        address: 'Jagatpur Industrial Estate, Cuttack',
-        is_schedule_t_technical: 0,
-        technical_reg_no: null,
-        status: 'ACTIVE',
-        document_count: 1
-      },
-      {
-        id: 4,
-        emp_code: 'EMP-004',
-        full_name: 'Priyanka Senapati',
-        department: 'Billing & Accounts',
-        designation: 'Senior Accountant & Compliance Coordinator',
-        role_type: 'Staff',
-        phone: '+91 99370 45678',
-        email: 'priyanka@utkalchemical.com',
-        joining_date: '2022-03-01',
-        blood_group: 'AB+',
-        emergency_contact: 'Father (+91 99370 66666)',
-        address: 'Badambadi, Cuttack',
-        is_schedule_t_technical: 0,
-        technical_reg_no: null,
-        status: 'ACTIVE',
-        document_count: 2
-      }
-    ];
-
-    this.selectedStaffId = 1;
+    this.staffList = [];
+    this.selectedStaffId = null;
     this.filterCategory = 'ALL';
     this.searchQuery = '';
     this.isLoading = false;
@@ -151,8 +77,11 @@ export class StaffView {
       const res = await fetch('/api/compliance/staff', { headers, credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.staff) && data.staff.length > 0) {
+        if (Array.isArray(data.staff)) {
           this.staffList = data.staff;
+          if (this.staffList.length > 0 && (!this.selectedStaffId || !this.staffList.some(s => Number(s.id) === Number(this.selectedStaffId)))) {
+            this.selectedStaffId = this.staffList[0].id;
+          }
           if (this.sidebarContainer) {
             this.renderSidebarList();
             this.renderDetailCard();
@@ -883,7 +812,7 @@ export class StaffView {
 
               <div class="staff-input-group">
                 <label>Full Name *</label>
-                <input type="text" name="full_name" value="${staffData.full_name || ''}" placeholder="e.g. Dr. Debabrata Mishra" required>
+                <input type="text" name="full_name" value="${staffData.full_name || ''}" placeholder="e.g. Dr. Jashobanta Rao Mohanta" required>
               </div>
 
               <div class="staff-input-group">

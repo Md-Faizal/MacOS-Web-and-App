@@ -109,8 +109,8 @@
 | `backend/core/creditnotes/schema.js` | Node backend / core | .js |
 | `backend/core/db/database-manager.js` | Node backend / core | .js |
 | `backend/core/db/migrations/025-ensure-owner-account.js` | Node backend / core | .js |
+| `backend/core/db/migrations/026-purge-dummy-seed-data.js` | Node backend / core | .js |
 | `backend/core/db/schema-master.js` | Node backend / core | .js |
-| `backend/core/db/seed/production-data-seed.json` | Node backend / core | .json |
 | `backend/core/invoices/handlers.js` | Node backend / core | .js |
 | `backend/core/invoices/index.js` | Node backend / core | .js |
 | `backend/core/invoices/payments.js` | Node backend / core | .js |

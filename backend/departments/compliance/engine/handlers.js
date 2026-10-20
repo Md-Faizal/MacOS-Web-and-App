@@ -459,19 +459,6 @@ module.exports = function createHandlers(db) {
             statutory_rule_ref: 'Odisha Fire Prevention and Fire Safety Rules 2017',
             status: 'ACTIVE',
             notes: 'Hydrant tests, extinguisher maintenance, fire drills.'
-          },
-          {
-            title: 'Goods & Services Tax Registration (GSTIN)',
-            category: 'TAX_FINANCIAL',
-            license_number: '21AAACU1234F1Z8',
-            issuing_authority: 'Central Board of Indirect Taxes & Customs',
-            issue_date: '2017-07-01',
-            expiry_date: null,
-            renewal_frequency: 'Permanent / Monthly Returns',
-            officer_in_charge: 'Chief Financial Officer',
-            statutory_rule_ref: 'CGST Act 2017',
-            status: 'ACTIVE',
-            notes: 'Active GST registration, monthly GSTR-1 and GSTR-3B filings.'
           }
         ];
 
@@ -495,93 +482,14 @@ module.exports = function createHandlers(db) {
         });
       }
 
-      // Seed sample staff if empty
-      const staffCount = db.prepare('SELECT COUNT(*) as c FROM company_staff').get().c;
-      if (staffCount === 0) {
-        const seedStaff = [
-          {
-            emp_code: 'EMP-001',
-            full_name: 'Dr. Debabrata Mishra',
-            department: 'Manufacturing',
-            designation: 'Chief Ayurvedic Medical Officer',
-            role_type: 'Technical Person',
-            phone: '+91 94370 12345',
-            email: 'dr.mishra@utkalchemical.com',
-            joining_date: '2018-02-01',
-            blood_group: 'B+',
-            emergency_contact: 'Mrs. Mishra (+91 94370 99999)',
-            address: 'Madhupatna, Cuttack, Odisha',
-            is_schedule_t_technical: 1,
-            technical_reg_no: 'BAMS-OR-4521',
-            status: 'ACTIVE'
-          },
-          {
-            emp_code: 'EMP-002',
-            full_name: 'Vaidya Ananya Tripathy',
-            department: 'Quality Assurance',
-            designation: 'Quality Control Head & Analytical Chemist',
-            role_type: 'Technical Person',
-            phone: '+91 98610 23456',
-            email: 'ananya.t@utkalchemical.com',
-            joining_date: '2020-07-15',
-            blood_group: 'O+',
-            emergency_contact: 'S. Tripathy (+91 98610 88888)',
-            address: 'Link Road, Cuttack, Odisha',
-            is_schedule_t_technical: 1,
-            technical_reg_no: 'M.Sc Chem / QC-784',
-            status: 'ACTIVE'
-          },
-          {
-            emp_code: 'EMP-003',
-            full_name: 'Ramesh Chandra Barik',
-            department: 'Manufacturing',
-            designation: 'Senior Boiler & Extraction Operator',
-            role_type: 'Worker',
-            phone: '+91 91240 34567',
-            email: null,
-            joining_date: '2021-11-10',
-            blood_group: 'A+',
-            emergency_contact: 'Son (+91 91240 77777)',
-            address: 'Jagatpur Industrial Estate, Cuttack',
-            is_schedule_t_technical: 0,
-            technical_reg_no: null,
-            status: 'ACTIVE'
-          },
-          {
-            emp_code: 'EMP-004',
-            full_name: 'Priyanka Senapati',
-            department: 'Billing & Accounts',
-            designation: 'Senior Accountant & Compliance Coordinator',
-            role_type: 'Staff',
-            phone: '+91 99370 45678',
-            email: 'priyanka@utkalchemical.com',
-            joining_date: '2022-03-01',
-            blood_group: 'AB+',
-            emergency_contact: 'Father (+91 99370 66666)',
-            address: 'Badambadi, Cuttack',
-            is_schedule_t_technical: 0,
-            technical_reg_no: null,
-            status: 'ACTIVE'
-          }
-        ];
-
-        const insertStaffStmt = db.prepare(`
-          INSERT INTO company_staff 
-          (emp_code, full_name, department, designation, role_type, phone, email, joining_date, blood_group, emergency_contact, address, is_schedule_t_technical, technical_reg_no, status)
-          VALUES (@emp_code, @full_name, @department, @designation, @role_type, @phone, @email, @joining_date, @blood_group, @emergency_contact, @address, @is_schedule_t_technical, @technical_reg_no, @status)
-        `);
-
-        seedStaff.forEach(s => insertStaffStmt.run(s));
-      }
-
-      // Seed initial Vault directories if empty
+      // Seed initial Vault directories if empty (folder structure)
       const dirCount = db.prepare('SELECT COUNT(*) as c FROM vault_directories').get().c;
       if (dirCount === 0) {
         const seedDirs = [
           { name: 'HR & Personnel Orders', department: 'HR & Personnel', slug: 'hr-personnel', icon: '👥' },
           { name: 'Manufacturing & QC Dossiers', department: 'Manufacturing', slug: 'mfg-qc', icon: '🏭' },
           { name: 'Statutory Licences & Ayush Drug Control', department: 'Regulatory & Licences', slug: 'statutory-licences', icon: '🏛️' },
-          { name: 'Legal, Corporate & Board Governance', department: 'Legal & Corporate', slug: 'legal-corporate', icon: '⚖️' },
+          { name: 'Legal, Corporate & Governance', department: 'Legal & Corporate', slug: 'legal-corporate', icon: '⚖️' },
           { name: 'Official Inward Notices & Summons', department: 'Inward & Outward Register', slug: 'inward-notices', icon: '📥' },
           { name: 'Official Outward Dispatches & Replies', department: 'Inward & Outward Register', slug: 'outward-dispatches', icon: '📤' }
         ];
@@ -591,103 +499,6 @@ module.exports = function createHandlers(db) {
           VALUES (@name, @department, @slug, @icon)
         `);
         seedDirs.forEach(d => insertDirStmt.run(d));
-      }
-
-      // Seed initial Vault documents if empty
-      const docCount = db.prepare('SELECT COUNT(*) as c FROM company_vault_documents').get().c;
-      if (docCount === 0) {
-        const hrDir = db.prepare("SELECT id FROM vault_directories WHERE slug = 'hr-personnel'").get()?.id || 1;
-        const outDir = db.prepare("SELECT id FROM vault_directories WHERE slug = 'outward-dispatches'").get()?.id || 6;
-        const inDir = db.prepare("SELECT id FROM vault_directories WHERE slug = 'inward-notices'").get()?.id || 5;
-
-        const seedDocs = [
-          {
-            dir_id: hrDir,
-            doc_ref_no: 'UCA/HR/2026/001',
-            title: 'Appointment Letter - Chief Ayurvedic Medical Officer',
-            doc_type: 'APPOINTMENT_LETTER',
-            department: 'HR & Personnel',
-            direction: 'INTERNAL',
-            status: 'SEALED_OFFICIAL',
-            recipient_party: 'Dr. Debabrata Mishra (EMP-001)',
-            subject: 'Appointment as Chief Ayurvedic Medical Officer under Rule 157 Schedule T',
-            issue_date: '2018-02-01',
-            signatory_name: 'Mohammad Faizal',
-            signatory_title: 'Proprietor',
-            signatory_reg_no: null,
-            verification_hash: '9a84f32e185c1840bb8e9324d08123ca41bfe1298823101c03994ab2d4885832'
-          },
-          {
-            dir_id: inDir,
-            doc_ref_no: 'INW/AYUSH-OD/2026/089',
-            title: 'Annual Schedule T Factory GMP Inspection Notice',
-            doc_type: 'STATUTORY_NOTICE',
-            department: 'Regulatory & Licences',
-            direction: 'INWARD',
-            status: 'SEALED_OFFICIAL',
-            sender_party: 'Directorate of AYUSH, Govt of Odisha',
-            recipient_party: 'Utkal Chemical Aushadhalaya',
-            subject: 'Routine Inspection under Rule 157 & Schedule T Compliance for Year 2026-27',
-            issue_date: '2026-09-15',
-            dispatch_mode: 'SPEED_POST',
-            tracking_consignment_no: 'ED982341908IN',
-            verification_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-          },
-          {
-            dir_id: outDir,
-            doc_ref_no: 'UCA/REG/2026/014',
-            title: 'Compliance Reply & Submission of Form 48 Clinical Health Dossiers',
-            doc_type: 'COMPLIANCE_REPLY',
-            department: 'Regulatory & Licences',
-            direction: 'OUTWARD',
-            status: 'SEALED_OFFICIAL',
-            sender_party: 'Utkal Chemical Aushadhalaya',
-            recipient_party: 'Drug Controller & Licensing Authority, Directorate of AYUSH',
-            subject: 'Submission of Annual GMP & Rule 158 Personnel Medical Fitness Certificates (Form 48)',
-            issue_date: '2026-09-28',
-            dispatch_mode: 'SPEED_POST',
-            tracking_consignment_no: 'SP774910234IN',
-            signatory_name: 'Dr. Debabrata Mishra',
-            signatory_title: 'Chief Ayurvedic Medical Officer (In-Charge)',
-            signatory_reg_no: 'BAMS-OR-4521',
-            verification_hash: '4f2910ba779dcb6185bb811efca4421b93f20817c093a89047192802d847921a'
-          }
-        ];
-
-        const insertDocStmt = db.prepare(`
-          INSERT INTO company_vault_documents 
-          (dir_id, doc_ref_no, title, doc_type, department, direction, status, sender_party, recipient_party, subject, issue_date, dispatch_mode, tracking_consignment_no, signatory_name, signatory_title, signatory_reg_no, verification_hash)
-          VALUES (@dir_id, @doc_ref_no, @title, @doc_type, @department, @direction, @status, @sender_party, @recipient_party, @subject, @issue_date, @dispatch_mode, @tracking_consignment_no, @signatory_name, @signatory_title, @signatory_reg_no, @verification_hash)
-        `);
-        seedDocs.forEach(doc => {
-          insertDocStmt.run({
-            dir_id: doc.dir_id || null,
-            doc_ref_no: doc.doc_ref_no,
-            title: doc.title,
-            doc_type: doc.doc_type || 'LETTER',
-            department: doc.department || 'General',
-            direction: doc.direction || 'INTERNAL',
-            status: doc.status || 'DRAFT',
-            sender_party: doc.sender_party || null,
-            recipient_party: doc.recipient_party || null,
-            subject: doc.subject || null,
-            issue_date: doc.issue_date || null,
-            dispatch_mode: doc.dispatch_mode || null,
-            tracking_consignment_no: doc.tracking_consignment_no || null,
-            signatory_name: doc.signatory_name || null,
-            signatory_title: doc.signatory_title || null,
-            signatory_reg_no: doc.signatory_reg_no || null,
-            verification_hash: doc.verification_hash || null
-          });
-        });
-
-        // Create paper trail linkage: Inward notice (doc 2) -> Outward compliance reply (doc 3)
-        try {
-          db.prepare(`
-            INSERT INTO document_paper_trails (parent_doc_id, child_doc_id, link_relation, matter_thread_name, notes)
-            VALUES (2, 3, 'REPLIED_WITH', 'AYUSH GMP Inspection 2026', 'Official submission of Form 48 staff records in response to inspection notice')
-          `).run();
-        } catch (_) {}
       }
     },
 

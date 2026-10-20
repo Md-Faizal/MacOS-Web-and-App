@@ -4556,8 +4556,8 @@ export class DocumentVaultExplorer {
         subject: form.subject.value.trim(),
         issue_date: form.issue_date.value,
         content_json: { paragraphs: [form.subject.value.trim() || 'Uploaded document'] },
-        signatory_name: 'Dr. Debabrata Mishra',
-        signatory_title: 'Chief Medical Officer',
+        signatory_name: 'Mohammad Faizal',
+        signatory_title: 'Proprietor',
         is_watermarked: 0
       };
 
@@ -4690,8 +4690,8 @@ export class DocumentVaultExplorer {
         subject: form.subject.value.trim(),
         issue_date: form.issue_date.value,
         content_json: { paragraphs: [form.body.value.trim()] },
-        signatory_name: 'Dr. Debabrata Mishra',
-        signatory_title: 'Chief Medical Officer',
+        signatory_name: 'Mohammad Faizal',
+        signatory_title: 'Proprietor',
         is_watermarked: 0
       };
 
@@ -5128,7 +5128,7 @@ export class DocumentVaultExplorer {
             </div>
             <div class="vault-insp-row">
               <span class="vault-insp-label">Signatory Authority</span>
-              <span class="vault-insp-val">${doc.signatory_name || 'Dr. Debabrata Mishra'}</span>
+              <span class="vault-insp-val">${doc.signatory_name || '—'}</span>
             </div>
             <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
               <button class="vault-pill-btn" id="viewerInspEditInStudioBtn" style="justify-content: center; width: 100%; padding: 8px 12px; background: rgba(2, 132, 199, 0.1); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.25); font-weight: 700; cursor: pointer;">

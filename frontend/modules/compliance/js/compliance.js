@@ -44,17 +44,13 @@ export class ComplianceApp extends AppWindow {
     ];
 
     this.recentActions = [
-      { user: 'DM', name: 'Dr. Debabrata Mishra', action: 'Approved and signed off Schedule T BMR Batch #UC-2026-08', time: '14m ago', color: '#10b981' },
-      { user: 'AT', name: 'Vaidya Ananya Tripathy', action: 'Uploaded Analytical CoA for Dashamularishta herb batch', time: '1h ago', color: '#3b82f6' },
-      { user: 'AD', name: 'System Admin', action: 'Updated worker access permissions for priyanka@utkalchemical.com', time: '3h ago', color: '#8b5cf6' },
-      { user: 'RB', name: 'Ramesh Barik', action: 'Completed boiler sanitization log under SOP-MFG-004', time: 'Yesterday', color: '#f59e0b' },
-      { user: 'FA', name: 'Finance / Accounts', action: 'Generated HSN Table 12 CSV via Rust Vector Engine', time: '2d ago', color: '#06b6d4' }
+      { user: 'JM', name: 'Dr. Jashobanta Rao Mohanta', action: 'Approved and signed off Schedule T BMR Batch release', time: '14m ago', color: '#10b981' },
+      { user: 'AD', name: 'System Admin', action: 'Synchronized Directory & Company Vault storage', time: '3h ago', color: '#8b5cf6' },
+      { user: 'FA', name: 'Finance / Accounts', action: 'Generated GST Compliance export via Rust Engine', time: '2d ago', color: '#06b6d4' }
     ];
 
     this.searchCatalog = [
-      { title: 'Dr. Debabrata Mishra', category: 'Staff', sub: 'Chief Ayurvedic Medical Officer (BAMS-OR-4521)', icon: '🩺' },
-      { title: 'Vaidya Ananya Tripathy', category: 'Staff', sub: 'QC Head & Approved Chemist (QC-784)', icon: '⚗️' },
-      { title: 'Ramesh Chandra Barik', category: 'Staff', sub: 'Senior Boiler Operator (Factory)', icon: '🏭' },
+      { title: 'Dr. Jashobanta Rao Mohanta', category: 'Staff', sub: 'Chief Ayurvedic Physician (BAMS-OSCAM-6824)', icon: '🩺' },
       { title: 'AYUSH Form 25D Drug License', category: 'License', sub: 'OR-02/AYUR • Expires March 2027', icon: '🏛️' },
       { title: 'Schedule T GMP Compliance', category: 'License', sub: 'Ayush Inspection Board • Active', icon: '📜' },
       { title: 'State Pollution Board (OSPCB) CTO', category: 'License', sub: 'Consent to Operate • Expires 2028', icon: '🌿' },
