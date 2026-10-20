@@ -183,6 +183,8 @@ jobs:
           # Ensure target directory exists on VM 1 and erp.faizal.uk vhost is enabled
           ssh production "
             mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist
+            sudo chown -R \$(id -u):\$(id -g) $TARGET_DIR/zentra-analytics-dashboard 2>/dev/null || true
+            chmod -R u+rwX $TARGET_DIR/zentra-analytics-dashboard 2>/dev/null || true
             if [ ! -f /etc/nginx/sites-enabled/erp.faizal.uk ] && [ -f $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh ]; then
               echo '🔧 Auto-activating erp.faizal.uk nginx vhost...'
               bash $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh 2>/dev/null || true
@@ -192,6 +194,7 @@ jobs:
           # Rsync ONLY the built dist — no Docker restart needed.
           echo "📤 Syncing zentra-analytics-dashboard/dist/ to Primary VM 1..."
           rsync -avz --delete \
+            --no-owner --no-group --omit-dir-times \
             zentra-analytics-dashboard/dist/ \
             production:"$TARGET_DIR/zentra-analytics-dashboard/dist/"
 
@@ -209,6 +212,8 @@ jobs:
 
             ssh vm2 "
               mkdir -p $TARGET_DIR/zentra-analytics-dashboard/dist
+              sudo chown -R \$(id -u):\$(id -g) $TARGET_DIR/zentra-analytics-dashboard 2>/dev/null || true
+              chmod -R u+rwX $TARGET_DIR/zentra-analytics-dashboard 2>/dev/null || true
               if [ ! -f /etc/nginx/sites-enabled/erp.faizal.uk ] && [ -f $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh ]; then
                 echo '🔧 Auto-activating erp.faizal.uk nginx vhost on VM 2...'
                 bash $TARGET_DIR/deploy/ubuntu/setup-erp-vhost.sh 2>/dev/null || true
@@ -216,6 +221,7 @@ jobs:
             "
 
             rsync -avz --delete \
+              --no-owner --no-group --omit-dir-times \
               zentra-analytics-dashboard/dist/ \
               vm2:"$TARGET_DIR/zentra-analytics-dashboard/dist/"
 

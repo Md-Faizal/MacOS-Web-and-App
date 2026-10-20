@@ -229,6 +229,8 @@ jobs:
 
           echo "Step 1: Remote directory permissions and pre-deploy DB snapshot on VM 1..."
           ssh production "
+            sudo chown -R \$(id -u):\$(id -g) $TARGET_DIR 2>/dev/null || true
+            chmod -R u+rwX $TARGET_DIR 2>/dev/null || true
             mkdir -p $TARGET_DIR/database/backups \
                      $TARGET_DIR/storage/wallpapers/builtin \
                      $TARGET_DIR/storage/wallpapers/marketplace \
@@ -252,6 +254,7 @@ jobs:
 
           echo "📦 Step 2: Syncing files to Primary VM 1..."
           rsync -avz --delete \
+            --no-owner --no-group --omit-dir-times \
             --exclude='/database/*.db*' \
             --exclude='/database/backups' \
             --exclude='/backups' \
@@ -265,7 +268,10 @@ jobs:
             --exclude='/tmp' \
             --exclude='/.env*' \
             --exclude='/.git' \
+            --exclude='.git' \
             --exclude='/android' \
+            --exclude='node_modules' \
+            --exclude='**/node_modules' \
             --exclude='/node_modules' \
             --exclude='/zentra-analytics-dashboard/node_modules' \
             --exclude='/zentra-analytics-dashboard/dist' \
@@ -295,6 +301,8 @@ jobs:
 
             echo "Step 1: Remote directory setup on VM 2..."
             ssh vm2 "
+              sudo chown -R \$(id -u):\$(id -g) $TARGET_DIR 2>/dev/null || true
+              chmod -R u+rwX $TARGET_DIR 2>/dev/null || true
               mkdir -p $TARGET_DIR/database/backups \
                        $TARGET_DIR/storage/wallpapers/builtin \
                        $TARGET_DIR/storage/wallpapers/marketplace \
@@ -313,6 +321,7 @@ jobs:
 
             echo "📦 Step 2: Syncing files to Secondary VM 2..."
             rsync -avz --delete \
+              --no-owner --no-group --omit-dir-times \
               --exclude='/database/*.db*' \
               --exclude='/database/backups' \
               --exclude='/backups' \
@@ -326,7 +335,10 @@ jobs:
               --exclude='/tmp' \
               --exclude='/.env*' \
               --exclude='/.git' \
+              --exclude='.git' \
               --exclude='/android' \
+              --exclude='node_modules' \
+              --exclude='**/node_modules' \
               --exclude='/node_modules' \
               --exclude='/zentra-analytics-dashboard/node_modules' \
               --exclude='/zentra-analytics-dashboard/dist' \

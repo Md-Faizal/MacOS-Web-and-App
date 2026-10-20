@@ -363,7 +363,7 @@ if [ "$SKIP_ASSETS" = false ]; then
             print_warning "traditional mode: copying all Wallpapers files with scp"
             sync_all_files_with_scp "$DEV_DIR/Wallpapers" "$UBUNTU_PROD_DIR/Wallpapers"
         elif command -v rsync &> /dev/null; then
-            rsync -avz --checksum --omit-dir-times \
+            rsync -avz --checksum --no-owner --no-group --omit-dir-times \
                 "$DEV_DIR/Wallpapers/" "$SSH_TARGET:$UBUNTU_PROD_DIR/Wallpapers/"
         else
             print_warning "rsync not found; using hash-based scp delta transfer for Wallpapers"
@@ -393,18 +393,18 @@ if [ "$DRY_RUN" = false ]; then
             sync_all_files_with_scp "$DEV_DIR/tools/python" "$UBUNTU_PROD_DIR/tools/python"
         fi
     elif command -v rsync &> /dev/null; then
-        rsync -avz --checksum --omit-dir-times --delete \
+        rsync -avz --checksum --no-owner --no-group --omit-dir-times --delete \
             --exclude='database' --exclude='backups' --exclude='logs' --exclude='Wallpapers' --exclude='CloudStorage' \
             "$DEV_DIR/dist/" "$SSH_TARGET:$UBUNTU_PROD_DIR/"
         
         print_info "  - Syncing backend, frontend, config, and scripts..."
         # APKs and user uploads are deployed by their own publisher and are
         # production state, not application source.
-        rsync -avz --checksum --omit-dir-times --delete --exclude='uploads/' "$DEV_DIR/backend/" "$SSH_TARGET:$UBUNTU_PROD_DIR/backend/"
-        rsync -avz --checksum --omit-dir-times --delete "$DEV_DIR/frontend/" "$SSH_TARGET:$UBUNTU_PROD_DIR/frontend/"
-        rsync -avz --checksum --omit-dir-times "$DEV_DIR/ecosystem.config.js" "$DEV_DIR/package.json" "$DEV_DIR/server-prod.js" "$SSH_TARGET:$UBUNTU_PROD_DIR/"
+        rsync -avz --checksum --no-owner --no-group --omit-dir-times --delete --exclude='uploads/' "$DEV_DIR/backend/" "$SSH_TARGET:$UBUNTU_PROD_DIR/backend/"
+        rsync -avz --checksum --no-owner --no-group --omit-dir-times --delete "$DEV_DIR/frontend/" "$SSH_TARGET:$UBUNTU_PROD_DIR/frontend/"
+        rsync -avz --checksum --no-owner --no-group --omit-dir-times "$DEV_DIR/ecosystem.config.js" "$DEV_DIR/package.json" "$DEV_DIR/server-prod.js" "$SSH_TARGET:$UBUNTU_PROD_DIR/"
         if [ -d "$DEV_DIR/tools/python" ]; then
-                rsync -avz --checksum --omit-dir-times --delete "$DEV_DIR/tools/python/" "$SSH_TARGET:$UBUNTU_PROD_DIR/tools/python/"
+                rsync -avz --checksum --no-owner --no-group --omit-dir-times --delete "$DEV_DIR/tools/python/" "$SSH_TARGET:$UBUNTU_PROD_DIR/tools/python/"
         fi
     else
         print_warning "rsync not found; using hash-based scp delta transfer"

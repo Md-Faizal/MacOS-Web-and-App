@@ -205,7 +205,7 @@ jobs:
 
           # 2. Automated Remote Database Snapshot & Directory Permissions
           echo "🛡️ Step 1: Taking remote SQLite safety snapshot, cleaning build cache & ensuring directory permissions..."
-          ssh production "docker builder prune -f --keep-storage 1000MB 2>/dev/null || true && docker container prune -f 2>/dev/null || true && mkdir -p $TARGET_DIR/database/backups $TARGET_DIR/storage/wallpapers/builtin $TARGET_DIR/storage/wallpapers/marketplace $TARGET_DIR/storage/wallpapers/custom $TARGET_DIR/storage/temp_uploads $TARGET_DIR/storage/android-updates/archive && chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true && if [ -f $TARGET_DIR/database/MacOS.db ]; then cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db && echo '✅ Database safely backed up to database/backups/MacOS_backup_${TIMESTAMP}.db'; else echo '⚠️ No existing database file found to backup.'; fi"
+          ssh production "sudo chown -R \$(id -u):\$(id -g) $TARGET_DIR 2>/dev/null || true && chmod -R u+rwX $TARGET_DIR 2>/dev/null || true && docker builder prune -f --keep-storage 1000MB 2>/dev/null || true && docker container prune -f 2>/dev/null || true && mkdir -p $TARGET_DIR/database/backups $TARGET_DIR/storage/wallpapers/builtin $TARGET_DIR/storage/wallpapers/marketplace $TARGET_DIR/storage/wallpapers/custom $TARGET_DIR/storage/temp_uploads $TARGET_DIR/storage/android-updates/archive && chmod -R 777 $TARGET_DIR/storage 2>/dev/null || true && if [ -f $TARGET_DIR/database/MacOS.db ]; then cp $TARGET_DIR/database/MacOS.db $TARGET_DIR/database/backups/MacOS_backup_${TIMESTAMP}.db && echo '✅ Database safely backed up to database/backups/MacOS_backup_${TIMESTAMP}.db'; else echo '⚠️ No existing database file found to backup.'; fi"
 
           # 3. Check Dry Run
           if [ "$DRY_RUN" = "true" ]; then
@@ -217,6 +217,7 @@ jobs:
           # 4. Sync files via rsync (safe sync: excludes database, uploads, wallpapers, logs, .env)
           echo "📦 Step 2: Syncing build & source files to VM via rsync..."
           rsync -avz --delete \
+            --no-owner --no-group --omit-dir-times \
             --exclude='/database/*.db*' \
             --exclude='/database/backups' \
             --exclude='/backups' \
@@ -230,8 +231,12 @@ jobs:
             --exclude='/tmp' \
             --exclude='/.env*' \
             --exclude='/.git' \
+            --exclude='.git' \
             --exclude='/android' \
+            --exclude='node_modules' \
+            --exclude='**/node_modules' \
             --exclude='/node_modules' \
+            --exclude='/zentra-analytics-dashboard/node_modules' \
             ./ production:"$TARGET_DIR/"
 
           # 5. Remote preflight: clear stale blue/green port locks before Docker starts
