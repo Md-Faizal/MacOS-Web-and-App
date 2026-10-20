@@ -52,10 +52,10 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node.js 20
+      - name: ⚙️ Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: 📦 Install & Build Client
@@ -103,10 +103,10 @@ jobs:
           git push origin main --follow-tags
           echo "✅ Version bumped to $(node -p "require('./package.json').version") and tag pushed!"
 
-      - name: ⚙️ Setup Node.js 20
+      - name: ⚙️ Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: 📦 Install & Build Frontend

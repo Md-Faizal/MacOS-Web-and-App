@@ -170,12 +170,17 @@
 | `backend/departments/billing/index.js` | Backend department / billing | .js |
 | `backend/departments/billing/README.md` | Backend department / billing | .md |
 | `backend/departments/billing/service.js` | Backend department / billing | .js |
+| `backend/departments/billing/services/email-reminder-scheduler.js` | Backend department / billing | .js |
 | `backend/departments/calendar/index.js` | Backend department / calendar | .js |
 | `backend/departments/calendar/routes.js` | Backend department / calendar | .js |
 | `backend/departments/calendar/service.js` | Backend department / calendar | .js |
 | `backend/departments/cloud-storage/engine/handlers.js` | Backend department / cloud-storage | .js |
 | `backend/departments/cloud-storage/engine/routes.js` | Backend department / cloud-storage | .js |
 | `backend/departments/cloud-storage/index.js` | Backend department / cloud-storage | .js |
+| `backend/departments/compliance/engine/handlers.js` | Backend department / compliance | .js |
+| `backend/departments/compliance/engine/routes.js` | Backend department / compliance | .js |
+| `backend/departments/compliance/engine/vault-ai.js` | Backend department / compliance | .js |
+| `backend/departments/compliance/index.js` | Backend department / compliance | .js |
 | `backend/departments/contacts/engine/handlers.js` | Backend department / contacts | .js |
 | `backend/departments/contacts/engine/routes.js` | Backend department / contacts | .js |
 | `backend/departments/contacts/index.js` | Backend department / contacts | .js |
@@ -188,9 +193,13 @@
 | `backend/departments/logs/engine/routes.js` | Backend department / logs | .js |
 | `backend/departments/logs/index.js` | Backend department / logs | .js |
 | `backend/departments/logs/README.md` | Backend department / logs | .md |
+| `backend/departments/manufacturing/engine/handlers.js` | Backend department / manufacturing | .js |
+| `backend/departments/manufacturing/engine/routes.js` | Backend department / manufacturing | .js |
+| `backend/departments/manufacturing/index.js` | Backend department / manufacturing | .js |
 | `backend/departments/notes/index.js` | Backend department / notes | .js |
 | `backend/departments/notes/native/handlers.js` | Backend department / notes | .js |
 | `backend/departments/notes/native/routes.js` | Backend department / notes | .js |
+| `backend/departments/product-list/engine/catalog-pdf.test.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/engine/catalog-print-assets.test.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/engine/handlers.js` | Backend department / product-list | .js |
 | `backend/departments/product-list/engine/routes.js` | Backend department / product-list | .js |
@@ -231,8 +240,11 @@
 | `backend/scripts/test-calendar-realtime-permissions.js` | Node backend / scripts | .js |
 | `backend/scripts/test-decoupled-preferences.js` | Node backend / scripts | .js |
 | `backend/scripts/test-department-registry.js` | Node backend / scripts | .js |
+| `backend/scripts/test-manufacturing-engine.js` | Node backend / scripts | .js |
 | `backend/scripts/test-notes-department.js` | Node backend / scripts | .js |
 | `backend/scripts/test-notes-realtime-permissions.js` | Node backend / scripts | .js |
+| `backend/scripts/test-passkey-upgrade.js` | Node backend / scripts | .js |
+| `backend/scripts/test-payment-dues-qr.js` | Node backend / scripts | .js |
 | `backend/scripts/test-payments-credit-notes-sync.js` | Node backend / scripts | .js |
 | `backend/scripts/test-profile-update-endpoint.js` | Node backend / scripts | .js |
 | `backend/scripts/test-pwa-android-distinction-and-security-screening.js` | Node backend / scripts | .js |
@@ -276,10 +288,12 @@
 | `docs/ai-reference/README.md` | Documentation / ai-reference | .md |
 | `docs/ANDROID_API_PARITY_PROGRESS_DIARY.md` | Documentation / ANDROID_API_PARITY_PROGRESS_DIARY.md | .md |
 | `docs/API_DOCUMENTATION.md` | Documentation / API_DOCUMENTATION.md | .md |
+| `docs/AUTOMATED_EMAIL_AND_WHATSAPP_REMINDERS_SPEC.md` | Documentation / AUTOMATED_EMAIL_AND_WHATSAPP_REMINDERS_SPEC.md | .md |
 | `docs/BILLING_DB_SCHEMA.md` | Documentation / BILLING_DB_SCHEMA.md | .md |
 | `docs/BILLING_FULL_ARCHITECTURE_AND_COMPONENTS_MAP.md` | Documentation / BILLING_FULL_ARCHITECTURE_AND_COMPONENTS_MAP.md | .md |
 | `docs/changelogs/PRODUCT_DATABASE_CHANGELOG_2026.md` | Documentation / changelogs | .md |
 | `docs/COMMANDS.md` | Documentation / COMMANDS.md | .md |
+| `docs/COMPLIANCE_AND_STATUTORY_REPORTS.md` | Documentation / COMPLIANCE_AND_STATUTORY_REPORTS.md | .md |
 | `docs/CORE4_SYSTEM_POLISH_AND_REACTIVE_EVOLUTION_DIARY.md` | Documentation / CORE4_SYSTEM_POLISH_AND_REACTIVE_EVOLUTION_DIARY.md | .md |
 | `docs/create_new_app_guide.md` | Documentation / create_new_app_guide.md | .md |
 | `docs/DATABASE_SCHEMA.md` | Documentation / DATABASE_SCHEMA.md | .md |
@@ -321,6 +335,8 @@
 | `docs/handbook/site.js` | Documentation / handbook | .js |
 | `docs/handbook/theme.css` | Documentation / handbook | .css |
 | `docs/HOSTING_SETUP.md` | Documentation / HOSTING_SETUP.md | .md |
+| `docs/MULTI_VM_HA_ARCHITECTURE_DIARY.md` | Documentation / MULTI_VM_HA_ARCHITECTURE_DIARY.md | .md |
+| `docs/operations/pdf-rendering-vm-benchmark-handoff.md` | Documentation / operations | .md |
 | `docs/OVERKILL_ROADMAP.md` | Documentation / OVERKILL_ROADMAP.md | .md |
 | `docs/PROJECT_CONTEXT.md` | Documentation / PROJECT_CONTEXT.md | .md |
 | `docs/realtime-data-sync-issue-and-architecture.md` | Documentation / realtime-data-sync-issue-and-architecture.md | .md |
@@ -335,12 +351,14 @@
 | `frontend/modules/ai-vision/js/ai-vision-service.js` | MacOS web / ai-vision | .js |
 | `frontend/modules/analytics/api/README.md` | MacOS web / analytics | .md |
 | `frontend/modules/analytics/css/analytics.css` | MacOS web / analytics | .css |
+| `frontend/modules/analytics/css/compliance-reports.css` | MacOS web / analytics | .css |
 | `frontend/modules/analytics/css/customer-profile.css` | MacOS web / analytics | .css |
 | `frontend/modules/analytics/css/dashboard.css` | MacOS web / analytics | .css |
 | `frontend/modules/analytics/css/product-metrics.css` | MacOS web / analytics | .css |
 | `frontend/modules/analytics/css/sales-reports.css` | MacOS web / analytics | .css |
 | `frontend/modules/analytics/js/analytics.js` | MacOS web / analytics | .js |
 | `frontend/modules/analytics/js/comparative-analytics.js` | MacOS web / analytics | .js |
+| `frontend/modules/analytics/js/compliance-reports.js` | MacOS web / analytics | .js |
 | `frontend/modules/analytics/js/customer-aging.js` | MacOS web / analytics | .js |
 | `frontend/modules/analytics/js/customer-profile.js` | MacOS web / analytics | .js |
 | `frontend/modules/analytics/js/dashboard.js` | MacOS web / analytics | .js |
@@ -375,11 +393,25 @@
 | `frontend/modules/calendar/js/calendar.js` | MacOS web / calendar | .js |
 | `frontend/modules/cloud/css/cloud.css` | MacOS web / cloud | .css |
 | `frontend/modules/cloud/js/cloud.js` | MacOS web / cloud | .js |
+| `frontend/modules/compliance/css/compliance.css` | MacOS web / compliance | .css |
+| `frontend/modules/compliance/css/document-vault.css` | MacOS web / compliance | .css |
+| `frontend/modules/compliance/css/staff-view.css` | MacOS web / compliance | .css |
+| `frontend/modules/compliance/js/compliance.js` | MacOS web / compliance | .js |
+| `frontend/modules/compliance/js/document-vault-explorer.js` | MacOS web / compliance | .js |
+| `frontend/modules/compliance/js/staff-view.js` | MacOS web / compliance | .js |
 | `frontend/modules/contacts/api/README.md` | MacOS web / contacts | .md |
 | `frontend/modules/contacts/css/contacts.css` | MacOS web / contacts | .css |
 | `frontend/modules/contacts/js/contacts.js` | MacOS web / contacts | .js |
 | `frontend/modules/launchpad/css/launchpad.css` | MacOS web / launchpad | .css |
 | `frontend/modules/launchpad/js/launchpad.js` | MacOS web / launchpad | .js |
+| `frontend/modules/manufacturing/css/manufacturing.css` | MacOS web / manufacturing | .css |
+| `frontend/modules/manufacturing/js/bmr-pipeline.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/inward-procurement.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/manufacturing.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/master-formulas.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/raw-materials.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/statutory-audit.js` | MacOS web / manufacturing | .js |
+| `frontend/modules/manufacturing/js/technical-staff.js` | MacOS web / manufacturing | .js |
 | `frontend/modules/notes/api/README.md` | MacOS web / notes | .md |
 | `frontend/modules/notes/css/notes.css` | MacOS web / notes | .css |
 | `frontend/modules/notes/js/notes.js` | MacOS web / notes | .js |
@@ -393,6 +425,7 @@
 | `frontend/modules/settings/css/Admin.css` | MacOS web / settings | .css |
 | `frontend/modules/settings/css/Appearance.css` | MacOS web / settings | .css |
 | `frontend/modules/settings/css/BillingSettings.css` | MacOS web / settings | .css |
+| `frontend/modules/settings/css/EmailRemindersSettings.css` | MacOS web / settings | .css |
 | `frontend/modules/settings/css/NetworkTraffic.css` | MacOS web / settings | .css |
 | `frontend/modules/settings/css/Profile.css` | MacOS web / settings | .css |
 | `frontend/modules/settings/css/settings.css` | MacOS web / settings | .css |
@@ -403,6 +436,7 @@
 | `frontend/modules/settings/js/Appearance.js` | MacOS web / settings | .js |
 | `frontend/modules/settings/js/BackupComponent.js` | MacOS web / settings | .js |
 | `frontend/modules/settings/js/BillingSettings.js` | MacOS web / settings | .js |
+| `frontend/modules/settings/js/EmailRemindersSettings.js` | MacOS web / settings | .js |
 | `frontend/modules/settings/js/NetworkTrafficComponent.js` | MacOS web / settings | .js |
 | `frontend/modules/settings/js/Profile.js` | MacOS web / settings | .js |
 | `frontend/modules/settings/js/settings.js` | MacOS web / settings | .js |
@@ -486,6 +520,8 @@
 | `frontend/shared/macos-cursor-assets.js` | Workspace / frontend | .js |
 | `frontend/shared/macos-cursor.css` | Workspace / frontend | .css |
 | `frontend/shared/macos-cursor.js` | Workspace / frontend | .js |
+| `frontend/shared/macos-loader.css` | Workspace / frontend | .css |
+| `frontend/shared/macos-loader.js` | Workspace / frontend | .js |
 | `frontend/shared/macos-store.js` | Workspace / frontend | .js |
 | `frontend/shared/notifications.css` | Workspace / frontend | .css |
 | `frontend/shared/notifications.js` | Workspace / frontend | .js |
@@ -519,6 +555,7 @@
 | `server-prod.js` | Workspace / server-prod.js | .js |
 | `shared/suite_core/.cargo/config.toml` | Rust core / .cargo | .toml |
 | `shared/suite_core/Cargo.toml` | Rust core / Cargo.toml | .toml |
+| `shared/suite_core/examples/render_invoice_json.rs` | Rust core / examples | .rs |
 | `shared/suite_core/src/analytics/aging.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/analytics/customer_health.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/analytics/kpi.rs` | Rust core / src | .rs |
@@ -526,10 +563,18 @@
 | `shared/suite_core/src/catalog/expiry.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/catalog/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/catalog/search.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/docx.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/mod.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/bmr_dossier.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/catalog_labels.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/catalog.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/compliance.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/font.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/invoice.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/letterhead.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/mod.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/payment.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/documents/pdf/report_table.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/pdf/writer.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/documents/words.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/ffi/fast_path.rs` | Rust core / src | .rs |
@@ -549,6 +594,8 @@
 | `shared/suite_core/src/inventory/depletion.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/inventory/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/lib.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/manufacturing/bmr.rs` | Rust core / src | .rs |
+| `shared/suite_core/src/manufacturing/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/sales/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/sales/orders.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/storage/dimensions.rs` | Rust core / src | .rs |
@@ -557,6 +604,8 @@
 | `shared/suite_core/src/sync/fingerprint.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/sync/mod.rs` | Rust core / src | .rs |
 | `shared/suite_core/src/types.rs` | Rust core / src | .rs |
+| `shared/suite_core/tests/compliance_reports_test.rs` | Rust core / tests | .rs |
+| `shared/suite_core/tests/manufacturing_test.rs` | Rust core / tests | .rs |
 | `shared/suite_core/tests/parity_tests.rs` | Rust core / tests | .rs |
 | `shared/suite_core/tests/verify-depletion.js` | Rust core / tests | .js |
 | `storage/wallpapers/builtin/cyber-matrix-pulse/metadata.json` | Workspace / storage | .json |
@@ -583,12 +632,18 @@
 | `tools/generate-existing-thumbnails.js` | Tooling / generate-existing-thumbnails.js | .js |
 | `tools/healthcheck.mjs` | Tooling / healthcheck.mjs | .mjs |
 | `tools/integrate-prod-wallpapers.js` | Tooling / integrate-prod-wallpapers.js | .js |
-| `tools/python/invoice-generator.py` | Tooling / python | .py |
+| `tools/migrate-vault-ai.js` | Tooling / migrate-vault-ai.js | .js |
 | `tools/python/ipv6-updater.py` | Tooling / python | .py |
-| `tools/python/payment-credit-note-generator.py` | Tooling / python | .py |
 | `tools/python/pdf-to-jpg.py` | Tooling / python | .py |
 | `tools/reset-password.js` | Tooling / reset-password.js | .js |
 | `tools/seed-tool.html` | Tooling / seed-tool.html | .html |
+| `tools/seed-vault-compliance-folders.js` | Tooling / seed-vault-compliance-folders.js | .js |
+| `tools/seed-vault-mohanta.js` | Tooling / seed-vault-mohanta.js | .js |
+| `tools/seed-vault-paper-trails.js` | Tooling / seed-vault-paper-trails.js | .js |
+| `tools/test-letterhead-export-parity.py` | Tooling / test-letterhead-export-parity.py | .py |
+| `tools/test-smtp.js` | Tooling / test-smtp.js | .js |
+| `tools/test-studio-multiformat-pixel-parity.py` | Tooling / test-studio-multiformat-pixel-parity.py | .py |
+| `tools/test-vault-document-exports.js` | Tooling / test-vault-document-exports.js | .js |
 | `tools/verify-docker.js` | Tooling / verify-docker.js | .js |
 | `vite.config.js` | Workspace / vite.config.js | .js |
 | `zentra-analytics-dashboard/index.html` | Zentra / index.html | .html |
