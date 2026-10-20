@@ -39,6 +39,9 @@
         'calendar': '/assets/Images/Calender.png',
         'calculator': '/assets/Images/Calculator.png',
         'cloud': '/assets/Images/Cloud.png',
+        'manufacturing': '/assets/Images/Manufacturing.png?v=2',
+        'compliance': '/assets/Images/Directory.png?v=2',
+        'directory': '/assets/Images/Directory.png?v=2',
         'settings': '/assets/Images/Quick Settings.png',
         'system': '/assets/Images/Favicon.png',
         'default': '/assets/Images/Favicon.png'

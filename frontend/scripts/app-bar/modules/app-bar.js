@@ -111,7 +111,7 @@ function initializeDock() {
     {
       id: 'manufacturing',
       name: 'Manufacturing',
-      icon: '/assets/Images/Manufacturing.png',
+      icon: '/assets/Images/Manufacturing.png?v=2',
       alt: 'Manufacturing',
       color: '#059669',
       category: 'productivity',
@@ -120,7 +120,7 @@ function initializeDock() {
     {
       id: 'compliance',
       name: 'Directory',
-      icon: '/assets/Images/Directory.png',
+      icon: '/assets/Images/Directory.png?v=2',
       alt: 'Directory & Compliance Hub',
       color: '#d97706',
       category: 'productivity',
@@ -161,7 +161,7 @@ function initializeDock() {
       } else if (Array.isArray(parsed) && parsed.length > 0) {
         allowedAppsList = parsed;
       } else {
-        allowedAppsList = ['billing', 'products', 'contacts', 'analytics', 'manufacturing'];
+        allowedAppsList = ['billing', 'products', 'contacts', 'analytics', 'manufacturing', 'compliance'];
       }
     }
   } catch (e) {

@@ -152,7 +152,7 @@ export class WorkerAccessComponent {
       }
     ];
 
-    this.DEFAULT_APPS = ['billing', 'products', 'contacts', 'analytics', 'manufacturing'];
+    this.DEFAULT_APPS = ['billing', 'products', 'contacts', 'analytics', 'manufacturing', 'compliance'];
   }
 
   async render() {
