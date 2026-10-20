@@ -65,3 +65,6 @@ __pycache__/
 # ─── Rust ───
 target/
 **/target/
+
+# ─── Scratch / Temporary Test Artifacts ───
+scratch/
