@@ -748,6 +748,11 @@ class SuiteCoreBridge {
   static _normalizeLetterheadPayload(payload = {}) {
     return {
       ...payload,
+      signature_layout: payload.signature_layout || 'single',
+      second_signatory_label: payload.second_signatory_label || '',
+      second_signatory_name: payload.second_signatory_name || '',
+      second_signatory_title: payload.second_signatory_title || '',
+      second_signature_image_base64: payload.second_signature_image_base64 || payload.second_signature_image || '',
       is_watermarked: Boolean(payload.is_watermarked === true || payload.is_watermarked === 1),
       show_page_numbers: payload.show_page_numbers !== false && payload.show_page_numbers !== 0
     };

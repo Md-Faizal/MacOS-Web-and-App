@@ -57,6 +57,20 @@ pub struct LetterheadDocRequest {
     pub company_ayush_lic: String,
     #[serde(default = "default_true")]
     pub show_page_numbers: bool,
+    #[serde(default = "default_signature_layout")]
+    pub signature_layout: String,
+    #[serde(default)]
+    pub second_signatory_label: String,
+    #[serde(default)]
+    pub second_signatory_name: String,
+    #[serde(default)]
+    pub second_signatory_title: String,
+    #[serde(default)]
+    pub second_signature_image_base64: String,
+}
+
+fn default_signature_layout() -> String {
+    "single".to_string()
 }
 
 fn default_true() -> bool {
@@ -130,6 +144,16 @@ pub fn render_letterhead_document_pdf(req: &LetterheadDocRequest) -> Result<Vec<
         if let Some(bytes) = base64_decode(&req.signature_image_base64) {
             if let Ok(id) = canvas.add_jpeg_image(bytes, 0, 0) {
                 sig_img_id = Some(id);
+            }
+        }
+    }
+
+    // Register Second Signatory (Employee / Candidate) Image if provided
+    let mut second_sig_img_id: Option<usize> = None;
+    if !req.second_signature_image_base64.trim().is_empty() {
+        if let Some(bytes) = base64_decode(&req.second_signature_image_base64) {
+            if let Ok(id) = canvas.add_jpeg_image(bytes, 0, 0) {
+                second_sig_img_id = Some(id);
             }
         }
     }
@@ -441,6 +465,69 @@ pub fn render_letterhead_document_pdf(req: &LetterheadDocRequest) -> Result<Vec<
     } else {
         // Automatically anchor near the bottom of the page
         current_y = target_sign_y;
+    }
+
+    let layout = req.signature_layout.trim().to_lowercase();
+    if layout == "none" || layout == "disabled" {
+        return Ok(canvas.build_pdf());
+    }
+
+    if layout == "dual" || layout == "double" || layout == "2" {
+        let left_x = margin_left;
+        let left_label = if req.second_signatory_label.trim().is_empty() {
+            "Accepted & Agreed By:"
+        } else {
+            req.second_signatory_label.trim()
+        };
+        let left_name = if req.second_signatory_name.trim().is_empty() {
+            if !req.recipient_name.trim().is_empty() {
+                req.recipient_name.trim()
+            } else {
+                "Signature of Employee / Candidate"
+            }
+        } else {
+            req.second_signatory_name.trim()
+        };
+        let left_title = if req.second_signatory_title.trim().is_empty() {
+            "Date: ____________________"
+        } else {
+            req.second_signatory_title.trim()
+        };
+
+        canvas.set_fill_color(PdfColor { r: 0.05, g: 0.20, b: 0.40 });
+        canvas.draw_string(PdfFont::HelveticaBold, 9.5, left_x, current_y, left_label);
+
+        let left_sig_y = current_y - 52.0;
+        if let Some(id) = second_sig_img_id {
+            let (raw_w, raw_h) = canvas.get_image_size(id).unwrap_or((800, 200));
+            let aspect = (raw_w as f64) / (raw_h as f64).max(1.0);
+            let max_w = 150.0;
+            let box_h = 44.0;
+            let (sig_w, sig_h) = if aspect > (max_w / box_h) {
+                (max_w, (max_w / aspect).max(22.0))
+            } else {
+                ((box_h * aspect).min(max_w), box_h)
+            };
+
+            let total_sig_gap = 52.0;
+            let v_pad = ((total_sig_gap - sig_h) / 2.0).max(2.0);
+            let img_top_y = current_y - v_pad - 4.5;
+            let img_bottom_y = img_top_y - sig_h;
+            canvas.draw_image(id, left_x, img_bottom_y, sig_w, sig_h);
+        } else {
+            canvas.set_stroke_color(PdfColor { r: 0.60, g: 0.65, b: 0.72 });
+            canvas.set_line_width(0.75);
+            canvas.line(left_x, left_sig_y + 16.0, left_x + 160.0, left_sig_y + 16.0);
+
+            canvas.set_fill_color(PdfColor { r: 0.58, g: 0.64, b: 0.72 });
+            canvas.draw_string(PdfFont::Helvetica, 7.5, left_x, left_sig_y + 20.0, "(Sign here)");
+        }
+
+        canvas.set_fill_color(PdfColor::BLACK);
+        canvas.draw_string(PdfFont::HelveticaBold, 10.5, left_x, left_sig_y, left_name);
+
+        canvas.set_fill_color(PdfColor { r: 0.35, g: 0.38, b: 0.42 });
+        canvas.draw_string(PdfFont::Helvetica, 9.0, left_x, left_sig_y - 13.0, left_title);
     }
 
     let col_w = 205.0;
@@ -774,54 +861,121 @@ pub fn render_letterhead_document_svg(req: &LetterheadDocRequest) -> Result<Stri
         current_y = target_sign_y;
     }
 
-    let col_w = 205.0;
-    let sign_x = page_width - margin_right - col_w;
+    let layout = req.signature_layout.trim().to_lowercase();
+    if layout != "none" && layout != "disabled" {
+        if layout == "dual" || layout == "double" || layout == "2" {
+            let left_x = margin_left;
+            let left_label = if req.second_signatory_label.trim().is_empty() {
+                "Accepted & Agreed By:"
+            } else {
+                req.second_signatory_label.trim()
+            };
+            let left_name = if req.second_signatory_name.trim().is_empty() {
+                if !req.recipient_name.trim().is_empty() {
+                    req.recipient_name.trim()
+                } else {
+                    "Signature of Employee / Candidate"
+                }
+            } else {
+                req.second_signatory_name.trim()
+            };
+            let left_title = if req.second_signatory_title.trim().is_empty() {
+                "Date: ____________________"
+            } else {
+                req.second_signatory_title.trim()
+            };
 
-    pages[current_page_idx].elements.push(format!(
-        r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="9.5" fill="#0d3366">For {},</text>"##,
-        sign_x, current_y, xml_escape(company_name)
-    ));
+            pages[current_page_idx].elements.push(format!(
+                r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="9.5" fill="#0d3366">{}</text>"##,
+                left_x, current_y, xml_escape(left_label)
+            ));
 
-    if has_sig_img {
-        let sig_src = if req.signature_image_base64.starts_with("data:") {
-            req.signature_image_base64.clone()
+            let has_second_sig_img = !req.second_signature_image_base64.trim().is_empty();
+            if has_second_sig_img {
+                let sig_src = if req.second_signature_image_base64.starts_with("data:") {
+                    req.second_signature_image_base64.clone()
+                } else {
+                    format!("data:image/png;base64,{}", req.second_signature_image_base64.trim())
+                };
+                let max_w: f64 = 150.0;
+                let box_h: f64 = 44.0;
+                let total_sig_gap: f64 = 52.0;
+                let v_pad: f64 = ((total_sig_gap - box_h) / 2.0).max(2.0);
+                let img_top_y = current_y + v_pad + 4.5;
+                pages[current_page_idx].elements.push(format!(
+                    r##"<image href="{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="xMinYMid meet"/>"##,
+                    sig_src, left_x, img_top_y, max_w, box_h
+                ));
+            } else {
+                let left_sig_line_y = current_y + 36.0;
+                pages[current_page_idx].elements.push(format!(
+                    r##"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="#94a3b8" stroke-dasharray="3,2" stroke-width="1"/>"##,
+                    left_x, left_sig_line_y, left_x + 160.0, left_sig_line_y
+                ));
+                pages[current_page_idx].elements.push(format!(
+                    r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-style="italic" font-size="8.0" fill="#94a3b8">(Sign here)</text>"##,
+                    left_x, left_sig_line_y - 5.0
+                ));
+            }
+            pages[current_page_idx].elements.push(format!(
+                r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="10.5" fill="#000000">{}</text>"##,
+                left_x, current_y + 52.0, xml_escape(left_name)
+            ));
+            pages[current_page_idx].elements.push(format!(
+                r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-size="9.0" fill="#59616b">{}</text>"##,
+                left_x, current_y + 65.0, xml_escape(left_title)
+            ));
+        }
+
+        let col_w = 205.0;
+        let sign_x = page_width - margin_right - col_w;
+
+        pages[current_page_idx].elements.push(format!(
+            r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="9.5" fill="#0d3366">For {},</text>"##,
+            sign_x, current_y, xml_escape(company_name)
+        ));
+
+        if has_sig_img {
+            let sig_src = if req.signature_image_base64.starts_with("data:") {
+                req.signature_image_base64.clone()
+            } else {
+                format!("data:image/png;base64,{}", req.signature_image_base64.trim())
+            };
+            let max_w: f64 = 150.0;
+            let box_h: f64 = 44.0;
+            let total_sig_gap: f64 = 52.0;
+            let sig_x = sign_x;
+            let v_pad: f64 = ((total_sig_gap - box_h) / 2.0).max(2.0);
+            let img_top_y = current_y + v_pad + 4.5;
+            pages[current_page_idx].elements.push(format!(
+                r##"<image href="{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="xMinYMid meet"/>"##,
+                sig_src, sig_x, img_top_y, max_w, box_h
+            ));
+            current_y = current_y + total_sig_gap + 6.0;
         } else {
-            format!("data:image/png;base64,{}", req.signature_image_base64.trim())
-        };
-        let max_w: f64 = 150.0;
-        let box_h: f64 = 44.0;
-        let total_sig_gap: f64 = 52.0;
-        let sig_x = sign_x;
-        let v_pad: f64 = ((total_sig_gap - box_h) / 2.0).max(2.0);
-        let img_top_y = current_y + v_pad + 4.5;
+            current_y += 52.0; // Clean 52pt physical pen space
+        }
+
+        let signer_name = if req.signatory_name.trim().is_empty() { "Authorized Signatory" } else { req.signatory_name.trim() };
         pages[current_page_idx].elements.push(format!(
-            r##"<image href="{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="xMinYMid meet"/>"##,
-            sig_src, sig_x, img_top_y, max_w, box_h
+            r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="10.5" fill="#000000">{}</text>"##,
+            sign_x, current_y, xml_escape(signer_name)
         ));
-        current_y = current_y + total_sig_gap + 6.0;
-    } else {
-        current_y += 52.0; // Clean 52pt physical pen space
-    }
+        current_y += 13.0;
 
-    let signer_name = if req.signatory_name.trim().is_empty() { "Authorized Signatory" } else { req.signatory_name.trim() };
-    pages[current_page_idx].elements.push(format!(
-        r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="10.5" fill="#000000">{}</text>"##,
-        sign_x, current_y, xml_escape(signer_name)
-    ));
-    current_y += 13.0;
-
-    let signer_title = if req.signatory_title.trim().is_empty() { "Proprietor" } else { req.signatory_title.trim() };
-    pages[current_page_idx].elements.push(format!(
-        r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-size="9.0" fill="#59616b">{}</text>"##,
-        sign_x, current_y, xml_escape(signer_title)
-    ));
-    current_y += 12.0;
-
-    if !req.signatory_reg_no.trim().is_empty() {
+        let signer_title = if req.signatory_title.trim().is_empty() { "Proprietor" } else { req.signatory_title.trim() };
         pages[current_page_idx].elements.push(format!(
-            r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="7.5" fill="#14664d">Reg: {}</text>"##,
-            sign_x, current_y, xml_escape(&sanitize_text(&req.signatory_reg_no))
+            r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-size="9.0" fill="#59616b">{}</text>"##,
+            sign_x, current_y, xml_escape(signer_title)
         ));
+        current_y += 12.0;
+
+        if !req.signatory_reg_no.trim().is_empty() {
+            pages[current_page_idx].elements.push(format!(
+                r##"<text x="{}" y="{}" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="7.5" fill="#14664d">Reg: {}</text>"##,
+                sign_x, current_y, xml_escape(&sanitize_text(&req.signatory_reg_no))
+            ));
+        }
     }
 
     // Footers across all pages

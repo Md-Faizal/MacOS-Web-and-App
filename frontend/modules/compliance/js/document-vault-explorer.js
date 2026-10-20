@@ -620,8 +620,9 @@ export class DocumentVaultExplorer {
       }
     } catch (_) {}
 
-    // Load signatories for auto-signing dropdown
+    // Load signatories and all staff for auto-signing dropdowns
     let signatories = [];
+    let allStaff = [];
     try {
       const sRes = await fetch('/api/compliance/staff/signatories');
       if (sRes.ok) {
@@ -629,6 +630,17 @@ export class DocumentVaultExplorer {
         signatories = sData.signatories || [];
       }
     } catch (_) {}
+
+    try {
+      const staffRes = await fetch('/api/compliance/staff');
+      if (staffRes.ok) {
+        const staffData = await staffRes.json();
+        allStaff = staffData.staff || [];
+      }
+    } catch (_) {}
+    if (allStaff.length === 0 && signatories.length > 0) {
+      allStaff = signatories.filter(s => s.id !== 'proprietor');
+    }
 
     // Load company settings from app-settings (single source of truth)
     let companySettings = {
@@ -689,10 +701,14 @@ export class DocumentVaultExplorer {
 
     const selectedSigner = signatories[0];
     this.creatorZoom = this.creatorZoom || 100;
+    let currentSecondStaffId = null;
+    let currentSecondSignatureData = '';
     let updateTelemetry = () => {};
     let triggerLiveWasmSync = () => {};
     let checkPageAutoOverflow = () => {};
     let insertPageBreakAtSelection = () => {};
+    let updateSignatureLayoutUI = () => {};
+    let applyDocumentTemplate = () => {};
 
     viewport.innerHTML = `
       <div class="vault-word-creator-container">
@@ -726,6 +742,21 @@ export class DocumentVaultExplorer {
                 </option>
               `).join('')}
             </select>
+            <select id="wrdSignatureLayoutSelect" title="Signature Points Layout" style="padding: 4px 8px; font-size: 11.5px; border-radius: 6px; border: 1.5px solid #0284c7; background: #f0f9ff; color: #0369a1; outline: none; font-weight: 700;">
+              <option value="single">✍️ 1 Signature (Right: Employer)</option>
+              <option value="dual">✍️✍️ 2 Signatures (Left: Employee + Right: Employer)</option>
+              <option value="none">🚫 No Signature (Disabled)</option>
+            </select>
+            <select id="wrdSecondSignerSelect" title="Select Staff for Employee Acceptance Signature Point" style="display: none; padding: 4px 8px; font-size: 11.5px; border-radius: 6px; border: 1.5px solid #059669; background: #ecfdf5; color: #047857; outline: none; font-weight: 700;">
+              <option value="manual">👤 Employee: Manual / Candidate (Pen Line)</option>
+              <optgroup label="Staff Master Records">
+                ${allStaff.map(s => `
+                  <option value="${s.id}">
+                    👤 ${s.full_name} (${s.designation || s.emp_code || 'Staff'}${s.signature_data ? ' ✍️ [Signature on file]' : ''})
+                  </option>
+                `).join('')}
+              </optgroup>
+            </select>
           </div>
 
           <!-- Quick Text Formatting Controls -->
@@ -751,6 +782,45 @@ export class DocumentVaultExplorer {
 
           <!-- Action Buttons -->
           <div style="display: flex; align-items: center; gap: 8px;">
+            <!-- Pre-built Statutory Templates Menu -->
+            <div class="vault-template-menu-wrapper" style="position: relative;">
+              <button type="button" id="wrdTemplateMenuBtn" class="vault-word-tool-btn" style="border: 1.5px solid #6366f1; background: #eef2ff; color: #4338ca; font-weight: 700; padding: 5px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;" title="Insert Pre-built Statutory Document Templates">
+                <span>📋 Templates</span>
+                <span style="font-size: 10px;">▼</span>
+              </button>
+              <div class="vault-template-dropdown" id="wrdTemplateDropdown">
+                <button type="button" class="vault-template-item" data-template="appointment">
+                  <span style="font-size: 18px; margin-top: 1px;">👔</span>
+                  <div>
+                    <div style="font-weight: 700; font-size: 12px; color: #1e293b;">Appointment Letter</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Schedule T compliance &amp; 2 signature points (Candidate + Employer)</div>
+                  </div>
+                </button>
+                <button type="button" class="vault-template-item" data-template="joining">
+                  <span style="font-size: 18px; margin-top: 1px;">📝</span>
+                  <div>
+                    <div style="font-weight: 700; font-size: 12px; color: #1e293b;">Joining Letter / Report</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Duty reporting, KYC verification &amp; 2 signature points</div>
+                  </div>
+                </button>
+                <div style="border-top: 1px solid #f1f5f9; margin: 4px 0;"></div>
+                <button type="button" class="vault-template-item" data-template="circular">
+                  <span style="font-size: 18px; margin-top: 1px;">📢</span>
+                  <div>
+                    <div style="font-weight: 700; font-size: 12px; color: #1e293b;">Statutory Notice / Circular</div>
+                    <div style="font-size: 10.5px; color: #64748b;">General informational notice (Signature point disabled / none)</div>
+                  </div>
+                </button>
+                <button type="button" class="vault-template-item" data-template="standard">
+                  <span style="font-size: 18px; margin-top: 1px;">📄</span>
+                  <div>
+                    <div style="font-weight: 700; font-size: 12px; color: #1e293b;">Standard Official Letterhead</div>
+                    <div style="font-size: 10.5px; color: #64748b;">Classic communication (Single signature)</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             <button type="button" id="wrdAiDraftBtn" style="font-size: 12px; padding: 6px 12px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 5px rgba(79, 70, 229, 0.25);">
               <span>✨</span>
               <span>Draft with AI</span>
@@ -894,31 +964,57 @@ export class DocumentVaultExplorer {
                   </div>
                 </div>
 
-                <!-- Auto-Signing Authority Section (Positioned at exact Rust WASM coordinates: with sig top 893px = 669.89pt, without sig top 925px = 693.89pt, right 67px = 50pt, width 273px = 205pt) -->
-                <div id="wrdSignatorySection" style="position: absolute; ${selectedSigner?.signature_data ? 'top: 893px;' : 'top: 925px;'} right: 67px; width: 273px; text-align: left; z-index: 5;">
-                  <div style="font-size: 12.7px; font-weight: 700; color: #0d3366; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 6px 0;">
-                    For ${companySettings.company_name},
-                  </div>
-
-                  <!-- Specimen Signature Canvas / Clearance Box (Exact 52pt/69px Rust WASM Geometry - Vertically Centered) -->
-                  <div id="wrdSignaturePreviewBox" style="${selectedSigner?.signature_data ? 'height: 60px; min-height: 60px; max-height: 60px; margin: 4px 0 4px 0; display: flex; align-items: center; justify-content: flex-start;' : 'height: 51px; min-height: 51px; max-height: 51px; margin: 0 0 13px 0; display: flex; align-items: flex-end; justify-content: flex-start;'} width: 100%; padding: 0;">
-                    ${selectedSigner?.signature_data ? `
-                      <img id="wrdSignatureImg" src="${selectedSigner.signature_data}" alt="Authorized Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">
-                    ` : `
-                      <div id="wrdNoSigNotice" style="width: 160px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">
-                        (Authorized Signatory)
+                <!-- Auto-Signing Authority Section (Supports Single, Dual, and Disabled Signatures) -->
+                <div id="wrdSignatorySection" style="position: absolute; ${selectedSigner?.signature_data ? 'top: 893px;' : 'top: 925px;'} left: 67px; right: 67px; display: flex; justify-content: flex-end; align-items: flex-start; z-index: 5;">
+                  
+                  <!-- Left Signatory (For Dual Signature Mode, e.g. Employee Acceptance) -->
+                  <div id="wrdSecondSignatoryBox" style="display: none; width: 273px; text-align: left;">
+                    <div id="wrdSecondSignerLabel" contenteditable="true" style="font-size: 12.7px; font-weight: 700; color: #0d3366; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 6px 0; outline: none; border-bottom: 1px dashed rgba(148, 163, 184, 0.4); padding-bottom: 1px;" title="Click to edit label">
+                      Accepted &amp; Agreed By:
+                    </div>
+                    <div id="wrdSecondSignaturePreviewBox" style="height: 60px; min-height: 60px; max-height: 60px; margin: 4px 0 4px 0; display: flex; align-items: flex-end; justify-content: flex-start; width: 100%; padding: 0;">
+                      <div style="width: 190px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">
+                        (Signature of Employee / Candidate)
                       </div>
-                    `}
+                    </div>
+                    <div id="wrdSecondSignerName" contenteditable="true" style="font-weight: 700; font-size: 14px; color: #000000; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 1px 0; outline: none; border-bottom: 1px dashed rgba(148, 163, 184, 0.4); padding-bottom: 1px;" title="Click to edit signatory name">
+                      Signature of Employee / Candidate
+                    </div>
+                    <div id="wrdSecondSignerTitle" contenteditable="true" style="font-size: 12px; color: #59616b; font-family: Helvetica, Arial, sans-serif; line-height: 15px; margin: 0 0 1px 0; outline: none; border-bottom: 1px dashed rgba(148, 163, 184, 0.4); padding-bottom: 1px;" title="Click to edit title / date">
+                      Date: ____________________
+                    </div>
+                    <div id="wrdSecondSignatureNotice" style="display: none; font-size: 10px; color: #059669; font-weight: 700; line-height: 13px; margin-top: 3px; font-family: monospace;"></div>
                   </div>
 
-                  <div id="wrdSignerName" style="font-weight: 700; font-size: 14px; color: #000000; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 1px 0;">
-                    ${selectedSigner?.full_name || 'MD  FAIZAL'}
-                  </div>
-                  <div id="wrdSignerTitle" style="font-size: 12px; color: #59616b; font-family: Helvetica, Arial, sans-serif; line-height: 15px; margin: 0 0 1px 0;">
-                    ${selectedSigner?.signature_title || selectedSigner?.designation || 'Proprietor'}
-                  </div>
-                  <div id="wrdSignerReg" style="font-size: 10px; color: #14664d; font-weight: 700; line-height: 13px; margin: 0; font-family: monospace;">
-                    ${selectedSigner?.technical_reg_no ? `Reg: ${selectedSigner.technical_reg_no}` : ''}
+                  <!-- Spacer between dual signature points -->
+                  <div id="wrdSignatorySpacer" style="display: none; flex: 1;"></div>
+
+                  <!-- Primary Signatory (Right Side: Employer / Authorized Signatory) -->
+                  <div id="wrdPrimarySignatoryBox" style="width: 273px; text-align: left;">
+                    <div style="font-size: 12.7px; font-weight: 700; color: #0d3366; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 6px 0;">
+                      For ${companySettings.company_name},
+                    </div>
+
+                    <!-- Specimen Signature Canvas / Clearance Box (Exact 52pt/69px Rust WASM Geometry - Vertically Centered) -->
+                    <div id="wrdSignaturePreviewBox" style="${selectedSigner?.signature_data ? 'height: 60px; min-height: 60px; max-height: 60px; margin: 4px 0 4px 0; display: flex; align-items: center; justify-content: flex-start;' : 'height: 51px; min-height: 51px; max-height: 51px; margin: 0 0 13px 0; display: flex; align-items: flex-end; justify-content: flex-start;'} width: 100%; padding: 0;">
+                      ${selectedSigner?.signature_data ? `
+                        <img id="wrdSignatureImg" src="${selectedSigner.signature_data}" alt="Authorized Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">
+                      ` : `
+                        <div id="wrdNoSigNotice" style="width: 160px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">
+                          (Authorized Signatory)
+                        </div>
+                      `}
+                    </div>
+
+                    <div id="wrdSignerName" style="font-weight: 700; font-size: 14px; color: #000000; font-family: Helvetica, Arial, sans-serif; line-height: 16px; margin: 0 0 1px 0;">
+                      ${selectedSigner?.full_name || 'MD  FAIZAL'}
+                    </div>
+                    <div id="wrdSignerTitle" style="font-size: 12px; color: #59616b; font-family: Helvetica, Arial, sans-serif; line-height: 15px; margin: 0 0 1px 0;">
+                      ${selectedSigner?.signature_title || selectedSigner?.designation || 'Proprietor'}
+                    </div>
+                    <div id="wrdSignerReg" style="font-size: 10px; color: #14664d; font-weight: 700; line-height: 13px; margin: 0; font-family: monospace;">
+                      ${selectedSigner?.technical_reg_no ? `Reg: ${selectedSigner.technical_reg_no}` : ''}
+                    </div>
                   </div>
                 </div>
 
@@ -1185,6 +1281,51 @@ export class DocumentVaultExplorer {
         icon: '✂️',
         keywords: ['page', 'break', 'new', 'sheet', 'continuation', 'split'],
         action: () => insertPageBreakAtSelection()
+      },
+      {
+        id: 'appointment',
+        title: 'Appointment Letter Template',
+        desc: 'Insert complete appointment letter with 2 signature points below',
+        badge: 'Template',
+        icon: '👔',
+        keywords: ['appointment', 'letter', 'offer', 'candidate', 'hiring', 'template', 'hr'],
+        action: () => applyDocumentTemplate('appointment')
+      },
+      {
+        id: 'joining',
+        title: 'Joining Report / Letter Template',
+        desc: 'Insert duty commencement report with 2 signature points below',
+        badge: 'Template',
+        icon: '📝',
+        keywords: ['joining', 'letter', 'report', 'duty', 'onboarding', 'template'],
+        action: () => applyDocumentTemplate('joining')
+      },
+      {
+        id: 'dual_sign',
+        title: '2 Signature Points (Dual Sign)',
+        desc: 'Enable 2 signature points below (Candidate/Acceptance + Employer)',
+        badge: 'Layout',
+        icon: '✍️✍️',
+        keywords: ['dual', 'sign', 'signature', 'two', 'double', 'points', 'employee', 'candidate'],
+        action: () => updateSignatureLayoutUI('dual')
+      },
+      {
+        id: 'no_sign',
+        title: 'Disable Signatures (None)',
+        desc: 'Disable signature block altogether for notices, circulars or memos',
+        badge: 'Layout',
+        icon: '🚫',
+        keywords: ['no', 'disable', 'none', 'remove', 'hide', 'signature'],
+        action: () => updateSignatureLayoutUI('none')
+      },
+      {
+        id: 'single_sign',
+        title: '1 Signature Point (Employer)',
+        desc: 'Standard right-aligned employer authorized signatory point',
+        badge: 'Layout',
+        icon: '✍️',
+        keywords: ['single', 'one', 'standard', 'signature'],
+        action: () => updateSignatureLayoutUI('single')
       }
     ];
 
@@ -1797,12 +1938,33 @@ export class DocumentVaultExplorer {
     const exportBtn = viewport.querySelector('#wrdExportMenuBtn');
     exportBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
+      templateDropdown?.classList.remove('show');
       exportDropdown?.classList.toggle('show');
     });
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.vault-export-menu-wrapper')) {
         exportDropdown?.classList.remove('show');
       }
+      if (!e.target.closest('.vault-template-menu-wrapper')) {
+        templateDropdown?.classList.remove('show');
+      }
+    });
+
+    // Template Dropdown Toggle & Selection Handlers
+    const templateDropdown = viewport.querySelector('#wrdTemplateDropdown');
+    const templateBtn = viewport.querySelector('#wrdTemplateMenuBtn');
+    templateBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportDropdown?.classList.remove('show');
+      templateDropdown?.classList.toggle('show');
+    });
+
+    viewport.querySelectorAll('.vault-template-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tType = btn.dataset.template;
+        templateDropdown?.classList.remove('show');
+        applyDocumentTemplate(tType);
+      });
     });
 
     // Handle Signatory Switching
@@ -1844,6 +2006,235 @@ export class DocumentVaultExplorer {
       triggerLiveWasmSync();
     });
 
+    // Signature Points Layout Controller (Single, Dual, None)
+    const sigLayoutSelect = viewport.querySelector('#wrdSignatureLayoutSelect');
+    updateSignatureLayoutUI = (layout) => {
+      const currentLayout = layout || sigLayoutSelect?.value || 'single';
+      if (sigLayoutSelect && sigLayoutSelect.value !== currentLayout) {
+        sigLayoutSelect.value = currentLayout;
+      }
+      const sigSec = viewport.querySelector('#wrdSignatorySection');
+      const secondSigBox = viewport.querySelector('#wrdSecondSignatoryBox');
+      const sigSpacer = viewport.querySelector('#wrdSignatorySpacer');
+      const primarySigBox = viewport.querySelector('#wrdPrimarySignatoryBox');
+      const secondSignerSelect = viewport.querySelector('#wrdSecondSignerSelect');
+      if (secondSignerSelect) {
+        secondSignerSelect.style.display = currentLayout === 'dual' ? 'inline-block' : 'none';
+      }
+      if (!sigSec) return;
+
+      if (currentLayout === 'none') {
+        sigSec.style.display = 'none';
+      } else if (currentLayout === 'dual') {
+        sigSec.style.display = 'flex';
+        sigSec.style.justifyContent = 'space-between';
+        if (secondSigBox) secondSigBox.style.display = 'block';
+        if (sigSpacer) sigSpacer.style.display = 'block';
+        if (primarySigBox) primarySigBox.style.display = 'block';
+      } else {
+        // 'single' (default: right-aligned employer signature)
+        sigSec.style.display = 'flex';
+        sigSec.style.justifyContent = 'flex-end';
+        if (secondSigBox) secondSigBox.style.display = 'none';
+        if (sigSpacer) sigSpacer.style.display = 'none';
+        if (primarySigBox) primarySigBox.style.display = 'block';
+      }
+      triggerLiveWasmSync();
+    };
+
+    sigLayoutSelect?.addEventListener('change', () => {
+      updateSignatureLayoutUI(sigLayoutSelect.value);
+    });
+
+    // Handle Employee / 2nd Signatory Staff Switching
+    const secondSignerSelect = viewport.querySelector('#wrdSecondSignerSelect');
+    secondSignerSelect?.addEventListener('change', () => {
+      const val = secondSignerSelect.value;
+      const secPreviewBox = viewport.querySelector('#wrdSecondSignaturePreviewBox');
+      const secNameEl = viewport.querySelector('#wrdSecondSignerName');
+      const secTitleEl = viewport.querySelector('#wrdSecondSignerTitle');
+      const secNotice = viewport.querySelector('#wrdSecondSignatureNotice');
+
+      if (val === 'manual') {
+        currentSecondStaffId = null;
+        currentSecondSignatureData = '';
+        if (secPreviewBox) {
+          secPreviewBox.style.alignItems = 'flex-end';
+          secPreviewBox.innerHTML = `<div style="width: 190px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">(Signature of Employee / Candidate)</div>`;
+        }
+        if (secNotice) secNotice.style.display = 'none';
+        if (secTitleEl) secTitleEl.textContent = 'Date: ____________________';
+      } else {
+        const staff = allStaff.find(s => String(s.id) === String(val)) || signatories.find(s => String(s.id) === String(val));
+        if (staff) {
+          currentSecondStaffId = staff.id;
+          if (secNameEl) {
+            secNameEl.textContent = staff.full_name;
+            secNameEl.dataset.autoSynced = 'false';
+          }
+          if (secTitleEl) {
+            secTitleEl.textContent = staff.signature_title || staff.designation || 'Staff';
+          }
+
+          if (staff.signature_data) {
+            currentSecondSignatureData = staff.signature_data;
+            if (secPreviewBox) {
+              secPreviewBox.style.alignItems = 'center';
+              secPreviewBox.innerHTML = `<img id="wrdSecondSignatureImg" src="${staff.signature_data}" alt="Employee Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">`;
+            }
+            if (secNotice) {
+              secNotice.textContent = `✓ Digital signature on file (${staff.emp_code || 'STAFF'})`;
+              secNotice.style.display = 'block';
+            }
+          } else {
+            currentSecondSignatureData = '';
+            if (secPreviewBox) {
+              secPreviewBox.style.alignItems = 'flex-end';
+              secPreviewBox.innerHTML = `<div style="width: 190px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">(Signature of ${staff.full_name})</div>`;
+            }
+            if (secNotice) {
+              secNotice.textContent = `ℹ ${staff.emp_code || 'Staff'}: Physical pen sign line`;
+              secNotice.style.display = 'block';
+            }
+          }
+        }
+      }
+      triggerLiveWasmSync();
+    });
+
+    // Auto-sync recipient candidate name to 2nd signatory name if in dual mode
+    viewport.querySelector('#wrdRecipient')?.addEventListener('input', (e) => {
+      const val = e.target.value.trim().split('\n')[0].replace(/^(Mr\.|Ms\.|Dr\.|Shri|Smt\.)\s*/i, '').trim();
+      const secNameEl = viewport.querySelector('#wrdSecondSignerName');
+      if (secNameEl && (!secNameEl.textContent || secNameEl.textContent === 'Signature of Employee / Candidate' || secNameEl.dataset.autoSynced === 'true')) {
+        if (val) {
+          secNameEl.textContent = val;
+          secNameEl.dataset.autoSynced = 'true';
+        }
+      }
+      triggerLiveWasmSync();
+    });
+    viewport.querySelector('#wrdSecondSignerName')?.addEventListener('input', () => {
+      const secNameEl = viewport.querySelector('#wrdSecondSignerName');
+      if (secNameEl) secNameEl.dataset.autoSynced = 'false';
+      triggerLiveWasmSync();
+    });
+    viewport.querySelector('#wrdSecondSignerLabel')?.addEventListener('input', () => triggerLiveWasmSync());
+    viewport.querySelector('#wrdSecondSignerTitle')?.addEventListener('input', () => triggerLiveWasmSync());
+
+    // Implementation of applyDocumentTemplate
+    applyDocumentTemplate = (type) => {
+      if (type === 'appointment') {
+        if (viewport.querySelector('#wrdTitle')) viewport.querySelector('#wrdTitle').value = 'APPOINTMENT LETTER';
+        if (viewport.querySelector('#wrdSubject')) {
+          const sEl = viewport.querySelector('#wrdSubject');
+          sEl.value = 'APPOINTMENT LETTER - SCHEDULE T TECHNICAL STAFF';
+          sEl.dispatchEvent(new Event('input'));
+        }
+        if (viewport.querySelector('#wrdRecipient')) {
+          viewport.querySelector('#wrdRecipient').value = 'Dr. / Mr. / Ms. [Candidate Full Name], B.Pharm / BAMS\nAt: [Address / Location], Pin - 751010';
+        }
+        if (viewport.querySelector('#wrdDirectionSelect')) {
+          viewport.querySelector('#wrdDirectionSelect').value = 'OUTWARD';
+        }
+        const editor = viewport.querySelector('#wrdEditorBody');
+        if (editor) {
+          editor.innerHTML = `
+            <p style="margin-bottom: 14px;"><strong>Dear Candidate,</strong></p>
+            <p style="margin-bottom: 10px;">We are pleased to formally offer you appointment as <strong>Technical Officer / Manufacturing Chemist</strong> at <strong>${companySettings.company_name}</strong> under the statutory provisions of the <strong>Drugs &amp; Cosmetics Rules 1945</strong> and <strong>Schedule T Good Manufacturing Practices (GMP)</strong> governance.</p>
+            <p style="margin-bottom: 10px;"><strong>1. Commencement &amp; Designation:</strong> Your appointment takes effect from the date of your formal joining. You will be reporting directly to the Factory In-Charge / Technical Director for batch manufacturing, raw material inspection, and in-process quality assurance.</p>
+            <p style="margin-bottom: 10px;"><strong>2. Statutory Responsibilities:</strong> You shall strictly uphold batch manufacturing records (BMR), standard operating procedures (SOPs), pharmacopoeial testing standards, and compliance audits mandated by the State Licensing Authority (AYUSH).</p>
+            <p style="margin-bottom: 10px;"><strong>3. Emoluments &amp; Benefits:</strong> Your gross compensation and statutory benefits will be as mutually agreed and detailed in the annexed salary annexure, subject to statutory deductions (PF, ESI, TDS).</p>
+            <p style="margin-bottom: 10px;"><strong>4. Probation &amp; Confirmation:</strong> You shall be on probation for an initial period of six (6) months. Upon satisfactory review of technical performance and statutory conduct, your services will be formally confirmed.</p>
+            <p style="margin-bottom: 14px;">Please sign and return the duplicate copy of this letter as a token of your formal acceptance.</p>
+          `;
+        }
+        updateSignatureLayoutUI('dual');
+        const secondNameEl = viewport.querySelector('#wrdSecondSignerName');
+        if (secondNameEl) secondNameEl.textContent = 'Signature of Employee / Candidate';
+        const secondLabelEl = viewport.querySelector('#wrdSecondSignerLabel');
+        if (secondLabelEl) secondLabelEl.textContent = 'Accepted & Agreed By:';
+        const secondTitleEl = viewport.querySelector('#wrdSecondSignerTitle');
+        if (secondTitleEl) secondTitleEl.textContent = 'Date: ____________________';
+        this.app?.showNotification('Appointment Letter template applied with 2 signature points!', 'success');
+      } else if (type === 'joining') {
+        if (viewport.querySelector('#wrdTitle')) viewport.querySelector('#wrdTitle').value = 'FORMAL JOINING REPORT';
+        if (viewport.querySelector('#wrdSubject')) {
+          const sEl = viewport.querySelector('#wrdSubject');
+          sEl.value = 'JOINING REPORT & COMMENCEMENT OF STATUTORY DUTIES';
+          sEl.dispatchEvent(new Event('input'));
+        }
+        if (viewport.querySelector('#wrdRecipient')) {
+          viewport.querySelector('#wrdRecipient').value = 'To The Management / Quality Assurance Head,\n' + companySettings.company_name;
+        }
+        if (viewport.querySelector('#wrdDirectionSelect')) {
+          viewport.querySelector('#wrdDirectionSelect').value = 'INTERNAL';
+        }
+        const editor = viewport.querySelector('#wrdEditorBody');
+        if (editor) {
+          editor.innerHTML = `
+            <p style="margin-bottom: 14px;"><strong>Respected Sir / Madam,</strong></p>
+            <p style="margin-bottom: 10px;">With reference to the Appointment Letter Ref: <strong>${nextRef}</strong>, I hereby report for official duty today, <strong>${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })} (Forenoon)</strong> as <strong>Technical Staff / Chemist</strong> at ${companySettings.company_name}.</p>
+            <p style="margin-bottom: 10px;">I have enclosed and submitted all requisite statutory verification documents:</p>
+            <ul style="margin-bottom: 10px; padding-left: 20px;">
+              <li>Government Identity KYC (Aadhaar &amp; PAN Card copies)</li>
+              <li>Ayurvedic Pharmacy / Technical Degree &amp; State Board Registration Certificate</li>
+              <li>Pre-employment Medical Fitness Certificate under Schedule T hygiene norms</li>
+              <li>Original Signed Duplicate of Appointment Acceptance</li>
+            </ul>
+            <p style="margin-bottom: 10px;">I hereby undertake to diligently discharge my responsibilities in strict conformance with all Standard Operating Procedures (SOPs), Good Manufacturing Practices (GMP), and factory safety protocols.</p>
+            <p style="margin-bottom: 14px;">Kindly accept my joining report and enter my statutory records into the muster roll.</p>
+          `;
+        }
+        updateSignatureLayoutUI('dual');
+        const secondNameEl = viewport.querySelector('#wrdSecondSignerName');
+        if (secondNameEl) secondNameEl.textContent = 'Signature of Employee / Candidate';
+        const secondLabelEl = viewport.querySelector('#wrdSecondSignerLabel');
+        if (secondLabelEl) secondLabelEl.textContent = 'Submitted By:';
+        const secondTitleEl = viewport.querySelector('#wrdSecondSignerTitle');
+        if (secondTitleEl) secondTitleEl.textContent = 'Date: ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+        this.app?.showNotification('Joining Report template applied with 2 signature points!', 'success');
+      } else if (type === 'circular') {
+        if (viewport.querySelector('#wrdTitle')) viewport.querySelector('#wrdTitle').value = 'STATUTORY CIRCULAR & DIRECTIVE';
+        if (viewport.querySelector('#wrdSubject')) {
+          const sEl = viewport.querySelector('#wrdSubject');
+          sEl.value = 'CIRCULAR: SCHEDULE T HYGIENE & ASEPTIC PROTOCOLS';
+          sEl.dispatchEvent(new Event('input'));
+        }
+        if (viewport.querySelector('#wrdRecipient')) {
+          viewport.querySelector('#wrdRecipient').value = 'All Department Heads, Production Staff, and Quality Control Analysts';
+        }
+        if (viewport.querySelector('#wrdDirectionSelect')) {
+          viewport.querySelector('#wrdDirectionSelect').value = 'INTERNAL';
+        }
+        const editor = viewport.querySelector('#wrdEditorBody');
+        if (editor) {
+          editor.innerHTML = `
+            <p style="margin-bottom: 14px;"><strong>ATTENTION ALL STAFF &amp; TECHNICAL PERSONNEL:</strong></p>
+            <p style="margin-bottom: 10px;">In furtherance of regulatory standards prescribed under Schedule T of the Drugs &amp; Cosmetics Rules 1945, all manufacturing, granulation, and aseptic filling sections are hereby directed to strictly observe the enhanced sanitation guidelines.</p>
+            <p style="margin-bottom: 10px;"><strong>Key Directives:</strong></p>
+            <ul style="margin-bottom: 10px; padding-left: 20px;">
+              <li>Mandatory clean-room gowning, head caps, and sanitization before entering processing zones.</li>
+              <li>Immediate logging of batch temperature, relative humidity, and air-handling unit (AHU) pressure differentials.</li>
+              <li>Strict segregation of quarantine, in-process, and pharmacopoeial approved herbal extracts.</li>
+            </ul>
+            <p style="margin-bottom: 14px;">This circular takes immediate effect. Non-adherence will be subject to internal statutory audit reviews.</p>
+          `;
+        }
+        updateSignatureLayoutUI('none');
+        this.app?.showNotification('Notice / Circular template applied with signatures disabled!', 'info');
+      } else if (type === 'standard') {
+        resetToNewDocument();
+        updateSignatureLayoutUI('single');
+        this.app?.showNotification('Standard letter template loaded (1 signature point).', 'info');
+      }
+
+      updateStudioRibbonState();
+      updatePageFootersAndNumbers();
+      updateTelemetry();
+      triggerLiveWasmSync();
+    };
+
     // Helper: Collect Active Form Data
     const getActiveDocumentPayload = (isSealed = false) => {
       const title = viewport.querySelector('#wrdTitle')?.value.trim() || 'Untitled Letter';
@@ -1856,6 +2247,10 @@ export class DocumentVaultExplorer {
       const dirVal = viewport.querySelector('#wrdDirSelect')?.value;
       const dirId = dirVal ? Number(dirVal) : null;
       const direction = viewport.querySelector('#wrdDirectionSelect')?.value || 'OUTWARD';
+      const sigLayout = viewport.querySelector('#wrdSignatureLayoutSelect')?.value || 'single';
+      const secondSigLabel = viewport.querySelector('#wrdSecondSignerLabel')?.textContent.trim() || 'Accepted & Agreed By:';
+      const secondSigName = viewport.querySelector('#wrdSecondSignerName')?.textContent.trim() || '';
+      const secondSigTitle = viewport.querySelector('#wrdSecondSignerTitle')?.textContent.trim() || 'Date: ____________________';
 
       // Gather content across all pages in order
       const pageSheets = Array.from(pagesContainer.querySelectorAll('.vault-page-sheet'));
@@ -1909,6 +2304,10 @@ export class DocumentVaultExplorer {
         subject: subject,
         issue_date: issueDate,
         show_page_numbers: this.showPageNumbers !== false,
+        signature_layout: sigLayout,
+        second_signatory_label: secondSigLabel,
+        second_signatory_name: secondSigName,
+        second_signatory_title: secondSigTitle,
         content_json: {
           pages: pages,
           html: combinedHtml,
@@ -1916,13 +2315,21 @@ export class DocumentVaultExplorer {
           recipient_name: recipient,
           subject: subject,
           show_page_numbers: this.showPageNumbers !== false,
-          signature_image: chosenSigner?.signature_data || null
+          signature_image: chosenSigner?.signature_data || null,
+          signature_layout: sigLayout,
+          second_signatory_label: secondSigLabel,
+          second_signatory_name: secondSigName,
+          second_signatory_title: secondSigTitle,
+          second_signatory_staff_id: currentSecondStaffId,
+          second_signature_image: currentSecondSignatureData || null
         },
         signatory_staff_id: (signerVal && signerVal !== 'proprietor' && !isNaN(signerVal)) ? Number(signerVal) : null,
         signatory_name: chosenSigner?.full_name || companySettings.proprietor_name || 'Authorized Signatory',
         signatory_title: chosenSigner?.signature_title || chosenSigner?.designation || 'Proprietor',
         signatory_reg_no: chosenSigner?.technical_reg_no || '',
         signature_image: chosenSigner?.signature_data || null,
+        second_signatory_staff_id: currentSecondStaffId,
+        second_signature_image: currentSecondSignatureData || null,
         is_watermarked: isSealed ? 0 : 1
       };
     };
@@ -1975,6 +2382,11 @@ export class DocumentVaultExplorer {
         sigBase64 = await convertImageToJpegBase64(payload.signature_image);
       }
 
+      let secondSigBase64 = '';
+      if (payload.second_signature_image || currentSecondSignatureData) {
+        secondSigBase64 = await convertImageToJpegBase64(payload.second_signature_image || currentSecondSignatureData);
+      }
+
       return {
         doc_ref_no: payload.doc_ref_no,
         title: payload.title,
@@ -1992,6 +2404,11 @@ export class DocumentVaultExplorer {
         signatory_reg_no: payload.signatory_reg_no || '',
         header_image_base64: headerBase64,
         signature_image_base64: sigBase64,
+        signature_layout: payload.signature_layout || payload.content_json?.signature_layout || 'single',
+        second_signatory_label: payload.second_signatory_label || payload.content_json?.second_signatory_label || '',
+        second_signatory_name: payload.second_signatory_name || payload.content_json?.second_signatory_name || '',
+        second_signatory_title: payload.second_signatory_title || payload.content_json?.second_signatory_title || '',
+        second_signature_image_base64: secondSigBase64,
         is_watermarked: payload.is_watermarked === 1 && payload.status === 'DRAFT',
         watermark_text: (payload.is_watermarked === 1 && payload.status === 'DRAFT') ? 'DRAFT - NOT FOR REGULATORY RELEASE' : '',
         matter_thread_ref: '',
@@ -2396,6 +2813,50 @@ export class DocumentVaultExplorer {
         }
       }
 
+      const sigLayout = content.signature_layout || draft.signature_layout || 'single';
+      const sigLayoutSelect = viewport.querySelector('#wrdSignatureLayoutSelect');
+      if (sigLayoutSelect) sigLayoutSelect.value = sigLayout;
+      const secondSigLabelEl = viewport.querySelector('#wrdSecondSignerLabel');
+      const secondSigNameEl = viewport.querySelector('#wrdSecondSignerName');
+      const secondSigTitleEl = viewport.querySelector('#wrdSecondSignerTitle');
+      if (secondSigLabelEl && (content.second_signatory_label || draft.second_signatory_label)) {
+        secondSigLabelEl.textContent = content.second_signatory_label || draft.second_signatory_label;
+      }
+      if (secondSigNameEl && (content.second_signatory_name || draft.second_signatory_name)) {
+        secondSigNameEl.textContent = content.second_signatory_name || draft.second_signatory_name;
+      }
+      if (secondSigTitleEl && (content.second_signatory_title || draft.second_signatory_title)) {
+        secondSigTitleEl.textContent = content.second_signatory_title || draft.second_signatory_title;
+      }
+      currentSecondStaffId = content.second_signatory_staff_id || draft.second_signatory_staff_id || null;
+      currentSecondSignatureData = content.second_signature_image || draft.second_signature_image || '';
+
+      const secondSignerSelect = viewport.querySelector('#wrdSecondSignerSelect');
+      if (secondSignerSelect) {
+        secondSignerSelect.value = currentSecondStaffId ? String(currentSecondStaffId) : 'manual';
+      }
+
+      const secPreviewBox = viewport.querySelector('#wrdSecondSignaturePreviewBox');
+      const secNotice = viewport.querySelector('#wrdSecondSignatureNotice');
+      if (currentSecondSignatureData) {
+        if (secPreviewBox) {
+          secPreviewBox.style.alignItems = 'center';
+          secPreviewBox.innerHTML = `<img id="wrdSecondSignatureImg" src="${currentSecondSignatureData}" alt="Employee Signature" style="max-height: 54px; max-width: 200px; object-fit: contain; object-position: left center;">`;
+        }
+        if (secNotice) {
+          secNotice.textContent = `✓ Digital signature on file`;
+          secNotice.style.display = 'block';
+        }
+      } else {
+        if (secPreviewBox) {
+          secPreviewBox.style.alignItems = 'flex-end';
+          secPreviewBox.innerHTML = `<div style="width: 190px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">(${currentSecondStaffId ? 'Signature of ' + (content.second_signatory_name || draft.second_signatory_name || 'Staff') : 'Signature of Employee / Candidate'})</div>`;
+        }
+        if (secNotice) secNotice.style.display = 'none';
+      }
+
+      updateSignatureLayoutUI(sigLayout);
+
       updateStudioRibbonState();
       updatePageFootersAndNumbers();
       updateTelemetry();
@@ -2408,6 +2869,8 @@ export class DocumentVaultExplorer {
       this.initialDocToEdit = null;
       this.activeEditingDoc = null;
       this.originalDocSnapshot = null;
+      currentSecondStaffId = null;
+      currentSecondSignatureData = '';
       // Remove all continuation sheets
       pagesContainer.querySelectorAll('.vault-page-sheet:not(#wrdPageSheet_0)').forEach(p => p.remove());
 
@@ -2420,6 +2883,26 @@ export class DocumentVaultExplorer {
       }
       if (viewport.querySelector('#wrdRefNo')) viewport.querySelector('#wrdRefNo').value = nextRef;
       if (viewport.querySelector('#wrdIssueDate')) viewport.querySelector('#wrdIssueDate').value = new Date().toISOString().split('T')[0];
+      if (viewport.querySelector('#wrdSignatureLayoutSelect')) {
+        viewport.querySelector('#wrdSignatureLayoutSelect').value = 'single';
+      }
+      const secondSignerSelect = viewport.querySelector('#wrdSecondSignerSelect');
+      if (secondSignerSelect) secondSignerSelect.value = 'manual';
+      const secPreviewBox = viewport.querySelector('#wrdSecondSignaturePreviewBox');
+      if (secPreviewBox) {
+        secPreviewBox.style.alignItems = 'flex-end';
+        secPreviewBox.innerHTML = `<div style="width: 190px; border-bottom: 1.5px dashed #94a3b8; padding-bottom: 3px; font-size: 11px; color: #94a3b8; font-style: italic;">(Signature of Employee / Candidate)</div>`;
+      }
+      const secNotice = viewport.querySelector('#wrdSecondSignatureNotice');
+      if (secNotice) secNotice.style.display = 'none';
+      const secondSigLabelEl = viewport.querySelector('#wrdSecondSignerLabel');
+      const secondSigNameEl = viewport.querySelector('#wrdSecondSignerName');
+      const secondSigTitleEl = viewport.querySelector('#wrdSecondSignerTitle');
+      if (secondSigLabelEl) secondSigLabelEl.textContent = 'Accepted & Agreed By:';
+      if (secondSigNameEl) secondSigNameEl.textContent = 'Signature of Employee / Candidate';
+      if (secondSigTitleEl) secondSigTitleEl.textContent = 'Date: ____________________';
+      updateSignatureLayoutUI('single');
+
       if (viewport.querySelector('#wrdEditorBody')) {
         viewport.querySelector('#wrdEditorBody').innerHTML = `
           <p style="margin-bottom: 16px;">Dear Sir / Madam,</p>

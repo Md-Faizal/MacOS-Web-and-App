@@ -125,6 +125,20 @@ module.exports = function createHandlers(db) {
       signatureBase64 = await _normalizeSignatureToJpegBase64(signatureBase64);
     }
 
+    let secondSignatureBase64 = doc.second_signature_image || parsedContent.second_signature_image || '';
+    const secondSignatoryStaffId = doc.second_signatory_staff_id || parsedContent.second_signatory_staff_id || null;
+    if (secondSignatoryStaffId && !secondSignatureBase64) {
+      try {
+        const sRow = db.prepare('SELECT signature_data, full_name, designation, signature_title FROM company_staff WHERE id = ?').get(secondSignatoryStaffId);
+        if (sRow && sRow.signature_data) {
+          secondSignatureBase64 = sRow.signature_data;
+        }
+      } catch (_) {}
+    }
+    if (secondSignatureBase64) {
+      secondSignatureBase64 = await _normalizeSignatureToJpegBase64(secondSignatureBase64);
+    }
+
     let paragraphs = [];
     if (parsedContent.pages && Array.isArray(parsedContent.pages) && parsedContent.pages.length > 0) {
       for (const pg of parsedContent.pages) {
@@ -186,6 +200,11 @@ module.exports = function createHandlers(db) {
       signatory_reg_no: doc.signatory_reg_no || '',
       header_image_base64: headerBase64,
       signature_image_base64: signatureBase64,
+      signature_layout: parsedContent.signature_layout || doc.signature_layout || 'single',
+      second_signatory_label: parsedContent.second_signatory_label || doc.second_signatory_label || '',
+      second_signatory_name: parsedContent.second_signatory_name || doc.second_signatory_name || '',
+      second_signatory_title: parsedContent.second_signatory_title || doc.second_signatory_title || '',
+      second_signature_image_base64: secondSignatureBase64,
       is_watermarked: doc.status === 'DRAFT' || doc.is_watermarked === 1,
       watermark_text: doc.status === 'DRAFT' ? 'DRAFT - NOT FOR REGULATORY RELEASE' : '',
       show_page_numbers: showPageNumbers,

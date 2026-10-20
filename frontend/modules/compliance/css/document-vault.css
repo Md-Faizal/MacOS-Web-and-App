@@ -4844,6 +4844,66 @@ body.dark-theme .vault-export-item,
   color: #0284c7;
 }
 
+.vault-template-menu-wrapper {
+  position: relative;
+}
+
+.vault-template-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.16);
+  padding: 6px;
+  min-width: 290px;
+  z-index: 100;
+  display: none;
+}
+
+body.dark-theme .vault-template-dropdown,
+.vault-root.dark-mode .vault-template-dropdown {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.4);
+}
+
+.vault-template-dropdown.show {
+  display: block;
+  animation: vaultDropIn 0.15s ease-out;
+}
+
+.vault-template-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  transition: all 0.12s ease;
+}
+
+.vault-template-item:hover {
+  background: #f1f5f9;
+}
+
+body.dark-theme .vault-template-item,
+.vault-root.dark-mode .vault-template-item {
+  color: #cbd5e1;
+}
+
+body.dark-theme .vault-template-item:hover,
+.vault-root.dark-mode .vault-template-item:hover {
+  background: #334155;
+}
+
 body.dark-theme .vault-export-item:hover,
 .vault-root.dark-mode .vault-export-item:hover {
   background: #334155;

@@ -16,6 +16,12 @@ pub fn render_letterhead_document_docx(req: &LetterheadDocRequest) -> Result<Vec
         None
     };
 
+    let second_sig_bytes = if !req.second_signature_image_base64.trim().is_empty() {
+        base64_decode(&req.second_signature_image_base64)
+    } else {
+        None
+    };
+
     let company = if req.company_name.trim().is_empty() {
         "UTKAL CHEMICAL AUSHADHALAYA"
     } else {
@@ -55,6 +61,12 @@ pub fn render_letterhead_document_docx(req: &LetterheadDocRequest) -> Result<Vec
         doc_rels.push_str(r#"  <Relationship Id="rIdSig" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/sig.jpg"/>"#);
         doc_rels.push('\n');
         zip.add_file("word/media/sig.jpg", s_bytes.clone());
+    }
+
+    if let Some(ref s2_bytes) = second_sig_bytes {
+        doc_rels.push_str(r#"  <Relationship Id="rIdSecondSig" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/second_sig.jpg"/>"#);
+        doc_rels.push('\n');
+        zip.add_file("word/media/second_sig.jpg", s2_bytes.clone());
     }
 
     doc_rels.push_str("</Relationships>");
@@ -359,16 +371,175 @@ pub fn render_letterhead_document_docx(req: &LetterheadDocRequest) -> Result<Vec
         ("0", "440") // Generous 44pt blank room for manual pen signature
     };
 
-    doc_xml.push_str(&format!(r#"    <w:p>
+    let layout = req.signature_layout.trim().to_lowercase();
+    if layout != "none" && layout != "disabled" {
+        if layout == "dual" || layout == "double" || layout == "2" {
+            let left_label = if req.second_signatory_label.trim().is_empty() {
+                "Accepted & Agreed By:"
+            } else {
+                req.second_signatory_label.trim()
+            };
+            let left_name = if req.second_signatory_name.trim().is_empty() {
+                if !req.recipient_name.trim().is_empty() {
+                    req.recipient_name.trim()
+                } else {
+                    "Signature of Employee / Candidate"
+                }
+            } else {
+                req.second_signatory_name.trim()
+            };
+            let left_title = if req.second_signatory_title.trim().is_empty() {
+                "Date: ____________________"
+            } else {
+                req.second_signatory_title.trim()
+            };
+
+            doc_xml.push_str(&format!(r#"    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="0" w:type="auto"/>
+        <w:tblBorders>
+          <w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/>
+          <w:insideH w:val="none"/><w:insideV w:val="none"/>
+        </w:tblBorders>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="4600"/>
+        <w:gridCol w:w="4400"/>
+      </w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr><w:tcW w:w="4600" w:type="dxa"/></w:tcPr>
+          <w:p>
+            <w:pPr><w:spacing w:before="{}" w:after="80"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:b/><w:sz w:val="19"/><w:color w:val="0D3366"/></w:rPr><w:t>{}</w:t></w:r>
+          </w:p>
+"#, before_spacing_dxa, xml_escape(left_label)));
+
+            if second_sig_bytes.is_some() {
+                doc_xml.push_str(r#"          <w:p>
+            <w:pPr><w:spacing w:before="40" w:after="40"/><w:jc w:val="left"/></w:pPr>
+            <w:r>
+              <w:drawing>
+                <wp:inline distT="0" distB="0" distL="0" distR="0">
+                  <wp:extent cx="1905000" cy="635000"/>
+                  <wp:docPr id="3" name="second_sig.jpg"/>
+                  <wp:cNvGraphicFramePr>
+                    <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>
+                  </wp:cNvGraphicFramePr>
+                  <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                      <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                        <pic:nvPicPr>
+                          <pic:cNvPr id="3" name="second_sig.jpg"/>
+                          <pic:cNvPicPr/>
+                        </pic:nvPicPr>
+                        <pic:blipFill>
+                          <a:blip r:embed="rIdSecondSig"/>
+                          <a:stretch><a:fillRect/></a:stretch>
+                        </pic:blipFill>
+                        <pic:spPr>
+                          <a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="635000"/></a:xfrm>
+                          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                        </pic:spPr>
+                      </pic:pic>
+                    </a:graphicData>
+                  </a:graphic>
+                </wp:inline>
+              </w:drawing>
+            </w:r>
+          </w:p>
+"#);
+            } else {
+                doc_xml.push_str(r#"          <w:p>
+            <w:pPr><w:spacing w:before="60" w:after="80"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:i/><w:sz w:val="16"/><w:color w:val="94A3B8"/></w:rPr><w:t>(Signature of Employee / Candidate)</w:t></w:r>
+          </w:p>
+"#);
+            }
+
+            doc_xml.push_str(&format!(r#"          <w:p>
+            <w:pPr><w:spacing w:before="40" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="000000"/></w:rPr><w:t>{}</w:t></w:r>
+          </w:p>
+          <w:p>
+            <w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="59616B"/></w:rPr><w:t>{}</w:t></w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr><w:tcW w:w="4400" w:type="dxa"/></w:tcPr>
+          <w:p>
+            <w:pPr><w:spacing w:before="{}" w:after="{}"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:b/><w:sz w:val="19"/><w:color w:val="0D3366"/></w:rPr><w:t>For {},</w:t></w:r>
+          </w:p>
+"#, xml_escape(left_name), xml_escape(left_title), before_spacing_dxa, for_spacing_after, xml_escape(company)));
+
+            if sig_bytes.is_some() {
+                doc_xml.push_str(r#"          <w:p>
+            <w:pPr><w:spacing w:before="40" w:after="40"/><w:jc w:val="left"/></w:pPr>
+            <w:r>
+              <w:drawing>
+                <wp:inline distT="0" distB="0" distL="0" distR="0">
+                  <wp:extent cx="1905000" cy="635000"/>
+                  <wp:docPr id="2" name="Authorized Signature"/>
+                  <a:graphic>
+                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                      <pic:pic>
+                        <pic:nvPicPr>
+                          <pic:cNvPr id="2" name="sig.jpg"/>
+                          <pic:cNvPicPr/>
+                        </pic:nvPicPr>
+                        <pic:blipFill>
+                          <a:blip r:embed="rIdSig"/>
+                          <a:stretch><a:fillRect/></a:stretch>
+                        </pic:blipFill>
+                        <pic:spPr>
+                          <a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="635000"/></a:xfrm>
+                          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                        </pic:spPr>
+                      </pic:pic>
+                    </a:graphicData>
+                  </a:graphic>
+                </wp:inline>
+              </w:drawing>
+            </w:r>
+          </w:p>
+"#);
+            }
+
+            doc_xml.push_str(&format!(r#"          <w:p>
+            <w:pPr><w:spacing w:before="{}" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="000000"/></w:rPr><w:t>{}</w:t></w:r>
+          </w:p>
+          <w:p>
+            <w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:sz w:val="18"/><w:color w:val="59616B"/></w:rPr><w:t>{}</w:t></w:r>
+          </w:p>
+"#, signer_spacing_before, xml_escape(signer), xml_escape(title)));
+
+            if !req.signatory_reg_no.trim().is_empty() {
+                doc_xml.push_str(&format!(r#"          <w:p>
+            <w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
+            <w:r><w:rPr><w:b/><w:sz w:val="15"/><w:color w:val="14664D"/></w:rPr><w:t>Reg: {}</w:t></w:r>
+          </w:p>
+"#, xml_escape(&req.signatory_reg_no)));
+            }
+
+            doc_xml.push_str(r#"        </w:tc>
+      </w:tr>
+    </w:tbl>
+"#);
+        } else {
+            doc_xml.push_str(&format!(r#"    <w:p>
       <w:pPr><w:ind w:left="6000"/><w:spacing w:before="{}" w:after="{}"/><w:jc w:val="left"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="19"/><w:color w:val="0D3366"/></w:rPr><w:t>For {},</w:t></w:r>
     </w:p>
 "#, before_spacing_dxa, for_spacing_after, xml_escape(company)));
 
-    if sig_bytes.is_some() {
-        // Generous signature size: max 150 pt width x 50 pt height = 1905000 x 635000 EMU
-        // Left indented to center horizontally over the signatory column
-        doc_xml.push_str(r#"    <w:p>
+            if sig_bytes.is_some() {
+                // Generous signature size: max 150 pt width x 50 pt height = 1905000 x 635000 EMU
+                // Left indented to center horizontally over the signatory column
+                doc_xml.push_str(r#"    <w:p>
       <w:pPr><w:ind w:left="6600"/><w:spacing w:before="40" w:after="40"/><w:jc w:val="left"/></w:pPr>
       <w:r>
         <w:drawing>
@@ -398,9 +569,9 @@ pub fn render_letterhead_document_docx(req: &LetterheadDocRequest) -> Result<Vec
       </w:r>
     </w:p>
 "#);
-    }
+            }
 
-    doc_xml.push_str(&format!(r#"    <w:p>
+            doc_xml.push_str(&format!(r#"    <w:p>
       <w:pPr><w:ind w:left="6000"/><w:spacing w:before="{}" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="21"/><w:color w:val="000000"/></w:rPr><w:t>{}</w:t></w:r>
     </w:p>
@@ -410,12 +581,14 @@ pub fn render_letterhead_document_docx(req: &LetterheadDocRequest) -> Result<Vec
     </w:p>
 "#, signer_spacing_before, xml_escape(signer), xml_escape(title)));
 
-    if !req.signatory_reg_no.trim().is_empty() {
-        doc_xml.push_str(&format!(r#"    <w:p>
+            if !req.signatory_reg_no.trim().is_empty() {
+                doc_xml.push_str(&format!(r#"    <w:p>
       <w:pPr><w:ind w:left="6000"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="exact"/><w:jc w:val="left"/></w:pPr>
       <w:r><w:rPr><w:b/><w:sz w:val="15"/><w:color w:val="14664D"/></w:rPr><w:t>Reg: {}</w:t></w:r>
     </w:p>
 "#, xml_escape(&req.signatory_reg_no)));
+            }
+        }
     }
 
     // Section Properties (A4 Portrait, top margin 2746 dxa = 137.3 pt matching PDF page_height - 150pt body start)
