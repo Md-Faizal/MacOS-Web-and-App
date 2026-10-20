@@ -529,7 +529,7 @@ export class ComplianceApp extends AppWindow {
               <div class="staff-input-group full-width">
                 <label>Default Signatory Authority for Word Documents</label>
                 <select id="cfgDefaultSignatory">
-                  <option value="proprietor">MD  FAIZAL (Proprietor & Managing Director) - Seal Ready ✓</option>
+                  <option value="proprietor">MD  FAIZAL (Proprietor) - Seal Ready ✓</option>
                 </select>
                 <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
                   Documents drafted in the Word Document Creator will select this authority by default.
@@ -627,7 +627,7 @@ export class ComplianceApp extends AppWindow {
       const select = this.mainArea.querySelector('#cfgDefaultSignatory');
       if (select) {
         const propName = masterSettings.proprietor_name || 'MD  FAIZAL';
-        const propTitle = masterSettings.proprietor_title || 'Proprietor & Managing Director';
+        const propTitle = masterSettings.proprietor_title || 'Proprietor';
         const hasSig = !!masterSettings.proprietor_signature_data;
         let options = `
           <option value="proprietor" selected>

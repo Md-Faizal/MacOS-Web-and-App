@@ -273,7 +273,7 @@ export class BillingSettingsComponent {
 
                         <div class="billing-field-group">
                             <label class="billing-label" for="settingProprietorTitle">Designation / Signing Authority Title</label>
-                            <input type="text" id="settingProprietorTitle" class="billing-input" value="${this.escapeHtml(this.settings.proprietor_title || 'Proprietor & Managing Director')}" placeholder="e.g. Proprietor & Managing Director" />
+                            <input type="text" id="settingProprietorTitle" class="billing-input" value="${this.escapeHtml(this.settings.proprietor_title || 'Proprietor')}" placeholder="e.g. Proprietor" />
                         </div>
                     </div>
 
@@ -947,7 +947,7 @@ export class BillingSettingsComponent {
             company_ayush_license: this.container.querySelector('#settingCompanyAyush')?.value?.trim() || '',
             company_gmp_ref: this.container.querySelector('#settingCompanyGmp')?.value?.trim() || '',
             proprietor_name: this.container.querySelector('#settingProprietorName')?.value?.trim() || 'MD  FAIZAL',
-            proprietor_title: this.container.querySelector('#settingProprietorTitle')?.value?.trim() || 'Proprietor & Managing Director',
+            proprietor_title: this.container.querySelector('#settingProprietorTitle')?.value?.trim() || 'Proprietor',
             proprietor_signature_data: this.settings.proprietor_signature_data || '',
             bank_show_mmid: showMmid,
             payment_upi_id: this.container.querySelector('#settingUpiId')?.value || '',

@@ -403,7 +403,7 @@ module.exports = function createHandlers(db) {
             issue_date: '2022-04-01',
             expiry_date: '2027-03-31',
             renewal_frequency: '5 Years',
-            officer_in_charge: 'Managing Director & Chief Chemist',
+            officer_in_charge: 'Proprietor & Chief Chemist',
             statutory_rule_ref: 'Drugs & Cosmetics Rules 1945, Rule 154',
             status: 'ACTIVE',
             notes: 'Covers Asava, Arishta, Churna, Taila, and Gutika classical dosage forms.'
@@ -612,9 +612,9 @@ module.exports = function createHandlers(db) {
             recipient_party: 'Dr. Debabrata Mishra (EMP-001)',
             subject: 'Appointment as Chief Ayurvedic Medical Officer under Rule 157 Schedule T',
             issue_date: '2018-02-01',
-            signatory_name: 'Director of Operations',
-            signatory_title: 'Managing Director, Utkal Chemical Aushadhalaya',
-            signatory_reg_no: 'CORP-DIR-042',
+            signatory_name: 'Mohammad Faizal',
+            signatory_title: 'Proprietor',
+            signatory_reg_no: null,
             verification_hash: '9a84f32e185c1840bb8e9324d08123ca41bfe1298823101c03994ab2d4885832'
           },
           {
