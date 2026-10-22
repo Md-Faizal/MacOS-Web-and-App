@@ -6,7 +6,6 @@ x-macos-base: &macos-base
   build:
     context: .
     dockerfile: Dockerfile
-    network: host
   restart: unless-stopped
   environment:
     - NODE_ENV=production
