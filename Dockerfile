@@ -6,14 +6,21 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # Install native build tools required for better-sqlite3 compilation
-RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' >> /etc/resolv.conf || true) \
+RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 1.0.0.1\n' >> /etc/resolv.conf || true) \
     && printf '%s\n' \
-       'Acquire::Retries "5";' \
+       'Acquire::Retries "10";' \
        'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
-    && (for i in 1 2 3 4 5; do apt-get update && break || { echo "apt-get update retry $i..."; sleep 2; }; done) \
+    && ( \
+       if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+       elif [ -f /etc/apt/sources.list ]; then \
+         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list 2>/dev/null || true; \
+       fi \
+    ) \
+    && (apt-get update || (sleep 3 && apt-get update) || (sleep 5 && apt-get update)) \
     && apt-get install -y --no-install-recommends \
     python3 \
     make \
@@ -52,14 +59,21 @@ WORKDIR /app
 
 # Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
-RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' >> /etc/resolv.conf || true) \
+RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 1.0.0.1\n' >> /etc/resolv.conf || true) \
     && printf '%s\n' \
-       'Acquire::Retries "5";' \
+       'Acquire::Retries "10";' \
        'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
-    && (for i in 1 2 3 4 5; do apt-get update && break || { echo "apt-get update retry $i..."; sleep 2; }; done) \
+    && ( \
+       if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+       elif [ -f /etc/apt/sources.list ]; then \
+         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list 2>/dev/null || true; \
+       fi \
+    ) \
+    && (apt-get update || (sleep 3 && apt-get update) || (sleep 5 && apt-get update)) \
     && apt-get install -y --no-install-recommends \
        dumb-init \
        curl \
