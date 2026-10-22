@@ -273,6 +273,8 @@ jobs:
             --exclude='node_modules' \
             --exclude='**/node_modules' \
             --exclude='/node_modules' \
+            --exclude='/.docker_build_hash' \
+            --exclude='.docker_build_hash' \
             --exclude='/zentra-analytics-dashboard/node_modules' \
             --exclude='/zentra-analytics-dashboard/dist' \
             ./ production:"$TARGET_DIR/"
@@ -340,6 +342,8 @@ jobs:
               --exclude='node_modules' \
               --exclude='**/node_modules' \
               --exclude='/node_modules' \
+              --exclude='/.docker_build_hash' \
+              --exclude='.docker_build_hash' \
               --exclude='/zentra-analytics-dashboard/node_modules' \
               --exclude='/zentra-analytics-dashboard/dist' \
               ./ vm2:"$TARGET_DIR/"

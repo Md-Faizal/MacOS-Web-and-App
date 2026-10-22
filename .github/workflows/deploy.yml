@@ -236,6 +236,8 @@ jobs:
             --exclude='node_modules' \
             --exclude='**/node_modules' \
             --exclude='/node_modules' \
+            --exclude='/.docker_build_hash' \
+            --exclude='.docker_build_hash' \
             --exclude='/zentra-analytics-dashboard/node_modules' \
             ./ production:"$TARGET_DIR/"
 

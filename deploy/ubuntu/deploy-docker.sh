@@ -42,11 +42,15 @@ if [ -n "$BRIDGE_NET" ] && [ -n "$BRIDGE_ID" ]; then
 fi
 
 # Auto-heal: Ensure Docker daemon has DNS fallbacks to prevent container resolution issues
-if [ ! -f /etc/docker/daemon.json ] 2>/dev/null; then
+if [ ! -f /etc/docker/daemon.json ] || ! grep -q '"dns"' /etc/docker/daemon.json 2>/dev/null; then
     echo "🔧 Setting reliable fallback DNS in /etc/docker/daemon.json..."
     sudo mkdir -p /etc/docker
-    echo '{"dns": ["8.8.8.8", "1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null 2>&1 || true
-    sudo systemctl reload docker 2>/dev/null || true
+    if [ -s /etc/docker/daemon.json ]; then
+        python3 -c "import json; p='/etc/docker/daemon.json'; data=json.load(open(p)) if open(p).read().strip() else {}; data['dns']=['8.8.8.8','1.1.1.1']; open(p,'w').write(json.dumps(data,indent=2))" 2>/dev/null || echo '{"dns": ["8.8.8.8", "1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null 2>&1 || true
+    else
+        echo '{"dns": ["8.8.8.8", "1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null 2>&1 || true
+    fi
+    sudo systemctl restart docker 2>/dev/null || true
 fi
 
 # 2. Determine target idle slot
@@ -156,8 +160,14 @@ elif [ -f "$BUILD_HASH_FILE" ] && [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE"
     echo "📦 Dependencies or requirements changed. Rebuilding Docker image..."
     NEEDS_BUILD=true
 elif [ ! -f "$BUILD_HASH_FILE" ]; then
-    echo "📌 Dependency build hash is missing. Rebuilding to verify the image matches current dependencies..."
-    NEEDS_BUILD=true
+    if [ "$IMAGE_EXISTS" = "yes" ]; then
+        echo "📌 Dependency build hash initialized ($CURRENT_HASH). Reusing existing macos-server:latest image..."
+        echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+        NEEDS_BUILD=false
+    else
+        echo "📌 Dependency build hash is missing and image absent. Building Docker image..."
+        NEEDS_BUILD=true
+    fi
 fi
 
 # 3. Clean up any stopped/stale container for target slot and start fresh
@@ -165,6 +175,7 @@ docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/nu
 
 if [ "$NEEDS_BUILD" = "true" ]; then
     echo "📦 Building and starting container macos-server-$TARGET_SLOT..."
+    export DOCKER_BUILDKIT=1
     docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
     echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
 else

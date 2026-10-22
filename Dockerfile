@@ -1,12 +1,18 @@
 # ==========================================================
 # STAGE 1: Build Frontend Assets & Native Backend Dependencies
 # ==========================================================
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
 # Install native build tools required for better-sqlite3 compilation
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN printf '%s\n' \
+       'Acquire::Retries "5";' \
+       'Acquire::http::Timeout "30";' \
+       'Acquire::https::Timeout "30";' \
+       'Acquire::ForceIPv4 "true";' \
+       > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
@@ -38,16 +44,17 @@ RUN npm prune --omit=dev \
 # ==========================================================
 # STAGE 2: Lightweight Production Runtime
 # ==========================================================
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 
 # Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
 RUN printf '%s\n' \
-       'Acquire::Retries "3";' \
+       'Acquire::Retries "5";' \
        'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' \
+       'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
