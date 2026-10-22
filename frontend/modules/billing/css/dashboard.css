@@ -227,8 +227,12 @@ html {
 }
 
 /* Quick Actions Sidebar */
+.dashboard-quickactions-container {
+  position: relative;
+}
+
 .quickactions-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.45);
   opacity: 0;
@@ -242,10 +246,10 @@ html {
 }
 
 .quickactions-sidebar {
-  position: fixed;
+  position: absolute;
   right: 0;
   top: 0;
-  height: 100vh;
+  bottom: 0;
   width: 320px;
   max-width: 90%;
   background: linear-gradient(180deg,#0e0e0e,#1a1a1a);

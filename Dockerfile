@@ -31,7 +31,8 @@ RUN npm run build
 
 # Prune devDependencies and remove heavyweight unnecessary test/coverage folders
 RUN npm prune --omit=dev \
-    && rm -rf node_modules/fluent-ffmpeg/coverage node_modules/**/test node_modules/**/tests 2>/dev/null || true
+    && node -e "require.resolve('pdf-parse')" \
+    && (rm -rf node_modules/fluent-ffmpeg/coverage node_modules/**/test node_modules/**/tests 2>/dev/null || true)
 
 
 # ==========================================================

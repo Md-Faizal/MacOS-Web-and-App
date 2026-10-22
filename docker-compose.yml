@@ -42,7 +42,7 @@ x-macos-base: &macos-base
     interval: 10s
     timeout: 5s
     retries: 5
-    start_period: 45s
+    start_period: 120s
 
 services:
   # Blue Instance (Listens on port 3001)

@@ -156,9 +156,8 @@ elif [ -f "$BUILD_HASH_FILE" ] && [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE"
     echo "📦 Dependencies or requirements changed. Rebuilding Docker image..."
     NEEDS_BUILD=true
 elif [ ! -f "$BUILD_HASH_FILE" ]; then
-    echo "📌 Recording initial build hash for existing macos-server:latest..."
-    echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
-    NEEDS_BUILD=false
+    echo "📌 Dependency build hash is missing. Rebuilding to verify the image matches current dependencies..."
+    NEEDS_BUILD=true
 fi
 
 # 3. Clean up any stopped/stale container for target slot and start fresh
@@ -175,7 +174,7 @@ fi
 
 # 4. Await healthy status
 echo "⏳ Waiting for macos-server-$TARGET_SLOT to pass health checks on port $TARGET_PORT..."
-MAX_RETRIES="${MAX_RETRIES:-75}"
+MAX_RETRIES="${MAX_RETRIES:-180}"
 COUNT=0
 HEALTHY=false
 

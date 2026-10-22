@@ -542,7 +542,8 @@ class BillingDashboard {
   renderQuickActionsSidebar(actions = []) {
     if (document.getElementById('quickActionsSidebar')) return;
 
-    const container = this.viewContainer || document.body;
+    const container = this.viewContainer?.querySelector('.dashboard-container') || this.viewContainer || document.body;
+    container.classList.add('dashboard-quickactions-container');
 
     const overlay = document.createElement('div');
     overlay.id = 'quickActionsOverlay';
