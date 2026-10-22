@@ -145,30 +145,24 @@ fi
 
 # 2.7 Smart build detection:
 # Routine deploys update frontend/backend/dist via host volume mounts with zero build time.
-# Rebuild is ONLY triggered if dependencies changed, image is missing, or explicitly forced.
+# If macos-server:latest already exists, reuse it immediately for zero-downtime swaps.
 BUILD_HASH_FILE=".docker_build_hash"
 CURRENT_HASH=$(sha256sum package.json package-lock.json tools/python/requirements.txt 2>/dev/null | sha256sum | awk '{print $1}')
 IMAGE_EXISTS=$(docker image inspect macos-server:latest >/dev/null 2>&1 && echo "yes" || echo "no")
 
 NEEDS_BUILD=false
-if [ "$IMAGE_EXISTS" != "yes" ]; then
+if [ "$1" = "--rebuild" ] || [ "$2" = "--rebuild" ] || [ "$FORCE_BUILD" = "true" ]; then
+    echo "🔄 Rebuild explicitly requested via flag..."
+    NEEDS_BUILD=true
+elif [ "$IMAGE_EXISTS" != "yes" ]; then
     echo "🔨 macos-server:latest image not found on host. Initial build required..."
     NEEDS_BUILD=true
-elif [ "$1" = "--rebuild" ] || [ "$2" = "--rebuild" ] || [ "$FORCE_BUILD" = "true" ]; then
-    echo "🔄 Rebuild requested via flag..."
-    NEEDS_BUILD=true
-elif [ -f "$BUILD_HASH_FILE" ] && [ "$CURRENT_HASH" != "$(cat "$BUILD_HASH_FILE" 2>/dev/null)" ]; then
-    echo "📦 Dependencies or requirements changed. Rebuilding Docker image..."
-    NEEDS_BUILD=true
-elif [ ! -f "$BUILD_HASH_FILE" ]; then
-    if [ "$IMAGE_EXISTS" = "yes" ]; then
-        echo "📌 Dependency build hash initialized ($CURRENT_HASH). Reusing existing macos-server:latest image..."
-        echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
-        NEEDS_BUILD=false
-    else
-        echo "📌 Dependency build hash is missing and image absent. Building Docker image..."
-        NEEDS_BUILD=true
-    fi
+else
+    # Image exists on host.
+    # Frontend, backend, dist, and tools are volume mounted into the container from host.
+    echo "⚡ Existing macos-server:latest image detected. Reusing image with latest volume-mounted code..."
+    echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+    NEEDS_BUILD=false
 fi
 
 # 3. Clean up any stopped/stale container for target slot and start fresh
