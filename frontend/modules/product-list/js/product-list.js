@@ -258,7 +258,7 @@ export class ProductListApp extends AppWindow {
     return panel;
   }
 
-  constructor(containerId, callbacks = {}) {
+  constructor(containerId, callbacks = {}, params = {}) {
     const width = window.innerWidth;
     let config = { appId: 'products', appName: 'Product List', containerId: containerId, callbacks: callbacks };
     
@@ -280,6 +280,7 @@ export class ProductListApp extends AppWindow {
     this.categories = []; // Categories loaded only from API
     this.currentView = 'all';
     this.searchQuery = ''; // Store current search query
+    this.pendingDeepLink = params?.productId ? params : null;
     this.notifications = ProductNotifications;
 
     window.currentProductApp = this;
@@ -319,7 +320,11 @@ export class ProductListApp extends AppWindow {
     if (typeof window !== 'undefined' && window.MacOSStore) {
       this._storeProductsUnsub = window.MacOSStore.subscribe('products', (storeProducts) => {
         if (Array.isArray(storeProducts) && storeProducts !== this.products) {
-          this.products = storeProducts;
+          this.products = storeProducts.map(product =>
+            product instanceof Product || typeof product?.getTotalUnitsSold === 'function'
+              ? product
+              : this.deserializeProductFromAPI(product)
+          );
           if (this.currentView === 'all') {
             this.renderAllProducts();
           }
@@ -353,6 +358,7 @@ export class ProductListApp extends AppWindow {
         // Load products and categories after confirming backend is available
         await this.loadProducts();
         await this.loadCategoriesFromAPI();
+        if (this.pendingDeepLink) await this.handleDeepLink(this.pendingDeepLink);
       } else {
         log.warn('⚠️ Products response is not a valid array:', products);
         this.apiEnabled = false;
@@ -412,6 +418,28 @@ export class ProductListApp extends AppWindow {
       log.error('Error loading products from API:', error);
       this.notifications.show('Failed to load products from API', 'error', 3000);
     }
+  }
+
+  async handleDeepLink(params = {}) {
+    const productId = params.productId ?? params.product_id;
+    if (productId == null) return;
+
+    if (!this.products.length && this.apiEnabled) await this.loadProducts();
+    const product = this.products.find(candidate => String(candidate.id) === String(productId));
+    this.pendingDeepLink = null;
+    if (!product) {
+      this.notifications.show('Product not found in Product List', 'warning', 4000);
+      return;
+    }
+
+    if (params.action === 'edit') {
+      this.renderEditProductView(product.id);
+      this.switchView('edit');
+      return;
+    }
+
+    this.switchView('all');
+    this.viewContainer.querySelector(`[data-product-id="${CSS.escape(String(product.id))}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   async getFreshProductsForQrPrint() {
@@ -501,44 +529,48 @@ export class ProductListApp extends AppWindow {
   }
 
   deserializeProductFromAPI(apiProduct) {
-    const product = new Product(apiProduct.name, apiProduct.category_name || 'Uncategorized', false);
+    const product = new Product(apiProduct.name, apiProduct.category_name || apiProduct.category || 'Uncategorized', false);
     product.id = apiProduct.id;
     product.category_id = apiProduct.category_id;
-    product.category_name = apiProduct.category_name;
+    product.category_name = apiProduct.category_name || apiProduct.category;
     product.classification = apiProduct.classification;
+    product.isGold = apiProduct.isGold ?? apiProduct.is_gold ?? apiProduct.classification === 'Gold';
     product.hsn_code = apiProduct.hsn_code || '30049011';
     product.odia_name = apiProduct.odia_name || '';
     product.created_by_role = apiProduct.created_by_role;
     product.created_by_name = apiProduct.created_by_name;
     product.last_edited_by_role = apiProduct.last_edited_by_role;
     product.last_edited_by_name = apiProduct.last_edited_by_name;
-    product.createdAt = new Date(apiProduct.created_at);
-    product.lastUpdated = apiProduct.updated_at ? new Date(apiProduct.updated_at) : new Date(apiProduct.created_at);
+    product.createdAt = new Date(apiProduct.created_at || apiProduct.createdAt || Date.now());
+    product.lastUpdated = new Date(apiProduct.updated_at || apiProduct.lastUpdated || product.createdAt);
     
     // Parse variants array from API response (new normalized schema)
     if (Array.isArray(apiProduct.variants)) {
       apiProduct.variants.forEach(vData => {
         // Combine pack_size_value and pack_size_type
-        const packSize = vData.pack_size_value && vData.pack_size_type 
-          ? `${vData.pack_size_value}${vData.pack_size_type}`
-          : (vData.pack_size_value ? vData.pack_size_value.toString() : '');
+        const packSizeValue = vData.pack_size_value ?? vData.packSizeValue;
+        const packSizeType = vData.pack_size_type ?? vData.packSizeType;
+        const packSize = vData.packSize || (packSizeValue && packSizeType
+          ? `${packSizeValue}${packSizeType}`
+          : (packSizeValue ? packSizeValue.toString() : ''));
         
         const variant = new ProductVariant(packSize);
         // Store the individual pack_size fields for later API serialization
         variant.id = vData.id;
-        variant.pack_size_value = vData.pack_size_value;
-        variant.pack_size_type = vData.pack_size_type;
+        variant.pack_size_value = packSizeValue;
+        variant.pack_size_type = packSizeType;
         
         if (vData.batches && Array.isArray(vData.batches)) {
           vData.batches.forEach(bData => {
             const batch = new ProductBatch(
-              bData.batch_no,
-              bData.mfg_date ? new Date(bData.mfg_date) : null,
-              bData.exp_date ? new Date(bData.exp_date) : null,
+              bData.batch_no || bData.batchNo,
+              (bData.mfg_date || bData.mfgDate) ? new Date(bData.mfg_date || bData.mfgDate) : null,
+              (bData.exp_date || bData.expiryDate) ? new Date(bData.exp_date || bData.expiryDate) : null,
               bData.mrp,
-              bData.units_sold || 0
+              bData.units_sold ?? bData.unitsSold ?? 0
             );
             batch.id = bData.id;
+            batch.variant_id = bData.variant_id ?? bData.variantId ?? variant.id;
             variant.addBatch(batch);
           });
         }

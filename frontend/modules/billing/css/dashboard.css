@@ -1466,6 +1466,239 @@ html {
 }
 
 /* ===== METRICS FILTER & RANGE SELECTORS ===== */
+.dashboard-container {
+  position: relative;
+}
+
+.dashboard-loading {
+  position: absolute;
+  inset: 50px 0 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(8, 8, 8, 0.82);
+  color: #ffffff;
+  font: 700 11px 'Courier New', monospace;
+  text-transform: uppercase;
+}
+
+.dashboard-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: dashboard-spin 0.75s linear infinite;
+}
+
+@keyframes dashboard-spin {
+  to { transform: rotate(360deg); }
+}
+
+.chart-wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.floating-card.chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 410px;
+  padding: 16px;
+  border-radius: 6px;
+  cursor: default;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.floating-card.chart-card:hover {
+  transform: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.chart-card .card-header,
+.chart-card .card-header.chart-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 0 0 10px;
+  border-bottom-width: 1px;
+}
+
+.chart-card-title,
+.chart-card-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chart-card-options {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chart-card .card-title {
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+}
+
+.sales-period-switcher {
+  gap: 4px;
+  margin: 0;
+  padding: 3px;
+  border-radius: 4px;
+}
+
+.sales-period-switcher .period-btn {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  letter-spacing: 0;
+}
+
+.chart-timeline-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  color: #cccccc;
+  font: 10px 'Courier New', monospace;
+}
+
+.chart-timeline-range {
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.chart-period-select {
+  width: auto;
+  max-width: 118px;
+  min-height: 30px;
+  padding: 4px 22px 4px 7px;
+  background: #171717;
+  border: 1px solid #444444;
+  border-radius: 3px;
+  color: #ffffff;
+  font: 10px 'Courier New', monospace;
+}
+
+.timeline-arrow {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  background: #202020;
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.timeline-arrow:hover:not(:disabled) {
+  background: #ffffff;
+  color: #111111;
+}
+
+.timeline-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chart-timeline-control {
+  display: grid;
+  grid-template-columns: auto minmax(50px, 1fr) minmax(54px, auto);
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: #aaaaaa;
+  font: 9px 'Courier New', monospace;
+}
+
+.chart-timeline-control input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: #ffffff;
+  cursor: ew-resize;
+}
+
+.chart-scrubber-label {
+  color: #ffffff;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chart-card .chart-container {
+  width: 100%;
+  height: 190px;
+  min-height: 190px;
+  margin: 0;
+}
+
+.sales-switchable-card .chart-container,
+.avg-bill-card .chart-container {
+  height: 205px;
+  min-height: 205px;
+}
+
+.avg-bill-card .metrics-select,
+.avg-bill-card .date-input {
+  min-height: 30px;
+  padding: 4px 7px;
+  border-radius: 3px;
+  font: 10px 'Courier New', monospace;
+}
+
+.avg-bill-card .custom-date-inputs {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (max-width: 600px) {
+  .dashboard-loading {
+    inset-block-start: 44px;
+  }
+
+  .floating-card.chart-card {
+    min-height: 0;
+    padding: 13px;
+  }
+
+  .chart-card .card-header {
+    align-items: flex-start;
+  }
+
+  .chart-card-options {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .chart-card .chart-container,
+  .sales-switchable-card .chart-container,
+  .avg-bill-card .chart-container {
+    height: 180px;
+    min-height: 180px;
+  }
+}
+
+/* ===== METRICS FILTER & RANGE SELECTORS ===== */
 .section-header-flex {
   display: flex;
   justify-content: space-between;
@@ -1544,4 +1777,3 @@ html {
 .floating-card.dark .card-date-range {
   color: #666666;
 }
-

@@ -136,7 +136,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
           '' as mfg, 
           COALESCE(CAST(CAST(ii.pack_value AS REAL) AS INTEGER) || ' ' || ii.pack_type, '') as pack, 
           ii.batch_no, 
-          ii.exp_date, 
+          COALESCE(NULLIF(TRIM(ii.exp_date), ''), b.exp_date) as exp_date,
           ii.qty, 
           ii.free,
           ii.mrp, 
@@ -152,6 +152,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
           0 as is_gold
         FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id
+        LEFT JOIN batches b ON ii.batch_id = b.id
         WHERE ii.invoice_id = ?
         ORDER BY ii.id ASC
       `).all(invRow.id);

@@ -598,13 +598,22 @@ export class BillingApp extends AppWindow {
     } catch (error) {
       log.error('❌ Backend unavailable, cannot continue:', error.message);
       this.apiEnabled = false;
+      this.isInitialDataLoading = false;
+      this._subviewInstances?.get('dashboard')?.setDashboardLoading(false);
       alert('Error: Billing system requires backend API connection. Please ensure the server is running.');
       return;
     }
 
-    // Render the dashboard with API data
-    this.renderDashboard();
-    
+    this.isInitialDataLoading = false;
+
+    // Refresh data in place so navigation made during startup is preserved.
+    if (this.currentView === 'dashboard') {
+      const dashboard = this._subviewInstances?.get('dashboard');
+      if (dashboard) {
+        await dashboard.renderDashboard({ skipDataLoad: true });
+      }
+    }
+
     // If we're not on dashboard, only refresh views that don't have active user input
     const inputViews = ['create', 'edit', 'payment-credit', 'orders'];
     if (this.currentView && this.currentView !== 'dashboard' && !inputViews.includes(this.currentView)) {
@@ -698,8 +707,9 @@ export class BillingApp extends AppWindow {
     // Setup billing-specific event listeners
     this.setupBillingEventListeners();
 
-    // NOTE: renderDashboard() is deferred until after checkBackendConnection() completes
-    // This ensures the first view renders with fresh API data if available
+    // Mount the dashboard immediately so startup has visible content and loading feedback.
+    this.isInitialDataLoading = true;
+    this.switchView('dashboard');
 
     // Store reference for home.html
     window.currentBillingApp = this;
@@ -1749,52 +1759,23 @@ export class BillingApp extends AppWindow {
 
       try {
         const force = options.forceRefresh === true;
-
-        // Fetch bills with error handling
-        let billsResponse = [];
-        try {
-          billsResponse = await this.api.getBills({ forceRefresh: force });
-        } catch (billsErr) {
-          log.error('Error fetching bills:', billsErr.message);
-        }
-
-        // Fetch payments with error handling
-        let paymentsResponse = [];
-        try {
-          paymentsResponse = await this.api.getPayments({ forceRefresh: force });
-        } catch (paymentsErr) {
-          log.warn('Warning: Error fetching payments:', paymentsErr.message);
-          paymentsResponse = { data: [], success: false };
-        }
-
-        // Fetch contacts with error handling
-        let contactsResponse = [];
-        try {
-          contactsResponse = await this.api.getContacts({ forceRefresh: force });
-        } catch (contactsErr) {
-          log.warn('Warning: Error fetching contacts:', contactsErr.message);
-          contactsResponse = { data: [], success: false };
-        }
-
-        // Fetch orders with error handling
-        let ordersResponse = [];
-        try {
-          const resp = await this.api.getOrders({ forceRefresh: force });
-          ordersResponse = normalizeCollection(resp, []);
-        } catch (ordersErr) {
-          log.warn('Warning: Error fetching orders:', ordersErr.message);
-          ordersResponse = [];
-        }
-
-        // Fetch products with error handling
-        let productsResponse = [];
-        try {
-          const resp = await this.api.getProducts({ forceRefresh: force });
-          productsResponse = normalizeCollection(resp, []);
-        } catch (prodErr) {
-          log.warn('Warning: Error fetching products for billing search:', prodErr.message);
-          productsResponse = [];
-        }
+        const fetchWithFallback = async (request, fallback, logMethod, message) => {
+          try {
+            return await request();
+          } catch (error) {
+            log[logMethod](message, error.message);
+            return fallback;
+          }
+        };
+        const [billsResponse, paymentsResponse, contactsResponse, ordersPayload, productsPayload] = await Promise.all([
+          fetchWithFallback(() => this.api.getBills({ forceRefresh: force }), [], 'error', 'Error fetching bills:'),
+          fetchWithFallback(() => this.api.getPayments({ forceRefresh: force }), { data: [], success: false }, 'warn', 'Warning: Error fetching payments:'),
+          fetchWithFallback(() => this.api.getContacts({ forceRefresh: force }), { data: [], success: false }, 'warn', 'Warning: Error fetching contacts:'),
+          fetchWithFallback(() => this.api.getOrders({ forceRefresh: force }), [], 'warn', 'Warning: Error fetching orders:'),
+          fetchWithFallback(() => this.api.getProducts({ forceRefresh: force }), [], 'warn', 'Warning: Error fetching products for billing search:')
+        ]);
+        const ordersResponse = normalizeCollection(ordersPayload, []);
+        const productsResponse = normalizeCollection(productsPayload, []);
 
         const bills = normalizeCollection(billsResponse, []);
         const payments = normalizeCollection(paymentsResponse, []);
@@ -3020,6 +3001,4 @@ export class BillingApp extends AppWindow {
 
 // Ensure global availability
 window.BillingApp = BillingApp;
-
-
 

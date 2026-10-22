@@ -2350,6 +2350,65 @@ class OrdersView {
     this.showNotification(`Added "${productName}" to notes`, 'info');
   }
 
+  bindOrderItemQuickActions(container) {
+    container.querySelectorAll('.order-item-batch').forEach(batch => {
+      batch.addEventListener('dblclick', () => {
+        this.changeOrderItemBatch(Number(batch.dataset.idx));
+      });
+    });
+    container.querySelectorAll('.order-item-variant').forEach(variant => {
+      variant.addEventListener('dblclick', () => {
+        this.changeOrderItemVariant(Number(variant.dataset.idx));
+      });
+    });
+    container.querySelectorAll('.order-item-product-name').forEach(productName => {
+      productName.addEventListener('dblclick', () => {
+        const item = this.currentOrderData?.items?.[Number(productName.dataset.idx)];
+        if (item) this.openOrderItemProduct(item);
+      });
+    });
+  }
+
+  async changeOrderItemBatch(index) {
+    const item = this.currentOrderData?.items?.[index];
+    if (!item) return;
+
+    const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
+    if (!product) {
+      this.showNotification('Product is not available in the loaded catalog', 'warning');
+      return;
+    }
+    this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: false });
+  }
+
+  async changeOrderItemVariant(index) {
+    const item = this.currentOrderData?.items?.[index];
+    if (!item) return;
+
+    const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
+    if (!product) {
+      this.showNotification('Product is not available in the loaded catalog', 'warning');
+      return;
+    }
+    if (!Array.isArray(product.variants) || product.variants.length < 2) {
+      this.showNotification('There are no other variants for this product', 'info');
+      return;
+    }
+    this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: true });
+  }
+
+  openOrderItemProduct(item) {
+    if (!window.AppWindow || !window.ProductListApp) {
+      this.showNotification('Product List is not available right now', 'error');
+      return;
+    }
+    window.AppWindow.launchApp('products', window.ProductListApp, 'productAppContainer', {
+      setAppState: window.setAppState,
+      recentAppKey: 'recentAppUsed',
+      params: { productId: item.product_id, action: 'view' }
+    });
+  }
+
   // ===== STAGE 1: CREATE ORDER =====
   renderStage1() {
     const container = document.getElementById('stageContent');
@@ -2538,7 +2597,8 @@ class OrdersView {
   handleAddProduct(product) {
     // Check if product has variants or batches that require selection
     const hasMultipleVariants = product.variants && Array.isArray(product.variants) && product.variants.length > 1;
-    const hasMultipleBatches = product.batches && Array.isArray(product.batches) && product.batches.length > 1;
+    const hasMultipleBatches = (Array.isArray(product.batches) && product.batches.length > 1) ||
+      product.variants?.some(variant => variant.batches?.length > 1);
     
     // If product has multiple variants or batches, show selection modal
     if (hasMultipleVariants || hasMultipleBatches) {
@@ -2552,38 +2612,59 @@ class OrdersView {
     }
   }
 
-  showVariantBatchSelectionModal(product) {
+  showVariantBatchSelectionModal(product, options = {}) {
     const variants = product.variants || [];
     const batches = product.batches || [];
-    
-    // Helper function to get batches for a specific variant
-    const getBatchesForVariant = (variantId) => {
-      return batches.filter(b => !b.variant_id || b.variant_id === variantId);
+    const item = Number.isInteger(options.itemIndex) ? this.currentOrderData?.items?.[options.itemIndex] : null;
+    const editing = Boolean(item);
+    const allowVariantChange = options.allowVariantChange !== false;
+    const currentVariantIndex = variants.findIndex(variant =>
+      item?.variant_id != null
+        ? String(variant.id) === String(item.variant_id)
+        : String(variant.pack_size_value || '') === String(item?.pack_size_value || '') &&
+          String(variant.pack_size_type || '') === String(item?.pack_size_type || '')
+    );
+    const initialVariantIndex = variants.length
+      ? (currentVariantIndex >= 0 ? currentVariantIndex : (variants.length === 1 ? 0 : -1))
+      : 0;
+    const showVariantSelect = variants.length > 1 && (!editing || allowVariantChange);
+    const getBatchesForVariant = variantIndex => {
+      const variant = variants[variantIndex];
+      if (Array.isArray(variant?.batches) && variant.batches.length) return variant.batches;
+      return batches.filter(batch => batch.variant_id == null || String(batch.variant_id) === String(variant?.id));
     };
+    const formatExpiry = value => {
+      if (!value) return 'N/A';
+      const parsedDate = new Date(value);
+      return Number.isNaN(parsedDate.getTime())
+        ? String(value)
+        : parsedDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+    const getVariantLabel = variant => `${variant.pack_size_value || variant.packSize || 'Variant'} ${variant.pack_size_type || ''}`.trim();
     
     let modalHTML = `
       <div style="padding: 24px;">
-        <h2 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 900; color: #000000;">SELECT OPTIONS</h2>
-        <p style="margin: 0 0 20px 0; font-size: 12px; color: #666666;">Product: ${product.name}</p>
+        <h2 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 900; color: #000000;">${editing ? 'UPDATE ORDER ITEM' : 'SELECT OPTIONS'}</h2>
+        <p style="margin: 0 0 20px 0; font-size: 12px; color: #666666;">Product: ${Utils.escapeHtml(product.name)}</p>
         
         <div style="display: flex; flex-direction: column; gap: 16px;">
     `;
     
     // Add variant selector if multiple variants exist
-    if (variants.length > 1) {
+    if (showVariantSelect) {
       modalHTML += `
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: #000000; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">📦 SELECT VARIANT</label>
           <select id="variantSelect" style="width: 100%; padding: 10px 12px; border: 1px solid #333333; border-radius: 2px; font-size: 11px; font-family: 'Courier New', monospace; background: #ffffff; color: #000000;">
-            <option value="">-- Select Variant --</option>
-            ${variants.map((v) => `
-              <option value="${v.id}">${v.pack_size_value || v.name || 'Variant'} ${v.pack_size_type || ''}</option>
+            ${initialVariantIndex < 0 ? '<option value="" selected>-- Select Variant --</option>' : ''}
+            ${variants.map((variant, index) => `
+              <option value="${index}" ${index === initialVariantIndex ? 'selected' : ''}>${Utils.escapeHtml(getVariantLabel(variant))}</option>
             `).join('')}
           </select>
         </div>
       `;
-    } else if (variants.length === 1) {
-      modalHTML += `<input type="hidden" id="variantSelect" value="${variants[0].id}" />`;
+    } else if (variants.length) {
+      modalHTML += `<input type="hidden" id="variantSelect" value="${initialVariantIndex >= 0 ? initialVariantIndex : 0}" />`;
     }
     
     // Add batch selector container (will be populated dynamically)
@@ -2603,7 +2684,7 @@ class OrdersView {
         
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
           <button id="cancelSelectBtn" style="padding: 8px 16px; background: #ffffff; color: #000000; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">CANCEL</button>
-          <button id="confirmSelectBtn" style="padding: 8px 16px; background: #000000; color: #ffffff; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">✓ ADD TO ORDER</button>
+          <button id="confirmSelectBtn" style="padding: 8px 16px; background: #000000; color: #ffffff; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">${editing ? '✓ UPDATE ITEM' : '✓ ADD TO ORDER'}</button>
         </div>
       </div>
     `;
@@ -2639,54 +2720,50 @@ class OrdersView {
     this.viewContainer.appendChild(modal);
     
     // Event handlers
-    const variantSelect = document.getElementById('variantSelect');
-    const batchSelect = document.getElementById('batchSelect');
-    const cancelBtn = document.getElementById('cancelSelectBtn');
-    const confirmBtn = document.getElementById('confirmSelectBtn');
+    const variantSelect = modal.querySelector('#variantSelect');
+    const batchSelect = modal.querySelector('#batchSelect');
+    const cancelBtn = modal.querySelector('#cancelSelectBtn');
+    const confirmBtn = modal.querySelector('#confirmSelectBtn');
     
     // Handle variant selection change and populate batches dynamically
-    const batchContainer = document.getElementById('batchContainer');
-    const updateBatchOptions = (selectedVariantId) => {
-      const filteredBatches = selectedVariantId ? getBatchesForVariant(parseInt(selectedVariantId)) : getBatchesForVariant(variants[0]?.id);
-      
-      // Clear batch options
-      batchSelect.innerHTML = '';
-      
-      if (filteredBatches.length === 0) {
-        batchContainer.style.display = 'none';
-        batchSelect.innerHTML = '<option value="">No batches available</option>';
+    const updateBatchOptions = variantIndex => {
+      const rawVariantIndex = variantSelect?.value;
+      if (variantSelect && rawVariantIndex === '') {
+        batchSelect.innerHTML = '<option value="">-- Select a variant first --</option>';
         batchSelect.disabled = true;
-      } else if (filteredBatches.length === 1) {
-        // Auto-select if only 1 batch - hide batch selector since there's nothing to choose
-        batchContainer.style.display = 'none';
-        batchSelect.innerHTML = `<option value="${filteredBatches[0].id}" selected>Batch: ${filteredBatches[0].batch_no} | Exp: ${filteredBatches[0].exp_date || 'N/A'} | MRP: ₹${filteredBatches[0].mrp || 0}</option>`;
-        batchSelect.disabled = true;
-      } else {
-        // Show batch selector if multiple batches
-        batchContainer.style.display = 'block';
-        batchSelect.innerHTML = '<option value="">-- Select Batch --</option>' + 
-          filteredBatches.map((b) => `
-            <option value="${b.id}">
-              Batch: ${b.batch_no} | Exp: ${b.exp_date || 'N/A'} | MRP: ₹${b.mrp || 0}
-            </option>
-          `).join('');
-        batchSelect.disabled = false;
+        confirmBtn.disabled = true;
+        return;
       }
+      const resolvedVariantIndex = Number.isInteger(variantIndex) ? variantIndex : Number(rawVariantIndex ?? initialVariantIndex);
+      const filteredBatches = getBatchesForVariant(resolvedVariantIndex);
+      const preferredBatchIndex = editing && resolvedVariantIndex === currentVariantIndex
+        ? filteredBatches.findIndex(batch => String(batch.id) === String(item.batch_id))
+        : -1;
+      batchSelect.innerHTML = filteredBatches.length
+        ? filteredBatches.map((batch, index) => {
+          const batchNo = batch.batch_no || batch.batchNo || `Batch ${index + 1}`;
+          const batchId = batch.id ?? index;
+          return `<option value="${index}" ${index === (preferredBatchIndex >= 0 ? preferredBatchIndex : 0) ? 'selected' : ''}>${Utils.escapeHtml(batchNo)} · Exp ${Utils.escapeHtml(formatExpiry(batch.exp_date || batch.expiryDate))} · MRP ₹${Number(batch.mrp || 0).toFixed(2)}</option>`;
+        }).join('')
+        : '<option value="">No batches available</option>';
+      batchSelect.disabled = filteredBatches.length === 0;
+      confirmBtn.disabled = !filteredBatches.length;
     };
     
     // Initial setup - if single variant, populate batches
-    if (variants.length === 1) {
-      updateBatchOptions(variants[0].id);
-      variantSelect.value = variants[0].id;
+    if (initialVariantIndex >= 0) {
+      if (variantSelect) variantSelect.value = String(initialVariantIndex);
+      updateBatchOptions(initialVariantIndex);
     } else {
-      // If multiple variants, hide batch container until one is selected
-      batchContainer.style.display = 'none';
+      batchSelect.innerHTML = '<option value="">-- Select a variant first --</option>';
+      batchSelect.disabled = true;
+      confirmBtn.disabled = true;
     }
     
     // Listen to variant changes
     if (variantSelect && variantSelect.tagName === 'SELECT') {
-      variantSelect.addEventListener('change', (e) => {
-        updateBatchOptions(e.target.value);
+      variantSelect.addEventListener('change', () => {
+        updateBatchOptions(Number(variantSelect.value));
       });
     }
     
@@ -2694,29 +2771,51 @@ class OrdersView {
       modal.remove();
     });
     
-    confirmBtn?.addEventListener('click', () => {
-      let variantId = null;
-      let batchId = null;
-      
-      // Get variant ID
-      if (variantSelect) {
-        const val = variantSelect.value || variantSelect.getAttribute('value');
-        variantId = val ? parseInt(val) : null;
-      }
-      
-      // Get batch ID
-      if (batchSelect) {
-        const val = batchSelect.value || batchSelect.getAttribute('value');
-        batchId = val ? parseInt(val) : null;
-      }
-      
-      // If no selection made for required fields, show error
-      if ((variants.length > 1 && !variantId) || !batchId) {
+    confirmBtn?.addEventListener('click', async () => {
+      const variantIndex = variantSelect ? Number(variantSelect.value) : initialVariantIndex;
+      const selectedVariant = variants[variantIndex] || null;
+      const selectedBatches = getBatchesForVariant(variantIndex);
+      const selectedBatch = selectedBatches[Number(batchSelect.value)] || null;
+
+      if ((variants.length && !selectedVariant) || !selectedBatch) {
         this.showNotification('Please select variant and batch', 'error');
         return;
       }
-      
-      this.addProductToOrder(product, variantId, batchId);
+
+      if (editing) {
+        const selectedVariantLabel = selectedVariant ? getVariantLabel(selectedVariant) : '';
+        const selectedBatchNo = selectedBatch.batch_no || selectedBatch.batchNo || '';
+        const currentVariantLabel = `${item.pack_size_value || ''} ${item.pack_size_type || ''}`.trim();
+        const unchanged = String(selectedVariant?.id ?? '') === String(item.variant_id ?? '') &&
+          selectedVariantLabel === currentVariantLabel &&
+          String(selectedBatch.id ?? '') === String(item.batch_id ?? '') &&
+          selectedBatchNo === String(item.batch_no || '');
+        if (unchanged) {
+          modal.remove();
+          return;
+        }
+        const changeDescription = options.allowVariantChange === false
+          ? `batch from ${item.batch_no || 'N/A'} to ${selectedBatchNo}`
+          : `variant/batch from ${currentVariantLabel || 'current variant'} / ${item.batch_no || 'N/A'} to ${selectedVariantLabel} / ${selectedBatchNo}`;
+        if (!confirm(`Change ${item.product_name || product.name} ${changeDescription}?`)) return;
+
+        item.variant_id = selectedVariant?.id ?? null;
+        item.pack_size_value = selectedVariant?.pack_size_value ?? selectedVariant?.packSizeValue ?? item.pack_size_value ?? '';
+        item.pack_size_type = selectedVariant?.pack_size_type ?? selectedVariant?.packSizeType ?? item.pack_size_type ?? '';
+        item.batch_id = selectedBatch.id ?? null;
+        item.batch_no = selectedBatch.batch_no || selectedBatch.batchNo || '';
+        item.mrp = Number(selectedBatch.mrp || 0);
+        item.price = item.mrp;
+        item.unit_price = item.mrp;
+        this.saveOrderDraft();
+        modal.remove();
+        await this.saveOrder(true);
+        this.renderCurrentStage();
+        this.showNotification(options.allowVariantChange === false ? 'Batch updated' : `Variant updated to ${selectedVariantLabel}`, 'success');
+        return;
+      }
+
+      this.addProductToOrder(product, selectedVariant?.id, selectedBatch.id);
       modal.remove();
     });
     
@@ -3000,10 +3099,10 @@ class OrdersView {
           return `
           <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="flex:1; min-width:140px;">
-              <div style="font-weight:600; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+              <div class="order-item-product-name" data-idx="${idx}" title="Double-click to open in Product List" style="font-weight:600; word-break:break-word; line-height:1.3; cursor:pointer;">${Utils.escapeHtml(item.product_name || 'Unknown')}</div>
               <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
-                ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
-                <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                ${variantDisplay ? `<span class="order-item-variant" data-idx="${idx}" title="Double-click to change variant" style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px; cursor:pointer;">${Utils.escapeHtml(variantDisplay)}</span>` : ''}
+                <span class="order-item-batch" data-idx="${idx}" title="Double-click to change batch" style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px; cursor:pointer;">Batch: ${Utils.escapeHtml(batchDisplay)}</span>
                 <span style="font-size:10px; font-weight:600; color:#444;">₹${price}</span>
                 <button type="button" class="item-note-btn" data-idx="${idx}" title="Write note about this product" style="padding:1px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                   📝 + Note
@@ -3029,6 +3128,7 @@ class OrdersView {
     `;
 
     // Event handlers
+    this.bindOrderItemQuickActions(container);
     container.querySelectorAll('.item-note-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.idx);
@@ -3118,17 +3218,19 @@ class OrdersView {
                       <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px; flex-shrink:0;" />
                       <div style="flex:1; min-width:0;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                          <div style="font-weight:600; word-break:break-word; line-height:1.3; min-width:0;">${item.product_name || 'Unknown'}</div>
+                          <div class="order-item-product-name" data-idx="${idx}" title="Double-click to open in Product List" style="font-weight:600; word-break:break-word; line-height:1.3; min-width:0; cursor:pointer;">${Utils.escapeHtml(item.product_name || 'Unknown')}</div>
                           <button type="button" class="stage2-item-note-btn" data-idx="${idx}" title="Write QC note about this product" style="padding:2px 7px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:3px; cursor:pointer; font-size:10px; font-weight:600; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; flex-shrink:0;">
                             📝 + Note
                           </button>
                         </div>
                         <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:4px 0 2px;">
-                          ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">Variant: ${variantDisplay}</span>` : ''}
-                          <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          ${variantDisplay ? `<span class="order-item-variant" data-idx="${idx}" title="Double-click to change variant" style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px; cursor:pointer;">Variant: ${Utils.escapeHtml(variantDisplay)}</span>` : ''}
+                          <span class="order-item-batch" data-idx="${idx}" title="Double-click to change batch" style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px; cursor:pointer;">Batch: ${Utils.escapeHtml(batchDisplay)}</span>
                           <span style="font-size:9px; color:#000000; font-weight:600;">MRP: ₹${parseFloat(item.mrp || item.unit_price || item.price || 0).toFixed(2)}</span>
                         </div>
-                        <div style="font-size:10px; color:#666; margin:4px 0 2px;">Received: <span data-received-count="${idx}">${receivedQuantity}</span> / ${expectedQuantity} units</div>
+                        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:10px;color:#666;margin:4px 0 2px;">
+                          <span>Expected: <span class="expected-qty-display" data-idx="${idx}" title="Double-click to edit expected quantity" style="padding:1px 4px;border-bottom:1px dotted #666;cursor:pointer;color:#222;font-weight:700;">${expectedQuantity}</span> units | Received: <span data-received-count="${idx}">${receivedQuantity}</span></span>
+                        </div>
                         <label for="receivedQty-${idx}" style="font-size:10px; color:#555;">Scan once per unit or enter received quantity</label>
                         <input type="number" id="receivedQty-${idx}" class="received-qty" data-idx="${idx}" value="${receivedQuantity}" placeholder="${expectedQuantity}" min="0" max="${expectedQuantity}" step="any" style="width:100%; box-sizing:border-box; padding:4px; margin-top:4px; border:1px solid #ddd; border-radius:2px;" />
                       </div>
@@ -3173,6 +3275,67 @@ class OrdersView {
     `;
 
     // Smart checklist logic
+    this.bindOrderItemQuickActions(container);
+    container.querySelectorAll('.expected-qty-display').forEach(display => {
+      display.addEventListener('dblclick', () => {
+        const index = Number(display.dataset.idx);
+        const item = this.currentOrderData.items[index];
+        if (!item) return;
+
+        const currentExpected = Number(item.qty ?? item.quantity ?? 0);
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.step = 'any';
+        input.value = String(currentExpected);
+        input.setAttribute('aria-label', `Expected quantity for ${item.product_name || 'item'}`);
+        input.style.cssText = 'width:64px;box-sizing:border-box;padding:3px;border:1px solid #555;border-radius:2px;';
+        display.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const restoreDisplay = () => {
+          if (input.isConnected) input.replaceWith(display);
+        };
+        input.addEventListener('keydown', event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            input.blur();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            input.value = String(currentExpected);
+            restoreDisplay();
+          }
+        });
+        input.addEventListener('blur', restoreDisplay, { once: true });
+        input.addEventListener('change', async () => {
+          const nextExpected = Number(input.value);
+          if (!Number.isFinite(nextExpected) || nextExpected < 1) {
+            this.showNotification('Expected quantity must be at least 1', 'warning');
+            input.value = String(currentExpected);
+            return;
+          }
+          if (nextExpected === currentExpected) return;
+
+          const itemName = item.product_name || 'this item';
+          if (!confirm(`Change expected quantity for ${itemName} from ${currentExpected} to ${nextExpected}?`)) {
+            input.value = String(currentExpected);
+            return;
+          }
+
+          const currentReceived = Number(item.received_quantity ?? item.received_qty ?? 0);
+          item.qty = nextExpected;
+          item.quantity = nextExpected;
+          item.received_quantity = clampQcReceivedQuantity(currentReceived, nextExpected);
+          const checklist = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
+          checklist[index] = item.received_quantity >= nextExpected;
+          this.saveOrderDraft();
+          await this.saveOrder(true);
+          this.renderCurrentStage();
+          this.showNotification(`Expected quantity updated for ${itemName}`, 'success');
+        });
+      });
+    });
     container.querySelectorAll('.item-check').forEach(checkbox => {
       checkbox.addEventListener('change', () => {
         const idx = parseInt(checkbox.dataset.idx);
@@ -3893,10 +4056,10 @@ class OrdersView {
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
                       <div style="flex:1; min-width:140px;">
-                        <div style="font-weight:600; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+                        <div class="order-item-product-name" data-idx="${globalIdx}" title="Double-click to open in Product List" style="font-weight:600; word-break:break-word; line-height:1.3; cursor:pointer;">${Utils.escapeHtml(item.product_name || 'Unknown')}</div>
                         <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
-                          ${variantDisplay ? `<span style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
-                          <span style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          ${variantDisplay ? `<span class="order-item-variant" data-idx="${globalIdx}" title="Double-click to change variant" style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px; cursor:pointer;">${Utils.escapeHtml(variantDisplay)}</span>` : ''}
+                          <span class="order-item-batch" data-idx="${globalIdx}" title="Double-click to change batch" style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px; cursor:pointer;">Batch: ${Utils.escapeHtml(batchDisplay)}</span>
                           <span style="font-size:10px; color:#666;">Ordered: ${qty} | Received: ${received}</span>
                           <button type="button" class="stage3-item-note-btn" data-idx="${globalIdx}" title="Write note about this product" style="padding:1px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                             📝 + Note
@@ -3924,10 +4087,10 @@ class OrdersView {
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; opacity: 0.85;">
                       <div style="flex:1; min-width:140px;">
-                        <div style="font-weight:600; color: #888; word-break:break-word; line-height:1.3;">${item.product_name || 'Unknown'}</div>
+                        <div class="order-item-product-name" data-idx="${globalIdx}" title="Double-click to open in Product List" style="font-weight:600; color: #888; word-break:break-word; line-height:1.3; cursor:pointer;">${Utils.escapeHtml(item.product_name || 'Unknown')}</div>
                         <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
-                          ${variantDisplay ? `<span style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px;">${variantDisplay}</span>` : ''}
-                          <span style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px;">Batch: ${batchDisplay}</span>
+                          ${variantDisplay ? `<span class="order-item-variant" data-idx="${globalIdx}" title="Double-click to change variant" style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px; cursor:pointer;">${Utils.escapeHtml(variantDisplay)}</span>` : ''}
+                          <span class="order-item-batch" data-idx="${globalIdx}" title="Double-click to change batch" style="font-size:9px; color:#aaa; background:#f5f5f5; padding:1px 5px; border-radius:2px; cursor:pointer;">Batch: ${Utils.escapeHtml(batchDisplay)}</span>
                           <span style="font-size:10px; color:#aaa;">Ordered: ${qty} | Received: 0</span>
                           <button type="button" class="stage3-not-received-note-btn" data-idx="${globalIdx}" title="Write note about this unreceived product" style="padding:1px 6px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                             📝 + Note
@@ -4034,6 +4197,7 @@ class OrdersView {
     });
 
     const input = document.getElementById('billRefInput');
+    this.bindOrderItemQuickActions(container);
     if (input) {
       input.addEventListener('input', (e) => {
         this.currentOrderData.auto_matched = false;

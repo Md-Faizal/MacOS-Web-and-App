@@ -20,7 +20,14 @@ class BillingDashboard {
     this.avgStartDateVal = localStorage.getItem('dashboard_avg_start') || '';
     this.avgEndDateVal = localStorage.getItem('dashboard_avg_end') || '';
 
-    // Load widget layout config
+    this.salesView = localStorage.getItem('dashboard_sales_view') || 'monthly';
+    this.salesWindowOffset = 0;
+    this.salesSelectedIndex = null;
+    this.averageSelectedIndex = null;
+    this.chartTimelines = {
+      throughput: { period: 'monthly', offset: 0, selectedIndex: null },
+      paymentMethods: { period: 'monthly', offset: 0, selectedIndex: null }
+    };
     const savedLayout = localStorage.getItem('dashboard_widget_layout');
     if (savedLayout) {
       try {
@@ -46,14 +53,13 @@ class BillingDashboard {
   get billingData() {
     return this.billingApp?.billingData || this._billingData || { bills: [], payments: [], contacts: [], reminders: [] };
   }
+
   set billingData(val) {
     this._billingData = val;
   }
 
   getScopedData() {
-    if (this.billingApp?.getScopedBillingData) {
-      return this.billingApp.getScopedBillingData();
-    }
+    if (this.billingApp?.getScopedBillingData) return this.billingApp.getScopedBillingData();
     return {
       contacts: this.billingData.contacts || [],
       bills: this.billingData.bills || [],
@@ -70,7 +76,6 @@ class BillingDashboard {
    * Render the main dashboard view with dynamic widget layout order and Drag & Drop Customisation
    */
   async render() {
-    // Reload layout configuration from localStorage to ensure it is fresh
     const savedLayout = localStorage.getItem('dashboard_widget_layout');
     if (savedLayout) {
       try {
@@ -82,7 +87,6 @@ class BillingDashboard {
       this.setDefaultLayout();
     }
 
-    // Build the "Re-add widgets" panel if in edit mode and there are hidden widgets
     let readdPanelHTML = '';
     if (window.dashboardEditMode) {
       const hiddenWidgets = this.widgetLayout.filter(w => !w.visible);
@@ -95,9 +99,7 @@ class BillingDashboard {
         readdPanelHTML = `
           <div class="readd-widgets-panel" style="padding: 14px; background: rgba(255, 255, 255, 0.02); border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 6px; margin-bottom: 20px; font-family: 'Courier New', monospace;">
             <div style="font-size: 10px; font-weight: bold; color: #888888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">✙ Re-add Removed Tiles</div>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${buttons}
-            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">${buttons}</div>
           </div>
         `;
       }
@@ -301,14 +303,10 @@ class BillingDashboard {
     }
   }
 
-  /**
-   * Update the dynamic top bar with current time and date
-   */
   updateTopBar() {
     const container = document.getElementById('topbarActions');
     if (!container) return;
 
-    // Single toggle button to open quick actions sidebar and customize layout reordering
     container.innerHTML = `
       <button id="customizeLayoutBtn" class="topbar-action-btn" style="margin-right: 8px; border-color: ${window.dashboardEditMode ? '#10b981' : '#ffffff'}; color: ${window.dashboardEditMode ? '#10b981' : '#ffffff'};" onclick="window.currentDashboard.toggleEditMode()">
         <span>${window.dashboardEditMode ? '✔' : '⚙'}</span><span>${window.dashboardEditMode ? ' Save Layout' : ' Customize Layout'}</span>
@@ -318,8 +316,7 @@ class BillingDashboard {
       </button>
     `;
 
-    // Prepare sidebar content
-    const actions = [
+    this.renderQuickActionsSidebar([
       { label: '+ Make Bill', action: 'makeBill', icon: '✎' },
       { label: '✏ Edit Bill', action: 'editBill', icon: '✏' },
       { label: '💰 Make Payment', action: 'makePayment', icon: '✓' },
@@ -327,9 +324,216 @@ class BillingDashboard {
       { label: '🧾 New Orders', action: 'ordersView', icon: '█' },
       { label: '📊 Ledger View', action: 'ledgerView', icon: '█' },
       { label: '📈 Analytics', action: 'analytics', icon: '◆' }
-    ];
+    ]);
+  }
 
-    this.renderQuickActionsSidebar(actions);
+  getTimelineRange(period, offset = 0) {
+    const now = new Date();
+    if (period === 'monthly') {
+      const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+      return { start, end, label: start.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) };
+    }
+    if (period === 'quarterly') {
+      const quarterIndex = now.getFullYear() * 4 + Math.floor(now.getMonth() / 3) - offset;
+      const year = Math.floor(quarterIndex / 4);
+      const quarter = ((quarterIndex % 4) + 4) % 4;
+      const startMonth = quarter * 3;
+      const start = new Date(year, startMonth, 1);
+      const end = new Date(year, startMonth + 3, 1);
+      const endMonth = new Date(year, startMonth + 2, 1);
+      const label = `${start.toLocaleDateString('en-IN', { month: 'short' })}–${endMonth.toLocaleDateString('en-IN', { month: 'short' })} ${year}`;
+      return { start, end, label };
+    }
+
+    const currentFyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const fyStart = currentFyStart - offset;
+    return {
+      start: new Date(fyStart, 3, 1),
+      end: new Date(fyStart + 1, 3, 1),
+      label: `FY ${fyStart}–${String(fyStart + 1).slice(-2)}`
+    };
+  }
+
+  getTimelineMaxOffset(records, dateSelector, period) {
+    const dates = records
+      .map(record => this.parseDate(dateSelector(record)))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    if (!dates.length) return 0;
+
+    const earliest = dates[0];
+    const currentRange = this.getTimelineRange(period, 0);
+    if (period === 'monthly') {
+      return Math.max(0, (currentRange.start.getFullYear() - earliest.getFullYear()) * 12 + currentRange.start.getMonth() - earliest.getMonth());
+    }
+    if (period === 'quarterly') {
+      return Math.max(0, Math.floor((currentRange.start.getFullYear() - earliest.getFullYear()) * 12 / 3) + Math.floor(currentRange.start.getMonth() / 3) - Math.floor(earliest.getMonth() / 3));
+    }
+    const earliestFy = earliest.getMonth() >= 3 ? earliest.getFullYear() : earliest.getFullYear() - 1;
+    const currentFy = currentRange.start.getFullYear();
+    return Math.max(0, currentFy - earliestFy);
+  }
+
+  getSalesTimeline(period, bills, offset = 0) {
+    const count = period === 'monthly' ? 6 : (period === 'quarterly' ? 4 : 3);
+    const ranges = this.getTimelineRanges(period, offset, count);
+    return ranges.map((range, index) => {
+      const previousRange = this.getTimelineRange(period, offset + ranges.length - index);
+      const sumRange = ({ start, end }) => bills.reduce((sum, bill) => {
+        const date = this.parseDate(bill.bill_date || bill.created_at);
+        return date && date >= start && date < end ? sum + Number(bill.total || 0) : sum;
+      }, 0);
+      const value = sumRange(range);
+      const previousValue = sumRange(previousRange);
+      return {
+        label: range.label,
+        start: range.start,
+        end: range.end,
+        value,
+        change: previousValue > 0 ? ((value - previousValue) / previousValue) * 100 : 0,
+        hasPrev: previousValue > 0
+      };
+    });
+  }
+
+  getTimelineRanges(period, offset, count) {
+    const ranges = [];
+    for (let index = count - 1; index >= 0; index--) {
+      ranges.push(this.getTimelineRange(period, offset + index));
+    }
+    return ranges;
+  }
+
+  renderTimelineControlsMarkup(key, records, dateSelector) {
+    const state = this.chartTimelines[key];
+    const count = state.period === 'monthly' ? 6 : (state.period === 'quarterly' ? 4 : 3);
+    const maxOffset = this.getTimelineMaxOffset(records, dateSelector, state.period);
+    const ranges = this.getTimelineRanges(state.period, state.offset, count);
+    state.selectedIndex = Math.min(state.selectedIndex ?? count - 1, count - 1);
+    const selectedRange = ranges[state.selectedIndex];
+
+    return `
+      <div class="chart-timeline-nav">
+        <select class="chart-period-select" aria-label="Timeline period" onchange="window.currentDashboard.setChartTimelinePeriod('${key}', this.value)">
+          <option value="monthly" ${state.period === 'monthly' ? 'selected' : ''}>Monthly</option>
+          <option value="quarterly" ${state.period === 'quarterly' ? 'selected' : ''}>Quarterly</option>
+          <option value="yearly" ${state.period === 'yearly' ? 'selected' : ''}>Yearly</option>
+        </select>
+        <button type="button" class="timeline-arrow" aria-label="Show older periods" onclick="window.currentDashboard.shiftChartTimeline('${key}', 1)" ${state.offset >= maxOffset ? 'disabled' : ''}>‹</button>
+        <span class="chart-timeline-range">${selectedRange.label}</span>
+        <button type="button" class="timeline-arrow" aria-label="Show newer periods" onclick="window.currentDashboard.shiftChartTimeline('${key}', -1)" ${state.offset <= 0 ? 'disabled' : ''}>›</button>
+      </div>
+      <div class="chart-timeline-control">
+        <label for="${key}TimelineScrubber">Period</label>
+        <input type="range" id="${key}TimelineScrubber" class="chart-period-scrubber" min="0" max="${count - 1}" value="${state.selectedIndex}" step="1" aria-label="Scrub ${key} timeline" oninput="window.currentDashboard.selectChartTimelinePoint('${key}', this.value)">
+        <span class="chart-scrubber-label">${selectedRange.label}</span>
+      </div>`;
+  }
+
+  setChartTimelinePeriod(key, period) {
+    const state = this.chartTimelines[key];
+    if (!state || !['monthly', 'quarterly', 'yearly'].includes(period)) return;
+    state.period = period;
+    state.offset = 0;
+    state.selectedIndex = null;
+    this.renderCurrentDoughnutCharts();
+  }
+
+  shiftChartTimeline(key, offsetDelta) {
+    const state = this.chartTimelines[key];
+    if (!state) return;
+    const data = this.getScopedData();
+    const records = key === 'throughput' ? data.orders : data.payments;
+    const selector = key === 'throughput'
+      ? record => record.order_date || record.created_at
+      : record => record.payment_date || record.created_at;
+    const maxOffset = this.getTimelineMaxOffset(records, selector, state.period);
+    state.offset = Math.min(maxOffset, Math.max(0, state.offset + offsetDelta));
+    state.selectedIndex = null;
+    this.renderCurrentDoughnutCharts();
+  }
+
+  selectChartTimelinePoint(key, value) {
+    const state = this.chartTimelines[key];
+    if (!state) return;
+    state.selectedIndex = Number(value);
+    const count = state.period === 'monthly' ? 6 : (state.period === 'quarterly' ? 4 : 3);
+    const selectedRange = this.getTimelineRanges(state.period, state.offset, count)[state.selectedIndex];
+    if (!selectedRange) return;
+
+    const card = document.getElementById(key === 'throughput' ? 'chart-order-throughput' : 'chart-payment-methods')?.closest('.chart-card');
+    const rangeLabel = card?.querySelector('.chart-timeline-range');
+    const scrubberLabel = card?.querySelector('.chart-scrubber-label');
+    if (rangeLabel) rangeLabel.textContent = selectedRange.label;
+    if (scrubberLabel) scrubberLabel.textContent = selectedRange.label;
+
+    if (key === 'throughput' && this.throughputChart) {
+      const { orders } = this.getScopedData();
+      const filteredOrders = orders.filter(order => {
+        const date = this.parseDate(order.order_date || order.created_at);
+        return date && date >= selectedRange.start && date < selectedRange.end;
+      });
+      this.throughputChart.data.datasets[0].data = [
+        filteredOrders.filter(order => order.current_stage === 'stage1').length,
+        filteredOrders.filter(order => order.current_stage === 'stage2').length,
+        filteredOrders.filter(order => order.current_stage === 'stage3' || order.status === 'complete').length
+      ];
+      this.throughputChart.update();
+    } else if (key === 'paymentMethods' && this.paymentMethodsChart) {
+      const { payments } = this.getScopedData();
+      const totals = new Map();
+      payments.forEach(payment => {
+        const date = this.parseDate(payment.payment_date || payment.created_at);
+        if (!date || date < selectedRange.start || date >= selectedRange.end) return;
+        const method = payment.payment_medium || 'Other';
+        totals.set(method, (totals.get(method) || 0) + Number(payment.amount || payment.credit_amount || 0));
+      });
+      const labels = Array.from(totals.keys());
+      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+      this.paymentMethodsChart.data.labels = labels;
+      this.paymentMethodsChart.data.datasets[0].data = Array.from(totals.values());
+      this.paymentMethodsChart.data.datasets[0].backgroundColor = labels.map((_, index) => colors[index % colors.length]);
+      this.paymentMethodsChart.update();
+    }
+  }
+
+  renderCurrentDoughnutCharts() {
+    const { bills, payments, orders } = this.getScopedData();
+    this.renderDoughnutCharts(bills, payments, orders);
+  }
+
+  selectSalesPoint(index, chart = this.salesChart) {
+    const point = this.salesVisiblePoints?.[index];
+    if (!point) return;
+    this.salesSelectedIndex = index;
+    const valueEl = document.getElementById('salesSelectedValue');
+    const labelEl = document.getElementById('salesSelectedLabel');
+    const changeEl = document.getElementById('salesSelectedChange');
+    const scrubber = document.getElementById('salesTimelineScrubber');
+    const scrubberLabel = document.getElementById('salesTimelineScrubberLabel');
+    if (valueEl) valueEl.textContent = this.formatINR(point.value);
+    if (labelEl) labelEl.textContent = `Period: ${point.label}`;
+    if (scrubber) scrubber.value = String(index);
+    if (scrubberLabel) scrubberLabel.textContent = point.label;
+    if (changeEl) {
+      const changeClass = point.change > 0 ? 'positive' : (point.change < 0 ? 'negative' : 'neutral');
+      const changeSign = point.change > 0 ? '↑' : (point.change < 0 ? '↓' : '→');
+      changeEl.className = `card-change ${changeClass}`;
+      changeEl.textContent = point.hasPrev ? `${changeSign} ${Math.abs(point.change).toFixed(1)}% from previous period` : '→ No previous period data';
+    }
+    if (chart) {
+      chart.selectedPeriodIndex = index;
+      chart.update();
+    }
+  }
+
+  shiftSalesTimeline(offsetDelta) {
+    const { bills } = this.getScopedData();
+    const maxOffset = this.getTimelineMaxOffset(bills, bill => bill.bill_date || bill.created_at, this.salesView);
+    this.salesWindowOffset = Math.min(maxOffset, Math.max(0, this.salesWindowOffset + offsetDelta));
+    this.salesSelectedIndex = null;
+    this.renderSalesMetrics();
   }
 
   /**
@@ -396,13 +600,16 @@ class BillingDashboard {
   /**
    * Main render function to populate all dashboard sections
    */
-  async renderDashboard() {
+  async renderDashboard({ skipDataLoad = false } = {}) {
+    this.setDashboardLoading(true);
     try {
       window.currentBillingApp = this.billingApp;
       window.currentDashboard = this;  // Store dashboard instance for method calls
 
+      if (this.billingApp.isInitialDataLoading) return;
+
       // Ensure data is fresh
-      if (this.billingApp.apiEnabled) {
+      if (!skipDataLoad && this.billingApp.apiEnabled) {
         await this.billingApp.loadBillingDataFromAPI();
       }
 
@@ -445,6 +652,28 @@ class BillingDashboard {
     } catch (error) {
       console.error('Error rendering dashboard:', error);
       this.viewContainer.innerHTML = `<div style="padding: 24px; color: #ef4444;">Error loading dashboard: ${error.message}</div>`;
+    } finally {
+      if (!this.billingApp.isInitialDataLoading) {
+        this.setDashboardLoading(false);
+      }
+    }
+  }
+
+  setDashboardLoading(isLoading) {
+    const container = this.viewContainer?.querySelector('.dashboard-container');
+    if (!container) return;
+
+    container.setAttribute('aria-busy', String(isLoading));
+    let loader = container.querySelector('.dashboard-loading');
+    if (isLoading && !loader) {
+      loader = document.createElement('div');
+      loader.className = 'dashboard-loading';
+      loader.setAttribute('role', 'status');
+      loader.setAttribute('aria-live', 'polite');
+      loader.innerHTML = '<span class="dashboard-loading-spinner" aria-hidden="true"></span><span>Loading billing dashboard</span>';
+      container.appendChild(loader);
+    } else if (!isLoading && loader) {
+      loader.remove();
     }
   }
 
@@ -1313,74 +1542,49 @@ class BillingDashboard {
 
     const metrics = this.calculateSalesMetrics(bills, payments, contacts);
 
-    // Store current view (default to monthly)
-    window.currentSalesView = window.currentSalesView || 'monthly';
-
-    const now = new Date();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    // Current Monthly Label
-    const currentMonthLabel = `${months[now.getMonth()]} ${now.getFullYear()}`;
-
-    // Current Quarterly Label
-    const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
-    const currentQuarterLabel = `${months[qStartMonth]}-${months[qStartMonth + 2]} ${now.getFullYear()}`;
-
-    // Current Yearly Label (financial year format: e.g., 2026-2027)
-    const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-    const currentYearlyLabel = `${fyStart}-${fyStart + 1}`;
-
-    const salesData = {
-      monthly: {
-        title: 'Monthly Sales',
-        periodLabel: currentMonthLabel,
-        value: this.formatINR(metrics.monthlySales),
-        change: metrics.monthlyChange,
-        icon: '📅',
-        type: 'monthly'
-      },
-      quarterly: {
-        title: 'Quarterly Sales',
-        periodLabel: currentQuarterLabel,
-        value: this.formatINR(metrics.quarterlySales),
-        change: metrics.quarterlyChange,
-        icon: '📊',
-        type: 'quarterly'
-      },
-      yearly: {
-        title: 'Yearly Sales',
-        periodLabel: currentYearlyLabel,
-        value: this.formatINR(metrics.yearlySales),
-        change: metrics.yearlyChange,
-        icon: '📈',
-        type: 'yearly'
-      }
-    };
-
-    const currentMetric = salesData[window.currentSalesView];
-    const changeClass = currentMetric.change > 0 ? 'positive' : (currentMetric.change < 0 ? 'negative' : 'neutral');
-    const changeSign = currentMetric.change > 0 ? '↑' : (currentMetric.change < 0 ? '↓' : '→');
+    this.salesView = ['monthly', 'quarterly', 'yearly'].includes(this.salesView) ? this.salesView : 'monthly';
+    window.currentSalesView = this.salesView;
+    const salesPoints = this.getSalesTimeline(this.salesView, bills, this.salesWindowOffset);
+    this.salesSelectedIndex = Math.min(this.salesSelectedIndex ?? salesPoints.length - 1, salesPoints.length - 1);
+    this.salesVisiblePoints = salesPoints;
+    const selectedPoint = salesPoints[this.salesSelectedIndex] || { label: 'No data', value: 0, change: 0, hasPrev: false };
+    const salesConfig = {
+      monthly: { title: 'Monthly Sales', icon: '📅' },
+      quarterly: { title: 'Quarterly Sales', icon: '📊' },
+      yearly: { title: 'Yearly Sales', icon: '📈' }
+    }[this.salesView];
+    const changeClass = selectedPoint.change > 0 ? 'positive' : (selectedPoint.change < 0 ? 'negative' : 'neutral');
+    const changeSign = selectedPoint.change > 0 ? '↑' : (selectedPoint.change < 0 ? '↓' : '→');
+    const maxSalesOffset = this.getTimelineMaxOffset(bills, bill => bill.bill_date || bill.created_at, this.salesView);
+    const firstPoint = salesPoints[0];
+    const lastPoint = salesPoints[salesPoints.length - 1];
 
     // Create switchable sales card
     let html = `
       <div class="floating-card chart-card sales-switchable-card">
         <div class="card-header">
-          <span class="card-icon">${currentMetric.icon}</span>
-          <span class="card-title">${currentMetric.title}</span>
+          <span class="card-icon">${salesConfig.icon}</span>
+          <span class="card-title">${salesConfig.title}</span>
         </div>
-        
         <div class="sales-period-switcher">
-          <button class="period-btn ${window.currentSalesView === 'monthly' ? 'active' : ''}" onclick="window.currentDashboard.switchSalesPeriod('monthly')">Monthly</button>
-          <button class="period-btn ${window.currentSalesView === 'quarterly' ? 'active' : ''}" onclick="window.currentDashboard.switchSalesPeriod('quarterly')">Quarterly</button>
-          <button class="period-btn ${window.currentSalesView === 'yearly' ? 'active' : ''}" onclick="window.currentDashboard.switchSalesPeriod('yearly')">Yearly</button>
+          <button class="period-btn ${this.salesView === 'monthly' ? 'active' : ''}" aria-pressed="${this.salesView === 'monthly'}" onclick="window.currentDashboard.switchSalesPeriod('monthly')">Monthly</button>
+          <button class="period-btn ${this.salesView === 'quarterly' ? 'active' : ''}" aria-pressed="${this.salesView === 'quarterly'}" onclick="window.currentDashboard.switchSalesPeriod('quarterly')">Quarterly</button>
+          <button class="period-btn ${this.salesView === 'yearly' ? 'active' : ''}" aria-pressed="${this.salesView === 'yearly'}" onclick="window.currentDashboard.switchSalesPeriod('yearly')">Yearly</button>
         </div>
-
-        <div class="card-value">${currentMetric.value}</div>
-        <div class="card-period-label" style="font-size: 10px; color: #888888; margin-top: -4px; margin-bottom: 8px; font-family: 'Courier New', monospace; text-transform: uppercase;">Period: ${currentMetric.periodLabel}</div>
-        <div class="card-change ${changeClass}">
-          ${changeSign} ${Math.abs(currentMetric.change).toFixed(1)}% from previous period
+        <div class="sales-timeline-nav">
+          <button type="button" class="timeline-arrow" aria-label="Show older sales periods" onclick="window.currentDashboard.shiftSalesTimeline(1)" ${this.salesWindowOffset >= maxSalesOffset ? 'disabled' : ''}>‹</button>
+          <span id="salesTimelineWindow">${firstPoint.label} – ${lastPoint.label}</span>
+          <button type="button" class="timeline-arrow" aria-label="Show newer sales periods" onclick="window.currentDashboard.shiftSalesTimeline(-1)" ${this.salesWindowOffset <= 0 ? 'disabled' : ''}>›</button>
         </div>
+        <div class="card-value" id="salesSelectedValue">${this.formatINR(selectedPoint.value)}</div>
+        <div class="card-period-label" id="salesSelectedLabel">Period: ${selectedPoint.label}</div>
+        <div class="card-change ${changeClass}" id="salesSelectedChange">${selectedPoint.hasPrev ? `${changeSign} ${Math.abs(selectedPoint.change).toFixed(1)}% from previous period` : '→ No previous period data'}</div>
         <div class="chart-container" id="sales-main-chart"></div>
+        <div class="chart-timeline-control">
+          <label for="salesTimelineScrubber">Period</label>
+          <input type="range" id="salesTimelineScrubber" min="0" max="${Math.max(0, salesPoints.length - 1)}" step="1" value="${this.salesSelectedIndex}" aria-label="Scrub sales chart timeline">
+          <span id="salesTimelineScrubberLabel">${selectedPoint.label}</span>
+        </div>
       </div>
     `;
 
@@ -1391,13 +1595,10 @@ class BillingDashboard {
 
     html += `
       <div class="floating-card chart-card avg-bill-card">
-        <div class="card-header" style="display: flex; flex-direction: column; align-items: stretch; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span class="card-icon">💵</span>
-              <span class="card-title">Average Bill</span>
-            </div>
-            <select id="avgChartPreset" class="metrics-select" style="font-size: 10px; padding: 2px 4px;" onchange="window.currentDashboard.handleAvgPresetChange(this.value)">
+        <div class="card-header chart-card-header">
+          <div class="chart-card-title"><span class="card-icon">💵</span><span class="card-title">Average Bill</span></div>
+          <div class="chart-card-options">
+            <select id="avgChartPreset" class="metrics-select" onchange="window.currentDashboard.handleAvgPresetChange(this.value)">
               <option value="7-days">Last 7 Days</option>
               <option value="30-days">Last 30 Days</option>
               <option value="90-days">Last 90 Days</option>
@@ -1406,10 +1607,10 @@ class BillingDashboard {
               <option value="custom">Custom</option>
             </select>
           </div>
-          <div id="avgCustomInputs" class="custom-date-inputs" style="display: ${avgPreset === 'custom' ? 'flex' : 'none'}; justify-content: flex-end; gap: 4px;">
-            <input type="date" id="avgStart" class="date-input" style="font-size: 10px; padding: 2px 4px;" onchange="window.currentDashboard.handleAvgCustomDateChange()">
-            <span class="date-sep" style="font-size: 10px;">to</span>
-            <input type="date" id="avgEnd" class="date-input" style="font-size: 10px; padding: 2px 4px;" onchange="window.currentDashboard.handleAvgCustomDateChange()">
+          <div id="avgCustomInputs" class="custom-date-inputs" style="display: ${avgPreset === 'custom' ? 'flex' : 'none'};">
+            <input type="date" id="avgStart" class="date-input" onchange="window.currentDashboard.handleAvgCustomDateChange()">
+            <span class="date-sep">to</span>
+            <input type="date" id="avgEnd" class="date-input" onchange="window.currentDashboard.handleAvgCustomDateChange()">
           </div>
         </div>
         <div class="card-value" id="avgBillValue">${this.formatINR(metrics.averageBill)}</div>
@@ -1418,22 +1619,27 @@ class BillingDashboard {
         </div>
         <div class="card-date-range" id="avgBillDateRange" style="font-size: 9px; opacity: 0.65; margin-top: 4px; font-family: 'Courier New', monospace;"></div>
         <div class="chart-container" id="chart-avg"></div>
+        <div class="chart-timeline-control">
+          <label for="avgTimelineScrubber">Day</label>
+          <input type="range" id="avgTimelineScrubber" min="0" max="0" value="0" step="1" aria-label="Scrub average bill timeline" oninput="window.currentDashboard.selectAveragePoint(this.value)">
+          <span id="avgTimelineScrubberLabel">No data</span>
+        </div>
       </div>
 
       <div class="floating-card chart-card order-throughput-card">
-        <div class="card-header">
-          <span class="card-icon">📦</span>
-          <span class="card-title">Order Stage Throughput</span>
+        <div class="card-header chart-card-header">
+          <div class="chart-card-title"><span class="card-icon">📦</span><span class="card-title">Order Stage Throughput</span></div>
         </div>
-        <div class="chart-container" id="chart-order-throughput" style="margin-top: 15px; height: 180px;"></div>
+        ${this.renderTimelineControlsMarkup('throughput', orders, order => order.order_date || order.created_at)}
+        <div class="chart-container" id="chart-order-throughput"></div>
       </div>
 
       <div class="floating-card chart-card payment-methods-card">
-        <div class="card-header">
-          <span class="card-icon">💳</span>
-          <span class="card-title">Payment Methods Split</span>
+        <div class="card-header chart-card-header">
+          <div class="chart-card-title"><span class="card-icon">💳</span><span class="card-title">Payment Methods Split</span></div>
         </div>
-        <div class="chart-container" id="chart-payment-methods" style="margin-top: 15px; height: 180px;"></div>
+        ${this.renderTimelineControlsMarkup('paymentMethods', payments, payment => payment.payment_date || payment.created_at)}
+        <div class="chart-container" id="chart-payment-methods"></div>
       </div>
     `;
 
@@ -1451,6 +1657,10 @@ class BillingDashboard {
     if (avgStartEl && this.avgStartDateVal) avgStartEl.value = this.avgStartDateVal;
     if (avgEndEl && this.avgEndDateVal) avgEndEl.value = this.avgEndDateVal;
 
+    document.getElementById('salesTimelineScrubber')?.addEventListener('input', event => {
+      this.selectSalesPoint(Number(event.target.value));
+    });
+
     // Render charts if Chart.js is available
     if (typeof Chart !== 'undefined') {
       this.renderSalesCharts(bills);
@@ -1463,103 +1673,18 @@ class BillingDashboard {
     const chartEl = document.getElementById('sales-main-chart');
     if (!chartEl) return;
 
+    this.salesChart?.destroy();
     chartEl.innerHTML = '';
     const ctx = document.createElement('canvas');
     chartEl.appendChild(ctx);
 
-    const viewType = window.currentSalesView || 'monthly';
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const now = new Date();
+    const viewType = this.salesView;
+    const points = this.getSalesTimeline(viewType, bills, this.salesWindowOffset);
+    const labels = points.map(point => point.label);
+    const data = points.map(point => point.value);
+    const datasetLabel = viewType === 'monthly' ? 'Monthly Sales' : (viewType === 'quarterly' ? 'Quarterly Sales' : 'Yearly Sales');
 
-    let labels = [];
-    let data = [];
-    let datasetLabel = '';
-
-    switch (viewType) {
-      case 'monthly':
-        datasetLabel = 'Monthly Sales';
-        for (let i = 5; i >= 0; i--) {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-          const m = d.getMonth();
-          const y = d.getFullYear();
-          labels.push(`${monthNames[m]} ${y}`);
-
-          const total = bills.reduce((sum, b) => {
-            const bDate = this.parseDate(b.bill_date || b.created_at);
-            if (bDate && bDate.getMonth() === m && bDate.getFullYear() === y) {
-              return sum + (b.total || 0);
-            }
-            return sum;
-          }, 0);
-          data.push(total);
-        }
-        break;
-
-      case 'quarterly':
-        datasetLabel = 'Quarterly Sales';
-        const currentQ = Math.floor(now.getMonth() / 3);
-        const currentY = now.getFullYear();
-
-        for (let i = 3; i >= 0; i--) {
-          let q = currentQ - i;
-          let y = currentY;
-          while (q < 0) {
-            q += 4;
-            y -= 1;
-          }
-          const startMonthIdx = q * 3;
-          labels.push(`${monthNames[startMonthIdx]}-${monthNames[startMonthIdx + 2]} ${y}`);
-
-          const total = bills.reduce((sum, b) => {
-            const bDate = this.parseDate(b.bill_date || b.created_at);
-            if (!bDate) return sum;
-            const bQ = Math.floor(bDate.getMonth() / 3);
-            const bY = bDate.getFullYear();
-            if (bQ === q && bY === y) {
-              return sum + (b.total || 0);
-            }
-            return sum;
-          }, 0);
-          data.push(total);
-        }
-        break;
-
-      case 'yearly':
-        datasetLabel = 'Yearly Sales';
-        const currentFYStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-
-        for (let i = 2; i >= 0; i--) {
-          const fyStart = currentFYStart - i;
-          labels.push(`${fyStart}-${fyStart + 1}`);
-
-          const total = bills.reduce((sum, b) => {
-            const bDate = this.parseDate(b.bill_date || b.created_at);
-            if (!bDate) return sum;
-            const bMonth = bDate.getMonth();
-            const bYear = bDate.getFullYear();
-            const bFY = bMonth >= 3 ? bYear : bYear - 1;
-            if (bFY === fyStart) {
-              return sum + (b.total || 0);
-            }
-            return sum;
-          }, 0);
-          data.push(total);
-        }
-        break;
-    }
-
-    const pointsMetadata = [];
-    for (let i = 0; i < data.length; i++) {
-      const val = data[i];
-      const prevVal = i > 0 ? data[i - 1] : null;
-      const change = (prevVal !== null && prevVal > 0) ? ((val - prevVal) / prevVal) * 100 : 0;
-      pointsMetadata.push({
-        label: labels[i],
-        value: val,
-        change: change,
-        hasPrev: prevVal !== null
-      });
-    }
+    this.salesVisiblePoints = points;
 
     const chartConfig = {
       type: viewType === 'quarterly' ? 'bar' : (viewType === 'yearly' ? 'bar' : 'line'),
@@ -1569,7 +1694,7 @@ class BillingDashboard {
           label: datasetLabel,
           data: data,
           borderColor: '#000000',
-          backgroundColor: viewType === 'line' ? 'rgba(0, 0, 0, 0.05)' : (context) => {
+          backgroundColor: viewType === 'monthly' ? 'rgba(0, 0, 0, 0.05)' : (context) => {
             const chart = context.chart;
             const index = context.dataIndex;
             const isSelected = chart.selectedPeriodIndex !== undefined
@@ -1604,30 +1729,7 @@ class BillingDashboard {
         maintainAspectRatio: false,
         onClick: (event, elements, chart) => {
           if (elements && elements.length > 0) {
-            const index = elements[0].index;
-            chart.selectedPeriodIndex = index;
-
-            const meta = pointsMetadata[index];
-
-            const valEl = document.querySelector('.sales-switchable-card .card-value');
-            const labelEl = document.querySelector('.sales-switchable-card .card-period-label');
-            const changeEl = document.querySelector('.sales-switchable-card .card-change');
-
-            if (valEl) valEl.innerText = this.formatINR(meta.value);
-            if (labelEl) labelEl.innerText = `Period: ${meta.label}`;
-            if (changeEl) {
-              if (!meta.hasPrev) {
-                changeEl.className = 'card-change neutral';
-                changeEl.innerText = '→ No previous period data';
-              } else {
-                const changeClass = meta.change > 0 ? 'positive' : (meta.change < 0 ? 'negative' : 'neutral');
-                const changeSign = meta.change > 0 ? '↑' : (meta.change < 0 ? '↓' : '→');
-                changeEl.className = `card-change ${changeClass}`;
-                changeEl.innerText = `${changeSign} ${Math.abs(meta.change).toFixed(1)}% from previous period`;
-              }
-            }
-
-            chart.update();
+            this.selectSalesPoint(elements[0].index, chart);
           }
         },
         plugins: {
@@ -1669,7 +1771,9 @@ class BillingDashboard {
     };
 
     try {
-      new Chart(ctx, chartConfig);
+      this.salesChart = new Chart(ctx, chartConfig);
+      this.salesChart.selectedPeriodIndex = this.salesSelectedIndex;
+      this.salesChart.update('none');
     } catch (e) {
       console.error('Chart render error:', e);
     }
@@ -1683,15 +1787,32 @@ class BillingDashboard {
     const paymentMethodsEl = document.getElementById('chart-payment-methods');
 
     if (throughputEl && typeof Chart !== 'undefined') {
-      const stage1 = orders.filter(o => o.current_stage === 'stage1').length;
-      const stage2 = orders.filter(o => o.current_stage === 'stage2').length;
-      const stage3 = orders.filter(o => o.current_stage === 'stage3' || o.status === 'complete').length;
+      const state = this.chartTimelines.throughput;
+      const ranges = this.getTimelineRanges(state.period, state.offset, state.period === 'monthly' ? 6 : (state.period === 'quarterly' ? 4 : 3));
+      state.selectedIndex = Math.min(state.selectedIndex ?? ranges.length - 1, ranges.length - 1);
+      const selectedRange = ranges[state.selectedIndex];
+      const filteredOrders = orders.filter(order => {
+        const date = this.parseDate(order.order_date || order.created_at);
+        return date && date >= selectedRange.start && date < selectedRange.end;
+      });
+      const card = throughputEl.closest('.chart-card');
+      const rangeLabel = card?.querySelector('.chart-timeline-range');
+      const scrubber = card?.querySelector('.chart-period-scrubber');
+      const scrubberLabel = card?.querySelector('.chart-scrubber-label');
+      if (rangeLabel) rangeLabel.textContent = selectedRange.label;
+      if (scrubber) scrubber.value = String(state.selectedIndex);
+      if (scrubberLabel) scrubberLabel.textContent = selectedRange.label;
 
+      const stage1 = filteredOrders.filter(o => o.current_stage === 'stage1').length;
+      const stage2 = filteredOrders.filter(o => o.current_stage === 'stage2').length;
+      const stage3 = filteredOrders.filter(o => o.current_stage === 'stage3' || o.status === 'complete').length;
+
+      this.throughputChart?.destroy();
       throughputEl.innerHTML = '';
       const ctx = document.createElement('canvas');
       throughputEl.appendChild(ctx);
 
-      new Chart(ctx, {
+      this.throughputChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
           labels: ['Draft (Stage 1)', 'Quality Check (Stage 2)', 'Completed (Stage 3)'],
@@ -1719,8 +1840,24 @@ class BillingDashboard {
     }
 
     if (paymentMethodsEl && typeof Chart !== 'undefined') {
+      const state = this.chartTimelines.paymentMethods;
+      const ranges = this.getTimelineRanges(state.period, state.offset, state.period === 'monthly' ? 6 : (state.period === 'quarterly' ? 4 : 3));
+      state.selectedIndex = Math.min(state.selectedIndex ?? ranges.length - 1, ranges.length - 1);
+      const selectedRange = ranges[state.selectedIndex];
+      const filteredPayments = payments.filter(payment => {
+        const date = this.parseDate(payment.payment_date || payment.created_at);
+        return date && date >= selectedRange.start && date < selectedRange.end;
+      });
+      const card = paymentMethodsEl.closest('.chart-card');
+      const rangeLabel = card?.querySelector('.chart-timeline-range');
+      const scrubber = card?.querySelector('.chart-period-scrubber');
+      const scrubberLabel = card?.querySelector('.chart-scrubber-label');
+      if (rangeLabel) rangeLabel.textContent = selectedRange.label;
+      if (scrubber) scrubber.value = String(state.selectedIndex);
+      if (scrubberLabel) scrubberLabel.textContent = selectedRange.label;
+
       const mediumMap = {};
-      payments.forEach(p => {
+      filteredPayments.forEach(p => {
         const medium = p.payment_medium || 'Other';
         mediumMap[medium] = (mediumMap[medium] || 0) + (p.amount || p.credit_amount || 0);
       });
@@ -1728,13 +1865,14 @@ class BillingDashboard {
       const labels = Object.keys(mediumMap);
       const data = Object.values(mediumMap);
 
+      this.paymentMethodsChart?.destroy();
       paymentMethodsEl.innerHTML = '';
       const ctx = document.createElement('canvas');
       paymentMethodsEl.appendChild(ctx);
 
       const colorPalette = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
 
-      new Chart(ctx, {
+      this.paymentMethodsChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
           labels: labels,
@@ -1810,11 +1948,23 @@ class BillingDashboard {
     const chartEl = document.getElementById('chart-avg');
     if (!chartEl) return;
 
+    this.averageChart?.destroy();
     chartEl.innerHTML = '';
     const ctx = document.createElement('canvas');
     chartEl.appendChild(ctx);
 
     if (!filteredBills || filteredBills.length === 0) {
+      this.averageTimelinePoints = [];
+      this.averageSelectedIndex = null;
+      const scrubber = document.getElementById('avgTimelineScrubber');
+      if (scrubber) {
+        scrubber.min = '0';
+        scrubber.max = '0';
+        scrubber.value = '0';
+        scrubber.disabled = true;
+      }
+      const scrubberLabel = document.getElementById('avgTimelineScrubberLabel');
+      if (scrubberLabel) scrubberLabel.textContent = 'No data';
       ctx.style.display = 'none';
       chartEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 10px; font-family: \'Courier New\', monospace;">No data in range</div>';
       return;
@@ -1840,6 +1990,25 @@ class BillingDashboard {
       const sum = totals.reduce((a, b) => a + b, 0);
       return sum / totals.length;
     });
+    this.averageTimelinePoints = labels.map((label, index) => {
+      const previousValue = index > 0 ? data[index - 1] : 0;
+      return {
+        label,
+        value: data[index],
+        change: previousValue > 0 ? ((data[index] - previousValue) / previousValue) * 100 : 0,
+        hasPrev: previousValue > 0
+      };
+    });
+    this.averageSelectedIndex = Math.min(this.averageSelectedIndex ?? data.length - 1, data.length - 1);
+    const scrubber = document.getElementById('avgTimelineScrubber');
+    if (scrubber) {
+      scrubber.min = '0';
+      scrubber.max = String(Math.max(0, data.length - 1));
+      scrubber.value = String(this.averageSelectedIndex);
+      scrubber.disabled = data.length < 2;
+    }
+    const scrubberLabel = document.getElementById('avgTimelineScrubberLabel');
+    if (scrubberLabel) scrubberLabel.textContent = this.averageTimelinePoints[this.averageSelectedIndex]?.label || 'No data';
 
     const chartConfig = {
       type: 'line',
@@ -1852,13 +2021,16 @@ class BillingDashboard {
           backgroundColor: 'rgba(0, 0, 0, 0.05)',
           tension: 0.2,
           fill: true,
-          pointRadius: Math.min(6, Math.max(2, 12 / sortedDates.length)),
-          pointBackgroundColor: '#000000'
+          pointRadius: context => context.dataIndex === this.averageSelectedIndex ? 7 : Math.min(5, Math.max(2, 12 / sortedDates.length)),
+          pointBackgroundColor: context => context.dataIndex === this.averageSelectedIndex ? '#000000' : '#888888'
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        onClick: (event, elements, chart) => {
+          if (elements?.length) this.selectAveragePoint(elements[0].index, chart);
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -1893,9 +2065,35 @@ class BillingDashboard {
     };
 
     try {
-      new Chart(ctx, chartConfig);
+      this.averageChart = new Chart(ctx, chartConfig);
+      this.selectAveragePoint(this.averageSelectedIndex, this.averageChart);
     } catch (e) {
       console.error('Average Chart render error:', e);
+    }
+  }
+
+  selectAveragePoint(index, chart = this.averageChart) {
+    const point = this.averageTimelinePoints?.[Number(index)];
+    if (!point) return;
+    this.averageSelectedIndex = Number(index);
+    const valueEl = document.getElementById('avgBillValue');
+    const rangeEl = document.getElementById('avgBillDateRange');
+    const changeEl = document.getElementById('avgBillChange');
+    const scrubber = document.getElementById('avgTimelineScrubber');
+    const scrubberLabel = document.getElementById('avgTimelineScrubberLabel');
+    if (valueEl) valueEl.textContent = this.formatINR(point.value);
+    if (rangeEl) rangeEl.textContent = `Daily average · ${point.label}`;
+    if (changeEl) {
+      const changeClass = point.change > 0 ? 'positive' : (point.change < 0 ? 'negative' : 'neutral');
+      const changeSign = point.change > 0 ? '↑' : (point.change < 0 ? '↓' : '→');
+      changeEl.className = `card-change ${changeClass}`;
+      changeEl.textContent = point.hasPrev ? `${changeSign} ${Math.abs(point.change).toFixed(1)}% from previous day` : '→ No previous day data';
+    }
+    if (scrubber) scrubber.value = String(index);
+    if (scrubberLabel) scrubberLabel.textContent = point.label;
+    if (chart) {
+      chart.selectedPeriodIndex = Number(index);
+      chart.update();
     }
   }
 
@@ -1977,7 +2175,12 @@ class BillingDashboard {
   }
 
   switchSalesPeriod(period) {
+    if (!['monthly', 'quarterly', 'yearly'].includes(period)) return;
+    this.salesView = period;
+    this.salesWindowOffset = 0;
+    this.salesSelectedIndex = null;
     window.currentSalesView = period;
+    localStorage.setItem('dashboard_sales_view', period);
     this.renderSalesMetrics();
   }
 
@@ -2892,4 +3095,3 @@ class BillingDashboard {
 
 // Make globally available
 window.BillingDashboard = BillingDashboard;
-
