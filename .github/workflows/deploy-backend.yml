@@ -197,7 +197,7 @@ jobs:
             PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             ServerAliveInterval 30
-            ServerAliveCountMax 3
+            ServerAliveCountMax 20
           SSHEOF
 
           if [ -n "$SSH_HOST_VM2" ]; then
@@ -213,7 +213,7 @@ jobs:
             PubkeyAcceptedKeyTypes +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             HostkeyAlgorithms +ssh-rsa,rsa-sha2-256,rsa-sha2-512
             ServerAliveInterval 30
-            ServerAliveCountMax 3
+            ServerAliveCountMax 20
           SSHEOF
           fi
           chmod 600 ~/.ssh/config
@@ -378,4 +378,3 @@ jobs:
             echo "❌ Smoke test FAILED after 15s (last HTTP: $HTTP)"
             exit 1
           fi
-

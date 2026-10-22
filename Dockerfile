@@ -44,7 +44,11 @@ WORKDIR /app
 
 # Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
-RUN echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/80-retries \
+RUN printf '%s\n' \
+       'Acquire::Retries "3";' \
+       'Acquire::http::Timeout "30";' \
+       'Acquire::https::Timeout "30";' \
+       > /etc/apt/apt.conf.d/80-retries \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        dumb-init \
