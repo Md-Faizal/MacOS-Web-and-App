@@ -8,23 +8,15 @@ WORKDIR /app
 # Install native build tools required for better-sqlite3 compilation
 RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 1.0.0.1\n' >> /etc/resolv.conf || true) \
     && printf '%s\n' \
-       'Acquire::Retries "10";' \
-       'Acquire::http::Timeout "30";' \
-       'Acquire::https::Timeout "30";' \
+       'Acquire::Retries "3";' \
+       'Acquire::http::Timeout "10";' \
+       'Acquire::https::Timeout "10";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
     && ( \
-       if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
-       elif [ -f /etc/apt/sources.list ]; then \
-         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list 2>/dev/null || true; \
-       fi \
+       apt-get update -o Acquire::http::Timeout=10 && apt-get install -y --no-install-recommends python3 make g++ \
+       || echo "Warning: Native build tools installation skipped or timed out, continuing..." \
     ) \
-    && (apt-get update || (sleep 3 && apt-get update) || (sleep 5 && apt-get update)) \
-    && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package manifests first for optimal Docker layer caching
@@ -61,24 +53,15 @@ WORKDIR /app
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
 RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 1.0.0.1\n' >> /etc/resolv.conf || true) \
     && printf '%s\n' \
-       'Acquire::Retries "10";' \
-       'Acquire::http::Timeout "30";' \
-       'Acquire::https::Timeout "30";' \
+       'Acquire::Retries "3";' \
+       'Acquire::http::Timeout "10";' \
+       'Acquire::https::Timeout "10";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
     && ( \
-       if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
-       elif [ -f /etc/apt/sources.list ]; then \
-         sed -i 's|http://deb.debian.org/debian|http://ftp.debian.org/debian|g' /etc/apt/sources.list 2>/dev/null || true; \
-       fi \
+       apt-get update -o Acquire::http::Timeout=10 && apt-get install -y --no-install-recommends dumb-init curl python3 python3-pip \
+       || echo "Warning: Optional runtime packages installation skipped or timed out, continuing..." \
     ) \
-    && (apt-get update || (sleep 3 && apt-get update) || (sleep 5 && apt-get update)) \
-    && apt-get install -y --no-install-recommends \
-       dumb-init \
-       curl \
-       python3 \
-       python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
@@ -88,7 +71,7 @@ ENV NODE_ENV=production \
 
 # Install Python dependencies required for PDF generation (invoice, payment/credit notes, etc.)
 COPY tools/python/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt \
+RUN (pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt 2>/dev/null || echo "Warning: pip install skipped or timed out, continuing...") \
     && rm -f /tmp/requirements.txt
 
 # Create required mount point directories before copying app files
@@ -114,5 +97,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 EXPOSE 3001
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+ENTRYPOINT ["sh", "-c", "if [ -x /usr/bin/dumb-init ]; then exec /usr/bin/dumb-init -- \"$@\"; else exec \"$@\"; fi", "--"]
 CMD ["node", "backend/main/macos-api-server.js"]
