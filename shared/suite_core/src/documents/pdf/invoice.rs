@@ -102,6 +102,10 @@ fn make_payment_uri(data: &InvoiceRenderData) -> String {
     if !uri.contains("?cu=") && !uri.contains("&cu=") {
         uri.push_str("&cu=INR");
     }
+    let due = data.grand_total + data.previous_due;
+    if due > 0.01 && !uri.contains("?am=") && !uri.contains("&am=") {
+        uri.push_str(&format!("&am={:.2}", due));
+    }
     if !data.invoice_no.is_empty() && !uri.contains("?tn=") && !uri.contains("&tn=") {
         let due = data.grand_total + data.previous_due;
         let note = format!(
@@ -361,6 +365,8 @@ fn render_duplex_back_page(canvas: &mut PdfCanvas, data: &InvoiceRenderData) -> 
             "PAY VIA UPI APP",
         );
         canvas.restore_state();
+        canvas.add_link_annotation(btn_x, btn_y, btn_w, btn_h, &payment_uri);
+        canvas.add_link_annotation(qr_x, payment_box_y, qr_box_size, qr_box_size, &payment_uri);
     }
 
     // Sidebar QR Container 2: PORTAL ACCESS
@@ -397,6 +403,9 @@ fn render_duplex_back_page(canvas: &mut PdfCanvas, data: &InvoiceRenderData) -> 
         "SCAN TO OPEN",
         0.5,
     );
+    if data.export_mode {
+        canvas.add_link_annotation(qr_x, portal_box_y, qr_box_size, qr_box_size, &portal_uri);
+    }
 
     // 2. MAIN CONTENT (left 75mm, width 135mm, height 297mm)
     let main_left = sidebar_width;
@@ -1662,6 +1671,10 @@ fn render_invoice_sheet(
             widget_y + widget_h - 37.0,
             &format!("Total Due: Rs. {}", format_money(total_due)),
         );
+        if data.export_mode {
+            let portal_url = make_portal_uri(data);
+            canvas.add_link_annotation(text_x, widget_y + widget_h - 38.0, 150.0, 26.0, &portal_url);
+        }
 
         // Export mode: clickable app button vs Print mode: scan instruction
         if data.export_mode {
@@ -1678,6 +1691,8 @@ fn render_invoice_sheet(
                 btn_y + 3.5,
                 "⚡ PAY VIA UPI APP",
             );
+            canvas.add_link_annotation(text_x, btn_y, btn_w, btn_h, &pay_uri);
+            canvas.add_link_annotation(qr_x, qr_y, qr_size, qr_size, &pay_uri);
         } else {
             canvas.set_fill_color(PdfColor::hex("#475569"));
             canvas.draw_string(
@@ -1760,7 +1775,7 @@ fn render_invoice_sheet(
         7.0,
         width / 2.0,
         bottom_margin / 2.0,
-        "Our Software MARG Erp 9437026823,7978789800",
+        "DIGITALLY GENERATED INVOICE",
     );
 }
 
@@ -1970,6 +1985,8 @@ mod tests {
         assert!(pdf_str.contains("COMPUTER GENERATED TAX INVOICE"));
         assert!(pdf_str.contains("Authenticated Document • No Signature Required"));
         assert!(pdf_str.contains("CGST Rule 46 Proviso & Information Technology Act"));
+        assert!(pdf_str.contains("DIGITALLY GENERATED INVOICE"));
+        assert!(!pdf_str.contains("MARG"));
     }
 
     #[test]

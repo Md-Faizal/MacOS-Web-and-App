@@ -17,6 +17,7 @@ export class DocumentVaultExplorer {
     this.documents = [];
     this.currentNavPage = 'dashboard'; // 'dashboard', 'all', 'inward', 'outward', 'internal', 'trails'
     this.selectedDirId = null;
+    this.selectedDirIds = new Set();
     this.selectedDocIds = new Set();
     this.searchQuery = '';
     this.activeFilterChip = 'ALL';
@@ -198,9 +199,11 @@ export class DocumentVaultExplorer {
         <div class="vault-floating-batch-bar" id="vaultBatchToolbar" style="display: none;">
           <span class="vault-batch-count" id="vaultBatchCount">0 Selected</span>
           <button type="button" class="vault-batch-btn" id="vaultBatchEditBtn" style="background: rgba(2, 132, 199, 0.15); color: #0284c7; border: 1px solid rgba(2, 132, 199, 0.35); font-weight: 700; display: none;">✏️ Edit in Studio</button>
+          <button type="button" class="vault-batch-btn" id="vaultBatchRenameBtn" style="display: none;">Rename</button>
           <button class="vault-batch-btn" data-batch="MOVE">Move</button>
           <button class="vault-batch-btn" data-batch="SEAL">Seal</button>
           <button class="vault-batch-btn danger" data-batch="DELETE">Delete</button>
+          <button type="button" class="vault-batch-btn" id="vaultBatchClearBtn">Clear</button>
         </div>
 
         <!-- Master Split Layout: Sidebar + Viewport -->
@@ -305,6 +308,8 @@ export class DocumentVaultExplorer {
     const fabBtn = this.container.querySelector('#vaultFabBtn');
     const fabMenu = this.container.querySelector('#vaultFabMenu');
 
+    this.attachFileDropHandlers();
+
     // FAB Toggle
     fabBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -404,6 +409,39 @@ export class DocumentVaultExplorer {
       }
     });
 
+    this.container.querySelector('#vaultBatchRenameBtn')?.addEventListener('click', () => {
+      if (this.selectedDirIds.size === 1) {
+        this.renameVaultDirectory(Array.from(this.selectedDirIds)[0]);
+      }
+    });
+
+    this.container.querySelector('#vaultBatchClearBtn')?.addEventListener('click', () => {
+      this.selectedDirIds.clear();
+      this.selectedDocIds.clear();
+      this.updateBatchBar();
+      this.renderActivePage();
+    });
+
+    if (this.vaultContextMenuHandler) {
+      this.container.removeEventListener('contextmenu', this.vaultContextMenuHandler);
+    }
+    this.vaultContextMenuHandler = (e) => this.handleVaultContextMenu(e);
+    this.container.addEventListener('contextmenu', this.vaultContextMenuHandler);
+    if (this.contextMenuDismissHandler) {
+      document.removeEventListener('pointerdown', this.contextMenuDismissHandler);
+    }
+    if (this.contextMenuKeyHandler) {
+      document.removeEventListener('keydown', this.contextMenuKeyHandler);
+    }
+    this.contextMenuDismissHandler = (e) => {
+      if (this.contextMenuEl && !this.contextMenuEl.contains(e.target)) this.closeVaultContextMenu();
+    };
+    this.contextMenuKeyHandler = (e) => {
+      if (e.key === 'Escape') this.closeVaultContextMenu();
+    };
+    document.addEventListener('pointerdown', this.contextMenuDismissHandler);
+    document.addEventListener('keydown', this.contextMenuKeyHandler);
+
     // Keyboard shortcuts
     this.keyHandler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -416,6 +454,215 @@ export class DocumentVaultExplorer {
       }
     };
     window.addEventListener('keydown', this.keyHandler);
+  }
+
+  attachFileDropHandlers() {
+    if (this.fileDropHandlers) {
+      document.removeEventListener('dragenter', this.fileDropHandlers.dragenter);
+      document.removeEventListener('dragover', this.fileDropHandlers.dragover);
+      document.removeEventListener('dragleave', this.fileDropHandlers.dragleave);
+      document.removeEventListener('drop', this.fileDropHandlers.drop);
+    }
+
+    const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+    const getVisibleVaultRoot = () => {
+      const root = this.container?.querySelector('.vault-root');
+      return root?.getClientRects().length ? root : null;
+    };
+    const clearDragState = () => {
+      this.vaultDragDepth = 0;
+      const root = getVisibleVaultRoot();
+      root?.classList.remove('drag-over');
+      root?.querySelector('.vault-file-drop-overlay')?.remove();
+    };
+    const showDragOverlay = (root) => {
+      if (root.querySelector('.vault-file-drop-overlay')) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'vault-file-drop-overlay';
+      overlay.setAttribute('role', 'status');
+      overlay.setAttribute('aria-live', 'polite');
+      overlay.innerHTML = `
+        <div class="vault-file-drop-card">
+          <div class="vault-file-drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48" focusable="false">
+              <path d="M24 31V8m0 0-8 8m8-8 8 8M12 28v9a3 3 0 0 0 3 3h18a3 3 0 0 0 3-3v-9" />
+            </svg>
+          </div>
+          <div class="vault-file-drop-eyebrow">SECURE DOCUMENT UPLOAD</div>
+          <div class="vault-file-drop-title">Drop to add to your Vault</div>
+          <div class="vault-file-drop-subtitle">Release your file to prepare it for upload</div>
+          <div class="vault-file-drop-types" aria-label="Supported file types">
+            <span>PDF</span><span>DOC</span><span>DOCX</span><span>PNG</span><span>JPG</span>
+          </div>
+        </div>
+      `;
+      root.appendChild(overlay);
+    };
+
+    this.fileDropHandlers = {
+      dragenter: (event) => {
+        if (!hasFiles(event)) return;
+        const root = getVisibleVaultRoot();
+        if (!root) return;
+        event.preventDefault();
+        this.vaultDragDepth = (this.vaultDragDepth || 0) + 1;
+        root.classList.add('drag-over');
+        showDragOverlay(root);
+      },
+      dragover: (event) => {
+        if (!hasFiles(event) || !getVisibleVaultRoot()) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      },
+      dragleave: (event) => {
+        if (!hasFiles(event) || !getVisibleVaultRoot()) return;
+        if (event.relatedTarget) {
+          this.vaultDragDepth = Math.max(0, (this.vaultDragDepth || 0) - 1);
+          if (this.vaultDragDepth > 0) return;
+        }
+        clearDragState();
+      },
+      drop: (event) => {
+        if (!hasFiles(event) || !getVisibleVaultRoot()) return;
+        event.preventDefault();
+        clearDragState();
+        if (event.target.closest?.('#vaultUploadModalOverlay')) return;
+
+        const files = Array.from(event.dataTransfer?.files || []);
+        const supportedFiles = files.filter(file => this.isSupportedVaultUploadFile(file));
+        if (!supportedFiles.length) {
+          this.app?.showNotification('Supported files: PDF, Word (.doc/.docx), PNG, or JPEG.', 'error');
+          return;
+        }
+        if (files.length !== 1 || supportedFiles.length !== 1) {
+          this.app?.showNotification('Please drop one supported file at a time.', 'error');
+          return;
+        }
+
+        this.openUploadDocumentModal(this.selectedDirId, supportedFiles[0]);
+      }
+    };
+
+    document.addEventListener('dragenter', this.fileDropHandlers.dragenter);
+    document.addEventListener('dragover', this.fileDropHandlers.dragover);
+    document.addEventListener('dragleave', this.fileDropHandlers.dragleave);
+    document.addEventListener('drop', this.fileDropHandlers.drop);
+  }
+
+  isSupportedVaultUploadFile(file) {
+    const extension = file?.name?.split('.').pop()?.toLowerCase();
+    return ['pdf', 'doc', 'docx', 'png', 'jpg', 'jpeg'].includes(extension);
+  }
+
+  handleVaultContextMenu(e) {
+    const item = e.target.closest('.folder-file-sheet[data-item-kind], [data-open-dir], [data-file-id], .vault-sidebar-folder-item[data-dir-id]');
+    if (!item) return;
+
+    let itemType;
+    let itemId;
+    if (item.matches('.folder-file-sheet[data-item-kind]')) {
+      itemType = item.dataset.itemKind === 'folder' ? 'folder' : 'document';
+      itemId = Number(item.dataset.itemId);
+    } else if (item.matches('[data-open-dir], .vault-sidebar-folder-item[data-dir-id]')) {
+      itemType = 'folder';
+      itemId = Number(item.dataset.openDir || item.dataset.dirId);
+    } else {
+      itemType = 'document';
+      itemId = Number(item.dataset.fileId);
+    }
+
+    if (!itemId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.openVaultContextMenu(itemType, itemId, e.clientX, e.clientY);
+  }
+
+  openVaultContextMenu(itemType, itemId, x, y) {
+    this.closeVaultContextMenu();
+    const menu = document.createElement('div');
+    menu.className = `vault-context-menu${this.isDarkMode() ? ' dark-mode' : ''}`;
+    menu.setAttribute('role', 'menu');
+
+    const actions = itemType === 'folder'
+      ? [
+          ['open', 'Open Folder'],
+          ['select', this.selectedDirIds.has(itemId) ? 'Deselect' : 'Select'],
+          ['new-subfolder', 'New Subfolder'],
+          ['rename', 'Rename'],
+          ['move', 'Move to…'],
+          ['delete', 'Delete Folder', true]
+        ]
+      : [
+          ['open', 'Open Preview'],
+          ['select', this.selectedDocIds.has(itemId) ? 'Deselect' : 'Select'],
+          ['move', 'Move to…'],
+          ['seal', 'Seal Document'],
+          ['delete', 'Delete Document', true]
+        ];
+
+    actions.forEach(([action, label, danger]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `vault-context-menu-item${danger ? ' danger' : ''}`;
+      button.setAttribute('role', 'menuitem');
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        this.closeVaultContextMenu();
+        this.handleVaultContextAction(action, itemType, itemId);
+      });
+      menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+    this.contextMenuEl = menu;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  }
+
+  closeVaultContextMenu() {
+    this.contextMenuEl?.remove();
+    this.contextMenuEl = null;
+  }
+
+  handleVaultContextAction(action, itemType, itemId) {
+    if (itemType === 'folder') {
+      if (action === 'open') this.drillIntoDirectory(itemId);
+      if (action === 'select') this.toggleDirectorySelection(itemId);
+      if (action === 'new-subfolder') this.openCreateFolderPrompt(itemId);
+      if (action === 'rename') this.renameVaultDirectory(itemId);
+      if (action === 'move') this.openMoveItemsModal({ directoryIds: [itemId] });
+      if (action === 'delete') this.deleteVaultDirectories([itemId]);
+      return;
+    }
+
+    if (action === 'open') this.openPdfPreviewModal(itemId);
+    if (action === 'select') this.toggleDocumentSelection(itemId);
+    if (action === 'move') this.openMoveItemsModal({ documentIds: [itemId] });
+    if (action === 'seal') this.runDocumentBatchAction('SEAL', [itemId]);
+    if (action === 'delete') this.runDocumentBatchAction('DELETE', [itemId]);
+  }
+
+  toggleDirectorySelection(dirId, selected = !this.selectedDirIds.has(dirId)) {
+    if (selected) {
+      this.selectedDocIds.clear();
+      this.selectedDirIds.add(dirId);
+    } else {
+      this.selectedDirIds.delete(dirId);
+    }
+    this.updateBatchBar();
+    this.renderActivePage();
+  }
+
+  toggleDocumentSelection(docId, selected = !this.selectedDocIds.has(docId)) {
+    if (selected) {
+      this.selectedDirIds.clear();
+      this.selectedDocIds.add(docId);
+    } else {
+      this.selectedDocIds.delete(docId);
+    }
+    this.updateBatchBar();
+    this.renderActivePage();
   }
 
   // Navigation history tracker
@@ -568,7 +815,8 @@ export class DocumentVaultExplorer {
     listEl.querySelectorAll('[data-opt-dir]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.openFolderOptionsModal(Number(btn.dataset.optDir));
+        const rect = btn.getBoundingClientRect();
+        this.openVaultContextMenu('folder', Number(btn.dataset.optDir), rect.left, rect.bottom);
       });
     });
   }
@@ -3169,7 +3417,7 @@ export class DocumentVaultExplorer {
     const overlay = document.createElement('div');
     overlay.className = 'staff-modal-overlay';
     overlay.id = 'vaultAiCreatorModalOverlay';
-    overlay.style.zIndex = '2147483647';
+    overlay.style.zIndex = '2147483640';
 
     overlay.innerHTML = `
       <div class="staff-modal-box" style="width: 760px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
@@ -3590,6 +3838,7 @@ export class DocumentVaultExplorer {
     const count = allNestedFiles.length;
     const subFolderCount = directChildDirs.length;
     const letter = (dir.name[0] || 'A').toUpperCase();
+    const isSelected = this.selectedDirIds.has(Number(dir.id));
 
     // Stacked preview sheets (up to 3 items) with granular hover switcher
     let stackHtml = '';
@@ -3619,7 +3868,7 @@ export class DocumentVaultExplorer {
     }
 
     return `
-      <div class="folder-card ${subFolderCount > 0 ? 'has-subfolders' : ''}" data-open-dir="${dir.id}" style="--folder-color: ${color.hex}; --folder-bg: ${color.bg}; --folder-tint: ${color.tint};">
+      <div class="folder-card ${subFolderCount > 0 ? 'has-subfolders' : ''} ${isSelected ? 'selected' : ''}" data-open-dir="${dir.id}" style="--folder-color: ${color.hex}; --folder-bg: ${color.bg}; --folder-tint: ${color.tint};">
         <!-- Back Flap with Tab & Letter -->
         <div class="folder-back-flap">
           <div class="folder-tab">
@@ -3633,6 +3882,7 @@ export class DocumentVaultExplorer {
         <!-- Frosted Liquid Glass Front Pocket -->
         <div class="folder-glass-pocket">
           <div class="folder-pocket-header">
+            <input type="checkbox" class="file-select-box folder-select-box" data-check-dir="${dir.id}" aria-label="Select folder ${dir.name}" ${isSelected ? 'checked' : ''}>
             <span class="folder-pocket-title" title="${dir.name}">${dir.name}</span>
             <span class="vault-kind-badge ${subFolderCount > 0 ? 'contains-subfolders' : dir.parent_id ? 'subfolder' : 'folder'}" style="margin-left: auto;">
               📁 ${subFolderCount > 0 ? 'Contains Sub-Folders' : dir.parent_id ? 'Sub-Folder' : 'Folder'}
@@ -4039,10 +4289,12 @@ export class DocumentVaultExplorer {
         const color = this.getFolderColor(d.name);
         const isExpanded = this.expandedDirs.has(d.id);
         const hasChildren = totalItems > 0;
+        const isSelected = this.selectedDirIds.has(Number(d.id));
 
         rows += `
-          <tr class="vault-list-row folder-row" data-open-dir="${d.id}" style="cursor: pointer;">
-            <td style="width: 28px; text-align: center;">
+          <tr class="vault-list-row folder-row ${isSelected ? 'selected' : ''}" data-open-dir="${d.id}" style="cursor: pointer;">
+            <td style="width: 52px; text-align: center;">
+              <input type="checkbox" class="file-select-box folder-select-box" data-check-dir="${d.id}" aria-label="Select folder ${d.name}" ${isSelected ? 'checked' : ''}>
               ${hasChildren ? `
                 <button class="vault-tree-chevron ${isExpanded ? 'expanded' : ''}" data-tree-toggle="${d.id}" title="Toggle folder">›</button>
               ` : ''}
@@ -4455,7 +4707,7 @@ export class DocumentVaultExplorer {
     // Open Folder click -> Arrow drills into folder; Floating sheets open 3D Cover Flow
     viewport.querySelectorAll('[data-open-dir]').forEach(el => {
       el.addEventListener('click', (e) => {
-        if (e.target.closest('[data-tree-toggle]') || e.target.closest('[data-drill-btn]')) return;
+        if (e.target.closest('[data-tree-toggle]') || e.target.closest('[data-drill-btn]') || e.target.closest('[data-check-dir]')) return;
         const dirId = Number(el.dataset.openDir);
 
         // 1. Arrow clicked: open folder directly
@@ -4487,11 +4739,12 @@ export class DocumentVaultExplorer {
     viewport.querySelectorAll('.file-select-box').forEach(box => {
       box.addEventListener('click', (e) => e.stopPropagation());
       box.addEventListener('change', (e) => {
-        const id = Number(box.dataset.checkId);
-        if (e.target.checked) this.selectedDocIds.add(id);
-        else this.selectedDocIds.delete(id);
-        this.updateBatchBar();
-        box.closest('.file-card, .vault-list-row')?.classList.toggle('selected', e.target.checked);
+        const checked = e.target.checked;
+        if (box.dataset.checkDir) {
+          this.toggleDirectorySelection(Number(box.dataset.checkDir), checked);
+        } else {
+          this.toggleDocumentSelection(Number(box.dataset.checkId), checked);
+        }
       });
     });
 
@@ -4828,35 +5081,55 @@ export class DocumentVaultExplorer {
     const bar = this.container.querySelector('#vaultBatchToolbar');
     const countEl = this.container.querySelector('#vaultBatchCount');
     const editBtn = this.container.querySelector('#vaultBatchEditBtn');
+    const renameBtn = this.container.querySelector('#vaultBatchRenameBtn');
+    const moveBtn = this.container.querySelector('[data-batch="MOVE"]');
+    const sealBtn = this.container.querySelector('[data-batch="SEAL"]');
+    const deleteBtn = this.container.querySelector('[data-batch="DELETE"]');
     if (!bar || !countEl) return;
 
-    const count = this.selectedDocIds.size;
+    const directoryCount = this.selectedDirIds.size;
+    const documentCount = this.selectedDocIds.size;
+    const count = directoryCount + documentCount;
     if (count > 0) {
       bar.style.display = 'inline-flex';
-      countEl.textContent = `${count} Selected`;
+      countEl.textContent = `${count} ${directoryCount ? 'Folder' : 'Document'}${count === 1 ? '' : 's'} Selected`;
       if (editBtn) {
-        editBtn.style.display = count === 1 ? 'inline-flex' : 'none';
+        editBtn.style.display = documentCount === 1 ? 'inline-flex' : 'none';
       }
+      if (renameBtn) renameBtn.style.display = directoryCount === 1 ? 'inline-flex' : 'none';
+      if (moveBtn) moveBtn.style.display = 'inline-flex';
+      if (sealBtn) sealBtn.style.display = documentCount > 0 ? 'inline-flex' : 'none';
+      if (deleteBtn) deleteBtn.style.display = 'inline-flex';
     } else {
       bar.style.display = 'none';
     }
   }
 
   async handleBatchAction(action) {
+    if (this.selectedDirIds.size > 0) {
+      const directoryIds = Array.from(this.selectedDirIds);
+      if (action === 'MOVE') {
+        this.openMoveItemsModal({ directoryIds: this.getTopLevelSelectedDirectoryIds(directoryIds) });
+      } else if (action === 'DELETE') {
+        this.deleteVaultDirectories(directoryIds);
+      }
+      return;
+    }
+
     const docIds = Array.from(this.selectedDocIds);
     if (docIds.length === 0) return;
 
-    if (action === 'DELETE') {
-      if (!confirm(`Delete ${docIds.length} selected document(s)?`)) return;
+    if (action === 'MOVE') {
+      this.openMoveItemsModal({ documentIds: docIds });
+      return;
     }
 
-    let targetDirId = null;
-    if (action === 'MOVE') {
-      const dirOptions = this.directories.map(d => `${d.id}: ${d.name}`).join('\n');
-      const chosen = prompt(`Enter Directory ID to move to:\n${dirOptions}`);
-      if (!chosen) return;
-      targetDirId = Number(chosen.trim());
-    }
+    await this.runDocumentBatchAction(action, docIds);
+  }
+
+  async runDocumentBatchAction(action, docIds, targetDirId = null) {
+    if (!docIds.length) return;
+    if (action === 'DELETE' && !confirm(`Delete ${docIds.length} selected document(s)?`)) return;
 
     try {
       const res = await fetch('/api/compliance/vault/documents/batch', {
@@ -4868,15 +5141,241 @@ export class DocumentVaultExplorer {
 
       if (res.ok) {
         this.app?.showNotification(`Updated ${docIds.length} item(s).`, 'success');
-        this.selectedDocIds.clear();
+        docIds.forEach(id => this.selectedDocIds.delete(Number(id)));
         this.updateBatchBar();
         await this.loadData();
       } else {
-        const errData = await res.json();
+        const errData = await res.json().catch(() => ({}));
         this.app?.showNotification(errData.error || 'Batch failed', 'error');
       }
     } catch (err) {
       this.app?.showNotification(err.message, 'error');
+    }
+  }
+
+  async openMoveItemsModal({ directoryIds = [], documentIds = [] } = {}) {
+    const selectedDirectoryIds = new Set(directoryIds.map(Number));
+    const excludedDirectoryIds = new Set(selectedDirectoryIds);
+    const addDescendants = (parentId) => {
+      this.directories
+        .filter(dir => Number(dir.parent_id) === Number(parentId))
+        .forEach(dir => {
+          const childId = Number(dir.id);
+          if (excludedDirectoryIds.has(childId)) return;
+          excludedDirectoryIds.add(childId);
+          addDescendants(childId);
+        });
+    };
+    selectedDirectoryIds.forEach(addDescendants);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'staff-modal-overlay';
+    overlay.id = 'vaultMoveItemsModalOverlay';
+    overlay.style.zIndex = '2147483640';
+    overlay.innerHTML = `
+      <div class="staff-modal-box vault-move-modal">
+        <div class="staff-modal-header">
+          <h3>Move ${directoryIds.length ? 'Folder' : 'Document'}${directoryIds.length + documentIds.length > 1 ? 's' : ''}</h3>
+          <button type="button" class="staff-modal-close-btn" data-close-move>×</button>
+        </div>
+        <form class="vault-move-form">
+          <label for="vaultMoveTarget">Destination folder</label>
+          <select id="vaultMoveTarget" required>
+            <option value="root">Vault root (no parent)</option>
+          </select>
+          <div class="staff-modal-actions-footer">
+            <button type="button" class="cmp-btn-cancel" data-close-move>Cancel</button>
+            <button type="submit" class="cmp-btn-save">Move</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const select = overlay.querySelector('#vaultMoveTarget');
+    this.directories
+      .filter(dir => !excludedDirectoryIds.has(Number(dir.id)))
+      .forEach(dir => {
+        const option = document.createElement('option');
+        option.value = String(dir.id);
+        const parent = this.directories.find(candidate => Number(candidate.id) === Number(dir.parent_id));
+        option.textContent = parent ? `${dir.name} — inside ${parent.name}` : dir.name;
+        select.appendChild(option);
+      });
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelectorAll('[data-close-move]').forEach(button => button.addEventListener('click', close));
+
+    overlay.querySelector('.vault-move-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const selectedTarget = select.value;
+      const targetId = selectedTarget === 'root' ? null : Number(selectedTarget);
+      const submitButton = overlay.querySelector('[type="submit"]');
+      submitButton.disabled = true;
+      const currentDirectoryMoves = this.selectedDirId !== null && directoryIds.some(id =>
+        Number(id) === Number(this.selectedDirId) || this.getDirectoryDescendantIds(id).includes(Number(this.selectedDirId))
+      );
+      const movedDirectoryIds = new Set(directoryIds.flatMap(id => [Number(id), ...this.getDirectoryDescendantIds(id)]));
+
+      try {
+        if (documentIds.length) {
+          const res = await fetch('/api/compliance/vault/documents/batch', {
+            method: 'POST',
+            headers: this.getAuthHeaders(),
+            credentials: 'same-origin',
+            body: JSON.stringify({ action: 'MOVE', doc_ids: documentIds, target_dir_id: targetId })
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || 'Unable to move the selected documents.');
+          }
+          documentIds.forEach(id => this.selectedDocIds.delete(Number(id)));
+        }
+
+        for (const dirId of directoryIds) {
+          const res = await fetch(`/api/compliance/vault/directories/${dirId}`, {
+            method: 'PUT',
+            headers: this.getAuthHeaders(),
+            credentials: 'same-origin',
+            body: JSON.stringify({ parent_id: targetId })
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Unable to move folder ${dirId}.`);
+          }
+        }
+        movedDirectoryIds.forEach(id => this.selectedDirIds.delete(id));
+
+        this.app?.showNotification('Selected items moved.', 'success');
+        this.updateBatchBar();
+        close();
+        await this.loadData();
+        if (currentDirectoryMoves && this.directories.some(dir => Number(dir.id) === Number(this.selectedDirId))) {
+          this.drillIntoDirectory(Number(this.selectedDirId));
+        }
+      } catch (err) {
+        submitButton.disabled = false;
+        this.app?.showNotification(err.message, 'error');
+        this.updateBatchBar();
+        await this.loadData();
+        if (currentDirectoryMoves && this.directories.some(dir => Number(dir.id) === Number(this.selectedDirId))) {
+          this.drillIntoDirectory(Number(this.selectedDirId));
+        }
+      }
+    });
+  }
+
+  getDirectoryDescendantIds(dirId) {
+    const descendants = [];
+    const visited = new Set([Number(dirId)]);
+    const visit = (parentId) => {
+      this.directories
+        .filter(dir => Number(dir.parent_id) === Number(parentId))
+        .forEach(dir => {
+          const childId = Number(dir.id);
+          if (visited.has(childId)) return;
+          visited.add(childId);
+          descendants.push(childId);
+          visit(dir.id);
+        });
+    };
+    visit(dirId);
+    return descendants;
+  }
+
+  getTopLevelSelectedDirectoryIds(directoryIds) {
+    const selectedIds = new Set(directoryIds.map(Number));
+    return directoryIds.filter(id => {
+      const visited = new Set();
+      let dir = this.directories.find(item => Number(item.id) === Number(id));
+      while (dir?.parent_id) {
+        const parentId = Number(dir.parent_id);
+        if (selectedIds.has(parentId)) return false;
+        if (visited.has(parentId)) break;
+        visited.add(parentId);
+        dir = this.directories.find(item => Number(item.id) === parentId);
+      }
+      return true;
+    });
+  }
+
+  async renameVaultDirectory(dirId) {
+    const dir = this.directories.find(item => Number(item.id) === Number(dirId));
+    if (!dir) return;
+
+    const newName = prompt('New folder name:', dir.name);
+    if (!newName || !newName.trim() || newName.trim() === dir.name) return;
+
+    try {
+      const res = await fetch(`/api/compliance/vault/directories/${dir.id}`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: newName.trim() })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Unable to rename the folder.');
+      }
+      this.app?.showNotification('Folder renamed.', 'success');
+      await this.loadData();
+    } catch (err) {
+      this.app?.showNotification(err.message, 'error');
+    }
+  }
+
+  async deleteVaultDirectories(directoryIds) {
+    const selectedIds = new Set(directoryIds.map(Number));
+    const affectedIds = new Set(selectedIds);
+    const addDescendants = (parentId) => {
+      this.directories
+        .filter(dir => Number(dir.parent_id) === Number(parentId))
+        .forEach(dir => {
+          const childId = Number(dir.id);
+          if (affectedIds.has(childId)) return;
+          affectedIds.add(childId);
+          addDescendants(childId);
+        });
+    };
+    selectedIds.forEach(addDescendants);
+
+    const folderWord = directoryIds.length === 1 ? 'folder' : 'folders';
+    if (!confirm(`Delete ${directoryIds.length} selected ${folderWord} and their subfolders? Documents will be kept but moved out of the deleted folders.`)) return;
+
+    try {
+      for (const dirId of directoryIds) {
+        const res = await fetch(`/api/compliance/vault/directories/${dirId}`, {
+          method: 'DELETE',
+          headers: this.getAuthHeaders(),
+          credentials: 'same-origin'
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Unable to delete folder ${dirId}.`);
+        }
+        this.selectedDirIds.delete(Number(dirId));
+      }
+
+      this.selectedDirIds.clear();
+      if (affectedIds.has(Number(this.selectedDirId))) {
+        this.selectedDirId = null;
+        this.breadcrumbPath = [];
+      }
+      this.app?.showNotification('Folder(s) deleted. Documents were retained.', 'success');
+      this.updateBatchBar();
+      await this.loadData();
+    } catch (err) {
+      this.app?.showNotification(err.message, 'error');
+      await this.loadData();
+      if (!this.directories.some(dir => Number(dir.id) === Number(this.selectedDirId))) {
+        this.selectedDirId = null;
+        this.breadcrumbPath = [];
+      }
+      this.selectedDirIds = new Set(
+        Array.from(this.selectedDirIds).filter(id => this.directories.some(dir => Number(dir.id) === Number(id)))
+      );
+      this.updateBatchBar();
+      this.renderActivePage();
     }
   }
 
@@ -4905,7 +5404,7 @@ export class DocumentVaultExplorer {
   // 4. MODALS (Upload, New Doc, Folders, PDF Preview)
   // =========================================================================
 
-  async openUploadDocumentModal(defaultDirId = null) {
+  async openUploadDocumentModal(defaultDirId = null, preselectedFile = null) {
     const existing = document.getElementById('vaultUploadModalOverlay');
     if (existing) existing.remove();
 
@@ -4924,7 +5423,7 @@ export class DocumentVaultExplorer {
     const overlay = document.createElement('div');
     overlay.className = 'staff-modal-overlay';
     overlay.id = 'vaultUploadModalOverlay';
-    overlay.style.zIndex = '2147483647';
+    overlay.style.zIndex = '2147483640';
 
     overlay.innerHTML = `
       <div class="staff-modal-box" style="width: 680px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column;">
@@ -4934,12 +5433,16 @@ export class DocumentVaultExplorer {
         </div>
 
         <form id="vaultUploadDocForm" style="flex: 1; overflow-y: auto; padding: 20px;">
-          <div class="vault-dropzone-box" id="vaultUploadDropzone">
-            <div style="font-size: 28px; margin-bottom: 6px;">📄</div>
-            <div style="font-size: 13px; font-weight: 600;">Drop PDF, Word, or image file here</div>
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">or click to browse</div>
+          <div class="vault-dropzone-box" id="vaultUploadDropzone" tabindex="0">
+            <div class="vault-upload-dropzone-icon" aria-hidden="true">📄</div>
+            <div class="vault-upload-dropzone-title">Drop a file to get started</div>
+            <div class="vault-upload-dropzone-subtitle">Drag it here or click to browse</div>
+            <div class="vault-upload-file-types" aria-label="Supported file types">
+              <span>PDF</span><span>DOC</span><span>DOCX</span><span>PNG</span><span>JPG</span>
+            </div>
+            <div class="vault-upload-size-limit">Maximum file size: 50 MB</div>
             <input type="file" id="vaultUploadFileInput" style="display: none;" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
-            <div id="vaultUploadSelectedFile" style="margin-top: 8px; font-weight: 600; color: #0284c7; font-size: 12px; display: none;"></div>
+            <div id="vaultUploadSelectedFile" class="vault-upload-selected-file"></div>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
@@ -5003,6 +5506,14 @@ export class DocumentVaultExplorer {
     const dropzone = overlay.querySelector('#vaultUploadDropzone');
     const fileInput = overlay.querySelector('#vaultUploadFileInput');
     const selectedFileText = overlay.querySelector('#vaultUploadSelectedFile');
+    const showSelectedFile = (file) => {
+      selectedFileText.textContent = file.name;
+      selectedFileText.style.display = 'inline-flex';
+      const titleInput = overlay.querySelector('input[name="title"]');
+      if (titleInput && !titleInput.value.trim()) {
+        titleInput.value = file.name.replace(/\.[^.]+$/, '');
+      }
+    };
 
     dropzone.addEventListener('click', () => fileInput.click());
     dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
@@ -5011,22 +5522,49 @@ export class DocumentVaultExplorer {
       e.preventDefault();
       dropzone.classList.remove('dragover');
       if (e.dataTransfer.files?.length) {
+        if (e.dataTransfer.files.length !== 1) {
+          this.app?.showNotification('Please choose one file at a time.', 'error');
+          return;
+        }
+        const droppedFile = e.dataTransfer.files[0];
+        if (!this.isSupportedVaultUploadFile(droppedFile)) {
+          this.app?.showNotification('Supported files: PDF, Word (.doc/.docx), PNG, or JPEG.', 'error');
+          return;
+        }
         fileInput.files = e.dataTransfer.files;
-        selectedFileText.textContent = fileInput.files[0].name;
-        selectedFileText.style.display = 'block';
+        showSelectedFile(droppedFile);
       }
     });
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files?.length) {
-        selectedFileText.textContent = fileInput.files[0].name;
-        selectedFileText.style.display = 'block';
+        showSelectedFile(fileInput.files[0]);
       }
     });
+
+    if (preselectedFile) {
+      try {
+        const transfer = new DataTransfer();
+        transfer.items.add(preselectedFile);
+        fileInput.files = transfer.files;
+        showSelectedFile(preselectedFile);
+      } catch (err) {
+        closeModal();
+        this.app?.showNotification(`Unable to prefill the dropped file: ${err.message}`, 'error');
+        return;
+      }
+    }
 
     overlay.querySelector('#vaultUploadDocForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
+      const selectedFile = fileInput.files?.[0];
+      if (!selectedFile) {
+        this.app?.showNotification('Choose or drop a file before uploading.', 'error');
+        dropzone.focus();
+        return;
+      }
+
       const payload = {
         dir_id: form.dir_id.value ? Number(form.dir_id.value) : null,
         doc_ref_no: form.doc_ref_no.value.trim(),
@@ -5043,25 +5581,41 @@ export class DocumentVaultExplorer {
         signatory_title: 'Proprietor',
         is_watermarked: 0
       };
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+        }
+      });
+      formData.append('file', selectedFile, selectedFile.name);
+      const headers = this.getAuthHeaders();
+      delete headers['Content-Type'];
+      const submitButton = overlay.querySelector('#vaultUploadDocForm [type="submit"]');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Uploading…';
 
       try {
-        const res = await fetch('/api/compliance/vault/documents', {
+        const res = await fetch('/api/compliance/vault/documents/upload', {
           method: 'POST',
-          headers: this.getAuthHeaders(),
+          headers,
           credentials: 'same-origin',
-          body: JSON.stringify(payload)
+          body: formData
         });
 
         if (res.ok) {
-          this.app?.showNotification('File uploaded.', 'success');
+          this.app?.showNotification('Document and file uploaded.', 'success');
           closeModal();
           await this.loadData();
         } else {
-          const errData = await res.json();
+          const errData = await res.json().catch(() => ({}));
           this.app?.showNotification(errData.error || 'Upload failed', 'error');
+          submitButton.disabled = false;
+          submitButton.textContent = 'Upload File';
         }
       } catch (err) {
         this.app?.showNotification(err.message, 'error');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Upload File';
       }
     });
   }
@@ -5086,7 +5640,7 @@ export class DocumentVaultExplorer {
     const overlay = document.createElement('div');
     overlay.className = 'staff-modal-overlay';
     overlay.id = 'vaultDocEditorOverlay';
-    overlay.style.zIndex = '2147483647';
+    overlay.style.zIndex = '2147483640';
 
     const chosenDirId = existingDoc?.dir_id || defaultDirId || this.selectedDirId;
 
@@ -6207,7 +6761,7 @@ export class DocumentVaultExplorer {
     const overlay = document.createElement('div');
     overlay.className = 'staff-modal-overlay';
     overlay.id = 'vaultTrailModalOverlay';
-    overlay.style.zIndex = '2147483647';
+    overlay.style.zIndex = '2147483640';
 
     let trailData = { current: null, parents: [], children: [] };
     try {
@@ -6265,7 +6819,7 @@ export class DocumentVaultExplorer {
     const overlay = document.createElement('div');
     overlay.className = 'staff-modal-overlay';
     overlay.id = 'vaultNewTrailModalOverlay';
-    overlay.style.zIndex = '2147483647';
+    overlay.style.zIndex = '2147483640';
 
     // Gather existing matters
     const existingMatters = Array.from(new Set(
@@ -6416,39 +6970,9 @@ export class DocumentVaultExplorer {
   }
 
   openFolderOptionsModal(dirId) {
-    const dir = this.directories.find(d => d.id === dirId);
-    if (!dir) return;
-
-    const action = prompt(`Folder: "${dir.name}"\nType 'RENAME' or 'DELETE':`).trim().toUpperCase();
-    if (action === 'RENAME') {
-      const newName = prompt('New name:', dir.name);
-      if (newName && newName.trim()) {
-        fetch(`/api/compliance/vault/directories/${dir.id}`, {
-          method: 'PUT',
-          headers: this.getAuthHeaders(),
-          credentials: 'same-origin',
-          body: JSON.stringify({ name: newName.trim() })
-        }).then(() => {
-          this.app?.showNotification('Renamed.', 'success');
-          this.loadData();
-        });
-      }
-    } else if (action === 'DELETE') {
-      if (confirm(`Delete folder "${dir.name}" and its contents?`)) {
-        fetch(`/api/compliance/vault/directories/${dir.id}`, {
-          method: 'DELETE',
-          headers: this.getAuthHeaders(),
-          credentials: 'same-origin'
-        }).then(() => {
-          this.app?.showNotification('Deleted.', 'info');
-          if (this.selectedDirId === dir.id) {
-            this.selectedDirId = null;
-            this.breadcrumbPath = [];
-          }
-          this.loadData();
-        });
-      }
-    }
+    const target = this.container?.querySelector(`[data-dir-id="${Number(dirId)}"]`);
+    const rect = target?.getBoundingClientRect();
+    this.openVaultContextMenu('folder', Number(dirId), rect?.left || 16, rect?.bottom || 16);
   }
 
   // ================= 3D IPOD COVER FLOW SONG-SELECTOR VIEWER =================
@@ -6844,6 +7368,22 @@ export class DocumentVaultExplorer {
   }
 
   destroy() {
+    this.closeVaultContextMenu();
+    if (this.fileDropHandlers) {
+      document.removeEventListener('dragenter', this.fileDropHandlers.dragenter);
+      document.removeEventListener('dragover', this.fileDropHandlers.dragover);
+      document.removeEventListener('dragleave', this.fileDropHandlers.dragleave);
+      document.removeEventListener('drop', this.fileDropHandlers.drop);
+    }
+    if (this.container && this.vaultContextMenuHandler) {
+      this.container.removeEventListener('contextmenu', this.vaultContextMenuHandler);
+    }
+    if (this.contextMenuDismissHandler) {
+      document.removeEventListener('pointerdown', this.contextMenuDismissHandler);
+    }
+    if (this.contextMenuKeyHandler) {
+      document.removeEventListener('keydown', this.contextMenuKeyHandler);
+    }
     if (this.keyHandler) {
       window.removeEventListener('keydown', this.keyHandler);
     }

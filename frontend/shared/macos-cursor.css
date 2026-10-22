@@ -25,7 +25,7 @@
   height: 32px;
   pointer-events: none !important;
   user-select: none;
-  z-index: 2147483647;
+  z-index: 2147483647 !important;
   will-change: transform;
   transform-origin: 0 0;
 

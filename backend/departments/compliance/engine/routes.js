@@ -3,6 +3,22 @@
  * Mounts endpoints for Staff, KYC Vault, Licenses, Deadlines, SOPs & AI
  */
 
+const multer = require('multer');
+const path = require('path');
+
+const vaultDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!['.pdf', '.doc', '.docx', '.png', '.jpg', '.jpeg'].includes(extension)) {
+      callback(new Error('Supported files: PDF, Word (.doc/.docx), PNG, or JPEG.'));
+      return;
+    }
+    callback(null, true);
+  }
+}).single('file');
+
 module.exports = function(router, handlers) {
   // 1. Executive "God's Eye" Overview
   router.get('/overview', handlers.getOverview);
@@ -59,6 +75,20 @@ module.exports = function(router, handlers) {
   router.get('/vault/documents', handlers.getVaultDocuments);
   router.get('/vault/next-ref', handlers.getNextDocRef);
   router.post('/vault/documents', handlers.createVaultDocument);
+  router.post('/vault/documents/upload', (req, res, next) => {
+    vaultDocumentUpload(req, res, (err) => {
+      if (err) {
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+        res.status(status).json({ error: err.message });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'Select a file to upload' });
+        return;
+      }
+      next();
+    });
+  }, handlers.createVaultDocument);
   router.put('/vault/documents/:id', handlers.updateVaultDocument);
   router.delete('/vault/documents/:id', handlers.deleteVaultDocument);
   router.post('/vault/documents/batch', handlers.batchVaultOperation);

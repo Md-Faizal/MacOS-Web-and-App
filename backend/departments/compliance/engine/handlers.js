@@ -1316,11 +1316,52 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
       try {
         const { id } = req.params;
         const { name, department, icon } = req.body;
+        const dirId = Number(id);
+        const currentDir = db.prepare('SELECT id FROM vault_directories WHERE id = ?').get(dirId);
+        if (!currentDir) return res.status(404).json({ error: 'Directory not found' });
+        if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+          return res.status(400).json({ error: 'Directory name cannot be empty' });
+        }
+
+        const cleanName = typeof name === 'string' ? name.trim() : null;
+        const slug = cleanName ? cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : null;
+        const shouldMove = Object.prototype.hasOwnProperty.call(req.body, 'parent_id');
+        let parentId = null;
+        if (shouldMove) {
+          const rawParentId = req.body.parent_id;
+          parentId = rawParentId === null || rawParentId === '' ? null : Number(rawParentId);
+          if (parentId !== null && (!Number.isInteger(parentId) || parentId <= 0)) {
+            return res.status(400).json({ error: 'Invalid parent directory ID' });
+          }
+          if (parentId === dirId) {
+            return res.status(400).json({ error: 'A directory cannot be moved into itself' });
+          }
+          if (parentId !== null) {
+            let ancestor = db.prepare('SELECT id, parent_id FROM vault_directories WHERE id = ?').get(parentId);
+            if (!ancestor) return res.status(404).json({ error: 'Parent directory not found' });
+            const visited = new Set();
+            while (ancestor) {
+              if (Number(ancestor.id) === dirId) {
+                return res.status(400).json({ error: 'A directory cannot be moved into its own subfolder' });
+              }
+              if (visited.has(Number(ancestor.id))) break;
+              visited.add(Number(ancestor.id));
+              ancestor = ancestor.parent_id
+                ? db.prepare('SELECT id, parent_id FROM vault_directories WHERE id = ?').get(ancestor.parent_id)
+                : null;
+            }
+          }
+        }
+
         db.prepare(`
           UPDATE vault_directories 
-          SET name = COALESCE(?, name), department = COALESCE(?, department), icon = COALESCE(?, icon)
+          SET name = COALESCE(?, name), slug = COALESCE(?, slug),
+            department = COALESCE(?, department), icon = COALESCE(?, icon)
           WHERE id = ?
-        `).run(name?.trim() || null, department || null, icon || null, id);
+        `).run(cleanName, slug, department || null, icon || null, dirId);
+        if (shouldMove) {
+          db.prepare('UPDATE vault_directories SET parent_id = ? WHERE id = ?').run(parentId, dirId);
+        }
         res.json({ success: true });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1399,6 +1440,7 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
     },
 
     createVaultDocument: async (req, res) => {
+      let savedUploadPath = null;
       try {
         let {
           dir_id, doc_ref_no, title, doc_type, department, direction, status,
@@ -1410,6 +1452,41 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
 
         if (!title || !title.trim()) {
           return res.status(400).json({ error: 'Document title is required' });
+        }
+
+        const crypto = require('crypto');
+        const uploadFile = req.file;
+        if (uploadFile) {
+          const extension = path.extname(uploadFile.originalname).toLowerCase();
+          const buffer = uploadFile.buffer;
+          const isValidFile = {
+            '.pdf': buffer.subarray(0, 5).toString('ascii') === '%PDF-',
+            '.doc': buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])),
+            '.docx': buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
+            '.png': buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+            '.jpg': buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])),
+            '.jpeg': buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+          }[extension];
+          if (!isValidFile) {
+            return res.status(400).json({ error: 'The file content does not match its supported file extension.' });
+          }
+
+          const safeFileName = String(uploadFile.originalname || `document${extension}`)
+            .split(/[\\/]/)
+            .pop()
+            .replace(/[^A-Za-z0-9._() -]/g, '_')
+            .replace(/^[.\s]+|[.\s]+$/g, '') || `document${extension}`;
+          const rootDir = path.resolve(__dirname, '../../../../');
+          const uploadDirectory = path.join(rootDir, 'storage', 'vault', 'uploads');
+          const storedFileName = `${crypto.randomUUID()}${extension}`;
+          const absoluteFilePath = path.join(uploadDirectory, storedFileName);
+          file_path = path.join('storage', 'vault', 'uploads', storedFileName).split(path.sep).join('/');
+          file_name = safeFileName;
+          file_size = uploadFile.size;
+
+          await require('fs').promises.mkdir(uploadDirectory, { recursive: true });
+          await require('fs').promises.writeFile(absoluteFilePath, buffer, { flag: 'wx' });
+          savedUploadPath = absoluteFilePath;
         }
 
         // If signatory_staff_id is provided, auto-populate signature and details if missing
@@ -1442,7 +1519,6 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         }
 
         // Generate SHA-256 Digest
-        const crypto = require('crypto');
         const hashPayload = `${doc_ref_no}|${title}|${subject || ''}|${issue_date || ''}|${Date.now()}`;
         const verification_hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
 
@@ -1505,7 +1581,15 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         }
 
         res.status(201).json({ success: true, id: newDocId, doc_ref_no, verification_hash });
+        savedUploadPath = null;
       } catch (err) {
+        if (savedUploadPath) {
+          try {
+            await require('fs').promises.unlink(savedUploadPath);
+          } catch (cleanupError) {
+            console.error('[Compliance Vault] Failed to clean up uncommitted upload:', cleanupError.message);
+          }
+        }
         res.status(500).json({ error: err.message });
       }
     },
@@ -1636,9 +1720,18 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         }
 
         if (action === 'MOVE') {
-          if (!target_dir_id) return res.status(400).json({ error: 'Target directory ID required for MOVE' });
+          if (!Object.prototype.hasOwnProperty.call(req.body, 'target_dir_id')) {
+            return res.status(400).json({ error: 'Target directory ID required for MOVE' });
+          }
+          const targetDirId = target_dir_id === null || target_dir_id === '' ? null : Number(target_dir_id);
+          if (targetDirId !== null && (!Number.isInteger(targetDirId) || targetDirId <= 0)) {
+            return res.status(400).json({ error: 'Invalid target directory ID' });
+          }
+          if (targetDirId !== null && !db.prepare('SELECT id FROM vault_directories WHERE id = ?').get(targetDirId)) {
+            return res.status(404).json({ error: 'Target directory not found' });
+          }
           const stmt = db.prepare('UPDATE company_vault_documents SET dir_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-          doc_ids.forEach(id => stmt.run(target_dir_id, id));
+          doc_ids.forEach(id => stmt.run(targetDirId, id));
           return res.json({ success: true, count: doc_ids.length });
         }
 
