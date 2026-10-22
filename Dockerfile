@@ -6,13 +6,15 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # Install native build tools required for better-sqlite3 compilation
-RUN printf '%s\n' \
+RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' >> /etc/resolv.conf || true) \
+    && printf '%s\n' \
        'Acquire::Retries "5";' \
        'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
-    && apt-get update && apt-get install -y --no-install-recommends \
+    && (for i in 1 2 3 4 5; do apt-get update && break || { echo "apt-get update retry $i..."; sleep 2; }; done) \
+    && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
@@ -50,13 +52,14 @@ WORKDIR /app
 
 # Install dumb-init for proper PID 1 signal forwarding and zombie reaping,
 # curl for health checks, and python3 + pip for invoice/credit-note PDF generation
-RUN printf '%s\n' \
+RUN (grep -q "nameserver 8.8.8.8" /etc/resolv.conf 2>/dev/null || printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' >> /etc/resolv.conf || true) \
+    && printf '%s\n' \
        'Acquire::Retries "5";' \
        'Acquire::http::Timeout "30";' \
        'Acquire::https::Timeout "30";' \
        'Acquire::ForceIPv4 "true";' \
        > /etc/apt/apt.conf.d/80-retries \
-    && apt-get update \
+    && (for i in 1 2 3 4 5; do apt-get update && break || { echo "apt-get update retry $i..."; sleep 2; }; done) \
     && apt-get install -y --no-install-recommends \
        dumb-init \
        curl \
