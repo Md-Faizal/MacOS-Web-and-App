@@ -28,6 +28,7 @@
     "test:passkey": "node backend/scripts/test-passkey-upgrade.js",
     "test:departments": "node backend/scripts/test-department-registry.js",
     "test:calendar": "node backend/scripts/test-calendar-department.js",
+    "test:compliance": "node backend/scripts/test-compliance-workspace.js",
     "test:notes": "node backend/scripts/test-notes-department.js",
     "test:letterhead:parity": "python tools/test-letterhead-export-parity.py",
     "test:studio:parity": "python tools/test-studio-multiformat-pixel-parity.py",

@@ -213,6 +213,22 @@ module.exports = function createHandlers(db) {
     };
   };
 
+  const validateLinkedRecord = (table, id) => {
+    if (id === null || id === '' || id === undefined) return { valid: true, value: null };
+    const value = Number(id);
+    if (!Number.isInteger(value) || value <= 0) return { valid: false, value: null };
+    const row = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(value);
+    return { valid: !!row, value };
+  };
+
+  const isValidDate = value => {
+    if (value === null || value === '' || value === undefined) return true;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  };
+
   return {
     initDatabase() {
       // 1. Staff Master
@@ -267,6 +283,8 @@ module.exports = function createHandlers(db) {
           expiry_date DATE,
           renewal_frequency TEXT DEFAULT 'Annually',
           officer_in_charge TEXT,
+          linked_staff_id INTEGER REFERENCES company_staff(id) ON DELETE SET NULL,
+          vault_document_id INTEGER REFERENCES company_vault_documents(id) ON DELETE SET NULL,
           statutory_rule_ref TEXT,
           status TEXT DEFAULT 'ACTIVE',
           file_name TEXT,
@@ -280,6 +298,8 @@ module.exports = function createHandlers(db) {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           entity_type TEXT NOT NULL,
           entity_id INTEGER,
+          staff_id INTEGER REFERENCES company_staff(id) ON DELETE SET NULL,
+          vault_document_id INTEGER REFERENCES company_vault_documents(id) ON DELETE SET NULL,
           title TEXT NOT NULL,
           category TEXT NOT NULL DEFAULT 'GENERAL',
           deadline_date DATE NOT NULL,
@@ -410,97 +430,6 @@ module.exports = function createHandlers(db) {
           console.warn('[Compliance] Vault AI/Signature schema check note:', schemaErr.message);
         }
 
-      // Seed core statutory licenses if table is empty
-      const count = db.prepare('SELECT COUNT(*) as c FROM company_compliances').get().c;
-      if (count === 0) {
-        const seedLicenses = [
-          {
-            title: 'AYUSH Drug Manufacturing License (Form 25D)',
-            category: 'STATUTORY_DRUG',
-            license_number: 'OR-02/AYUR',
-            issuing_authority: 'State Licensing Authority, Directorate of AYUSH, Odisha',
-            issue_date: '2022-04-01',
-            expiry_date: '2027-03-31',
-            renewal_frequency: '5 Years',
-            officer_in_charge: 'Proprietor & Chief Chemist',
-            statutory_rule_ref: 'Drugs & Cosmetics Rules 1945, Rule 154',
-            status: 'ACTIVE',
-            notes: 'Covers Asava, Arishta, Churna, Taila, and Gutika classical dosage forms.'
-          },
-          {
-            title: 'Schedule T GMP Compliance Certificate',
-            category: 'STATUTORY_DRUG',
-            license_number: 'GMP/AYUR/2023/118',
-            issuing_authority: 'Ayush Drug Controller Inspection Board',
-            issue_date: '2023-08-15',
-            expiry_date: '2026-08-14',
-            renewal_frequency: '3 Years',
-            officer_in_charge: 'Quality Assurance Head',
-            statutory_rule_ref: 'Part I & II, Schedule T (Good Manufacturing Practices)',
-            status: 'ACTIVE',
-            notes: 'Sanitation, Batch Records, retention samples, and manufacturing plant audit.'
-          },
-          {
-            title: 'Factory License (Odisha Directorate of Factories & Boilers)',
-            category: 'LABOR_SAFETY',
-            license_number: 'FAC/CUTTACK/2021/892',
-            issuing_authority: 'Directorate of Factories & Boilers, Govt of Odisha',
-            issue_date: '2025-01-01',
-            expiry_date: '2026-12-31',
-            renewal_frequency: 'Annually',
-            officer_in_charge: 'Factory Manager',
-            statutory_rule_ref: 'Factories Act 1948, Section 6',
-            status: 'ACTIVE',
-            notes: 'Annual renewal and boiler safety certificate.'
-          },
-          {
-            title: 'State Pollution Control Board (Consent to Operate - CTO)',
-            category: 'ENVIRONMENTAL',
-            license_number: 'SPCB/CTO/IND/2023/4521',
-            issuing_authority: 'Odisha State Pollution Control Board',
-            issue_date: '2023-04-01',
-            expiry_date: '2028-03-31',
-            renewal_frequency: '5 Years',
-            officer_in_charge: 'Environmental Compliance In-Charge',
-            statutory_rule_ref: 'Water (Prevention of Pollution) Act 1974 & Air Act 1981',
-            status: 'ACTIVE',
-            notes: 'Effluent treatment plant and air emission norms.'
-          },
-          {
-            title: 'Fire Safety Certificate / NOC',
-            category: 'LABOR_SAFETY',
-            license_number: 'FIRE/NOC/2024/774',
-            issuing_authority: 'Odisha Fire & Emergency Services',
-            issue_date: '2024-06-01',
-            expiry_date: '2027-05-31',
-            renewal_frequency: '3 Years',
-            officer_in_charge: 'Safety Officer',
-            statutory_rule_ref: 'Odisha Fire Prevention and Fire Safety Rules 2017',
-            status: 'ACTIVE',
-            notes: 'Hydrant tests, extinguisher maintenance, fire drills.'
-          }
-        ];
-
-        const insertStmt = db.prepare(`
-          INSERT INTO company_compliances 
-          (title, category, license_number, issuing_authority, issue_date, expiry_date, renewal_frequency, officer_in_charge, statutory_rule_ref, status, notes)
-          VALUES (@title, @category, @license_number, @issuing_authority, @issue_date, @expiry_date, @renewal_frequency, @officer_in_charge, @statutory_rule_ref, @status, @notes)
-        `);
-
-        seedLicenses.forEach(l => insertStmt.run(l));
-
-        // Create initial deadlines from licenses
-        const deadlineStmt = db.prepare(`
-          INSERT INTO compliance_deadlines (entity_type, entity_id, title, category, deadline_date, priority)
-          VALUES ('COMPANY_LICENSE', ?, ?, ?, ?, 'HIGH')
-        `);
-
-        const inserted = db.prepare('SELECT id, title, category, expiry_date FROM company_compliances WHERE expiry_date IS NOT NULL').all();
-        inserted.forEach(row => {
-          deadlineStmt.run(row.id, `Renewal: ${row.title}`, row.category, row.expiry_date);
-        });
-      }
-
       // Seed initial Vault directories if empty (folder structure)
       const dirCount = db.prepare('SELECT COUNT(*) as c FROM vault_directories').get().c;
       if (dirCount === 0) {
@@ -554,11 +483,26 @@ module.exports = function createHandlers(db) {
         // Deadlines summary
         const pendingDeadlines = db.prepare(`
           SELECT id, title, category, deadline_date, priority,
-                 CAST((julianday(deadline_date) - julianday('now')) AS INTEGER) as days_remaining
+                 CAST((julianday(deadline_date) - julianday('now')) AS INTEGER) as days_remaining,
+                 status, created_at
           FROM compliance_deadlines
           WHERE status = 'PENDING'
           ORDER BY deadline_date ASC
           LIMIT 10
+        `).all();
+        const pendingDeadlineCount = db.prepare("SELECT COUNT(*) AS c FROM compliance_deadlines WHERE status = 'PENDING'").get().c;
+        const overdueDeadlineCount = db.prepare(`
+          SELECT COUNT(*) AS c FROM compliance_deadlines
+          WHERE status = 'PENDING' AND julianday(deadline_date) < julianday('now')
+        `).get().c;
+        const recordedActivity = db.prepare(`
+          SELECT id, title, category, created_at, 'deadline' AS record_type, status
+          FROM compliance_deadlines
+          UNION ALL
+          SELECT id, title, category, created_at, 'license' AS record_type, status
+          FROM company_compliances
+          ORDER BY created_at DESC
+          LIMIT 8
         `).all();
 
         // Department breakdown
@@ -592,7 +536,8 @@ module.exports = function createHandlers(db) {
             activeLicenses,
             expiringSoonCount: expiringLicenses.length,
             expiredCount: expiredLicenses.length,
-            pendingDeadlinesCount: pendingDeadlines.length,
+            pendingDeadlinesCount: pendingDeadlineCount,
+            overdueDeadlinesCount: overdueDeadlineCount,
             totalDocs,
             verifiedDocs,
             pendingDocs
@@ -600,7 +545,8 @@ module.exports = function createHandlers(db) {
           expiringLicenses,
           expiredLicenses,
           pendingDeadlines,
-          departmentBreakdown: depts
+          departmentBreakdown: depts,
+          recordedActivity
         });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -657,12 +603,14 @@ module.exports = function createHandlers(db) {
       try {
         const rows = db.prepare('SELECT emp_code FROM company_staff WHERE emp_code IS NOT NULL').all();
         const existingCodes = rows.map(r => r.emp_code);
-        let nextCode = 'EMP-001';
+        const currentYear2Digits = String(new Date().getFullYear()).slice(-2);
+        const defaultPrefix = `UCA-${currentYear2Digits}`;
+        let nextCode = `${defaultPrefix}-0001`;
         if (SuiteCoreBridge && typeof SuiteCoreBridge.generateNextEmployeeCode === 'function') {
           nextCode = SuiteCoreBridge.generateNextEmployeeCode(existingCodes, {
-            prefix: 'EMP',
+            prefix: defaultPrefix,
             separator: '-',
-            padding: 3
+            padding: 4
           });
         } else {
           let maxSeq = 0;
@@ -673,7 +621,7 @@ module.exports = function createHandlers(db) {
               if (num > maxSeq) maxSeq = num;
             }
           }
-          nextCode = `EMP-${String(maxSeq + 1).padStart(3, '0')}`;
+          nextCode = `${defaultPrefix}-${String(maxSeq + 1).padStart(4, '0')}`;
         }
         res.json({ success: true, employee_code: nextCode });
       } catch (err) {
@@ -698,11 +646,13 @@ module.exports = function createHandlers(db) {
         if (!emp_code || !emp_code.trim()) {
           const rows = db.prepare('SELECT emp_code FROM company_staff WHERE emp_code IS NOT NULL').all();
           const existingCodes = rows.map(r => r.emp_code);
+          const currentYear2Digits = String(new Date().getFullYear()).slice(-2);
+          const defaultPrefix = `UCA-${currentYear2Digits}`;
           if (SuiteCoreBridge && typeof SuiteCoreBridge.generateNextEmployeeCode === 'function') {
             emp_code = SuiteCoreBridge.generateNextEmployeeCode(existingCodes, {
-              prefix: 'EMP',
+              prefix: defaultPrefix,
               separator: '-',
-              padding: 3
+              padding: 4
             });
           } else {
             let maxSeq = 0;
@@ -713,7 +663,7 @@ module.exports = function createHandlers(db) {
                 if (num > maxSeq) maxSeq = num;
               }
             }
-            emp_code = `EMP-${String(maxSeq + 1).padStart(3, '0')}`;
+            emp_code = `${defaultPrefix}-${String(maxSeq + 1).padStart(4, '0')}`;
           }
         }
 
@@ -950,19 +900,24 @@ module.exports = function createHandlers(db) {
     getLicenses: (req, res) => {
       try {
         const { category, status } = req.query;
-        let query = 'SELECT *, CAST((julianday(expiry_date) - julianday(\'now\')) AS INTEGER) as days_remaining FROM company_compliances WHERE 1=1';
+        let query = `SELECT c.*, CAST((julianday(c.expiry_date) - julianday('now')) AS INTEGER) as days_remaining,
+          s.full_name AS linked_staff_name, d.title AS vault_document_title
+          FROM company_compliances c
+          LEFT JOIN company_staff s ON s.id = c.linked_staff_id
+          LEFT JOIN company_vault_documents d ON d.id = c.vault_document_id
+          WHERE 1=1`;
         const params = [];
 
         if (category) {
-          query += ' AND category = ?';
+          query += ' AND c.category = ?';
           params.push(category);
         }
         if (status) {
-          query += ' AND status = ?';
+          query += ' AND c.status = ?';
           params.push(status);
         }
 
-        query += ' ORDER BY expiry_date ASC';
+        query += ' ORDER BY c.expiry_date ASC, c.title COLLATE NOCASE ASC';
         const licenses = db.prepare(query).all(...params);
         res.json({ success: true, licenses });
       } catch (err) {
@@ -984,31 +939,42 @@ module.exports = function createHandlers(db) {
     createLicense: (req, res) => {
       try {
         const {
-          title, category, license_number, issuing_authority,
+          title, category, license_number, issuing_authority, linked_staff_id, vault_document_id,
           issue_date, expiry_date, renewal_frequency, officer_in_charge,
           statutory_rule_ref, file_name, file_data, notes
         } = req.body;
 
-        if (!title) return res.status(400).json({ error: 'License Title is required' });
-
-        const info = db.prepare(`
-          INSERT INTO company_compliances 
-          (title, category, license_number, issuing_authority, issue_date, expiry_date, renewal_frequency, officer_in_charge, statutory_rule_ref, file_name, file_data, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          title.trim(), category || 'STATUTORY_DRUG', license_number || null,
-          issuing_authority || null, issue_date || null, expiry_date || null,
-          renewal_frequency || 'Annually', officer_in_charge || null,
-          statutory_rule_ref || null, file_name || null, file_data || null, notes || null
-        );
-
-        if (expiry_date) {
-          db.prepare(`
-            INSERT INTO compliance_deadlines (entity_type, entity_id, title, category, deadline_date, priority)
-            VALUES ('COMPANY_LICENSE', ?, ?, ?, ?, 'HIGH')
-          `).run(info.lastInsertRowid, `Renewal: ${title}`, category || 'STATUTORY_DRUG', expiry_date);
+        if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ error: 'License Title is required' });
+        if (!isValidDate(issue_date) || !isValidDate(expiry_date)) {
+          return res.status(400).json({ error: 'License dates must be valid YYYY-MM-DD dates' });
         }
+        const staff = validateLinkedRecord('company_staff', linked_staff_id);
+        const doc = validateLinkedRecord('company_vault_documents', vault_document_id);
+        if (!staff.valid) return res.status(400).json({ error: 'Linked staff record was not found' });
+        if (!doc.valid) return res.status(400).json({ error: 'Linked Vault document was not found' });
 
+        const createLicenseTransaction = db.transaction(() => {
+          const info = db.prepare(`
+            INSERT INTO company_compliances
+            (title, category, license_number, issuing_authority, linked_staff_id, vault_document_id, issue_date, expiry_date, renewal_frequency, officer_in_charge, statutory_rule_ref, file_name, file_data, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            title.trim(), category || 'STATUTORY_DRUG', license_number || null,
+            issuing_authority || null, staff.value, doc.value, issue_date || null, expiry_date || null,
+            renewal_frequency || null, officer_in_charge || null,
+            statutory_rule_ref || null, file_name || null, file_data || null, notes || null
+          );
+
+          if (expiry_date) {
+            db.prepare(`
+              INSERT INTO compliance_deadlines (entity_type, entity_id, staff_id, vault_document_id, title, category, deadline_date, priority)
+              VALUES ('COMPANY_LICENSE', ?, ?, ?, ?, ?, ?, 'HIGH')
+            `).run(info.lastInsertRowid, staff.value, doc.value, `Renewal: ${title.trim()}`, category || 'STATUTORY_DRUG', expiry_date);
+          }
+
+          return info;
+        });
+        const info = createLicenseTransaction();
         res.status(201).json({ success: true, id: info.lastInsertRowid });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1018,35 +984,70 @@ module.exports = function createHandlers(db) {
     updateLicense: (req, res) => {
       try {
         const { id } = req.params;
-        const {
-          title, category, license_number, issuing_authority,
-          issue_date, expiry_date, renewal_frequency, officer_in_charge,
-          statutory_rule_ref, status, file_name, file_data, notes
-        } = req.body;
+        const license = db.prepare('SELECT * FROM company_compliances WHERE id = ?').get(id);
+        if (!license) return res.status(404).json({ error: 'Compliance record not found' });
+        const fields = {
+          title: 'title', category: 'category', license_number: 'license_number',
+          issuing_authority: 'issuing_authority', issue_date: 'issue_date',
+          expiry_date: 'expiry_date', renewal_frequency: 'renewal_frequency',
+          officer_in_charge: 'officer_in_charge', statutory_rule_ref: 'statutory_rule_ref',
+          status: 'status', file_name: 'file_name', notes: 'notes',
+          linked_staff_id: 'linked_staff_id', vault_document_id: 'vault_document_id'
+        };
+        const updates = [];
+        const values = [];
+        for (const [input, column] of Object.entries(fields)) {
+          if (!Object.prototype.hasOwnProperty.call(req.body, input)) continue;
+          let value = req.body[input];
+          if (input === 'linked_staff_id' || input === 'vault_document_id') {
+            const linked = validateLinkedRecord(input === 'linked_staff_id' ? 'company_staff' : 'company_vault_documents', value);
+            if (!linked.valid) return res.status(400).json({ error: input === 'linked_staff_id' ? 'Linked staff record was not found' : 'Linked Vault document was not found' });
+            value = linked.value;
+          }
+          if (input === 'title' && (typeof value !== 'string' || !value.trim())) {
+            return res.status(400).json({ error: 'Compliance title cannot be empty' });
+          }
+          if ((input === 'issue_date' || input === 'expiry_date') && !isValidDate(value)) {
+            return res.status(400).json({ error: 'License dates must be valid YYYY-MM-DD dates' });
+          }
+          if (input === 'status' && !['ACTIVE', 'INACTIVE'].includes(value)) {
+            return res.status(400).json({ error: 'License status must be ACTIVE or INACTIVE' });
+          }
+          updates.push(`${column} = ?`);
+          values.push(input === 'title' ? value.trim() : value);
+        }
+        if (!updates.length) return res.status(400).json({ error: 'No compliance fields were provided' });
+        updates.push('updated_at = CURRENT_TIMESTAMP');
+        values.push(id);
+        const updateLicenseTransaction = db.transaction(() => {
+          db.prepare(`UPDATE company_compliances SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
-        db.prepare(`
-          UPDATE company_compliances SET
-            title = COALESCE(?, title),
-            category = COALESCE(?, category),
-            license_number = COALESCE(?, license_number),
-            issuing_authority = COALESCE(?, issuing_authority),
-            issue_date = COALESCE(?, issue_date),
-            expiry_date = COALESCE(?, expiry_date),
-            renewal_frequency = COALESCE(?, renewal_frequency),
-            officer_in_charge = COALESCE(?, officer_in_charge),
-            statutory_rule_ref = COALESCE(?, statutory_rule_ref),
-            status = COALESCE(?, status),
-            file_name = COALESCE(?, file_name),
-            file_data = COALESCE(?, file_data),
-            notes = COALESCE(?, notes),
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(
-          title, category, license_number, issuing_authority, issue_date,
-          expiry_date, renewal_frequency, officer_in_charge, statutory_rule_ref,
-          status, file_name, file_data, notes, id
-        );
-
+          const renewal = db.prepare(`
+            SELECT id FROM compliance_deadlines
+            WHERE entity_type = 'COMPANY_LICENSE' AND entity_id = ? AND status = 'PENDING'
+            ORDER BY id DESC LIMIT 1
+          `).get(id);
+          const current = db.prepare('SELECT * FROM company_compliances WHERE id = ?').get(id);
+          const renewalFieldsChanged = ['expiry_date', 'title', 'category', 'linked_staff_id', 'vault_document_id']
+            .some(field => Object.prototype.hasOwnProperty.call(req.body, field));
+          const expiryDateChanged = Object.prototype.hasOwnProperty.call(req.body, 'expiry_date')
+            && (req.body.expiry_date || null) !== (license.expiry_date || null);
+          if (!renewalFieldsChanged) return;
+          if (!current.expiry_date && renewal) {
+            db.prepare('DELETE FROM compliance_deadlines WHERE id = ?').run(renewal.id);
+          } else if (current.expiry_date && renewal) {
+            db.prepare(`
+              UPDATE compliance_deadlines SET title = ?, category = ?, deadline_date = ?, staff_id = ?, vault_document_id = ?
+              WHERE id = ?
+            `).run(`Renewal: ${current.title}`, current.category, current.expiry_date, current.linked_staff_id, current.vault_document_id, renewal.id);
+          } else if (current.expiry_date && expiryDateChanged) {
+            db.prepare(`
+              INSERT INTO compliance_deadlines (entity_type, entity_id, staff_id, vault_document_id, title, category, deadline_date, priority)
+              VALUES ('COMPANY_LICENSE', ?, ?, ?, ?, ?, ?, 'HIGH')
+            `).run(current.id, current.linked_staff_id, current.vault_document_id, `Renewal: ${current.title}`, current.category, current.expiry_date);
+          }
+        });
+        updateLicenseTransaction();
         res.json({ success: true });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1056,8 +1057,13 @@ module.exports = function createHandlers(db) {
     deleteLicense: (req, res) => {
       try {
         const { id } = req.params;
-        db.prepare('DELETE FROM company_compliances WHERE id = ?').run(id);
-        db.prepare("DELETE FROM compliance_deadlines WHERE entity_type = 'COMPANY_LICENSE' AND entity_id = ?").run(id);
+        const deleteTransaction = db.transaction(() => {
+          const result = db.prepare('DELETE FROM company_compliances WHERE id = ?').run(id);
+          if (result.changes === 0) return false;
+          db.prepare("DELETE FROM compliance_deadlines WHERE entity_type = 'COMPANY_LICENSE' AND entity_id = ?").run(id);
+          return true;
+        });
+        if (!deleteTransaction()) return res.status(404).json({ error: 'Compliance record not found' });
         res.json({ success: true });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1069,17 +1075,22 @@ module.exports = function createHandlers(db) {
       try {
         const { status } = req.query;
         let query = `
-          SELECT *, 
-                 CAST((julianday(deadline_date) - julianday('now')) AS INTEGER) as days_remaining
-          FROM compliance_deadlines
+          SELECT c.*,
+                 CAST((julianday(c.deadline_date) - julianday('now')) AS INTEGER) as days_remaining,
+                 s.full_name AS linked_staff_name, d.title AS vault_document_title,
+                 l.title AS linked_license_title
+          FROM compliance_deadlines c
+          LEFT JOIN company_staff s ON s.id = c.staff_id
+          LEFT JOIN company_vault_documents d ON d.id = c.vault_document_id
+          LEFT JOIN company_compliances l ON c.entity_type = 'COMPANY_LICENSE' AND l.id = c.entity_id
           WHERE 1=1
         `;
         const params = [];
         if (status) {
-          query += ' AND status = ?';
+          query += ' AND c.status = ?';
           params.push(status);
         }
-        query += ' ORDER BY deadline_date ASC';
+        query += ' ORDER BY c.deadline_date ASC, c.title COLLATE NOCASE ASC';
         const deadlines = db.prepare(query).all(...params);
         res.json({ success: true, deadlines });
       } catch (err) {
@@ -1089,17 +1100,69 @@ module.exports = function createHandlers(db) {
 
     createDeadline: (req, res) => {
       try {
-        const { title, category, deadline_date, priority, notes } = req.body;
+        const { title, category, deadline_date, priority, notes, staff_id, vault_document_id } = req.body;
         if (!title || !deadline_date) {
           return res.status(400).json({ error: 'Title and Deadline Date are required' });
         }
+        if (!isValidDate(deadline_date)) {
+          return res.status(400).json({ error: 'Deadline Date must be a valid YYYY-MM-DD date' });
+        }
+        if (priority && !['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(String(priority).toUpperCase())) {
+          return res.status(400).json({ error: 'Priority must be LOW, MEDIUM, HIGH, or CRITICAL' });
+        }
+        const staff = validateLinkedRecord('company_staff', staff_id);
+        const doc = validateLinkedRecord('company_vault_documents', vault_document_id);
+        if (!staff.valid) return res.status(400).json({ error: 'Linked staff record was not found' });
+        if (!doc.valid) return res.status(400).json({ error: 'Linked Vault document was not found' });
 
         const info = db.prepare(`
-          INSERT INTO compliance_deadlines (entity_type, title, category, deadline_date, priority, notes)
-          VALUES ('MANUAL', ?, ?, ?, ?, ?)
-        `).run(title.trim(), category || 'GENERAL', deadline_date, priority || 'HIGH', notes || null);
+          INSERT INTO compliance_deadlines (entity_type, staff_id, vault_document_id, title, category, deadline_date, priority, notes)
+          VALUES ('MANUAL', ?, ?, ?, ?, ?, ?, ?)
+        `).run(staff.value, doc.value, title.trim(), category || 'GENERAL', deadline_date, String(priority || 'MEDIUM').toUpperCase(), notes || null);
 
         res.status(201).json({ success: true, id: info.lastInsertRowid });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    updateDeadline: (req, res) => {
+      try {
+        const { id } = req.params;
+        const current = db.prepare('SELECT id FROM compliance_deadlines WHERE id = ?').get(id);
+        if (!current) return res.status(404).json({ error: 'Deadline not found' });
+        const fields = {
+          title: 'title', category: 'category', deadline_date: 'deadline_date',
+          priority: 'priority', notes: 'notes', staff_id: 'staff_id',
+          vault_document_id: 'vault_document_id'
+        };
+        const updates = [];
+        const values = [];
+        for (const [input, column] of Object.entries(fields)) {
+          if (!Object.prototype.hasOwnProperty.call(req.body, input)) continue;
+          let value = req.body[input];
+          if (input === 'staff_id' || input === 'vault_document_id') {
+            const linked = validateLinkedRecord(input === 'staff_id' ? 'company_staff' : 'company_vault_documents', value);
+            if (!linked.valid) return res.status(400).json({ error: input === 'staff_id' ? 'Linked staff record was not found' : 'Linked Vault document was not found' });
+            value = linked.value;
+          }
+          if (input === 'title' && (typeof value !== 'string' || !value.trim())) {
+            return res.status(400).json({ error: 'Deadline title cannot be empty' });
+          }
+          if (input === 'deadline_date' && !isValidDate(value)) {
+            return res.status(400).json({ error: 'Deadline Date must be a valid YYYY-MM-DD date' });
+          }
+          if (input === 'priority' && !['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(String(value).toUpperCase())) {
+            return res.status(400).json({ error: 'Priority must be LOW, MEDIUM, HIGH, or CRITICAL' });
+          }
+          if (input === 'priority') value = String(value).toUpperCase();
+          updates.push(`${column} = ?`);
+          values.push(input === 'title' ? value.trim() : value);
+        }
+        if (!updates.length) return res.status(400).json({ error: 'No deadline fields were provided' });
+        values.push(id);
+        db.prepare(`UPDATE compliance_deadlines SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+        res.json({ success: true });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }
@@ -1109,11 +1172,15 @@ module.exports = function createHandlers(db) {
       try {
         const { id } = req.params;
         const { status } = req.body; // 'COMPLETED' or 'PENDING'
+        if (!['COMPLETED', 'PENDING'].includes(status)) {
+          return res.status(400).json({ error: 'Status must be COMPLETED or PENDING' });
+        }
         const completedAt = status === 'COMPLETED' ? new Date().toISOString() : null;
 
-        db.prepare(`
+        const result = db.prepare(`
           UPDATE compliance_deadlines SET status = ?, completed_at = ? WHERE id = ?
         `).run(status, completedAt, id);
+        if (result.changes === 0) return res.status(404).json({ error: 'Deadline not found' });
 
         res.json({ success: true });
       } catch (err) {
@@ -1124,7 +1191,8 @@ module.exports = function createHandlers(db) {
     deleteDeadline: (req, res) => {
       try {
         const { id } = req.params;
-        db.prepare('DELETE FROM compliance_deadlines WHERE id = ?').run(id);
+        const result = db.prepare('DELETE FROM compliance_deadlines WHERE id = ?').run(id);
+        if (result.changes === 0) return res.status(404).json({ error: 'Deadline not found' });
         res.json({ success: true });
       } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1410,6 +1478,20 @@ Provide sharp, legal-grade, highly structured, practical step-by-step guidance.`
         query += ' ORDER BY doc.id DESC';
         const docs = db.prepare(query).all(...params);
         res.json({ success: true, documents: docs });
+      } catch (err) {
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    getVaultDocumentOptions: (_req, res) => {
+      try {
+        const documents = db.prepare(`
+          SELECT id, doc_ref_no, title, direction, status
+          FROM company_vault_documents
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 500
+        `).all();
+        res.json({ success: true, documents });
       } catch (err) {
         res.status(500).json({ error: err.message });
       }

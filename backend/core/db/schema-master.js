@@ -1047,6 +1047,8 @@ CREATE TABLE IF NOT EXISTS company_compliances (
   expiry_date DATE,
   renewal_frequency TEXT DEFAULT 'Annually',
   officer_in_charge TEXT,
+  linked_staff_id INTEGER REFERENCES company_staff(id) ON DELETE SET NULL,
+  vault_document_id INTEGER REFERENCES company_vault_documents(id) ON DELETE SET NULL,
   statutory_rule_ref TEXT,
   status TEXT DEFAULT 'ACTIVE',
   file_name TEXT,
@@ -1061,6 +1063,8 @@ CREATE TABLE IF NOT EXISTS compliance_deadlines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_type TEXT NOT NULL,
   entity_id INTEGER,
+  staff_id INTEGER REFERENCES company_staff(id) ON DELETE SET NULL,
+  vault_document_id INTEGER REFERENCES company_vault_documents(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'GENERAL',
   deadline_date DATE NOT NULL,
@@ -1166,4 +1170,3 @@ CREATE TABLE IF NOT EXISTS document_paper_trails (
 `;
 
 module.exports = { schema };
-

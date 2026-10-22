@@ -737,14 +737,15 @@ export class StaffView {
 
   // Add Staff Modal
   async openAddStaffModal() {
-    let nextEmpCode = `EMP-00${this.staffList.length + 1}`;
+    const yr = String(new Date().getFullYear()).slice(-2);
+    let nextEmpCode = `UCA-${yr}-${String(this.staffList.length + 1).padStart(4, '0')}`;
     try {
       if (window.SuiteCoreBridge && typeof window.SuiteCoreBridge.generateNextEmployeeCode === 'function') {
         const existingCodes = this.staffList.map(s => s.emp_code).filter(Boolean);
         nextEmpCode = window.SuiteCoreBridge.generateNextEmployeeCode(existingCodes, {
-          prefix: 'EMP',
+          prefix: `UCA-${yr}`,
           separator: '-',
-          padding: 3
+          padding: 4
         });
       } else {
         const token = typeof window !== 'undefined'
@@ -807,7 +808,7 @@ export class StaffView {
                   <label style="margin-bottom: 0;">Employee Code</label>
                   <span style="font-size: 10px; font-weight: 700; color: #0284c7; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;">⚡ Rust Auto-Generated</span>
                 </div>
-                <input type="text" name="emp_code" value="${staffData.emp_code || ''}" placeholder="Auto-assigned (e.g. EMP-005)" style="background: #f8fafc; font-weight: 600;">
+                <input type="text" name="emp_code" value="${staffData.emp_code || ''}" placeholder="Auto-assigned (e.g. UCA-26-0001)" style="background: #f8fafc; font-weight: 600;">
               </div>
 
               <div class="staff-input-group">

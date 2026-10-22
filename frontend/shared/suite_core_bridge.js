@@ -690,9 +690,10 @@ class SuiteCoreBridge {
 
     // Graceful JS fallback: find maximum numeric suffix
     let maxNum = 0;
-    const prefix = config?.prefix || 'EMP';
+    const yr = String(new Date().getFullYear()).slice(-2);
+    const prefix = config?.prefix || `UCA-${yr}`;
     const separator = config?.separator || '-';
-    const padding = config?.padding || 3;
+    const padding = config?.padding || 4;
 
     for (const code of safeCodes) {
       const parts = code.split(/[-/_]/);

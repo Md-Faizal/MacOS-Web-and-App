@@ -53,6 +53,7 @@ module.exports = function(router, handlers) {
   // 5. Deadlines & Renewal Timeline
   router.get('/deadlines', handlers.getDeadlines);
   router.post('/deadlines', handlers.createDeadline);
+  router.put('/deadlines/:id', handlers.updateDeadline);
   router.patch('/deadlines/:id/status', handlers.updateDeadlineStatus);
   router.delete('/deadlines/:id', handlers.deleteDeadline);
 
@@ -73,6 +74,7 @@ module.exports = function(router, handlers) {
   router.delete('/vault/directories/:id', handlers.deleteVaultDirectory);
 
   router.get('/vault/documents', handlers.getVaultDocuments);
+  router.get('/vault/document-options', handlers.getVaultDocumentOptions);
   router.get('/vault/next-ref', handlers.getNextDocRef);
   router.post('/vault/documents', handlers.createVaultDocument);
   router.post('/vault/documents/upload', (req, res, next) => {

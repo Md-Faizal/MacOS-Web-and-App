@@ -211,13 +211,13 @@ pub struct EmployeeCodeConfig {
 }
 
 fn default_emp_prefix() -> String {
-    "EMP".to_string()
+    "UCA-26".to_string()
 }
 fn default_emp_separator() -> String {
     "-".to_string()
 }
 fn default_emp_padding() -> usize {
-    3
+    4
 }
 
 impl Default for EmployeeCodeConfig {

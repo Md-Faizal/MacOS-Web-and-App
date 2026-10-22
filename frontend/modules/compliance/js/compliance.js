@@ -31,34 +31,13 @@ export class ComplianceApp extends AppWindow {
     this.window?.classList.add('compliance-window');
 
     this.currentView = 'dashboard';
-    this.calendarMode = 'streak'; // 'streak' or 'apple'
+    this.calendarDate = new Date();
+    this.calendarView = 'month';
     this.params = params;
 
-    // Interactive State (Standardized White Aesthetic)
-    this.reminders = [
-      { id: 1, title: 'Verify GSTR-1 Outward Summary (Table 12 HSN)', category: 'Tax', dueDate: 'Oct 11, 2026', priority: 'High', completed: false },
-      { id: 2, title: 'Annual Schedule T Form 48 Worker Medical Checkup', category: 'Health', dueDate: 'Oct 24, 2026', priority: 'Critical', completed: false },
-      { id: 3, title: 'AYUSH Form 25D Drug License 5-Year Renewal Audit', category: 'Statutory', dueDate: 'Nov 15, 2026', priority: 'High', completed: false },
-      { id: 4, title: 'State Pollution Control Board (OSPCB) CTO Water Consent', category: 'Environment', dueDate: 'Dec 05, 2026', priority: 'Medium', completed: false },
-      { id: 5, title: 'Retention Sample Inspection (Rule 161B Asava Arishta)', category: 'GMP', dueDate: 'Quarterly', priority: 'Low', completed: true }
-    ];
-
-    this.recentActions = [
-      { user: 'JM', name: 'Dr. Jashobanta Rao Mohanta', action: 'Approved and signed off Schedule T BMR Batch release', time: '14m ago', color: '#10b981' },
-      { user: 'AD', name: 'System Admin', action: 'Synchronized Directory & Company Vault storage', time: '3h ago', color: '#8b5cf6' },
-      { user: 'FA', name: 'Finance / Accounts', action: 'Generated GST Compliance export via Rust Engine', time: '2d ago', color: '#06b6d4' }
-    ];
-
-    this.searchCatalog = [
-      { title: 'Dr. Jashobanta Rao Mohanta', category: 'Staff', sub: 'Chief Ayurvedic Physician (BAMS-OSCAM-6824)', icon: '🩺' },
-      { title: 'AYUSH Form 25D Drug License', category: 'License', sub: 'OR-02/AYUR • Expires March 2027', icon: '🏛️' },
-      { title: 'Schedule T GMP Compliance', category: 'License', sub: 'Ayush Inspection Board • Active', icon: '📜' },
-      { title: 'State Pollution Board (OSPCB) CTO', category: 'License', sub: 'Consent to Operate • Expires 2028', icon: '🌿' },
-      { title: 'GSTR-1 Monthly Return Due', category: 'Deadline', sub: 'Table 12 HSN Summary Cut-off', icon: '⏰' },
-      { title: 'Schedule T Form 48 Medical Exams', category: 'Deadline', sub: 'Annual worker health audit', icon: '⏰' },
-      { title: 'Worker KYC & Identities', category: 'Document', sub: 'Aadhaar, PAN & address verifications', icon: '🪪' },
-      { title: 'Standard Operating Procedures', category: 'Document', sub: 'Manufacturing SOPs & safety manuals', icon: '📁' }
-    ];
+    this.complianceData = { overview: null, licenses: [], deadlines: [], staff: [], documents: [] };
+    this.dashboardSearch = '';
+    this.dashboardDeadlineFilter = 'PENDING';
 
     // Store references for global app discovery & dock restore
     window.ComplianceAppInstance = this;
@@ -244,8 +223,9 @@ export class ComplianceApp extends AppWindow {
 
     // Refresh Event
     rightControls.querySelector('#cmpHeaderRefreshBtn')?.addEventListener('click', () => {
-      this.renderDashboard();
-      this.showNotification('Dashboard feed synchronized.', 'success');
+      if (this.currentView === 'compliance') this.refreshComplianceRecords();
+      else if (this.currentView === 'dashboard') this.refreshComplianceView();
+      else this.staffView?.loadStaffFromAPI?.();
     });
 
     // 7. Setup Search Dropdown
@@ -334,14 +314,15 @@ export class ComplianceApp extends AppWindow {
     }
 
     const q = query.toLowerCase().trim();
-    const matches = this.searchCatalog.filter(item => 
+    const matches = (this.searchCatalog || []).filter(item =>
       item.title.toLowerCase().includes(q) || 
       item.sub.toLowerCase().includes(q) ||
       item.category.toLowerCase().includes(q)
     );
 
     if (matches.length === 0) {
-      this.searchDropdown.innerHTML = `<div style="padding: 14px 16px; color: #888; font-size: 12px; text-align: center;">No results found for "${query}"</div>`;
+      this.searchDropdown.textContent = `No results found for "${query}"`;
+      this.searchDropdown.classList.add('is-empty');
       this.searchDropdown.style.display = 'block';
       return;
     }
@@ -351,6 +332,7 @@ export class ComplianceApp extends AppWindow {
 
   populateSearchDropdown(results) {
     if (!this.searchDropdown) return;
+    this.searchDropdown.classList.remove('is-empty');
     this.searchDropdown.innerHTML = '';
 
     // Group results by category
@@ -368,17 +350,12 @@ export class ComplianceApp extends AppWindow {
       this.searchDropdown.appendChild(header);
 
       items.forEach(item => {
-        const row = document.createElement('div');
+        const row = document.createElement('button');
         row.className = 'compliance-search-dropdown-item';
-        row.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 16px;">${item.icon || '📄'}</span>
-            <div style="flex: 1; min-width: 0;">
-              <div class="cmp-search-title">${item.title}</div>
-              <div class="cmp-search-sub">${item.sub}</div>
-            </div>
-          </div>
-        `;
+        row.type = 'button';
+        row.innerHTML = `<span class="cmp-search-icon">${this.escapeHtml(item.icon || '📄')}</span><span class="cmp-search-copy"><span class="cmp-search-title"></span><span class="cmp-search-sub"></span></span>`;
+        row.querySelector('.cmp-search-title').textContent = item.title;
+        row.querySelector('.cmp-search-sub').textContent = item.sub;
         row.addEventListener('click', () => {
           this.handleSearchResultClick(item);
           this.searchDropdown.style.display = 'none';
@@ -392,11 +369,9 @@ export class ComplianceApp extends AppWindow {
   }
 
   handleSearchResultClick(item) {
-    this.showNotification(`Selected: ${item.title}`, 'info');
     if (item.category === 'Staff') {
-      const match = this.staffList.find(s => 
-        s.full_name.toLowerCase().includes(item.title.toLowerCase()) || 
-        item.title.toLowerCase().includes(s.full_name.toLowerCase())
+      const match = this.complianceData.staff.find(s =>
+        String(s.id) === String(item.id)
       );
       if (match && this.staffView) {
         this.staffView.selectedStaffId = match.id;
@@ -404,9 +379,14 @@ export class ComplianceApp extends AppWindow {
       this.selectSidebarTab('staff');
     } else if (item.category === 'License' || item.category === 'Deadline') {
       this.selectSidebarTab('compliance');
+      const record = item.category === 'License'
+        ? this.complianceData.licenses.find(row => String(row.id) === String(item.id))
+        : this.complianceData.deadlines.find(row => String(row.id) === String(item.id));
+      if (record) this.openComplianceRecordModal(item.category === 'License' ? 'license' : 'deadline', record);
     } else if (item.category === 'Document') {
       this.selectSidebarTab('vault');
     }
+    this.showNotification(`Opened ${item.title}.`, 'info');
   }
 
   selectSidebarTab(viewName) {
@@ -690,313 +670,603 @@ export class ComplianceApp extends AppWindow {
     });
   }
 
-  // ==========================================
-  // DASHBOARD VIEW (Pure White Theme)
-  // ==========================================
+  escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+  }
+
+  formatComplianceDate(value) {
+    if (!value) return 'No date';
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  async requestComplianceApi(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    const response = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+    return payload;
+  }
+
+  async loadComplianceData() {
+    const [overview, deadlines, licenses, staff, documents] = await Promise.all([
+      this.requestComplianceApi('/api/compliance/overview'),
+      this.requestComplianceApi('/api/compliance/deadlines'),
+      this.requestComplianceApi('/api/compliance/licenses'),
+      this.requestComplianceApi('/api/compliance/staff?status=ACTIVE'),
+      this.requestComplianceApi('/api/compliance/vault/document-options')
+    ]);
+    this.complianceData = {
+      overview,
+      deadlines: Array.isArray(deadlines.deadlines) ? deadlines.deadlines : [],
+      licenses: Array.isArray(licenses.licenses) ? licenses.licenses : [],
+      staff: Array.isArray(staff.staff) ? staff.staff : [],
+      documents: Array.isArray(documents.documents) ? documents.documents : []
+    };
+    this.searchCatalog = [
+      ...this.complianceData.staff.map(item => ({ id: item.id, title: item.full_name, category: 'Staff', sub: `${item.emp_code} · ${item.designation || item.department}`, icon: '👤' })),
+      ...this.complianceData.licenses.map(item => ({ id: item.id, title: item.title, category: 'License', sub: `${item.status || 'ACTIVE'} · ${item.expiry_date ? this.formatComplianceDate(item.expiry_date) : 'No expiry date'}`, icon: '▤' })),
+      ...this.complianceData.deadlines.map(item => ({ id: item.id, title: item.title, category: 'Deadline', sub: `${item.status || 'PENDING'} · ${this.formatComplianceDate(item.deadline_date)}`, icon: '◷' })),
+      ...this.complianceData.documents.map(item => ({ id: item.id, title: item.title, category: 'Document', sub: `${item.doc_ref_no || 'No reference'} · ${item.status || ''}`, icon: '▧' }))
+    ];
+    return this.complianceData;
+  }
+
   renderDashboard() {
     if (!this.mainArea) return;
-
+    this.currentView = 'dashboard';
     this.mainArea.innerHTML = `
-      <div class="cmp-view-pad">
+      <div class="cmp-view-pad cmp-live-workspace">
         <div class="compliance-header-bar">
           <div class="compliance-header-title">
-            <h2>Dashboard</h2>
-            <p>Activity timeline, statutory deadlines, reminders, and audit history</p>
+            <h2>Compliance overview</h2>
+            <p>Live status from your saved licenses, deadlines, staff, and Vault records.</p>
           </div>
-          <div>
-            <button class="compliance-header-btn" id="cmpRefreshDashBtn" style="padding: 5px 12px; font-weight: 600; width: auto; height: auto; border-radius: 6px;">↻ Refresh Feed</button>
+          <div class="cmp-toolbar-actions">
+            <button class="cmp-action-button cmp-action-secondary" id="cmpRefreshDashBtn">↻ Refresh</button>
+            <button class="cmp-action-button cmp-action-primary" id="cmpQuickAddDeadline">＋ Add deadline</button>
           </div>
         </div>
-
-        <!-- 1. Interactive Dual Calendar Card -->
-        <div class="cmp-dash-card">
+        <div class="cmp-kpi-grid" id="cmpDashboardMetrics">
+          <div class="cmp-live-state">Loading your saved compliance records…</div>
+        </div>
+        <div class="cmp-dashboard-grid">
+          <section class="cmp-dash-card cmp-calendar-card">
+            <div class="cmp-dash-card-header">
+              <div class="cmp-dash-card-title"><span>▦</span> Deadline calendar</div>
+              <div class="cmp-calendar-toolbar">
+                <div class="cmp-cal-switcher" role="group" aria-label="Calendar view">
+                  <button class="cmp-cal-tab active" data-calendar-view="month" aria-pressed="true">Month</button>
+                  <button class="cmp-cal-tab" data-calendar-view="quarter" aria-pressed="false">Quarter</button>
+                  <button class="cmp-cal-tab" data-calendar-view="year" aria-pressed="false">365 days</button>
+                </div>
+                <div class="cmp-month-controls">
+                  <button class="cmp-action-button cmp-action-icon" id="cmpPreviousMonth" aria-label="Previous period">‹</button>
+                  <strong id="cmpCalendarMonth"></strong>
+                  <button class="cmp-action-button cmp-action-icon" id="cmpNextMonth" aria-label="Next period">›</button>
+                  <button class="cmp-action-button cmp-action-secondary cmp-calendar-today" id="cmpCalendarToday">Today</button>
+                </div>
+              </div>
+            </div>
+            <div id="cmpCalendarContainer"></div>
+          </section>
+          <section class="cmp-dash-card cmp-upcoming-card">
+            <div class="cmp-dash-card-header">
+              <div class="cmp-dash-card-title"><span>◷</span> Deadlines</div>
+              <select class="cmp-compact-select" id="cmpDashboardDeadlineFilter" aria-label="Filter deadlines">
+                <option value="PENDING">Pending</option>
+                <option value="OVERDUE">Overdue</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="ALL">All records</option>
+              </select>
+            </div>
+            <input class="cmp-workspace-search" id="cmpDashboardSearch" type="search" placeholder="Search deadlines…">
+            <div class="cmp-record-list" id="cmpDashboardDeadlines"></div>
+          </section>
+        </div>
+        <section class="cmp-dash-card cmp-recorded-activity">
           <div class="cmp-dash-card-header">
-            <div class="cmp-dash-card-title">
-              <span>📅</span> Activity & Deadlines Calendar
-            </div>
-            <div class="cmp-cal-switcher">
-              <button class="cmp-cal-tab ${this.calendarMode === 'streak' ? 'active' : ''}" id="cmpTabStreak">365-Day Streak</button>
-              <button class="cmp-cal-tab ${this.calendarMode === 'apple' ? 'active' : ''}" id="cmpTabApple">Month Grid</button>
-            </div>
+            <div class="cmp-dash-card-title"><span>◴</span> Recently recorded</div>
+            <span class="cmp-data-caption">Saved records, not an audit log</span>
           </div>
-
-          <div id="cmpCalendarContainer">
-            <!-- Streak or Apple Month Grid -->
-          </div>
-        </div>
-
-        <!-- 2. Two-Column Lower Deck: Reminders & Recent Actions -->
-        <div class="cmp-deck-grid">
-          <!-- Reminders Column (Apple Reminders Style) -->
-          <div class="cmp-dash-card" style="margin-bottom: 0;">
-            <div class="cmp-dash-card-header">
-              <div class="cmp-dash-card-title">
-                <span>🔔</span> Reminders & Deadlines
-              </div>
-              <span style="font-size: 11px; color: #777;" id="cmpPendingRemindersCount"></span>
-            </div>
-
-            <div class="cmp-reminders-list" id="cmpRemindersList">
-              <!-- Dynamic Reminders -->
-            </div>
-
-            <div class="cmp-reminder-add-box">
-              <input type="text" id="cmpNewReminderInput" class="cmp-reminder-input" placeholder="+ Add a deadline reminder...">
-              <button class="compliance-header-btn" id="cmpAddReminderBtn" style="background: var(--cmp-primary); color: #fff; padding: 0 14px; font-weight: 600; width: auto; height: auto; border-radius: 6px;">Add</button>
-            </div>
-          </div>
-
-          <!-- Recent Actions Column -->
-          <div class="cmp-dash-card" style="margin-bottom: 0;">
-            <div class="cmp-dash-card-header">
-              <div class="cmp-dash-card-title">
-                <span>⚡</span> Recent Actions
-              </div>
-              <span style="font-size: 11px; color: #777;">Audit Log</span>
-            </div>
-
-            <div class="cmp-actions-list" id="cmpRecentActionsList">
-              <!-- Dynamic Action Items -->
-            </div>
-          </div>
-        </div>
+          <div class="cmp-activity-list" id="cmpRecentRecords"></div>
+        </section>
       </div>
     `;
-
-    // Hook Tab Switcher
-    this.mainArea.querySelector('#cmpTabStreak')?.addEventListener('click', () => {
-      this.calendarMode = 'streak';
-      this.mainArea.querySelector('#cmpTabStreak').classList.add('active');
-      this.mainArea.querySelector('#cmpTabApple').classList.remove('active');
-      this.renderCalendarContent();
+    this.mainArea.querySelector('#cmpRefreshDashBtn')?.addEventListener('click', () => this.refreshComplianceView());
+    this.mainArea.querySelector('#cmpQuickAddDeadline')?.addEventListener('click', () => this.openComplianceRecordModal('deadline'));
+    this.mainArea.querySelector('#cmpPreviousMonth')?.addEventListener('click', () => {
+      this.navigateComplianceCalendar(-1);
     });
-
-    this.mainArea.querySelector('#cmpTabApple')?.addEventListener('click', () => {
-      this.calendarMode = 'apple';
-      this.mainArea.querySelector('#cmpTabApple').classList.add('active');
-      this.mainArea.querySelector('#cmpTabStreak').classList.remove('active');
-      this.renderCalendarContent();
+    this.mainArea.querySelector('#cmpNextMonth')?.addEventListener('click', () => {
+      this.navigateComplianceCalendar(1);
     });
-
-    this.mainArea.querySelector('#cmpRefreshDashBtn')?.addEventListener('click', () => {
-      this.renderDashboard();
-      this.showNotification('Latest timeline synchronized.', 'info');
+    this.mainArea.querySelector('#cmpCalendarToday')?.addEventListener('click', () => {
+      this.calendarDate = new Date();
+      this.renderComplianceCalendar();
     });
-
-    // Hook Add Reminder
-    const addReminder = () => {
-      const input = this.mainArea.querySelector('#cmpNewReminderInput');
-      const text = input?.value.trim();
-      if (!text) return;
-      this.reminders.unshift({
-        id: Date.now(),
-        title: text,
-        category: 'Task',
-        dueDate: 'Upcoming',
-        priority: 'High',
-        completed: false
+    this.mainArea.querySelector('.cmp-cal-switcher')?.addEventListener('click', event => {
+      const button = event.target.closest('[data-calendar-view]');
+      if (!button) return;
+      this.calendarView = button.dataset.calendarView;
+      this.mainArea.querySelectorAll('[data-calendar-view]').forEach(tab => {
+        const isActive = tab === button;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-pressed', String(isActive));
       });
-      input.value = '';
-      this.renderReminders();
-      this.showNotification(`Reminder added: ${text}`, 'success');
-    };
-
-    this.mainArea.querySelector('#cmpAddReminderBtn')?.addEventListener('click', addReminder);
-    this.mainArea.querySelector('#cmpNewReminderInput')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addReminder();
+      this.renderComplianceCalendar();
     });
-
-    this.renderCalendarContent();
-    this.renderReminders();
-    this.renderRecentActions();
+    this.mainArea.querySelector('#cmpCalendarContainer')?.addEventListener('click', event => {
+      const editButton = event.target.closest('[data-calendar-deadline]');
+      if (editButton) {
+        const record = this.complianceData.deadlines.find(item => String(item.id) === editButton.dataset.calendarDeadline);
+        if (record) this.openComplianceRecordModal('deadline', record);
+        return;
+      }
+      const dateButton = event.target.closest('[data-calendar-date]');
+      if (dateButton) {
+        const selected = new Date(`${dateButton.dataset.calendarDate}T00:00:00`);
+        if (Number.isNaN(selected.getTime())) return;
+        this.calendarDate = selected;
+        if (this.calendarView !== 'month') {
+          this.calendarView = 'month';
+          this.mainArea.querySelectorAll('[data-calendar-view]').forEach(tab => {
+            const isActive = tab.dataset.calendarView === 'month';
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-pressed', String(isActive));
+          });
+        }
+        this.renderComplianceCalendar();
+      }
+    });
+    this.mainArea.querySelector('#cmpDashboardDeadlineFilter')?.addEventListener('change', event => {
+      this.dashboardDeadlineFilter = event.target.value;
+      this.renderDashboardDeadlines();
+    });
+    this.mainArea.querySelector('#cmpDashboardSearch')?.addEventListener('input', event => {
+      this.dashboardSearch = event.target.value.trim().toLowerCase();
+      this.renderDashboardDeadlines();
+    });
+    this.mainArea.querySelector('#cmpDashboardDeadlines')?.addEventListener('click', event => {
+      const complete = event.target.closest('[data-complete-deadline]');
+      const edit = event.target.closest('[data-edit-deadline]');
+      const editLicense = event.target.closest('[data-edit-license]');
+      const remove = event.target.closest('[data-delete-deadline]');
+      if (complete) this.toggleDeadlineStatus(complete.dataset.completeDeadline);
+      if (edit) {
+        const record = this.complianceData.deadlines.find(item => String(item.id) === edit.dataset.editDeadline);
+        if (record) this.openComplianceRecordModal('deadline', record);
+      }
+      if (editLicense) {
+        const record = this.complianceData.licenses.find(item => String(item.id) === editLicense.dataset.editLicense);
+        if (record) this.openComplianceRecordModal('license', record);
+      }
+      if (remove) this.deleteComplianceRecord('deadline', remove.dataset.deleteDeadline);
+    });
+    this.refreshComplianceView();
   }
 
-  // Calendar Content Switcher
-  renderCalendarContent() {
+  async refreshComplianceView() {
+    try {
+      await this.loadComplianceData();
+      if (this.currentView !== 'dashboard') return;
+      this.renderDashboardMetrics();
+      this.renderComplianceCalendar();
+      this.renderDashboardDeadlines();
+      this.renderRecentRecords();
+    } catch (error) {
+      if (this.currentView !== 'dashboard') return;
+      const metrics = this.mainArea?.querySelector('#cmpDashboardMetrics');
+      if (metrics) metrics.innerHTML = `<div class="cmp-live-state cmp-live-error">${this.escapeHtml(error.message)} <button class="cmp-action-button cmp-action-secondary" id="cmpRetryDashboard">Retry</button></div>`;
+      this.mainArea?.querySelector('#cmpRetryDashboard')?.addEventListener('click', () => this.refreshComplianceView());
+    }
+  }
+
+  renderDashboardMetrics() {
+    const target = this.mainArea?.querySelector('#cmpDashboardMetrics');
+    if (!target) return;
+    const overview = this.complianceData.overview || {};
+    const metrics = overview.metrics || {};
+    const tiles = [
+      { label: 'Saved compliance records', value: metrics.totalLicenses ?? 0, note: `${metrics.activeLicenses ?? 0} active`, tone: 'blue' },
+      { label: 'Deadlines to track', value: metrics.pendingDeadlinesCount ?? 0, note: `${metrics.overdueDeadlinesCount ?? 0} overdue`, tone: 'red' },
+      { label: 'Expiring licenses', value: metrics.expiringSoonCount ?? 0, note: 'Within 60 days', tone: 'amber' },
+      { label: 'Active staff', value: metrics.activeStaff ?? 0, note: `${metrics.totalStaff ?? 0} saved staff records`, tone: 'green' }
+    ];
+    target.innerHTML = tiles.map(tile => `
+      <article class="cmp-kpi-card cmp-kpi-${tile.tone}">
+        <span>${this.escapeHtml(tile.label)}</span>
+        <strong>${Number(tile.value).toLocaleString()}</strong>
+        <small>${this.escapeHtml(tile.note)}</small>
+      </article>
+    `).join('');
+  }
+
+  renderComplianceCalendar() {
     const container = this.mainArea?.querySelector('#cmpCalendarContainer');
-    if (!container) return;
-
-    if (this.calendarMode === 'streak') {
-      this.renderStreakCalendar(container);
-    } else {
-      this.renderAppleCalendar(container);
-    }
-  }
-
-  // 1A. 365-Day GitHub Contribution Streak Calendar
-  renderStreakCalendar(container) {
-    const totalDays = 365;
+    const monthLabel = this.mainArea?.querySelector('#cmpCalendarMonth');
+    if (!container || !monthLabel) return;
     const today = new Date();
-    
-    const daysData = [];
-    for (let i = totalDays - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      
-      let level = 0;
-      const seed = (d.getDate() * 17 + d.getMonth() * 31) % 100;
-      if (seed > 80) level = 4;
-      else if (seed > 60) level = 3;
-      else if (seed > 35) level = 2;
-      else if (seed > 15) level = 1;
-
-      daysData.push({
-        date: d.toISOString().split('T')[0],
-        formatted: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        level,
-        events: level > 0 ? `${level * 2} actions completed` : 'No actions recorded'
-      });
+    const dateLabel = date => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    if (this.calendarView === 'year') {
+      const endDate = new Date(this.calendarDate);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 364);
+      monthLabel.textContent = `${dateLabel(startDate)} – ${dateLabel(endDate)}`;
+    } else if (this.calendarView === 'quarter') {
+      const quarterStartMonth = Math.floor(this.calendarDate.getMonth() / 3) * 3;
+      const quarterStart = new Date(this.calendarDate.getFullYear(), quarterStartMonth, 1);
+      const quarterEnd = new Date(this.calendarDate.getFullYear(), quarterStartMonth + 3, 0);
+      monthLabel.textContent = `Q${Math.floor(quarterStartMonth / 3) + 1} · ${dateLabel(quarterStart)} – ${dateLabel(quarterEnd)}`;
+    } else {
+      monthLabel.textContent = this.calendarDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     }
 
-    container.innerHTML = `
-      <div class="cmp-streak-meta">
-        <div class="cmp-streak-stat"><strong>264</strong> Compliance Events in 2026</div>
-        <div class="cmp-streak-stat">Current Streak: <strong style="color: var(--cmp-success);">21 Days</strong></div>
-        <div class="cmp-streak-stat">Longest Streak: <strong>54 Days</strong></div>
-      </div>
-
-      <div class="cmp-streak-container">
-        <div class="cmp-streak-grid" id="cmpStreakGrid">
-          ${daysData.map(d => `
-            <div class="cmp-streak-cell lvl-${d.level}" 
-                 title="${d.formatted}: ${d.events}"
-                 data-date="${d.date}">
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="cmp-streak-legend">
-        <span>Less</span>
-        <div class="cmp-streak-legend-cell" style="background: #ebedf0;"></div>
-        <div class="cmp-streak-legend-cell" style="background: #9be9a8;"></div>
-        <div class="cmp-streak-legend-cell" style="background: #40c463;"></div>
-        <div class="cmp-streak-legend-cell" style="background: #30a14e;"></div>
-        <div class="cmp-streak-legend-cell" style="background: #216e39;"></div>
-        <span>More</span>
-      </div>
-    `;
-  }
-
-  // 1B. Apple Calendar Month Grid
-  renderAppleCalendar(container) {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const monthName = now.toLocaleString('en-US', { month: 'long' });
-
-    const eventsByDay = {
-      4: [{ label: 'BMR Batch #08 Released', color: 'cmp-tag-green' }],
-      11: [{ label: 'GSTR-1 Monthly Return Due', color: 'cmp-tag-amber' }],
-      15: [{ label: 'AYUSH Form 25D Renewal Audit', color: 'cmp-tag-red' }],
-      20: [{ label: 'GSTR-3B Tax Filing', color: 'cmp-tag-amber' }],
-      24: [{ label: 'Schedule T Worker Medical Exam', color: 'cmp-tag-purple' }],
-      28: [{ label: 'Boiler & Safety Inspection', color: 'cmp-tag-blue' }]
-    };
-
-    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
-    const totalDaysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const todayDate = now.getDate();
-
-    let gridCellsHtml = '';
-    for (let i = 0; i < firstDay; i++) {
-      gridCellsHtml += '<div class="cmp-apple-cal-cell" style="opacity: 0.3;"></div>';
+    const deadlinesByDate = new Map();
+    for (const deadline of this.complianceData.deadlines) {
+      const key = String(deadline.deadline_date || '').slice(0, 10);
+      if (!key) continue;
+      if (!deadlinesByDate.has(key)) deadlinesByDate.set(key, []);
+      deadlinesByDate.get(key).push(deadline);
     }
-
-    for (let day = 1; day <= totalDaysInMonth; day++) {
-      const isToday = day === todayDate;
-      const events = eventsByDay[day] || [];
-      gridCellsHtml += `
-        <div class="cmp-apple-cal-cell ${isToday ? 'today' : ''}">
-          <div class="cmp-apple-cal-cell-header">
-            <span>${day}</span>
+    if (this.calendarView === 'year') {
+      const days = [];
+      let completedCount = 0;
+      let pendingCount = 0;
+      for (let offset = 364; offset >= 0; offset--) {
+        const date = new Date(this.calendarDate);
+        date.setDate(date.getDate() - offset);
+        const dateKey = this.calendarDateKey(date);
+        const events = deadlinesByDate.get(dateKey) || [];
+        const completed = events.filter(item => item.status === 'COMPLETED').length;
+        const pending = events.length - completed;
+        completedCount += completed;
+        pendingCount += pending;
+        const overdue = events.some(item => item.status !== 'COMPLETED' && Number(item.days_remaining) < 0);
+        const level = !events.length ? 0 : overdue ? 4 : completed ? 3 : events.length > 1 ? 2 : 1;
+        const title = events.length
+          ? `${dateLabel(date)} · ${events.map(item => `${item.title} (${item.status || 'PENDING'})`).join(', ')}`
+          : `${dateLabel(date)} · No deadlines`;
+        days.push(`<button class="cmp-streak-cell lvl-${level}" data-calendar-date="${dateKey}" title="${this.escapeHtml(title)}" aria-label="${this.escapeHtml(title)}"></button>`);
+      }
+      container.innerHTML = `
+        <div class="cmp-streak-container">
+          <div class="cmp-streak-meta">
+            <span class="cmp-streak-stat"><strong>${pendingCount}</strong> pending</span>
+            <span class="cmp-streak-stat"><strong>${completedCount}</strong> completed</span>
           </div>
-          ${events.map(e => `
-            <div class="cmp-cal-event-tag ${e.color}" title="${e.label}">
-              ${e.label}
-            </div>
-          `).join('')}
+          <div class="cmp-streak-grid" role="group" aria-label="Deadlines over the last 365 days">${days.join('')}</div>
+          <div class="cmp-streak-legend"><span>No deadlines</span><i class="cmp-streak-legend-cell"></i><span>Scheduled</span><i class="cmp-streak-legend-cell lvl-2"></i><span>Multiple</span><i class="cmp-streak-legend-cell lvl-3"></i><span>Completed</span><i class="cmp-streak-legend-cell lvl-4"></i><span>Overdue</span></div>
         </div>
+        ${this.complianceData.deadlines.length ? '' : '<div class="cmp-inline-empty">No saved deadlines fall in this 365-day period.</div>'}
       `;
+      return;
     }
 
-    container.innerHTML = `
-      <div class="cmp-apple-cal">
-        <div class="cmp-apple-cal-nav">
-          <div class="cmp-apple-cal-month-label">${monthName} ${currentYear}</div>
-          <div style="font-size: 11px; color: #777;">
-            🔴 Urgent Expiry • 🟡 Tax Filing • 🟣 Medical • 🟢 BMR Release
+    const monthStarts = [];
+    if (this.calendarView === 'quarter') {
+      const firstMonth = Math.floor(this.calendarDate.getMonth() / 3) * 3;
+      for (let offset = 0; offset < 3; offset++) {
+        monthStarts.push(new Date(this.calendarDate.getFullYear(), firstMonth + offset, 1));
+      }
+      container.innerHTML = `<div class="cmp-quarter-grid">${monthStarts.map(monthStart => this.renderComplianceMonth(monthStart, deadlinesByDate, today, true)).join('')}</div>`;
+    } else {
+      monthStarts.push(new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth(), 1));
+      container.innerHTML = this.renderComplianceMonth(monthStarts[0], deadlinesByDate, today, false);
+    }
+    if (!this.complianceData.deadlines.length) {
+      container.insertAdjacentHTML('beforeend', '<div class="cmp-inline-empty">No deadlines saved yet. Add a record to populate the calendar.</div>');
+    }
+  }
+
+  calendarDateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  navigateComplianceCalendar(direction) {
+    let nextDate;
+    if (this.calendarView === 'year') {
+      nextDate = new Date(this.calendarDate);
+      nextDate.setDate(nextDate.getDate() + direction * 365);
+    } else if (this.calendarView === 'quarter') {
+      const quarterMonth = Math.floor(this.calendarDate.getMonth() / 3) * 3;
+      nextDate = new Date(this.calendarDate.getFullYear(), quarterMonth + direction * 3, 1);
+    } else {
+      nextDate = new Date(this.calendarDate.getFullYear(), this.calendarDate.getMonth() + direction, 1);
+    }
+    this.calendarDate = nextDate;
+    this.renderComplianceCalendar();
+  }
+
+  renderComplianceMonth(monthStart, deadlinesByDate, today, compact) {
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const days = new Date(year, month + 1, 0).getDate();
+    const cells = Array.from({ length: firstDay }, () => '<div class="cmp-calendar-day cmp-calendar-day-empty" aria-hidden="true"></div>');
+    for (let day = 1; day <= days; day++) {
+      const date = new Date(year, month, day);
+      const dateKey = this.calendarDateKey(date);
+      const events = deadlinesByDate.get(dateKey) || [];
+      const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+      cells.push(`
+        <div class="cmp-calendar-day ${isToday ? 'is-today' : ''}">
+          <button class="cmp-calendar-day-number" data-calendar-date="${dateKey}" aria-label="${this.escapeHtml(date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}">${day}</button>
+          <div class="cmp-calendar-events">
+            ${events.slice(0, compact ? 1 : 3).map(item => `<button class="cmp-calendar-event ${item.status === 'COMPLETED' ? 'is-complete' : Number(item.days_remaining) < 0 ? 'is-overdue' : ''}" data-calendar-deadline="${Number(item.id)}" title="${this.escapeHtml(item.title)}">${this.escapeHtml(item.title)}</button>`).join('')}
+            ${events.length > (compact ? 1 : 3) ? `<span class="cmp-calendar-more">+${events.length - (compact ? 1 : 3)} more</span>` : ''}
           </div>
         </div>
-
-        <div class="cmp-apple-cal-grid">
-          <div class="cmp-apple-cal-day-header">Sun</div>
-          <div class="cmp-apple-cal-day-header">Mon</div>
-          <div class="cmp-apple-cal-day-header">Tue</div>
-          <div class="cmp-apple-cal-day-header">Wed</div>
-          <div class="cmp-apple-cal-day-header">Thu</div>
-          <div class="cmp-apple-cal-day-header">Fri</div>
-          <div class="cmp-apple-cal-day-header">Sat</div>
-          ${gridCellsHtml}
+      `);
+    }
+    while (cells.length < 42) cells.push('<div class="cmp-calendar-day cmp-calendar-day-empty" aria-hidden="true"></div>');
+    return `
+      <section class="cmp-calendar-month ${compact ? 'is-compact' : ''}">
+        ${compact ? `<h3>${monthStart.toLocaleDateString(undefined, { month: 'long' })}</h3>` : ''}
+        <div class="cmp-calendar-grid">
+          ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => `<div class="cmp-calendar-weekday">${compact ? day.slice(0, 1) : day}</div>`).join('')}
+          ${cells.join('')}
         </div>
-      </div>
+      </section>
     `;
   }
 
-  // Reminders List Renderer
-  renderReminders() {
-    const listEl = this.mainArea?.querySelector('#cmpRemindersList');
-    const countEl = this.mainArea?.querySelector('#cmpPendingRemindersCount');
-    if (!listEl) return;
-
-    const pendingCount = this.reminders.filter(r => !r.completed).length;
-    if (countEl) countEl.textContent = `${pendingCount} pending`;
-
-    listEl.innerHTML = this.reminders.map(r => `
-      <div class="cmp-reminder-item ${r.completed ? 'completed' : ''}">
-        <div class="cmp-reminder-check" onclick="window.ComplianceAppInstance.toggleReminder(${r.id})"></div>
-        <div class="cmp-reminder-content">
-          <div class="cmp-reminder-title">${r.title}</div>
-          <div class="cmp-reminder-meta">
-            <span>⏰ ${r.dueDate}</span>
-            <span>•</span>
-            <span style="font-weight: 600; color: ${r.priority === 'Critical' ? 'var(--cmp-danger)' : r.priority === 'High' ? 'var(--cmp-warning)' : 'inherit'};">
-              ${r.priority}
-            </span>
-            <span>•</span>
-            <span>${r.category}</span>
-          </div>
+  renderDashboardDeadlines() {
+    const target = this.mainArea?.querySelector('#cmpDashboardDeadlines');
+    if (!target) return;
+    let rows = this.complianceData.deadlines;
+    if (this.dashboardDeadlineFilter === 'PENDING') rows = rows.filter(row => row.status === 'PENDING');
+    if (this.dashboardDeadlineFilter === 'OVERDUE') rows = rows.filter(row => row.status === 'PENDING' && Number(row.days_remaining) < 0);
+    if (this.dashboardDeadlineFilter === 'COMPLETED') rows = rows.filter(row => row.status === 'COMPLETED');
+    if (this.dashboardSearch) rows = rows.filter(row => `${row.title} ${row.category} ${row.linked_staff_name || ''} ${row.vault_document_title || ''}`.toLowerCase().includes(this.dashboardSearch));
+    rows = [...rows].sort((a, b) => String(a.deadline_date).localeCompare(String(b.deadline_date))).slice(0, 12);
+    if (!rows.length) {
+      target.innerHTML = `<div class="cmp-inline-empty">${this.complianceData.deadlines.length ? 'No records match this filter.' : 'No deadlines saved yet.'}</div>`;
+      return;
+    }
+    target.innerHTML = rows.map(item => `
+      <article class="cmp-deadline-row ${item.status === 'COMPLETED' ? 'is-complete' : Number(item.days_remaining) < 0 ? 'is-overdue' : ''}">
+        <button class="cmp-deadline-check" data-complete-deadline="${Number(item.id)}" title="${item.status === 'COMPLETED' ? 'Mark pending' : 'Mark complete'}" aria-label="${item.status === 'COMPLETED' ? 'Mark deadline pending' : 'Mark deadline complete'}">${item.status === 'COMPLETED' ? '✓' : ''}</button>
+        <div class="cmp-deadline-info">
+          <strong>${this.escapeHtml(item.title)}</strong>
+          <span>${this.escapeHtml(item.category || 'General')} · ${this.formatComplianceDate(item.deadline_date)}${item.linked_staff_name ? ` · ${this.escapeHtml(item.linked_staff_name)}` : ''}</span>
         </div>
+        <div class="cmp-deadline-actions">
+          ${item.entity_type === 'COMPANY_LICENSE'
+            ? `<button class="cmp-text-button" data-edit-license="${Number(item.entity_id)}">Edit license</button>`
+            : `<button class="cmp-text-button" data-edit-deadline="${Number(item.id)}">Edit</button>`}
+          ${item.entity_type !== 'COMPANY_LICENSE' ? `<button class="cmp-text-button cmp-delete-button" data-delete-deadline="${Number(item.id)}">Delete</button>` : ''}
+        </div>
+      </article>
+    `).join('');
+  }
+
+  renderRecentRecords() {
+    const target = this.mainArea?.querySelector('#cmpRecentRecords');
+    if (!target) return;
+    const records = this.complianceData.overview?.recordedActivity || [];
+    if (!records.length) {
+      target.innerHTML = '<div class="cmp-inline-empty">No compliance records have been saved yet. Add a license or deadline to get started.</div>';
+      return;
+    }
+    target.innerHTML = records.map(item => `
+      <div class="cmp-activity-row">
+        <span class="cmp-activity-dot ${item.record_type === 'license' ? 'is-license' : ''}"></span>
+        <div><strong>${this.escapeHtml(item.title)}</strong><small>${item.record_type === 'license' ? 'License record' : 'Deadline record'} · ${this.formatComplianceDate(String(item.created_at || '').slice(0, 10))}</small></div>
       </div>
     `).join('');
   }
 
-  toggleReminder(id) {
-    const item = this.reminders.find(r => r.id === id);
-    if (item) {
-      item.completed = !item.completed;
-      this.renderReminders();
-      const status = item.completed ? 'completed' : 'pending';
-      this.showNotification(`Marked as ${status}: ${item.title}`, 'info');
+  async toggleDeadlineStatus(id) {
+    const record = this.complianceData.deadlines.find(item => String(item.id) === String(id));
+    if (!record) return;
+    const status = record.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+    try {
+      await this.requestComplianceApi(`/api/compliance/deadlines/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH', body: JSON.stringify({ status })
+      });
+      await this.loadComplianceData();
+      if (this.currentView === 'dashboard') {
+        this.renderDashboardMetrics();
+        this.renderComplianceCalendar();
+        this.renderDashboardDeadlines();
+        this.renderRecentRecords();
+      } else if (this.currentView === 'compliance') {
+        this.renderComplianceSummary();
+        this.renderComplianceRecords();
+      }
+      this.showNotification(`Deadline marked ${status.toLowerCase()}.`, 'success');
+    } catch (error) {
+      this.showNotification(error.message, 'error');
     }
   }
 
-  // Recent Actions Renderer
-  renderRecentActions() {
-    const listEl = this.mainArea?.querySelector('#cmpRecentActionsList');
-    if (!listEl) return;
+  async deleteComplianceRecord(type, id) {
+    if (!window.confirm('Delete this saved record? This cannot be undone.')) return;
+    const path = type === 'license' ? 'licenses' : 'deadlines';
+    try {
+      await this.requestComplianceApi(`/api/compliance/${path}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await this.loadComplianceData();
+      if (this.currentView === 'dashboard') this.renderDashboard();
+      else this.renderComplianceView();
+      this.showNotification('Record deleted.', 'success');
+    } catch (error) {
+      this.showNotification(error.message, 'error');
+    }
+  }
 
-    listEl.innerHTML = this.recentActions.map(a => `
-      <div class="cmp-action-item">
-        <div class="cmp-action-avatar" style="background: ${a.color};">${a.user}</div>
-        <div class="cmp-action-details">
-          <div class="cmp-action-text">
-            <strong>${a.name}</strong> ${a.action}
-          </div>
-          <div class="cmp-action-time">${a.time}</div>
+  openComplianceRecordModal(type, record = null) {
+    const isLicense = type === 'license';
+    const title = record ? `Edit ${isLicense ? 'license' : 'deadline'}` : `Add ${isLicense ? 'license' : 'deadline'}`;
+    const option = (items, selectedId, labelFn, emptyLabel) => `
+      <option value="">${emptyLabel}</option>
+      ${items.map(item => `<option value="${Number(item.id)}" ${String(item.id) === String(selectedId || '') ? 'selected' : ''}>${this.escapeHtml(labelFn(item))}</option>`).join('')}
+    `;
+    const modal = document.createElement('div');
+    modal.className = 'cmp-record-modal-backdrop';
+    modal.innerHTML = `
+      <section class="cmp-record-modal" role="dialog" aria-modal="true" aria-labelledby="cmpRecordModalTitle">
+        <header><div><h3 id="cmpRecordModalTitle">${title}</h3><p>Saved to the Directory compliance records.</p></div><button type="button" class="cmp-modal-close" aria-label="Close">×</button></header>
+        <form id="cmpRecordForm">
+          <label class="cmp-form-field cmp-form-wide">Record title<input name="title" required maxlength="180" value="${this.escapeHtml(record?.title || '')}"></label>
+          <label class="cmp-form-field">Category<input name="category" maxlength="80" value="${this.escapeHtml(record?.category || (isLicense ? 'STATUTORY_DRUG' : 'GENERAL'))}"></label>
+          ${isLicense ? `
+            <label class="cmp-form-field">License number<input name="license_number" maxlength="100" value="${this.escapeHtml(record?.license_number || '')}"></label>
+            <label class="cmp-form-field">Issuing authority<input name="issuing_authority" maxlength="160" value="${this.escapeHtml(record?.issuing_authority || '')}"></label>
+            <label class="cmp-form-field">Issue date<input name="issue_date" type="date" value="${this.escapeHtml(String(record?.issue_date || '').slice(0, 10))}"></label>
+            <label class="cmp-form-field">Expiry date<input name="expiry_date" type="date" value="${this.escapeHtml(String(record?.expiry_date || '').slice(0, 10))}"></label>
+            <label class="cmp-form-field">Renewal frequency<input name="renewal_frequency" maxlength="60" value="${this.escapeHtml(record?.renewal_frequency || '')}" placeholder="Optional"></label>
+            <label class="cmp-form-field">Status<select name="status"><option value="ACTIVE" ${record?.status === 'ACTIVE' ? 'selected' : ''}>Active</option><option value="INACTIVE" ${record?.status === 'INACTIVE' ? 'selected' : ''}>Inactive</option></select></label>
+          ` : `
+            <label class="cmp-form-field">Due date<input name="deadline_date" type="date" required value="${this.escapeHtml(String(record?.deadline_date || '').slice(0, 10))}"></label>
+            <label class="cmp-form-field">Priority<select name="priority">${['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map(priority => `<option value="${priority}" ${String(record?.priority || 'MEDIUM').toUpperCase() === priority ? 'selected' : ''}>${priority[0] + priority.slice(1).toLowerCase()}</option>`).join('')}</select></label>
+          `}
+          <label class="cmp-form-field">Responsible staff<select name="${isLicense ? 'linked_staff_id' : 'staff_id'}">${option(this.complianceData.staff, isLicense ? record?.linked_staff_id : record?.staff_id, item => `${item.full_name} · ${item.emp_code}`, 'Not linked')}</select></label>
+          <label class="cmp-form-field">Vault document<select name="vault_document_id">${option(this.complianceData.documents, record?.vault_document_id, item => `${item.doc_ref_no || 'No reference'} · ${item.title}`, 'Not linked')}</select></label>
+          <label class="cmp-form-field cmp-form-wide">Notes<textarea name="notes" rows="3" maxlength="2000">${this.escapeHtml(record?.notes || '')}</textarea></label>
+          <footer><button type="button" class="cmp-action-button cmp-action-secondary cmp-modal-cancel">Cancel</button><button type="submit" class="cmp-action-button cmp-action-primary">${record ? 'Save changes' : 'Create record'}</button></footer>
+        </form>
+      </section>
+    `;
+    const close = () => modal.remove();
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    modal.querySelector('.cmp-modal-close')?.addEventListener('click', close);
+    modal.querySelector('.cmp-modal-cancel')?.addEventListener('click', close);
+    modal.querySelector('#cmpRecordForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const payload = Object.fromEntries(new FormData(form).entries());
+      for (const [field, value] of Object.entries(payload)) {
+        if (value === '' && !['title', 'category', 'status', 'priority'].includes(field)) payload[field] = null;
+      }
+      for (const field of ['linked_staff_id', 'staff_id', 'vault_document_id']) {
+        if (Object.prototype.hasOwnProperty.call(payload, field)) payload[field] = payload[field] ? Number(payload[field]) : null;
+      }
+      const endpoint = isLicense ? 'licenses' : 'deadlines';
+      try {
+        await this.requestComplianceApi(`/api/compliance/${endpoint}${record ? `/${encodeURIComponent(record.id)}` : ''}`, {
+          method: record ? 'PUT' : 'POST', body: JSON.stringify(payload)
+        });
+        close();
+        await this.loadComplianceData();
+        if (this.currentView === 'dashboard') this.renderDashboard();
+        else this.renderComplianceView();
+        this.showNotification(`${isLicense ? 'License' : 'Deadline'} ${record ? 'updated' : 'created'} successfully.`, 'success');
+      } catch (error) {
+        this.showNotification(error.message, 'error');
+      }
+    });
+    document.body.appendChild(modal);
+    modal.querySelector('input[name="title"]')?.focus();
+  }
+
+  async refreshComplianceRecords() {
+    try {
+      await this.loadComplianceData();
+      if (this.currentView === 'compliance') {
+        this.renderComplianceSummary();
+        this.renderComplianceRecords();
+      }
+    } catch (error) {
+      const summary = this.mainArea?.querySelector('#cmpComplianceSummary');
+      if (summary) summary.innerHTML = `<div class="cmp-live-state cmp-live-error">${this.escapeHtml(error.message)} <button class="cmp-action-button cmp-action-secondary" id="cmpRetryCompliance">Retry</button></div>`;
+      this.mainArea?.querySelector('#cmpRetryCompliance')?.addEventListener('click', () => this.refreshComplianceRecords());
+    }
+  }
+
+  renderComplianceSummary() {
+    const target = this.mainArea?.querySelector('#cmpComplianceSummary');
+    if (!target) return;
+    const stats = this.complianceData.overview?.metrics || {};
+    target.innerHTML = `
+      <div><strong>${stats.totalLicenses ?? 0}</strong><span>License records</span></div>
+      <div><strong>${stats.pendingDeadlinesCount ?? 0}</strong><span>Pending deadlines</span></div>
+      <div><strong>${stats.overdueDeadlinesCount ?? 0}</strong><span>Overdue deadlines</span></div>
+      <div><strong>${stats.expiringSoonCount ?? 0}</strong><span>Expiring in 60 days</span></div>
+    `;
+  }
+
+  getFilteredComplianceRecords(type) {
+    const query = this.complianceSearch || '';
+    const filter = this.complianceStatusFilter || 'ALL';
+    let items = type === 'license' ? this.complianceData.licenses : this.complianceData.deadlines;
+    if (filter === 'ACTIVE' || filter === 'INACTIVE') {
+      if (type === 'deadline') return [];
+      items = items.filter(item => item.status === filter);
+    } else if (filter === 'PENDING' || filter === 'COMPLETED') {
+      if (type === 'license') return [];
+      items = items.filter(item => item.status === filter);
+    }
+    if (query) {
+      items = items.filter(item => `${item.title} ${item.category || ''} ${item.license_number || ''} ${item.linked_staff_name || ''} ${item.vault_document_title || ''} ${item.linked_license_title || ''}`.toLowerCase().includes(query));
+    }
+    return items;
+  }
+
+  renderComplianceRecords() {
+    const licenseTarget = this.mainArea?.querySelector('#cmpLicenseRecords');
+    const deadlineTarget = this.mainArea?.querySelector('#cmpDeadlineRecords');
+    if (!licenseTarget || !deadlineTarget) return;
+    const licenses = this.getFilteredComplianceRecords('license');
+    const deadlines = this.getFilteredComplianceRecords('deadline');
+    const licenseCount = this.mainArea.querySelector('#cmpLicenseCount');
+    const deadlineCount = this.mainArea.querySelector('#cmpDeadlineCount');
+    if (licenseCount) licenseCount.textContent = `${licenses.length} shown`;
+    if (deadlineCount) deadlineCount.textContent = `${deadlines.length} shown`;
+    licenseTarget.innerHTML = licenses.length ? licenses.map(item => `
+      <article class="cmp-managed-record">
+        <div class="cmp-managed-record-main">
+          <span class="cmp-record-type-icon">▤</span>
+          <div><strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.category || 'License')} · ${this.escapeHtml(item.license_number || 'No number recorded')} · ${item.expiry_date ? `Expires ${this.formatComplianceDate(item.expiry_date)}` : 'No expiry date recorded'}</small>
+            <small>${item.linked_staff_name ? `Staff: ${this.escapeHtml(item.linked_staff_name)}` : 'No staff link'}${item.vault_document_title ? ` · Vault: ${this.escapeHtml(item.vault_document_title)}` : ''}</small></div>
         </div>
-      </div>
-    `).join('');
+        <span class="cmp-status-pill ${item.status === 'ACTIVE' ? 'is-active' : ''}">${this.escapeHtml(item.status || 'ACTIVE')}</span>
+        <div class="cmp-record-actions"><button class="cmp-text-button" data-edit-license="${Number(item.id)}">Edit</button><button class="cmp-text-button cmp-delete-button" data-delete-license="${Number(item.id)}">Delete</button></div>
+      </article>
+    `).join('') : `<div class="cmp-inline-empty">${this.complianceData.licenses.length ? 'No license records match these filters.' : 'No licenses saved yet. Add a record to track its current status and expiry.'}</div>`;
+    deadlineTarget.innerHTML = deadlines.length ? deadlines.map(item => `
+      <article class="cmp-managed-record ${item.status === 'COMPLETED' ? 'is-complete' : Number(item.days_remaining) < 0 ? 'is-overdue' : ''}">
+        <div class="cmp-managed-record-main">
+          <button class="cmp-deadline-check" data-complete-managed-deadline="${Number(item.id)}" title="${item.status === 'COMPLETED' ? 'Mark pending' : 'Mark complete'}" aria-label="${item.status === 'COMPLETED' ? 'Mark deadline pending' : 'Mark deadline complete'}">${item.status === 'COMPLETED' ? '✓' : ''}</button>
+          <div><strong>${this.escapeHtml(item.title)}</strong><small>${this.escapeHtml(item.category || 'General')} · ${this.formatComplianceDate(item.deadline_date)} · ${this.escapeHtml(item.priority || 'MEDIUM')}${item.linked_license_title ? ` · ${this.escapeHtml(item.linked_license_title)}` : ''}</small>
+            <small>${item.linked_staff_name ? `Staff: ${this.escapeHtml(item.linked_staff_name)}` : 'No staff link'}${item.vault_document_title ? ` · Vault: ${this.escapeHtml(item.vault_document_title)}` : ''}</small></div>
+        </div>
+        <span class="cmp-status-pill ${item.status === 'COMPLETED' ? 'is-complete' : ''}">${this.escapeHtml(item.status || 'PENDING')}</span>
+        <div class="cmp-record-actions">${item.entity_type === 'COMPANY_LICENSE' ? `<button class="cmp-text-button" data-edit-license="${Number(item.entity_id)}">Edit license</button>` : `<button class="cmp-text-button" data-edit-managed-deadline="${Number(item.id)}">Edit</button><button class="cmp-text-button cmp-delete-button" data-delete-managed-deadline="${Number(item.id)}">Delete</button>`}</div>
+      </article>
+    `).join('') : `<div class="cmp-inline-empty">${this.complianceData.deadlines.length ? 'No deadline records match these filters.' : 'No deadlines saved yet. Add a due date you want the team to track.'}</div>`;
+  }
+
+  exportComplianceRecords() {
+    const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const licenses = this.getFilteredComplianceRecords('license');
+    const deadlines = this.getFilteredComplianceRecords('deadline');
+    if (!licenses.length && !deadlines.length) {
+      this.showNotification('There are no matching records to export.', 'info');
+      return;
+    }
+    const rows = [
+      ['Directory compliance records export'],
+      ['Generated at', new Date().toISOString()],
+      ['Search filter', this.complianceSearch || 'All records'],
+      ['Status filter', this.complianceStatusFilter || 'ALL'],
+      [],
+      ['Record type', 'Title', 'Category', 'Status', 'Date', 'Priority', 'Staff', 'Vault document', 'Notes'],
+      ...licenses.map(item => ['License', item.title, item.category, item.status, item.expiry_date, '', item.linked_staff_name, item.vault_document_title, item.notes]),
+      ...deadlines.map(item => ['Deadline', item.title, item.category, item.status, item.deadline_date, item.priority, item.linked_staff_name, item.vault_document_title, item.notes])
+    ];
+    const csv = rows.map(row => row.map(quote).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `compliance-records-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   // ==========================================
@@ -1067,83 +1337,70 @@ export class ComplianceApp extends AppWindow {
     }
   }
 
-  // View 4: Compliance (Linked with Analytics & Manufacturing)
+  // Compliance records are managed from the existing persisted license/deadline APIs.
   renderComplianceView() {
     if (!this.mainArea) return;
     this.mainArea.innerHTML = `
-      <div class="cmp-view-pad">
+      <div class="cmp-view-pad cmp-live-workspace">
         <div class="compliance-header-bar">
           <div class="compliance-header-title">
-            <h2>Statutory Compliance & Reports</h2>
-            <p>Integrated with Analytics (GST Table 12, GSTR-1, GSTR-3B) and Manufacturing GMP</p>
+            <h2>Compliance records</h2>
+            <p>Track the licenses and deadlines your organization has entered. No obligations or dates are assumed.</p>
           </div>
-          <div style="display: flex; gap: 6px;">
-            <button class="compliance-header-btn" id="cmpLaunchAnalyticsBtn" style="background: var(--cmp-primary); color: #fff; padding: 5px 12px; font-weight: 600; width: auto; height: auto; border-radius: 6px;">
-              Open Analytics Reports ↗
-            </button>
-            <button class="compliance-header-btn" id="cmpLaunchMfgBtn" style="background: #059669; color: #fff; padding: 5px 12px; font-weight: 600; width: auto; height: auto; border-radius: 6px;">
-              Open Manufacturing GMP ↗
-            </button>
+          <div class="cmp-toolbar-actions">
+            <button class="cmp-action-button cmp-action-secondary" id="cmpExportCompliance">⇩ Export CSV</button>
+            <button class="cmp-action-button cmp-action-secondary" id="cmpRefreshCompliance">↻ Refresh</button>
+            <button class="cmp-action-button cmp-action-primary" id="cmpAddLicense">＋ Add license</button>
+            <button class="cmp-action-button cmp-action-primary" id="cmpAddDeadline">＋ Add deadline</button>
           </div>
         </div>
-
-        <div class="cmp-deck-grid">
-          <div class="cmp-dash-card">
-            <div class="cmp-dash-card-header">
-              <div class="cmp-dash-card-title"><span>📊</span> Analytics Statutory Suite</div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px;">
-              <div style="padding: 6px 0; border-bottom: 1px solid var(--cmp-border);">
-                <strong>Table 12 HSN Summary (CGST Rule 59)</strong>
-                <div style="font-size: 11px; color: #666;">Compiled via Rust WebAssembly Vector Engine</div>
-              </div>
-              <div style="padding: 6px 0; border-bottom: 1px solid var(--cmp-border);">
-                <strong>GSTR-1 Outward Supplies (B2B, B2C, Credit Notes)</strong>
-                <div style="font-size: 11px; color: #666;">Cut-off: 11th of every month</div>
-              </div>
-              <div style="padding: 6px 0;">
-                <strong>GSTR-3B Tax Liability Statement</strong>
-                <div style="font-size: 11px; color: #666;">Cash & Credit Ledger Reconciliation</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="cmp-dash-card">
-            <div class="cmp-dash-card-header">
-              <div class="cmp-dash-card-title"><span>🏭</span> Manufacturing GMP & Schedule T</div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px;">
-              <div style="padding: 6px 0; border-bottom: 1px solid var(--cmp-border);">
-                <strong>Raw Material Inward Register (Schedule T)</strong>
-                <div style="font-size: 11px; color: #666;">Goods Receipt Note (GRN) & Herb Quarantine</div>
-              </div>
-              <div style="padding: 6px 0; border-bottom: 1px solid var(--cmp-border);">
-                <strong>Rule 161B Control & Retention Sample Log</strong>
-                <div style="font-size: 11px; color: #666;">Preserved for 3 years after batch expiration</div>
-              </div>
-              <div style="padding: 6px 0;">
-                <strong>BMR Batch Dossiers & Release Sign-Offs</strong>
-                <div style="font-size: 11px; color: #666;">Statutory doctor approval certificates</div>
-              </div>
-            </div>
-          </div>
+        <div class="cmp-compliance-summary" id="cmpComplianceSummary"><div class="cmp-live-state">Loading saved records…</div></div>
+        <div class="cmp-record-toolbar">
+          <input class="cmp-workspace-search" id="cmpComplianceSearch" type="search" placeholder="Search titles, categories, staff, and Vault references…">
+          <select class="cmp-compact-select" id="cmpComplianceStatus" aria-label="Filter records">
+            <option value="ALL">All statuses</option><option value="PENDING">Pending deadlines</option><option value="COMPLETED">Completed deadlines</option><option value="ACTIVE">Active licenses</option><option value="INACTIVE">Inactive licenses</option>
+          </select>
         </div>
+        <section class="cmp-dash-card cmp-record-table-card">
+          <div class="cmp-record-table-heading"><h3>Licenses</h3><span id="cmpLicenseCount"></span></div>
+          <div id="cmpLicenseRecords" class="cmp-managed-records"></div>
+          <div class="cmp-record-table-heading cmp-deadlines-heading"><h3>Deadlines & renewals</h3><span id="cmpDeadlineCount"></span></div>
+          <div id="cmpDeadlineRecords" class="cmp-managed-records"></div>
+        </section>
+        <div class="cmp-report-footnote">CSV export includes only the records visible with the current search and filters.</div>
       </div>
     `;
-
-    this.mainArea.querySelector('#cmpLaunchAnalyticsBtn')?.addEventListener('click', () => {
-      if (window.AppWindow && window.AnalyticsApp) {
-        window.AppWindow.launchApp('analytics', window.AnalyticsApp, 'analyticsAppContainer');
-        this.showNotification('Navigating to statutory compliance reports.', 'info');
-      }
+    this.mainArea.querySelector('#cmpAddLicense')?.addEventListener('click', () => this.openComplianceRecordModal('license'));
+    this.mainArea.querySelector('#cmpAddDeadline')?.addEventListener('click', () => this.openComplianceRecordModal('deadline'));
+    this.mainArea.querySelector('#cmpRefreshCompliance')?.addEventListener('click', () => this.refreshComplianceRecords());
+    this.mainArea.querySelector('#cmpExportCompliance')?.addEventListener('click', () => this.exportComplianceRecords());
+    this.mainArea.querySelector('#cmpComplianceSearch')?.addEventListener('input', event => {
+      this.complianceSearch = event.target.value.trim().toLowerCase();
+      this.renderComplianceRecords();
     });
-
-    this.mainArea.querySelector('#cmpLaunchMfgBtn')?.addEventListener('click', () => {
-      if (window.AppWindow && window.ManufacturingApp) {
-        window.AppWindow.launchApp('manufacturing', window.ManufacturingApp, 'manufacturingAppContainer');
-        this.showNotification('Navigating to Schedule T GMP registers.', 'info');
-      }
+    this.mainArea.querySelector('#cmpComplianceStatus')?.addEventListener('change', event => {
+      this.complianceStatusFilter = event.target.value;
+      this.renderComplianceRecords();
     });
+    this.mainArea.querySelector('.cmp-record-table-card')?.addEventListener('click', event => {
+      const editLicense = event.target.closest('[data-edit-license]');
+      const deleteLicense = event.target.closest('[data-delete-license]');
+      const editDeadline = event.target.closest('[data-edit-managed-deadline]');
+      const deleteDeadline = event.target.closest('[data-delete-managed-deadline]');
+      const completeDeadline = event.target.closest('[data-complete-managed-deadline]');
+      if (editLicense) {
+        const row = this.complianceData.licenses.find(item => String(item.id) === editLicense.dataset.editLicense);
+        if (row) this.openComplianceRecordModal('license', row);
+      }
+      if (deleteLicense) this.deleteComplianceRecord('license', deleteLicense.dataset.deleteLicense);
+      if (editDeadline) {
+        const row = this.complianceData.deadlines.find(item => String(item.id) === editDeadline.dataset.editManagedDeadline);
+        if (row) this.openComplianceRecordModal('deadline', row);
+      }
+      if (deleteDeadline) this.deleteComplianceRecord('deadline', deleteDeadline.dataset.deleteManagedDeadline);
+      if (completeDeadline) this.toggleDeadlineStatus(completeDeadline.dataset.completeManagedDeadline);
+    });
+    this.refreshComplianceRecords();
   }
 }
 
