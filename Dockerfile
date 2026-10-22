@@ -26,7 +26,8 @@ COPY package*.json ./
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Install all dependencies (including devDependencies for Vite build)
-RUN npm ci
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 \
+    || (echo "Retrying npm ci..." && sleep 5 && npm ci --fetch-retries=5)
 
 # Copy frontend & source code needed for Vite build
 COPY vite.config.js ./

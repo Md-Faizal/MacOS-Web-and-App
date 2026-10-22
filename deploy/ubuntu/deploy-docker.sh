@@ -177,8 +177,16 @@ docker compose -f "$COMPOSE_FILE" rm -f -s "macos-server-$TARGET_SLOT" 2>/dev/nu
 if [ "$NEEDS_BUILD" = "true" ]; then
     echo "📦 Building and starting container macos-server-$TARGET_SLOT..."
     export DOCKER_BUILDKIT=1
-    docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"
-    echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+    if docker compose -f "$COMPOSE_FILE" up -d --build --no-deps "macos-server-$TARGET_SLOT"; then
+        echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+    elif [ "$IMAGE_EXISTS" = "yes" ]; then
+        echo "⚠️  Build failed due to network/upstream issue. Falling back to existing macos-server:latest image..."
+        docker compose -f "$COMPOSE_FILE" up -d --no-deps "macos-server-$TARGET_SLOT"
+        echo "$CURRENT_HASH" > "$BUILD_HASH_FILE"
+    else
+        echo "❌ Build failed and no existing image found."
+        exit 1
+    fi
 else
     echo "⚡ Fast zero-downtime swap (dependencies unchanged, mounting updated host volumes)..."
     docker compose -f "$COMPOSE_FILE" up -d --no-deps "macos-server-$TARGET_SLOT"
