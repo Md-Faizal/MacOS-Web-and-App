@@ -22,6 +22,7 @@ module.exports = function(router, handlers) {
   router.get('/estimates', handlers.getEstimates);
   router.post('/estimates', handlers.createEstimate);
   router.get('/estimates/:id', handlers.getEstimate);
+  router.patch('/estimates/:id/validity', handlers.updateEstimateValidity);
   router.put('/estimates/:id', handlers.updateEstimate);
   router.delete('/estimates/:id', handlers.deleteEstimate);
 

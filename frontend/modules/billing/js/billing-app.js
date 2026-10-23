@@ -211,6 +211,13 @@ export class BillingAPI {
     });
   }
 
+  async updateEstimateValidity(id, validUntil) {
+    return this.request(`/billing/estimates/${id}/validity`, {
+      method: 'PATCH',
+      body: JSON.stringify({ valid_until: validUntil })
+    });
+  }
+
   async deleteEstimate(id) {
     return this.request(`/billing/estimates/${id}`, {
       method: 'DELETE'
@@ -875,7 +882,7 @@ export class BillingApp extends AppWindow {
     if (!this.searchInput) return;
 
     // Set unified placeholder
-    this.searchInput.placeholder = 'Search bills, payments, credits, orders...';
+    this.searchInput.placeholder = 'Search bills, estimates, payments, credits, orders...';
 
     // Create dropdown for search results FIRST
     this.searchDropdown = document.createElement('div');
@@ -980,7 +987,22 @@ export class BillingApp extends AppWindow {
         }
       }
 
-      // Search in all bills, payments, credit notes, and products
+      // Load estimates for reference lookup using the API's short GET cache.
+      try {
+        const estimatePayload = await this.api.getEstimates();
+        this.billingData = this.billingData || {};
+        this.billingData.estimates = Array.isArray(estimatePayload)
+          ? estimatePayload
+          : (Array.isArray(estimatePayload?.items)
+            ? estimatePayload.items
+            : (Array.isArray(estimatePayload?.data?.items)
+              ? estimatePayload.data.items
+              : (Array.isArray(estimatePayload?.data) ? estimatePayload.data : [])));
+      } catch (error) {
+        log.warn('Could not fetch estimates for billing search:', error.message);
+      }
+
+      // Search in all bills, payments, credit notes, products, and estimates
       const results = this.searchAllBillsPaymentsCredits(query);
       
       // Populate dropdown with results
@@ -1016,6 +1038,7 @@ export class BillingApp extends AppWindow {
       const grouped = {
         product: [],
         bill: [],
+        estimate: [],
         payment: [],
         credit: [],
         order: []
@@ -1049,6 +1072,18 @@ export class BillingApp extends AppWindow {
 
         grouped.bill.forEach(result => {
           const item = this.createDropdownItem(result, 'bill');
+          if (item) this.searchDropdown.appendChild(item);
+        });
+      }
+
+      if (grouped.estimate.length > 0) {
+        const estimateHeader = document.createElement('div');
+        estimateHeader.style.cssText = 'padding: 8px 16px; background: #f5f5f5; font-weight: bold; font-size: 11px; color: #666; text-transform: uppercase;';
+        estimateHeader.textContent = 'Estimates';
+        this.searchDropdown.appendChild(estimateHeader);
+
+        grouped.estimate.forEach(result => {
+          const item = this.createDropdownItem(result, 'estimate');
           if (item) this.searchDropdown.appendChild(item);
         });
       }
@@ -1147,6 +1182,9 @@ export class BillingApp extends AppWindow {
       } else if (type === 'bill') {
         displayText = `${data.customer_name || 'Unknown'}`;
         secondaryText = `Invoice: ${data.invoice_no || 'N/A'} | ₹${data.total || '0'}`;
+      } else if (type === 'estimate') {
+        displayText = `${data.party_name || data.customer_name || 'Unknown'}`;
+        secondaryText = `Estimate: ${data.estimate_no || 'N/A'} | Valid until: ${data.valid_until || 'Not specified'} | ₹${data.grand_total || '0'}`;
       } else if (type === 'payment') {
         displayText = `${data.customer_name || 'Unknown'}`;
         secondaryText = `Payment: ${data.reference_number || data.reference || 'N/A'} | ₹${data.amount || '0'}`;
@@ -1158,9 +1196,16 @@ export class BillingApp extends AppWindow {
         secondaryText = `Order: ${data.order_number || data.id || 'N/A'} | Status: ${data.status || 'Pending'}`;
       }
 
+      const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[char]);
       item.innerHTML = `
-        <div style="font-weight: 500; color: #222;">${displayText}</div>
-        <div style="font-size: 12px; color: #999; margin-top: 2px;">${secondaryText}</div>
+        <div style="font-weight: 500; color: #222;">${type === 'estimate' ? escapeHtml(displayText) : displayText}</div>
+        <div style="font-size: 12px; color: #999; margin-top: 2px;">${type === 'estimate' ? escapeHtml(secondaryText) : secondaryText}</div>
       `;
 
       item.addEventListener('click', () => {
@@ -1208,6 +1253,17 @@ export class BillingApp extends AppWindow {
             }, 300);
           }
         }, 300);
+        return;
+      }
+
+      if (type === 'estimate') {
+        this.switchView('estimate');
+        setTimeout(() => {
+          const estimateSearch = this.estimateEditor?.viewContainer?.querySelector('#estimateHistorySearch');
+          if (!estimateSearch) return;
+          estimateSearch.value = result.data.estimate_no || '';
+          estimateSearch.dispatchEvent(new Event('input', { bubbles: true }));
+        }, 0);
         return;
       }
 
@@ -1423,6 +1479,16 @@ export class BillingApp extends AppWindow {
           const text = `${order.customer_name || ''} ${order.order_number || order.id || ''} ${order.reference_number || ''} ${order.status || ''}`.toLowerCase();
           if (text.includes(query)) {
             results.push({ type: 'order', data: order });
+          }
+        });
+      }
+
+      // Search saved estimates by reference, customer, subject, and total.
+      if (this.billingData && Array.isArray(this.billingData.estimates)) {
+        this.billingData.estimates.forEach(estimate => {
+          const text = `${estimate.estimate_no || ''} ${estimate.reference_no || ''} ${estimate.party_name || ''} ${estimate.customer_name || ''} ${estimate.subject || ''} ${estimate.grand_total || ''}`.toLowerCase();
+          if (text.includes(q)) {
+            results.push({ type: 'estimate', data: estimate });
           }
         });
       }

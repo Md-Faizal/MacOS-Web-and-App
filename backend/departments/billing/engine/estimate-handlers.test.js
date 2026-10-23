@@ -76,6 +76,12 @@ test('estimate handlers persist, update, list and delete without billing side ef
     assert.equal(created.statusCode, 201);
     assert.equal(created.body.estimate.party_name, 'Catalog Customer');
     assert.equal(created.body.estimate.phone, '1234567890');
+    const expectedExpiry = new Date();
+    expectedExpiry.setDate(expectedExpiry.getDate() + 7);
+    assert.equal(
+      created.body.estimate.valid_until,
+      `${expectedExpiry.getFullYear()}-${String(expectedExpiry.getMonth() + 1).padStart(2, '0')}-${String(expectedExpiry.getDate()).padStart(2, '0')}`
+    );
     assert.equal(created.body.estimate.address, 'Database Address');
     assert.equal(created.body.estimate.products[0].product_id, 1);
     assert.equal(created.body.estimate.terms.length, 3);
@@ -125,6 +131,12 @@ test('worker estimate access is limited to accessible registered customers and o
       user: { id: 'worker-1', role: 'worker' }
     });
     assert.equal(denied.statusCode, 403);
+    const deniedValidityChange = invoke(handlers.updateEstimateValidity, {
+      params: { id: ownerCreated.id },
+      body: { valid_until: '2026-12-31' },
+      user: { id: 'worker-1', role: 'worker' }
+    });
+    assert.equal(deniedValidityChange.statusCode, 403);
 
     db.prepare('INSERT INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run('worker-2', 7);
     const allowed = invoke(handlers.getEstimate, {
@@ -173,6 +185,48 @@ test('estimate handlers reject missing products and inaccessible customer refere
   }
 });
 
+test('estimate validity can be extended or expired without changing estimate details', () => {
+  const db = createTestDatabase();
+  try {
+    const handlers = createBillingHandlers(db);
+    const created = invoke(handlers.createEstimate, {
+      body: {
+        estimate_no: 'EST-VALIDITY-001',
+        party_name: 'Walk-in Customer',
+        estimate_date: '2026-10-01',
+        valid_until: '2026-10-31',
+        subject: 'Original subject',
+        products: [{ product_id: 1, name: 'Catalog Product', qty: 1, rate: 50 }]
+      }
+    }).body.estimate;
+
+    const extended = invoke(handlers.updateEstimateValidity, {
+      params: { id: created.id },
+      body: { valid_until: '2026-11-30' }
+    });
+    assert.equal(extended.statusCode, 200);
+    assert.equal(extended.body.estimate.valid_until, '2026-11-30');
+    assert.equal(extended.body.estimate.subject, 'Original subject');
+    assert.equal(extended.body.estimate.products[0].qty, 1);
+
+    const expired = invoke(handlers.updateEstimateValidity, {
+      params: { id: created.id },
+      body: { valid_until: '2026-10-22' }
+    });
+    assert.equal(expired.statusCode, 200);
+    assert.equal(expired.body.estimate.valid_until, '2026-10-22');
+
+    const invalidDate = invoke(handlers.updateEstimateValidity, {
+      params: { id: created.id },
+      body: { valid_until: '2026-02-30' }
+    });
+    assert.equal(invalidDate.statusCode, 400);
+    assert.equal(invoke(handlers.getEstimate, { params: { id: created.id } }).body.valid_until, '2026-10-22');
+  } finally {
+    db.close();
+  }
+});
+
 test('estimate numbers are generated when omitted and duplicate numbers return a conflict', () => {
   const db = createTestDatabase();
   try {
@@ -208,7 +262,7 @@ test('estimate numbers are generated when omitted and duplicate numbers return a
 
 test('estimate routes are registered before the generic bill ID route', () => {
   const registered = [];
-  const router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [
+  const router = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map(method => [
     method,
     (routePath, handler) => registered.push({ method, routePath, handler })
   ]));
@@ -221,6 +275,7 @@ test('estimate routes are registered before the generic bill ID route', () => {
     ['get', '/estimates'],
     ['post', '/estimates'],
     ['get', '/estimates/:id'],
+    ['patch', '/estimates/:id/validity'],
     ['put', '/estimates/:id'],
     ['delete', '/estimates/:id']
   ]);

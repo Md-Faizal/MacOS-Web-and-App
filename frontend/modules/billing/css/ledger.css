@@ -114,6 +114,22 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+.ledger-bill-record button[onclick*="deleteBill"],
+.ledger-payment-record button[onclick*="deletePayment"],
+.timeline-delete-bill,
+.timeline-delete-payment {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.ledger-bill-record button[onclick*="deleteBill"]:hover,
+.ledger-payment-record button[onclick*="deletePayment"]:hover,
+.timeline-delete-bill:hover,
+.timeline-delete-payment:hover {
+  background: #b91c1c !important;
+  border-color: #b91c1c !important;
+}
+
 /* Desktop default layout for columns */
 @media (min-width: 769px) {
   .ledger-columns-container[data-mode="both"],

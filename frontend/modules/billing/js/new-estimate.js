@@ -27,6 +27,15 @@ class EstimateEditor {
     this.isEstimateDirty = false;
   }
 
+  selectHistoryCustomer(customerKey) {
+    this.selectedHistoryCustomer = customerKey === this.selectedHistoryCustomer ? '' : customerKey;
+    this.renderHistorySidebar();
+    this.renderHistoryRows();
+    if (window.matchMedia?.('(max-width: 620px)').matches) {
+      this.viewContainer.querySelector('.estimate-workspace')?.classList.add('estimate-sidebar-hidden');
+    }
+  }
+
   get viewContainer() {
     return this._viewContainer || (this.billingApp?.getOrCreateSubviewPanel ? this.billingApp.getOrCreateSubviewPanel('estimate') : this.billingApp.viewContainer);
   }
@@ -111,8 +120,11 @@ class EstimateEditor {
     this.currentEstimateProducts = Array.isArray(estimate.products)
       ? JSON.parse(JSON.stringify(estimate.products))
       : [];
-    const today = this.formatDate(new Date());
-    const validUntilDate = this.formatDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+    const todayDate = new Date();
+    const today = this.formatDate(todayDate);
+    const defaultExpiry = new Date(todayDate);
+    defaultExpiry.setDate(defaultExpiry.getDate() + 7);
+    const validUntilDate = this.formatDate(defaultExpiry);
     const estimateDate = this.escapeHtml(this.formatDate(estimate.estimate_date) || today);
     const validUntil = this.escapeHtml(this.formatDate(estimate.valid_until) || validUntilDate);
     const subject = this.escapeHtml(estimate.subject || '');
@@ -452,10 +464,35 @@ class EstimateEditor {
               </div>
             </div>
             <div id="estimateHistoryList" class="estimate-history-list">
-              <div class="estimate-history-empty">Loading estimates...</div>
+              <div class="macos-loader-container compact" style="padding: 40px 10px;" role="status" aria-live="polite">
+                <div class="macos-circular-loader sm" aria-hidden="true"></div>
+                <p class="macos-loader-title" style="font-size: 12px;">Loading Estimates...</p>
+                <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
+              </div>
             </div>
           </main>
         </div>
+        <dialog class="estimate-validity-dialog" id="estimateValidityDialog" aria-labelledby="estimateValidityTitle">
+          <form method="dialog" class="estimate-validity-dialog-content">
+            <h2 id="estimateValidityTitle">Extend Estimate Validity</h2>
+            <p>Select how many days to add after the current expiry date (or today if already expired).</p>
+            <label for="estimateValidityDays">Extension duration</label>
+            <select id="estimateValidityDays">
+              <option value="7">7 days</option>
+              <option value="14">14 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+              <option value="custom">Custom duration</option>
+            </select>
+            <label class="estimate-validity-custom" for="estimateValidityCustomDays" hidden>Custom days (1-3650)</label>
+            <input id="estimateValidityCustomDays" type="number" min="1" max="3650" step="1" value="30" hidden>
+            <div class="estimate-validity-dialog-actions">
+              <button type="button" data-estimate-validity-cancel>Cancel</button>
+              <button type="button" data-estimate-validity-confirm>Extend</button>
+            </div>
+          </form>
+        </dialog>
       </div>
     `;
     if (window.matchMedia?.('(max-width: 620px)').matches) {
@@ -478,6 +515,37 @@ class EstimateEditor {
     this.viewContainer.querySelector('#estimateSidebarToggle')?.addEventListener('click', () => {
       this.viewContainer.querySelector('.estimate-workspace')?.classList.toggle('estimate-sidebar-hidden');
     });
+    const validityDialog = this.viewContainer.querySelector('#estimateValidityDialog');
+    const validityDaysSelect = this.viewContainer.querySelector('#estimateValidityDays');
+    const customDaysInput = this.viewContainer.querySelector('#estimateValidityCustomDays');
+    const customDaysLabel = this.viewContainer.querySelector('label[for="estimateValidityCustomDays"]');
+    let cursorElements = [];
+    validityDialog?.addEventListener('close', () => {
+      cursorElements.forEach(element => document.body.appendChild(element));
+      cursorElements = [];
+    });
+    validityDaysSelect?.addEventListener('change', () => {
+      const showCustom = validityDaysSelect.value === 'custom';
+      if (customDaysInput) customDaysInput.hidden = !showCustom;
+      if (customDaysLabel) customDaysLabel.hidden = !showCustom;
+    });
+    this.viewContainer.querySelector('[data-estimate-validity-cancel]')?.addEventListener('click', () => validityDialog?.close());
+    this.viewContainer.querySelector('[data-estimate-validity-confirm]')?.addEventListener('click', () => {
+      const estimate = this.historyEstimates.find(item => String(item.id) === String(this.pendingValidityEstimateId));
+      if (!estimate || !validityDaysSelect) return;
+      const duration = validityDaysSelect.value === 'custom' ? customDaysInput?.value : validityDaysSelect.value;
+      const days = Number(duration);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) {
+        this.showNotification('Enter a whole number of days from 1 to 3650.', 'error');
+        customDaysInput?.focus();
+        return;
+      }
+      validityDialog?.close();
+      this.changeEstimateValidity(estimate, 'extend', days);
+    });
+    validityDialog?.addEventListener('click', event => {
+      if (event.target === validityDialog) validityDialog.close();
+    });
     this.viewContainer.querySelector('.estimate-status-filters')?.addEventListener('click', event => {
       const button = event.target.closest('[data-estimate-status]');
       if (!button) return;
@@ -490,14 +558,12 @@ class EstimateEditor {
     this.viewContainer.querySelector('#estimateCustomerList')?.addEventListener('click', event => {
       const customer = event.target.closest('[data-estimate-customer]');
       if (!customer) return;
-      this.selectedHistoryCustomer = customer.dataset.estimateCustomer === this.selectedHistoryCustomer
-        ? ''
-        : customer.dataset.estimateCustomer;
-      this.renderHistorySidebar();
-      this.renderHistoryRows();
-      if (window.matchMedia?.('(max-width: 620px)').matches) {
-        this.viewContainer.querySelector('.estimate-workspace')?.classList.add('estimate-sidebar-hidden');
-      }
+      this.selectHistoryCustomer(customer.dataset.estimateCustomer);
+    });
+    this.viewContainer.querySelector('#estimateCustomerList')?.addEventListener('keydown', event => {
+      if ((event.key !== 'Enter' && event.key !== ' ') || !event.target.matches('[data-estimate-customer]')) return;
+      event.preventDefault();
+      this.selectHistoryCustomer(event.target.dataset.estimateCustomer);
     });
     this.viewContainer.querySelector('#estimateHistoryList')?.addEventListener('click', event => {
       const button = event.target.closest('[data-estimate-action]');
@@ -520,6 +586,20 @@ class EstimateEditor {
           break;
         case 'order':
           this.convertToOrder(estimate);
+          break;
+        case 'extend-validity':
+          this.pendingValidityEstimateId = estimate.id;
+          if (validityDaysSelect) validityDaysSelect.value = '30';
+          if (customDaysInput) customDaysInput.hidden = true;
+          if (customDaysLabel) customDaysLabel.hidden = true;
+          validityDialog?.showModal();
+          cursorElements = ['macos-cursor', 'macos-cursor-dot', 'macos-cursor-ring']
+            .map(id => document.getElementById(id))
+            .filter(Boolean);
+          cursorElements.forEach(element => validityDialog?.appendChild(element));
+          break;
+        case 'expire':
+          this.changeEstimateValidity(estimate, 'expire');
           break;
         case 'delete':
           this.deleteEstimate(estimate);
@@ -590,6 +670,17 @@ class EstimateEditor {
       <div class="estimate-history-cards">
         ${estimates.map(estimate => {
           const isValid = !estimate.valid_until || this.formatDate(estimate.valid_until) >= today;
+          const validUntilDate = this.formatDate(estimate.valid_until);
+          const daysRemaining = validUntilDate
+            ? Math.round((Date.parse(`${validUntilDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000)
+            : null;
+          const validityMessage = !Number.isFinite(daysRemaining)
+            ? 'No expiry date'
+            : daysRemaining > 0
+              ? `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left`
+              : daysRemaining === 0
+                ? 'Expires today'
+                : `Expired ${Math.abs(daysRemaining)} day${daysRemaining === -1 ? '' : 's'} ago`;
           return `
             <article class="estimate-record-card ledger-bill-record" style="padding: 12px; background: #ffffff; border: 1px solid ${isValid ? '#000000' : '#9ca3af'}; border-radius: 2px; margin-bottom: 8px; font-family: 'Courier New', monospace;">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
@@ -605,7 +696,7 @@ class EstimateEditor {
               </div>
               <div style="display: flex; justify-content: space-between; font-size: 10px; color: #666666; letter-spacing: 0.2px;">
                 <span>◆ ${this.escapeHtml(estimate.party_name)}</span>
-                <span>Valid until: ${this.escapeHtml(this.formatDate(estimate.valid_until) || '-')}</span>
+                <span class="estimate-validity-left">Valid until: ${this.escapeHtml(validUntilDate || '-')} · ${this.escapeHtml(validityMessage)}</span>
               </div>
               <div class="estimate-history-actions">
                 <button type="button" data-estimate-action="view" data-estimate-id="${estimate.id}">View</button>
@@ -613,6 +704,8 @@ class EstimateEditor {
                 <button type="button" data-estimate-action="edit" data-estimate-id="${estimate.id}">Edit</button>
                 <button type="button" data-estimate-action="bill" data-estimate-id="${estimate.id}">Make Bill</button>
                 <button type="button" data-estimate-action="order" data-estimate-id="${estimate.id}" ${estimate.customer_id ? '' : 'title="Register or link this customer first"'}>Make Order</button>
+                <button type="button" data-estimate-action="extend-validity" data-estimate-id="${estimate.id}" title="Choose how many days to extend validity">Extend Validity</button>
+                ${isValid ? `<button type="button" data-estimate-action="expire" data-estimate-id="${estimate.id}" title="Expire this estimate immediately">Expire now</button>` : ''}
                 <button type="button" data-estimate-action="delete" data-estimate-id="${estimate.id}">Delete</button>
               </div>
             </article>
@@ -677,33 +770,18 @@ class EstimateEditor {
       const isActive = customer.key === this.selectedHistoryCustomer;
       const statusColor = customer.pendingCount > 0 ? '#facc15' : customer.count > 0 ? '#4ade80' : '#888888';
       return `
-        <div class="estimate-customer-item orders-customer-item ${isActive ? 'active' : ''}" data-estimate-customer="${this.escapeHtml(customer.key)}" style="padding: 12px 12px; margin: 6px 4px; border-radius: 3px; cursor: pointer; transition: all 0.15s; user-select: none; background: ${isActive ? '#2a2a2a' : '#1a1a1a'}; border: 1px solid ${isActive ? '#ffffff' : '#333333'}; border-left: 3px solid ${isActive ? '#ffffff' : '#333333'}; box-shadow: ${isActive ? 'inset 0 0 0 1px #ffffff' : 'none'}; flex-shrink: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; gap: 8px;">
-            <div style="font-weight: 700; color: #ffffff; font-size: 13px; font-family: 'Courier New', monospace; letter-spacing: 0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${this.escapeHtml(customer.name)}</div>
-            <div style="font-size: 9px; font-weight: 800; color: #ffffff; background: #333333; border: 1px solid #555555; padding: 4px 6px; border-radius: 2px; white-space: nowrap; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.5px;">${customer.count}</div>
+        <div class="estimate-customer-item orders-customer-item ${isActive ? 'active' : ''}" data-estimate-customer="${this.escapeHtml(customer.key)}" role="button" tabindex="0" aria-pressed="${isActive}">
+          <div class="estimate-customer-item-header">
+            <div class="estimate-customer-item-name">${this.escapeHtml(customer.name)}</div>
+            <div class="estimate-customer-item-count">${customer.count}</div>
           </div>
-          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #aaaaaa; margin-bottom: 8px; font-family: 'Courier New', monospace;">
-            <span style="font-weight: 600; color: ${customer.total < 0 ? '#10b981' : '#ffffff'};">₹${Number(customer.total || 0).toFixed(0)}</span>
+          <div class="estimate-customer-item-total">
+            <span class="${customer.total < 0 ? 'credit' : ''}">₹${Number(customer.total || 0).toFixed(0)}</span>
           </div>
-          <div style="font-size: 10px; color: ${statusColor}; font-family: 'Courier New', monospace; font-weight: 600;">● ${this.escapeHtml(customer.statusText)}</div>
+          <div class="estimate-customer-item-status" style="--estimate-status-color:${statusColor}">● ${this.escapeHtml(customer.statusText)}</div>
         </div>
       `;
     }).join('');
-
-    customerList.querySelectorAll('.estimate-customer-item').forEach(item => {
-      item.addEventListener('mouseover', () => {
-        if (!item.classList.contains('active')) {
-          item.style.background = '#2a2a2a';
-          item.style.borderColor = '#444444';
-        }
-      });
-      item.addEventListener('mouseout', () => {
-        if (!item.classList.contains('active')) {
-          item.style.background = '#1a1a1a';
-          item.style.borderColor = '#333333';
-        }
-      });
-    });
 
     const totals = this.historyEstimates.reduce((result, estimate) => {
       result.total += Number(estimate.grand_total || 0);
@@ -758,6 +836,48 @@ class EstimateEditor {
     } catch (error) {
       log.error('Save estimate failed:', error);
       this.showNotification(error.message || 'Unable to save estimate.', 'error');
+    }
+  }
+
+  async changeEstimateValidity(estimate, action, selectedDays = '30') {
+    const today = this.formatDate(new Date());
+    let validUntil;
+    let extensionDays = 0;
+    if (action === 'expire') {
+      if (!confirm(`Expire estimate ${estimate.estimate_no} now?`)) return;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      validUntil = this.formatDate(yesterday);
+    } else {
+      extensionDays = Number(selectedDays);
+      if (!Number.isInteger(extensionDays) || extensionDays < 1 || extensionDays > 3650) {
+        this.showNotification('Enter a whole number of days from 1 to 3650.', 'error');
+        return;
+      }
+      const currentExpiry = this.formatDate(estimate.valid_until);
+      const startDate = currentExpiry && currentExpiry > today ? currentExpiry : today;
+      const extendedDate = new Date(`${startDate}T00:00:00`);
+      extendedDate.setDate(extendedDate.getDate() + extensionDays);
+      validUntil = this.formatDate(extendedDate);
+    }
+
+    try {
+      const result = await this.billingApp.api.updateEstimateValidity(estimate.id, validUntil);
+      const updatedEstimate = result.estimate || result;
+      this.historyEstimates = this.historyEstimates.map(item =>
+        String(item.id) === String(updatedEstimate.id) ? updatedEstimate : item
+      );
+      this.renderHistorySidebar();
+      this.renderHistoryRows();
+      this.showNotification(
+        action === 'expire'
+          ? `Expired ${estimate.estimate_no}.`
+          : `Extended ${estimate.estimate_no} by ${extensionDays} days through ${this.formatDate(updatedEstimate.valid_until)}.`,
+        'success'
+      );
+    } catch (error) {
+      log.error(`Unable to ${action} estimate validity:`, error);
+      this.showNotification(error.message || 'Unable to update estimate validity.', 'error');
     }
   }
 

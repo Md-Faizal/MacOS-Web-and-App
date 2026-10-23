@@ -175,6 +175,112 @@
   color: #fff;
 }
 
+.estimate-history-actions button[data-estimate-action="view"] {
+  background: #000;
+  color: #fff;
+}
+
+.estimate-history-actions button[data-estimate-action="view"]:hover {
+  background: #333;
+}
+
+.estimate-history-actions button[data-estimate-action="delete"] {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.estimate-history-actions button[data-estimate-action="delete"]:hover {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
+.estimate-validity-left {
+  text-align: right;
+}
+
+.estimate-validity-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(420px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  overflow: visible;
+  border: 1px solid #222;
+  border-radius: 6px;
+  color: #111;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .28);
+}
+
+.estimate-validity-dialog::backdrop {
+  background: rgba(0, 0, 0, .48);
+  backdrop-filter: blur(2px);
+}
+
+.estimate-validity-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.estimate-validity-dialog-content h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.estimate-validity-dialog-content p {
+  margin: 0;
+  color: #555;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.estimate-validity-dialog-content label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.estimate-validity-dialog-content select,
+.estimate-validity-dialog-content input {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #888;
+  border-radius: 3px;
+  background: #fff;
+  color: #111;
+  font: 13px 'Courier New', monospace;
+}
+
+.estimate-validity-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.estimate-validity-dialog-actions button {
+  padding: 8px 12px;
+  border: 1px solid #111;
+  border-radius: 3px;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.estimate-validity-dialog-actions [data-estimate-validity-confirm] {
+  background: #111;
+  color: #fff;
+}
+
+.estimate-validity-dialog-actions button:hover {
+  opacity: .82;
+}
+
 .estimate-history-empty,
 .estimate-history-error {
   padding: 24px;
@@ -200,6 +306,7 @@
 .estimate-workspace-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   flex-shrink: 0;
   padding: 24px 20px;
@@ -212,7 +319,7 @@
   flex: 0 0 auto;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   white-space: nowrap;
 }
 
@@ -223,14 +330,15 @@
 
 .estimate-workspace-stats {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .estimate-workspace-stats > div {
-  min-width: 90px;
-  padding: 7px 10px;
+  min-width: 84px;
+  padding: 8px 12px;
   border: 1px solid #333;
   text-align: center;
 }
@@ -245,6 +353,7 @@
   color: #aaa;
   font-size: 9px;
   letter-spacing: .4px;
+  white-space: nowrap;
 }
 
 .estimate-workspace-stats strong {
@@ -254,21 +363,24 @@
 
 .estimate-workspace-controls {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
 .estimate-workspace-controls select,
 .estimate-dark-button,
 .estimate-new-button {
-  min-height: 34px;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 8px 10px;
   border: 1px solid #555;
   border-radius: 3px;
   background: #1a1a1a;
   color: #eee;
   font-size: 11px;
   font-weight: 600;
+  font-family: 'Courier New', monospace;
 }
 
 .estimate-dark-button,
@@ -283,6 +395,17 @@
   color: #fff;
 }
 
+.estimate-dark-button:hover,
+.estimate-workspace-controls select:hover {
+  border-color: #888;
+  background: #252525;
+}
+
+.estimate-new-button:hover {
+  border-color: #b45309;
+  background: #b45309;
+}
+
 .estimate-workspace-body {
   display: flex;
   flex: 1;
@@ -292,7 +415,8 @@
 
 .estimate-customer-sidebar {
   display: flex;
-  flex: 0 0 300px;
+  flex: 0 0 340px;
+  width: 340px;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
@@ -305,7 +429,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 16px;
   border-bottom: 2px solid #1a1a1a;
   background: #0a0a0a;
 }
@@ -313,8 +437,8 @@
 .estimate-sidebar-controls input,
 .estimate-sidebar-controls select {
   width: 100%;
-  min-height: 38px;
-  padding: 10px 12px;
+  min-height: 36px;
+  padding: 8px 10px;
   border: 1px solid #333;
   border-radius: 3px;
   background: #1a1a1a;
@@ -326,17 +450,17 @@
 .estimate-customer-list {
   flex: 1;
   overflow-y: auto;
-  padding: 5px;
+  padding: 4px;
 }
 
-.estimate-customer-item {
+.estimate-customer-list .estimate-customer-item {
   display: flex;
   width: 100%;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px;
-  margin: 6px 4px;
+  margin: 6px 0;
   border: 1px solid #333;
   border-left: 3px solid #333;
   border-radius: 3px;
@@ -344,27 +468,75 @@
   color: #ddd;
   text-align: left;
   cursor: pointer;
-  flex-shrink: 0;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
-.estimate-customer-item:hover,
-.estimate-customer-item.active {
+.estimate-customer-list .estimate-customer-item:hover,
+.estimate-customer-list .estimate-customer-item:focus-visible {
   background: #2a2a2a;
   color: #fff;
+  border-color: #555;
 }
 
-.estimate-customer-item:not(.active) {
-  border-left-color: #333;
+.estimate-customer-list .estimate-customer-item:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
-.estimate-customer-item:hover {
-  border-color: #444;
-}
-
-.estimate-customer-item.active {
+.estimate-customer-list .estimate-customer-item.active {
   border-color: #fff;
   border-left-color: #fff;
   box-shadow: inset 0 0 0 1px #fff;
+}
+
+.estimate-customer-item-header,
+.estimate-customer-item-total {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.estimate-customer-item-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estimate-customer-item-count {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid #555;
+  border-radius: 2px;
+  background: #333;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.estimate-customer-item-total {
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.estimate-customer-item-total .credit {
+  color: #10b981;
+}
+
+.estimate-customer-item-status {
+  color: var(--estimate-status-color, #888);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .estimate-history-main {
@@ -471,17 +643,28 @@
 
   .estimate-customer-sidebar {
     flex-basis: 280px;
+    width: 280px;
   }
 
   .estimate-workspace-stats {
-    gap: 10px;
+    gap: 6px;
+  }
+
+  .estimate-workspace-stats > div {
+    min-width: 76px;
+    padding: 6px 7px;
   }
 }
 
 @media (max-width: 992px) {
   .estimate-workspace-header {
     flex-wrap: wrap;
+    gap: 10px 12px;
     padding: 16px 20px;
+  }
+
+  .estimate-workspace-brand {
+    flex: 1 1 auto;
   }
 
   .estimate-workspace-stats {
@@ -489,10 +672,12 @@
     flex-basis: 100%;
     justify-content: flex-start;
     overflow-x: auto;
+    padding-bottom: 2px;
   }
 
   .estimate-workspace-stats > div {
-    min-width: 85px;
+    flex: 0 0 auto;
+    min-width: 84px;
   }
 
   .estimate-workspace-controls {
@@ -501,6 +686,7 @@
 
   .estimate-customer-sidebar {
     flex-basis: 260px;
+    width: 260px;
   }
 
   .estimate-history-head {
@@ -516,6 +702,41 @@
   }
 }
 
+@media (max-width: 768px) {
+  .estimate-workspace-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+
+  .estimate-workspace-brand {
+    width: 100%;
+  }
+
+  .estimate-workspace-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .estimate-workspace-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .estimate-workspace-body {
+    flex-direction: column;
+  }
+
+  .estimate-workspace .estimate-customer-sidebar {
+    width: 100%;
+    max-height: 300px;
+    flex: 0 0 auto;
+    border-right: 0;
+    border-bottom: 2px solid #1a1a1a;
+  }
+}
+
 @media (max-width: 620px) {
   .estimate-form-wrapper .pack-input-wrapper {
     grid-template-columns: minmax(0, 1fr) 78px;
@@ -523,26 +744,63 @@
 
   .estimate-workspace-body {
     position: relative;
+    flex-direction: row;
   }
 
-  .estimate-customer-sidebar {
+  .estimate-workspace .estimate-customer-sidebar {
     position: absolute;
-    z-index: 2;
+    z-index: 5;
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(260px, 85vw);
+    width: min(340px, 88vw);
+    max-height: none;
     flex-basis: 0;
+    border-right: 2px solid #1a1a1a;
+    border-bottom: 0;
     box-shadow: 8px 0 20px rgba(0, 0, 0, .2);
   }
 
   .estimate-sidebar-hidden .estimate-customer-sidebar {
     width: 0;
+    overflow: hidden;
     box-shadow: none;
   }
 
+  .estimate-workspace-header {
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .estimate-workspace-brand {
+    width: 100%;
+    flex-basis: 100%;
+    font-size: 12px;
+  }
+
+  .estimate-workspace-stats {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .estimate-workspace-controls {
+    width: 100%;
+    justify-content: space-between;
+    margin: 0;
+  }
+
   .estimate-workspace-controls select {
-    max-width: 110px;
+    flex: 1 1 auto;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .estimate-workspace-controls button {
+    flex: 0 0 auto;
+  }
+
+  .estimate-workspace-controls select {
+    font-size: 10px;
   }
 
   .estimate-history-title {
@@ -566,13 +824,4 @@
   .estimate-history-list {
     padding: 10px;
   }
-
-  .estimate-history-title {
-    padding: 14px;
-  }
-
-  .estimate-history-title h1 {
-    font-size: 20px;
-  }
-
 }

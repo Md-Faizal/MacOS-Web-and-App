@@ -20,7 +20,7 @@ export class BillingSettingsComponent {
             invoice_show_dues_widget: 'true',
             invoice_auto_sign_disclaimer: 'true',
             invoice_authority_sign_no_qr: 'false',
-            document_use_proprietor_signature: 'false',
+            document_use_proprietor_signature: 'true',
             payment_qr_image: '',
             payment_upi_id: '7749089400@hdfc',
             portal_base_url: 'https://mac.faizal.uk',
@@ -58,7 +58,11 @@ export class BillingSettingsComponent {
         const documentSignatureMode = ['traditional', 'auto_digital'].includes(configuredSignatureMode)
             ? configuredSignatureMode
             : (legacyClassicMode ? 'traditional' : (autoSign ? 'auto_digital' : 'traditional'));
-        const useProprietorSignature = String(this.settings.document_use_proprietor_signature ?? 'false').toLowerCase() === 'true';
+        const hasSavedProprietorSignature = Boolean(String(this.settings.proprietor_signature_data || '').trim());
+        const proprietorSignaturePreferenceSet = String(this.settings.document_proprietor_signature_preference_set || '').toLowerCase() === 'true';
+        const useProprietorSignature = proprietorSignaturePreferenceSet
+            ? String(this.settings.document_use_proprietor_signature).toLowerCase() === 'true'
+            : hasSavedProprietorSignature;
         const showMmid = String(this.settings.bank_show_mmid ?? 'true').toLowerCase() === 'true';
         const currentAccountType = this.settings.bank_account_type || 'Savings Account';
         const hasCustomQr = Boolean(this.settings.payment_qr_image);
@@ -114,10 +118,10 @@ export class BillingSettingsComponent {
                         <div>
                             <div class="billing-card-title">
                                 <span>📄</span>
-                                <span>Document Layout & Printing Options</span>
+                                <span>Invoice & Estimate PDF Controls</span>
                             </div>
                             <div class="billing-card-subtitle">
-                                Configure page structure, duplex print modes, pending due widgets, and signature policies for invoices and receipts.
+                                These controls apply to generated invoice and estimate PDFs. Payment receipts and credit notes keep their own document layouts.
                             </div>
                         </div>
                     </div>
@@ -126,10 +130,10 @@ export class BillingSettingsComponent {
                     <div class="billing-row-toggle" style="margin-top: 4px;">
                         <div class="billing-row-left">
                             <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
-                                2-Page Duplex Printing (Front & Back)
+                                Add a Back Page (Duplex)
                             </div>
                             <div class="billing-card-subtitle">
-                                Formats exported & printed invoice PDFs into 2 pages: Front for billing line items, Back for payment QR & bank account settlement details.
+                                Adds a second page with payment QR, bank details, and document terms. Turn off for a single-page PDF.
                             </div>
                         </div>
                         <div>
@@ -149,7 +153,7 @@ export class BillingSettingsComponent {
                                 </span>
                             </div>
                             <div class="billing-card-subtitle">
-                                When a customer has unpaid balance, renders a compact due summary + dynamic UPI QR in the free space below the bill. Shows interactive 'Pay via App' if exported as digital PDF, and scan instruction if printed.
+                                On invoices with an outstanding balance, shows a due summary and payment QR on the front page. Estimates do not show an outstanding-dues widget.
                             </div>
                         </div>
                         <div>
@@ -159,17 +163,23 @@ export class BillingSettingsComponent {
                         </div>
                     </div>
 
-                    <!-- Shared invoice and estimate signature mode -->
+                    <div class="billing-settings-subsection">
+                        <div class="billing-settings-subsection-title">Signature presentation</div>
+                        <div class="billing-settings-subsection-description">
+                            Choose one signature style for invoices and estimates. Traditional mode can optionally include the saved proprietor image; Auto-digital mode uses a generated notice instead.
+                        </div>
+                    </div>
+
                     <div class="billing-row-toggle" style="margin-top: 14px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
                         <div class="billing-row-left">
                             <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
-                                <span>Invoice and Estimate Signature Mode</span>
+                                <span>Signature style for invoices & estimates</span>
                                 <span id="documentSignatureModeTag" class="billing-badge-tag ${documentSignatureMode === 'auto_digital' ? 'active' : 'inactive'}">
                                     ${documentSignatureMode === 'auto_digital' ? 'AUTO-DIGITAL' : 'TRADITIONAL'}
                                 </span>
                             </div>
                             <div class="billing-card-subtitle">
-                                Applies the same signature presentation to invoices and estimates. The invoice payment-QR preference below remains independent.
+                                Traditional shows the authorised-signatory line, with the saved proprietor signature when enabled. Auto-digital replaces it with a computer-generated document notice.
                             </div>
                         </div>
                         <div style="min-width:190px;">
@@ -179,7 +189,35 @@ export class BillingSettingsComponent {
                             </select>
                         </div>
                     </div>
-                    <!-- Invoice-specific payment QR preference -->
+
+                    <div class="billing-row-toggle billing-proprietor-signature-toggle" style="margin-top: 14px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
+                        <div class="billing-row-left">
+                            <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
+                                <span>Include saved proprietor signature (Traditional only)</span>
+                                <span id="proprietorPdfSignatureTag" class="billing-badge-tag ${useProprietorSignature ? 'active' : 'inactive'}">
+                                    ${useProprietorSignature ? 'ON' : 'OFF'}
+                                </span>
+                            </div>
+                            <div id="proprietorPdfSignatureHint" class="billing-card-subtitle">
+                                ${hasSavedProprietorSignature
+                                    ? 'When on, places the saved signature image above the signatory title on invoices and estimates. When off, leaves the standard signatory line.'
+                                    : 'No proprietor image is saved yet. Save one in the Proprietor Signature section below; otherwise PDFs show the standard signatory line.'}
+                            </div>
+                        </div>
+                        <div>
+                            <button id="toggleProprietorPdfSignature" class="toggle-switch ${useProprietorSignature ? 'active' : ''}" type="button" aria-label="Include saved proprietor signature in traditional PDFs" aria-pressed="${useProprietorSignature}">
+                                <div class="toggle-switch-knob"></div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="billing-settings-subsection billing-settings-subsection-separated">
+                        <div class="billing-settings-subsection-title">Invoice payment display</div>
+                        <div class="billing-settings-subsection-description">
+                            These invoice-only options control payment QR visibility and are independent of Traditional or Auto-digital signature mode.
+                        </div>
+                    </div>
+
                     <div class="billing-row-toggle" style="margin-top: 14px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
                         <div class="billing-row-left">
                             <div class="billing-label" style="font-size: 13px; font-weight: 600; color: var(--settings-text, #fff);">
@@ -189,7 +227,7 @@ export class BillingSettingsComponent {
                                 </span>
                             </div>
                             <div class="billing-card-subtitle">
-                                Controls invoice payment QR and pending-dues widget visibility only. It no longer changes the shared invoice/estimate signature mode.
+                                Hides the invoice payment QR and pending-dues widget. It does not change the signature style or affect estimates.
                             </div>
                         </div>
                         <div>
@@ -271,7 +309,7 @@ export class BillingSettingsComponent {
                                 <span>Proprietor Specimen Signature & Digital Authority Seal</span>
                             </div>
                             <div class="billing-card-subtitle">
-                                Used automatically when generating official company letters, notices, authorized invoices, and credit notes.
+                                This is the saved signature image. The Traditional PDF switch in Invoice & Estimate PDF Controls decides whether invoices and estimates include it.
                             </div>
                         </div>
                     </div>
@@ -289,16 +327,7 @@ export class BillingSettingsComponent {
                     </div>
 
                     <div style="margin-top: 16px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
-                        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--settings-text,#fff);">
-                            <input id="toggleProprietorPdfSignature" type="checkbox" ${useProprietorSignature ? 'checked' : ''} ${documentSignatureMode === 'auto_digital' ? 'disabled' : ''}>
-                            Use the saved proprietor signature image on traditional invoices and estimates
-                        </label>
-                        <div id="proprietorPdfSignatureHint" class="billing-card-subtitle">
-                            ${documentSignatureMode === 'auto_digital' ? 'Available in Traditional mode. If enabled without a saved signature image, the usual signatory label is shown.' : 'If enabled without a saved signature image, the usual signatory label is shown.'}
-                        </div>
-                    </div>
-                    <div style="margin-top: 16px; border-top: 1px solid var(--settings-row-border, rgba(255, 255, 255, 0.08)); padding-top: 14px;">
-                        <div class="billing-label" style="margin-bottom: 8px;">Specimen Signature (Drawn or Uploaded Transparent PNG)</div>
+                        <div class="billing-label" style="margin-bottom: 8px;">Saved Signature Image (Draw or Upload PNG, JPEG, or WebP)</div>
                         <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
                             <div style="border: 1.5px dashed var(--settings-row-border, rgba(255, 255, 255, 0.2)); border-radius: 8px; background: rgba(255, 255, 255, 0.95); padding: 8px; width: 320px; height: 110px; display: flex; align-items: center; justify-content: center; position: relative;">
                                 <canvas id="proprietorSigCanvas" width="300" height="94" style="width: 300px; height: 94px; cursor: crosshair; touch-action: none;"></canvas>
@@ -678,18 +707,38 @@ export class BillingSettingsComponent {
         const documentSignatureModeTag = this.container.querySelector('#documentSignatureModeTag');
         const proprietorPdfSignatureToggle = this.container.querySelector('#toggleProprietorPdfSignature');
         const proprietorPdfSignatureHint = this.container.querySelector('#proprietorPdfSignatureHint');
+        const proprietorPdfSignatureTag = this.container.querySelector('#proprietorPdfSignatureTag');
+        const updateProprietorSignatureHint = () => {
+            if (!proprietorPdfSignatureHint) return;
+            const mode = documentSignatureModeSelect?.value || 'traditional';
+            const enabled = proprietorPdfSignatureToggle?.classList.contains('active');
+            const hasImage = Boolean(String(this.settings.proprietor_signature_data || '').trim());
+            if (!hasImage) {
+                proprietorPdfSignatureHint.textContent = 'No proprietor image is saved yet. Save one in the Proprietor Signature section below; otherwise PDFs show the standard signatory line.';
+            } else if (mode === 'auto_digital') {
+                proprietorPdfSignatureHint.textContent = `Preference is ${enabled ? 'on' : 'off'} and remembered. Auto-digital PDFs use a generated notice; the image is used only in Traditional mode.`;
+            } else if (enabled) {
+                proprietorPdfSignatureHint.textContent = 'The saved image is placed above the signatory title on invoices and estimates.';
+            } else {
+                proprietorPdfSignatureHint.textContent = 'The saved image is omitted. Traditional PDFs show the standard signatory line.';
+            }
+        };
+        proprietorPdfSignatureToggle?.addEventListener('click', () => {
+            const enabled = proprietorPdfSignatureToggle.classList.toggle('active');
+            proprietorPdfSignatureToggle.setAttribute('aria-pressed', String(enabled));
+            if (proprietorPdfSignatureTag) {
+                proprietorPdfSignatureTag.className = `billing-badge-tag ${enabled ? 'active' : 'inactive'}`;
+                proprietorPdfSignatureTag.textContent = enabled ? 'ON' : 'OFF';
+            }
+            updateProprietorSignatureHint();
+        });
         documentSignatureModeSelect?.addEventListener('change', () => {
             const isAutoDigital = documentSignatureModeSelect.value === 'auto_digital';
             if (documentSignatureModeTag) {
                 documentSignatureModeTag.className = `billing-badge-tag ${isAutoDigital ? 'active' : 'inactive'}`;
                 documentSignatureModeTag.textContent = isAutoDigital ? 'AUTO-DIGITAL' : 'TRADITIONAL';
             }
-            if (proprietorPdfSignatureToggle) proprietorPdfSignatureToggle.disabled = isAutoDigital;
-            if (proprietorPdfSignatureHint) {
-                proprietorPdfSignatureHint.textContent = isAutoDigital
-                    ? 'Available in Traditional mode. If enabled without a saved signature image, the usual signatory label is shown.'
-                    : 'If enabled without a saved signature image, the usual signatory label is shown.';
-            }
+            updateProprietorSignatureHint();
         });
 
         // Invoice payment QR preference
@@ -942,7 +991,7 @@ export class BillingSettingsComponent {
         const isDuplex = this.container.querySelector('#toggleDuplexPrint')?.classList.contains('active') ? 'true' : 'false';
         const showDuesWidget = this.container.querySelector('#toggleShowDuesWidget')?.classList.contains('active') ? 'true' : 'false';
         const documentSignatureMode = this.container.querySelector('#documentSignatureMode')?.value || 'traditional';
-        const useProprietorSignature = this.container.querySelector('#toggleProprietorPdfSignature')?.checked ? 'true' : 'false';
+        const useProprietorSignature = this.container.querySelector('#toggleProprietorPdfSignature')?.classList.contains('active') ? 'true' : 'false';
         const invoiceClassicSign = this.container.querySelector('#toggleInvoiceClassicSign')?.classList.contains('active') ? 'true' : 'false';
         const showMmid = this.container.querySelector('#toggleShowMmid')?.classList.contains('active') ? 'true' : 'false';
 
@@ -965,6 +1014,7 @@ export class BillingSettingsComponent {
             proprietor_name: this.container.querySelector('#settingProprietorName')?.value?.trim() || 'MD  FAIZAL',
             proprietor_title: this.container.querySelector('#settingProprietorTitle')?.value?.trim() || 'Proprietor',
             proprietor_signature_data: this.settings.proprietor_signature_data || '',
+            document_proprietor_signature_preference_set: 'true',
             bank_show_mmid: showMmid,
             payment_upi_id: this.container.querySelector('#settingUpiId')?.value || '',
             portal_base_url: this.container.querySelector('#settingPortalUrl')?.value || '',

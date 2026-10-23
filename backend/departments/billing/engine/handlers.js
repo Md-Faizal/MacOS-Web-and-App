@@ -39,9 +39,16 @@ function usesAutoDigitalSignature(appSettings) {
   return !legacyClassic && settingEnabled(appSettings.invoice_auto_sign_disclaimer);
 }
 
+function usesProprietorSignature(appSettings) {
+  if (settingEnabled(appSettings.document_proprietor_signature_preference_set)) {
+    return settingEnabled(appSettings.document_use_proprietor_signature);
+  }
+  return Boolean(String(appSettings.proprietor_signature_data || '').trim());
+}
+
 async function prepareProprietorSignature(appSettings) {
   delete appSettings.proprietor_signature_jpeg_base64;
-  if (!settingEnabled(appSettings.document_use_proprietor_signature)
+  if (!usesProprietorSignature(appSettings)
     || usesAutoDigitalSignature(appSettings)
     || !appSettings.proprietor_signature_data) {
     return;
@@ -812,6 +819,12 @@ module.exports = function(db) {
     return `${prefix}${String(maxSequence + 1).padStart(4, '0')}`;
   }
 
+  function getDefaultEstimateValidityDate() {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
   function prepareEstimate(req, existing = null) {
     const payload = req.body || {};
     const customerId = Object.prototype.hasOwnProperty.call(payload, 'customer_id')
@@ -908,7 +921,7 @@ module.exports = function(db) {
       licence_no: String(getValue('licence_no') || ''),
       pan: String(getValue('pan') || ''),
       estimate_date: payload.estimate_date ?? existing?.estimate_date ?? null,
-      valid_until: payload.valid_until ?? existing?.valid_until ?? null,
+      valid_until: payload.valid_until ?? existing?.valid_until ?? getDefaultEstimateValidityDate(),
       subject: String(payload.subject ?? existing?.subject ?? ''),
       products_json: productsJson,
       terms_json: JSON.stringify(terms),
@@ -932,6 +945,12 @@ module.exports = function(db) {
       ? `Unable to ${operation}.`
       : (isConstraintError ? 'Estimate number already exists.' : error.message);
     return res.status(statusCode).json({ error: message });
+  }
+
+  function isValidEstimateDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   }
 
   function getCustomerDuplexPreference(req, customerId) {
@@ -1057,6 +1076,30 @@ module.exports = function(db) {
         return res.json({ success: true, estimate: update() });
       } catch (error) {
         return sendEstimateError(res, error, 'update estimate');
+      }
+    },
+
+    updateEstimateValidity: (req, res) => {
+      try {
+        const existing = getEstimateById(req.params.id);
+        if (!existing) return res.status(404).json({ error: 'Estimate not found.' });
+        if (!canAccessEstimate(req, existing)) return res.status(403).json({ error: 'Access denied to this estimate.' });
+
+        const validUntil = req.body?.valid_until;
+        if (!isValidEstimateDate(validUntil)) {
+          return res.status(400).json({ error: 'A valid expiry date in YYYY-MM-DD format is required.' });
+        }
+
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+        db.prepare(`
+          UPDATE estimates
+          SET valid_until = ?, last_edited_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(validUntil, userId, req.params.id);
+
+        return res.json({ success: true, estimate: getEstimateById(req.params.id) });
+      } catch (error) {
+        return sendEstimateError(res, error, 'update estimate validity');
       }
     },
 

@@ -464,11 +464,7 @@ fn render_duplex_back_page(
 
     // Sidebar QR Container 2: PORTAL ACCESS
     if !data.is_estimate || is_registered_customer {
-        let portal_title_y = if data.is_estimate {
-            page_height - mm_to_pt(59.0)
-        } else {
-            payment_box_y - 18.0 - mm_to_pt(35.0)
-        };
+        let portal_title_y = payment_box_y - 18.0 - mm_to_pt(35.0);
         canvas.set_fill_color(PdfColor::hex("#1e293b"));
         canvas.draw_centered_spaced_string(
             PdfFont::HelveticaBold,
@@ -2574,6 +2570,11 @@ mod tests {
         assert!(duplex_text.contains("COMPANY BANK DETAILS"));
         assert!(duplex_text.contains("PORTAL ACCESS"));
         assert!(duplex_text.contains("customer-ledger.html?id=7"));
+        let payment_title_y = 841.89 - mm_to_pt(59.0);
+        let payment_box_y = payment_title_y - 12.0 - (mm_to_pt(42.0) + 16.0);
+        let portal_title_y = payment_box_y - 18.0 - mm_to_pt(35.0);
+        assert!(portal_title_y < payment_title_y);
+        assert!(duplex_text.contains(&format!("{portal_title_y:.2} Td (PORTAL ACCESS) Tj")));
         assert!(duplex_text.contains("ESTIMATE TERMS & CONDITIONS"));
         assert!(duplex_text.contains("Prices remain valid until the stated date."));
         assert!(duplex_text.contains("PAYMENT QR"));
