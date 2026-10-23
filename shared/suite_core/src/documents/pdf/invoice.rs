@@ -1629,6 +1629,21 @@ fn render_invoice_sheet(
                     font_size -= 0.1;
                 }
                 canvas.draw_string(PdfFont::Helvetica, font_size, x_col + 2.0, y, val);
+            } else if col_idx == 4 {
+                let mut font_size = 8.0;
+                let max_w = col_w - 4.0;
+                while canvas.string_width(PdfFont::Helvetica, font_size, val) > max_w
+                    && font_size > 4.0
+                {
+                    font_size = (font_size - 0.1).max(4.0);
+                }
+                canvas.draw_right_string(
+                    PdfFont::Helvetica,
+                    font_size,
+                    x_col + col_w - 2.0,
+                    y,
+                    val,
+                );
             } else if matches!(
                 col_idx,
                 0 | 1 | 2 | 5 | 6 | 7 | 8 | 12 | 13 | 14 | 15 | 16 | 17
@@ -2586,6 +2601,7 @@ mod tests {
     #[test]
     fn test_estimate_pdf_uses_invoice_layout_with_estimate_labels() {
         let mut five_percent = create_sample_item(1, 100.0);
+        five_percent.pack = "200.0 GM".to_string();
         five_percent.sgst_per = 2.5;
         five_percent.cgst_per = 2.5;
         five_percent.sgst_val = 2.5;
@@ -2635,6 +2651,18 @@ mod tests {
 
         let pdf = render_estimate_pdf(&estimate).expect("Estimate PDF should render");
         let pdf_text = String::from_utf8_lossy(&pdf);
+        let pack_text_position = pdf_text.find("(200.0 GM) Tj").expect("Pack size should render");
+        let pack_operator = pdf_text[..pack_text_position]
+            .rsplit("BT ")
+            .next()
+            .expect("Pack text should have a text operator");
+        let pack_font_size = pack_operator
+            .split_whitespace()
+            .nth(1)
+            .expect("Pack text should have a font size")
+            .parse::<f64>()
+            .expect("Pack font size should be numeric");
+        assert!(pack_font_size < 8.0, "long pack text should shrink to fit its column");
         let estimate_amount_y = mm_to_pt(5.0) + 100.0 - 18.0;
         assert!(pdf_text.contains(&format!(
             "{estimate_amount_y:.2} Td (Estimate Amount: Rs. 222.00) Tj"

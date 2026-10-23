@@ -3605,15 +3605,15 @@ class BillEditor {
         </div>
         <form id="invoiceDispatchForm">
           <div class="variant-modal-body" style="display:grid; gap:12px;">
-            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600; color:#fff;">
               L.R. Number
               <input name="lr_no" type="text" maxlength="80" value="${this.escapeHtml(order.lr_no || '')}" class="form-input">
             </label>
-            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600; color:#fff;">
               L.R. Date
               <input name="lr_date" type="date" value="${this.escapeHtml(String(order.lr_date || '').slice(0, 10))}" class="form-input">
             </label>
-            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600; color:#fff;">
               Transport
               <input name="transport" type="text" maxlength="120" value="${this.escapeHtml(order.transport || '')}" class="form-input">
             </label>
