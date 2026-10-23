@@ -416,6 +416,9 @@ class EstimateEditor {
     this.historyStatusFilter = 'all';
     this.historyDateFilter = 'all';
     this.historyCustomerSort = 'name-asc';
+    const estimateLoadingMarkup = window.MacOSLoader
+      ? window.MacOSLoader.create('Loading Estimates...', 'Syncing with server', 'sm', true)
+      : '<div class="macos-loader-container compact"><div class="macos-circular-loader sm" aria-hidden="true"></div><p class="macos-loader-title">Loading Estimates...</p><p class="macos-loader-subtitle">Syncing with server</p></div>';
     this.viewContainer.innerHTML = `
       <div class="estimate-workspace">
         <header class="estimate-workspace-header">
@@ -463,12 +466,8 @@ class EstimateEditor {
                 <button type="button" data-estimate-status="expired">Expired</button>
               </div>
             </div>
-            <div id="estimateHistoryList" class="estimate-history-list">
-              <div class="macos-loader-container compact" style="padding: 40px 10px;" role="status" aria-live="polite">
-                <div class="macos-circular-loader sm" aria-hidden="true"></div>
-                <p class="macos-loader-title" style="font-size: 12px;">Loading Estimates...</p>
-                <p class="macos-loader-subtitle" style="font-size: 11px;">Syncing with server</p>
-              </div>
+            <div id="estimateHistoryList" class="estimate-history-list" role="status" aria-live="polite">
+              ${estimateLoadingMarkup}
             </div>
           </main>
         </div>
