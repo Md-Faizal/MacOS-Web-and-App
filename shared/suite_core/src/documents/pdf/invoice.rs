@@ -23,6 +23,48 @@ fn format_date(date_str: &str) -> String {
     }
 }
 
+fn format_expiry_month_year(date_str: &str) -> String {
+    let date_part = date_str.trim().split('T').next().unwrap_or("").trim();
+    if date_part.is_empty() {
+        return "--".to_string();
+    }
+
+    let parts: Vec<&str> = date_part.split(|ch| ch == '-' || ch == '/' || ch == '.').collect();
+    let (month, year) = match parts.as_slice() {
+        [year, month, ..] if year.len() == 4 => (*month, *year),
+        [_, month, year] => (*month, *year),
+        [month, year] => (*month, *year),
+        _ => return "--".to_string(),
+    };
+    let Ok(month) = month.parse::<u32>() else {
+        return "--".to_string();
+    };
+    let Ok(year) = year.parse::<u32>() else {
+        return "--".to_string();
+    };
+    if !(1..=12).contains(&month) || (year.to_string().len() != 2 && year.to_string().len() != 4) {
+        return "--".to_string();
+    }
+
+    format!("{:02}/{:02}", month, year % 100)
+}
+
+fn draw_fitted_string(
+    canvas: &mut PdfCanvas,
+    font: PdfFont,
+    font_size: f64,
+    x: f64,
+    y: f64,
+    max_width: f64,
+    text: &str,
+) {
+    let mut fitted_size = font_size;
+    while canvas.string_width(font, fitted_size, text) > max_width && fitted_size > 4.0 {
+        fitted_size = (fitted_size - 0.25).max(4.0);
+    }
+    canvas.draw_string(font, fitted_size, x, y, text);
+}
+
 fn de_bool_flexible<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -1028,8 +1070,16 @@ pub struct InvoiceRenderData {
     pub is_estimate: bool,
     pub invoice_date: Option<String>,
     pub due_date: Option<String>,
+    #[serde(default)]
+    pub order_no: Option<String>,
+    #[serde(default)]
+    pub order_date: Option<String>,
     pub lr_no: Option<String>,
     pub lr_date: Option<String>,
+    #[serde(default)]
+    pub transport: Option<String>,
+    #[serde(default)]
+    pub cases: Option<i64>,
     pub party_name: String,
     #[serde(default)]
     pub address: String,
@@ -1265,27 +1315,42 @@ fn render_invoice_sheet(
         row0_y + 3.0,
         &data.invoice_no,
     );
-    canvas.draw_string(
-        PdfFont::Helvetica,
-        7.0,
-        table_x + 2.0 * cell_w + pad_x,
-        row0_y + 6.0,
-        "Order No.",
-    );
-    canvas.draw_string(
-        PdfFont::Helvetica,
-        7.0,
-        table_x + 2.0 * cell_w + pad_x,
-        row0_y - 2.0,
-        "Order Date",
-    );
-    canvas.draw_string(
-        PdfFont::HelveticaBold,
-        7.0,
-        table_x + 3.0 * cell_w + pad_x,
-        row0_y + 3.0,
-        "Cases   0",
-    );
+    if !data.is_estimate && data.order_no.is_some() {
+        let dispatch_cell_x = table_x + 2.0 * cell_w + pad_x;
+        let dispatch_cell_width = cell_w - pad_x - 3.0;
+        draw_fitted_string(
+            canvas,
+            PdfFont::HelveticaBold,
+            7.0,
+            dispatch_cell_x,
+            row0_y + 6.0,
+            dispatch_cell_width,
+            &format!("Order Ref: {}", data.order_no.as_deref().unwrap_or("")),
+        );
+        draw_fitted_string(
+            canvas,
+            PdfFont::HelveticaBold,
+            7.0,
+            dispatch_cell_x,
+            row0_y - 2.0,
+            dispatch_cell_width,
+            &format!(
+                "Order Date {}",
+                format_date(data.order_date.as_deref().unwrap_or(""))
+            ),
+        );
+        if let Some(cases) = data.cases {
+            draw_fitted_string(
+                canvas,
+                PdfFont::HelveticaBold,
+                7.0,
+                table_x + 3.0 * cell_w + pad_x,
+                row0_y + 3.0,
+                dispatch_cell_width,
+                &format!("Cases   {}", cases),
+            );
+        }
+    }
 
     // Row 1
     canvas.draw_string(
@@ -1316,30 +1381,40 @@ fn render_invoice_sheet(
         row1_y - 2.0,
         &format_date(data.due_date.as_deref().unwrap_or("")),
     );
-    canvas.draw_string(
-        PdfFont::HelveticaBold,
-        7.0,
-        table_x + 2.0 * cell_w + pad_x,
-        row1_y + 6.0,
-        "L.R. No.",
-    );
-    canvas.draw_string(
-        PdfFont::Helvetica,
-        7.0,
-        table_x + 2.0 * cell_w + pad_x,
-        row1_y - 2.0,
-        &format!(
-            "L.R. Date {}",
-            format_date(data.lr_date.as_deref().unwrap_or(""))
-        ),
-    );
-    canvas.draw_string(
-        PdfFont::HelveticaBold,
-        7.0,
-        table_x + 3.0 * cell_w + pad_x,
-        row1_y + 3.0,
-        "Transport",
-    );
+    if !data.is_estimate && data.order_no.is_some() {
+        let dispatch_cell_x = table_x + 2.0 * cell_w + pad_x;
+        let dispatch_cell_width = cell_w - pad_x - 3.0;
+        draw_fitted_string(
+            canvas,
+            PdfFont::HelveticaBold,
+            7.0,
+            dispatch_cell_x,
+            row1_y + 6.0,
+            dispatch_cell_width,
+            &format!("L.R. No. {}", data.lr_no.as_deref().unwrap_or("")),
+        );
+        draw_fitted_string(
+            canvas,
+            PdfFont::Helvetica,
+            7.0,
+            dispatch_cell_x,
+            row1_y - 2.0,
+            dispatch_cell_width,
+            &format!(
+                "L.R. Date {}",
+                format_date(data.lr_date.as_deref().unwrap_or(""))
+            ),
+        );
+        draw_fitted_string(
+            canvas,
+            PdfFont::HelveticaBold,
+            7.0,
+            table_x + 3.0 * cell_w + pad_x,
+            row1_y + 3.0,
+            dispatch_cell_width,
+            &format!("Transport {}", data.transport.as_deref().unwrap_or("")),
+        );
+    }
 
     // Right: Customer Info
     let party_x = right_x + mm_to_pt(2.0);
@@ -1512,8 +1587,7 @@ fn render_invoice_sheet(
         let exp_str = prod
             .exp_date
             .as_deref()
-            .map(|date| if data.is_estimate { format_date(date) } else { date.to_string() })
-            .filter(|date| !date.is_empty())
+            .map(format_expiry_month_year)
             .unwrap_or_else(|| "--".to_string());
         let name_str = if prod.is_gold {
             format!("{} (G)", prod.name)
@@ -1736,11 +1810,16 @@ fn render_invoice_sheet(
         items_y - 6.0,
         &format!("Total Qty  :-     {:.2}", total_qty),
     );
+    let estimate_amount_y = y5 + (y4 - y5) * 0.4;
     canvas.draw_string(
         PdfFont::HelveticaBold,
-        9.0,
+        if data.is_estimate { 8.5 } else { 9.0 },
         items_x,
-        y4 + (y5 - y4) / 2.0,
+        if data.is_estimate {
+            estimate_amount_y
+        } else {
+            y4 + (y5 - y4) / 2.0
+        },
         &format!(
             "{}: Rs. {}",
             if data.is_estimate {
@@ -2148,8 +2227,12 @@ pub fn render_estimate_pdf(data: &EstimateRenderData) -> Result<Vec<u8>, String>
         is_estimate: true,
         invoice_date: data.estimate_date.clone(),
         due_date: data.valid_until.clone(),
+        order_no: None,
+        order_date: None,
         lr_no: None,
         lr_date: None,
+        transport: None,
+        cases: None,
         party_name: data.party_name.clone(),
         address: data.address.clone(),
         phone: data.phone.clone(),
@@ -2273,6 +2356,16 @@ mod tests {
     }
 
     #[test]
+    fn expiry_dates_are_compact_month_year_values() {
+        assert_eq!(format_expiry_month_year("2029-02-01"), "02/29");
+        assert_eq!(format_expiry_month_year("2029-02-01T00:00:00.000Z"), "02/29");
+        assert_eq!(format_expiry_month_year("01/09/2029"), "09/29");
+        assert_eq!(format_expiry_month_year("02/2029"), "02/29");
+        assert_eq!(format_expiry_month_year(""), "--");
+        assert_eq!(format_expiry_month_year("invalid"), "--");
+    }
+
+    #[test]
     fn test_multipage_cumulative_and_continuation_flow() {
         let mut products = Vec::new();
         // 60 items -> Page 1 (29), Page 2 (29), Page 3 (2)
@@ -2294,8 +2387,12 @@ mod tests {
             is_estimate: false,
             invoice_date: Some("2026-10-07".to_string()),
             due_date: Some("2026-11-07".to_string()),
+            order_no: None,
+            order_date: None,
             lr_no: None,
             lr_date: None,
+            transport: None,
+            cases: None,
             party_name: "TEST MEDICAL STORE".to_string(),
             address: "BHUBANESWAR ODISHA".to_string(),
             phone: "9988776655".to_string(),
@@ -2369,8 +2466,12 @@ mod tests {
             is_estimate: false,
             invoice_date: Some("2026-10-07".to_string()),
             due_date: None,
-            lr_no: None,
-            lr_date: None,
+            order_no: Some("ORD-26017".to_string()),
+            order_date: Some("2026-10-06".to_string()),
+            lr_no: Some("LR-123".to_string()),
+            lr_date: Some("2026-10-08".to_string()),
+            transport: Some("SAMPLE TRANSPORT".to_string()),
+            cases: Some(4),
             party_name: "SHREE GANESH PHARMA".to_string(),
             address: "CUTTACK ROAD, BBSR".to_string(),
             phone: "9439123456".to_string(),
@@ -2408,6 +2509,11 @@ mod tests {
         assert!(pdf_str.contains("OUTSTANDING DUES & QUICK PAY"));
         assert!(pdf_str.contains("Total Due: Rs. 6,124.00"));
         assert!(pdf_str.contains("PAY VIA UPI APP"));
+        assert!(pdf_str.contains("Order Ref: ORD-26017"));
+        assert!(pdf_str.contains("Order Date 06-10-2026"));
+        assert!(pdf_str.contains("L.R. No. LR-123"));
+        assert!(pdf_str.contains("SAMPLE TRANSPORT"));
+        assert!(pdf_str.contains("Cases   4"));
 
         // Computer generated document disclaimer
         assert!(pdf_str.contains("COMPUTER GENERATED TAX INVOICE"));
@@ -2430,8 +2536,12 @@ mod tests {
             is_estimate: false,
             invoice_date: Some("2026-10-07".to_string()),
             due_date: None,
+            order_no: None,
+            order_date: None,
             lr_no: None,
             lr_date: None,
+            transport: None,
+            cases: None,
             party_name: "MAHAVIR MEDICAL STORE".to_string(),
             address: "MAIN ROAD, ASKA".to_string(),
             phone: "9876543210".to_string(),
@@ -2525,6 +2635,10 @@ mod tests {
 
         let pdf = render_estimate_pdf(&estimate).expect("Estimate PDF should render");
         let pdf_text = String::from_utf8_lossy(&pdf);
+        let estimate_amount_y = mm_to_pt(5.0) + 100.0 - 18.0;
+        assert!(pdf_text.contains(&format!(
+            "{estimate_amount_y:.2} Td (Estimate Amount: Rs. 222.00) Tj"
+        )));
         assert_eq!(pdf_text.matches("/Type /Page ").count(), 1);
         assert!(pdf_text.contains("GST ESTIMATE"));
         assert!(pdf_text.contains("ESTIMATE"));
@@ -2540,8 +2654,14 @@ mod tests {
         assert!(!pdf_text.contains("DIGITALLY GENERATED INVOICE"));
         assert!(pdf_text.contains("PRODUCT NAME"));
         assert!(pdf_text.contains("MFG"));
-        assert!(pdf_text.contains("01-02-2029"));
+        assert!(pdf_text.contains("02/29"));
         assert!(!pdf_text.contains("2029-02-01T00:00:00.000Z"));
+        assert!(!pdf_text.contains("Order Ref:"));
+        assert!(!pdf_text.contains("Order Date"));
+        assert!(!pdf_text.contains("L.R. No."));
+        assert!(!pdf_text.contains("L.R. Date"));
+        assert!(!pdf_text.contains("Transport"));
+        assert!(!pdf_text.contains("Cases"));
         assert!(pdf_text.contains("COMPUTER GENERATED ESTIMATE"));
         assert!(pdf_text.contains("Quotation - No Signature Required"));
         assert!(pdf_text.contains("Valid until: 22-11-2026"));

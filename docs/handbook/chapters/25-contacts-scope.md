@@ -18,6 +18,8 @@ Contact access list/update routes are explicitly unavailable to workers; the UI'
 
 The main browser form posts/puts `/api/contacts`, then publishes a local contact event, patches the reactive store and reloads the canonical collection. Billing events also cause a contact reload so computed balances/sales can update. The UI updates the contact card/list in place where possible; verify scroll preservation and selected-contact behavior when changing render logic.
 
+When a walk-in estimate is converted to a bill or order, the estimate editor does not create a contact itself. It saves the estimate, opens the Contacts app for the operator to create the customer, then refreshes the canonical contact list and requires selection of the newly registered contact before continuing. The conversion uses that selected contact ID so duplicate display names do not redirect the operation to a different contact.
+
 Use only synthetic names, email, phone, tax/license identifiers and opening balances in screenshots. Never use real customer records in fixtures or handbook examples.
 
 ## Destructive Contact Deletion

@@ -1055,6 +1055,23 @@ class EstimateEditor {
     }
   }
 
+  async refreshContactsFromApi() {
+    const response = await fetch('/api/contacts');
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Unable to refresh contacts (${response.status}).`);
+    }
+    this.allContacts = this.normalizeCollection(result);
+    const datalist = this.viewContainer.querySelector('#estCustomerDatalist');
+    if (datalist) {
+      datalist.innerHTML = this.allContacts
+        .filter(contact => contact && contact.name)
+        .map(contact => `<option value="${this.escapeHtml(contact.name)}"></option>`)
+        .join('');
+    }
+    return this.allContacts;
+  }
+
   async populateProductsList() {
     try {
       if (this.billingApp?.cachedProducts && this.billingApp.cachedProducts.length > 0) {
@@ -1379,12 +1396,20 @@ class EstimateEditor {
     }
 
     const normalizedVariants = variants.map(v => {
-      if (typeof v === 'object' && v !== null && (v.pack_size_value !== undefined || v.pack_size_type !== undefined || v.batches !== undefined)) {
-        return v;
+      if (Array.isArray(v) && v.length >= 4) {
+        return {
+          id: v[0],
+          product_id: v[1],
+          pack_size_value: v[2],
+          pack_size_type: v[3],
+          batches: v.batches || []
+        };
       }
+      if (typeof v !== 'object' || v === null) return {};
       return {
-        pack_size_value: v.pack_size_value || v.packValue || v.pack || '',
-        pack_size_type: v.pack_size_type || v.packType || '',
+        ...v,
+        pack_size_value: v.pack_size_value || v.pack_value || v.packValue || v.pack || '',
+        pack_size_type: v.pack_size_type || v.pack_type || v.packType || '',
         batches: v.batches || []
       };
     });
@@ -1392,40 +1417,38 @@ class EstimateEditor {
     const modalHtml = `
       <div id="variantSelectorModal" class="variant-modal-overlay">
         <div class="variant-modal" style="max-width: 500px;">
-          <div class="variant-modal-header" style="background: #fafaf9; border-bottom: 1px solid #e5e7eb; padding: 14px 18px;">
-            <h3 style="margin:0; font-size: 15px; font-weight: 700; color: #1c1917;">Select Variant / Batch for ${this.escapeHtml(productName)}</h3>
-            <button class="variant-modal-close" id="estVariantCloseBtn" style="border:none;background:none;font-size:22px;cursor:pointer;">×</button>
+          <div class="variant-modal-header">
+            <h3>📦 Select Product Variant / Batch${productName ? ` · ${this.escapeHtml(productName)}` : ''}</h3>
+            <button class="variant-modal-close" id="estVariantCloseBtn" aria-label="Close">×</button>
           </div>
-          <div class="variant-modal-body" style="padding: 16px; max-height: 380px; overflow-y: auto;">
+          <div class="variant-modal-body">
             <div class="variant-list">
               ${normalizedVariants.map((v, idx) => `
-                <div class="variant-group" style="margin-bottom: 14px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px;">
-                  <div class="variant-pack-header" style="font-weight: 700; font-size: 13px; color: #374151; margin-bottom: 8px;">
-                    Pack: ${this.escapeHtml(v.pack_size_value)} ${this.escapeHtml(v.pack_size_type || '')}
-                  </div>
+                <div class="variant-group">
+                  <div class="variant-pack-header"><strong>${this.escapeHtml(v.pack_size_value || '')}${v.pack_size_type ? ` ${this.escapeHtml(v.pack_size_type)}` : ''}:</strong></div>
                   ${v.batches && v.batches.length > 0 ? `
-                    <div class="variant-batches-list" style="display: flex; flex-direction: column; gap: 6px;">
+                    <div class="variant-batches-list">
                       ${v.batches.map((batch, batchIdx) => `
-                        <label class="variant-batch-label" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border-radius: 6px; cursor: pointer; border: 1px solid #e2e8f0;">
-                          <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="radio" name="estVariantOption" value="${idx}" data-batch-index="${batchIdx}" ${idx === 0 && batchIdx === 0 ? 'checked' : ''} />
-                            <span class="batch-no" style="font-weight: 600; color: #1e293b;">Batch: ${this.escapeHtml(batch.batchNo || batch.batch_no)}</span>
-                            ${batch.exp_date ? `<span style="font-size: 11px; color: #64748b;">(Exp: ${this.escapeHtml(batch.exp_date)})</span>` : ''}
-                          </div>
-                          <span class="batch-mrp" style="font-weight: 700; color: #059669;">₹${Number(batch.mrp || 0).toFixed(2)}</span>
-                        </label>
+                        <div class="variant-batch-item">
+                          <input type="radio" id="est-variant-${idx}-batch-${batchIdx}" name="estVariantOption" value="${idx}" data-batch-index="${batchIdx}" class="variant-radio" ${idx === 0 && batchIdx === 0 ? 'checked' : ''} />
+                          <label for="est-variant-${idx}-batch-${batchIdx}" class="variant-batch-label">
+                            <span class="batch-no">${this.escapeHtml(batch.batchNo || batch.batch_no || '')}</span>
+                            ${batch.exp_date ? `<span class="variant-batches">${this.escapeHtml(batch.exp_date)}</span>` : ''}
+                            <span class="batch-mrp">₹${Number(batch.mrp || 0).toFixed(2)}</span>
+                          </label>
+                        </div>
                       `).join('')}
                     </div>
                   ` : `
-                    <div style="color: #94a3b8; font-size: 12px;">No batches available.</div>
+                    <div class="variant-no-batches">No batches available</div>
                   `}
                 </div>
               `).join('')}
             </div>
           </div>
-          <div class="variant-modal-footer" style="padding: 12px 18px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 8px;">
-            <button class="variant-modal-btn cancel" id="estVariantCancelBtn" style="padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; background: white; cursor: pointer;">Cancel</button>
-            <button class="variant-modal-btn confirm" id="estVariantConfirmBtn" style="padding: 8px 18px; border-radius: 6px; border: none; background: #d97706; color: white; font-weight: 600; cursor: pointer;">Select Variant</button>
+          <div class="variant-modal-footer">
+            <button class="variant-modal-btn cancel" id="estVariantCancelBtn">✗ Cancel</button>
+            <button class="variant-modal-btn confirm" id="estVariantConfirmBtn">✓ Select</button>
           </div>
         </div>
       </div>
@@ -1451,6 +1474,9 @@ class EstimateEditor {
         this.selectVariant(vIdx, bIdx);
       }
       closeModal();
+    });
+    document.getElementById('variantSelectorModal')?.addEventListener('click', event => {
+      if (event.target.id === 'variantSelectorModal') closeModal();
     });
   }
 
@@ -2104,9 +2130,168 @@ class EstimateEditor {
     }
   }
 
+  setRegisteredEstimateCustomer(contact) {
+    this.customerType = 'registered';
+    this.selectedCustomer = contact;
+    this.selectedCustomerId = contact.id;
+    this.customerSnapshot = {
+      name: contact.name || '',
+      phone: contact.phone || contact.mobile || '',
+      gstin: contact.gstin || '',
+      address: [contact.address, contact.city, contact.state].filter(Boolean).join(', '),
+      licence_no: contact.licence_no || contact.dl_no || '',
+      pan: contact.pan || ''
+    };
+    const container = this.viewContainer;
+    const registeredButton = container.querySelector('#estToggleRegistered');
+    const unregisteredButton = container.querySelector('#estToggleUnregistered');
+    const registeredSection = container.querySelector('#estRegisteredCustomerSection');
+    const unregisteredSection = container.querySelector('#estUnregisteredCustomerSection');
+    registeredButton?.classList.add('active');
+    unregisteredButton?.classList.remove('active');
+    if (registeredSection) registeredSection.style.display = 'block';
+    if (unregisteredSection) unregisteredSection.style.display = 'none';
+    const customerInput = container.querySelector('#estCustomerName');
+    if (customerInput) {
+      customerInput.value = contact.name || '';
+    }
+    const fieldValues = {
+      '#estRegPhone': this.customerSnapshot.phone,
+      '#estRegGstin': this.customerSnapshot.gstin,
+      '#estRegAddress': this.customerSnapshot.address,
+      '#estRegLicence': this.customerSnapshot.licence_no,
+      '#estRegPan': this.customerSnapshot.pan
+    };
+    Object.entries(fieldValues).forEach(([selector, value]) => {
+      const field = container.querySelector(selector);
+      if (field) field.value = value;
+    });
+    if (this.currentProduct?.name) {
+      this.loadProductMemoryFromAPI(this.currentProduct.name, contact.name);
+    }
+    this.isEstimateDirty = true;
+  }
+
+  async openWalkInConversionModal(action, payload, estimate) {
+    document.getElementById('estimateWalkInConversionModal')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'estimateWalkInConversionModal';
+    overlay.className = 'variant-modal-overlay';
+    const options = this.allContacts
+      .filter(contact => contact && contact.id && contact.name)
+      .map(contact => `<option value="${this.escapeHtml(contact.id)}">${this.escapeHtml(contact.name)}</option>`)
+      .join('');
+    const actionLabel = action === 'order' ? 'order' : 'bill';
+    overlay.innerHTML = `
+      <div class="variant-modal" style="max-width:520px;">
+        <div class="variant-modal-header">
+          <h3>Link Walk-in Customer Before Conversion</h3>
+          <button type="button" class="variant-modal-close" data-close-walkin aria-label="Close">×</button>
+        </div>
+        <div class="variant-modal-body">
+          <p style="font-size:12px; line-height:1.55; color:#cbd5e1; margin:0 0 12px;">
+            This estimate is saved with walk-in details. To create a ${actionLabel}, first link it to a registered contact:
+          </p>
+          <ol style="font-size:12px; line-height:1.6; color:#cbd5e1; padding-left:20px; margin:0 0 14px;">
+            <li>Choose an existing contact below, or open Contacts and create/link the customer there.</li>
+            <li>Return here and refresh contacts if you just created one.</li>
+            <li>Select the registered contact and continue.</li>
+          </ol>
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <button type="button" class="variant-modal-btn confirm" id="openContactsForEstimate">Open Contacts</button>
+            <button type="button" class="variant-modal-btn cancel" id="refreshEstimateContacts">Refresh Contacts</button>
+          </div>
+          <label for="walkInEstimateContact" style="display:block; font-size:11px; font-weight:700; color:#e2e8f0; margin-bottom:6px;">REGISTERED CONTACT</label>
+          <select id="walkInEstimateContact" class="form-input" style="width:100%;">
+            <option value="">Select contact</option>${options}
+          </select>
+          <div id="walkInContactRefreshStatus" role="status" style="font-size:10px; color:#94a3b8; margin-top:6px;"></div>
+        </div>
+        <div class="variant-modal-footer">
+          <button type="button" class="variant-modal-btn cancel" data-close-walkin>Cancel</button>
+          <button type="button" class="variant-modal-btn confirm" id="continueWalkInEstimate" ${options ? '' : 'disabled'}>Use Contact & Continue</button>
+        </div>
+      </div>
+    `;
+    this.viewContainer.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelectorAll('[data-close-walkin]').forEach(button => button.addEventListener('click', close));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close();
+    });
+    overlay.querySelector('#openContactsForEstimate')?.addEventListener('click', () => {
+      if (window.appBar?.launchApp) {
+        window.appBar.launchApp('contacts');
+      } else {
+        this.showNotification('Contacts app is unavailable. Open Contacts from the desktop, then return here.', 'error');
+      }
+    });
+    overlay.querySelector('#refreshEstimateContacts')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const status = overlay.querySelector('#walkInContactRefreshStatus');
+      button.disabled = true;
+      try {
+        await this.refreshContactsFromApi();
+        const select = overlay.querySelector('#walkInEstimateContact');
+        const previousValue = select.value;
+        const updatedOptions = this.allContacts
+          .filter(contact => contact && contact.id && contact.name)
+          .map(contact => `<option value="${this.escapeHtml(contact.id)}">${this.escapeHtml(contact.name)}</option>`)
+          .join('');
+        select.innerHTML = `<option value="">Select contact</option>${updatedOptions}`;
+        if (this.allContacts.some(contact => String(contact.id) === String(previousValue))) {
+          select.value = previousValue;
+        }
+        overlay.querySelector('#continueWalkInEstimate').disabled = updatedOptions.length === 0;
+        status.textContent = `Loaded ${this.allContacts.length} contacts.`;
+      } catch (error) {
+        log.error('Refresh contacts for estimate conversion failed:', error);
+        status.textContent = error.message || 'Unable to refresh contacts.';
+        this.showNotification(status.textContent, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+    let conversionInProgress = false;
+    overlay.querySelector('#continueWalkInEstimate')?.addEventListener('click', async event => {
+      if (conversionInProgress) return;
+      const contactId = overlay.querySelector('#walkInEstimateContact')?.value;
+      const contact = this.allContacts.find(candidate => String(candidate.id) === String(contactId));
+      if (!contact) {
+        this.showNotification('Select a registered contact before continuing.', 'warning');
+        return;
+      }
+      conversionInProgress = true;
+      event.currentTarget.disabled = true;
+      const linkedPayload = {
+        ...estimate,
+        customer_id: contact.id,
+        party_name: contact.name || '',
+        phone: contact.phone || contact.mobile || '',
+        gstin: contact.gstin || '',
+        address: [contact.address, contact.city, contact.state].filter(Boolean).join(', '),
+        licence_no: contact.licence_no || contact.dl_no || '',
+        pan: contact.pan || ''
+      };
+      this.setRegisteredEstimateCustomer(contact);
+      close();
+      if (action === 'order') {
+        await this.convertToOrder(linkedPayload);
+      } else {
+        await this.convertToBill(linkedPayload);
+      }
+    });
+  }
+
   async convertToBill(savedEstimate = null) {
     try {
       const payload = savedEstimate || this.getEstimatePayload();
+      if (!payload.customer_id) {
+        const estimate = await this.persistEstimate(payload, savedEstimate?.id || this.editingEstimateId);
+        await this.openWalkInConversionModal('bill', payload, estimate);
+        return;
+      }
       const estimate = await this.persistEstimate(payload, savedEstimate?.id || this.editingEstimateId);
       const productsToTransfer = JSON.parse(JSON.stringify(estimate.products || payload.products));
       const partyName = estimate.party_name || payload.party_name;
@@ -2136,7 +2321,8 @@ class EstimateEditor {
     try {
       const payload = savedEstimate || this.getEstimatePayload();
       if (!payload.customer_id) {
-        this.showNotification('Register or link this customer before creating an order.', 'error');
+        const estimate = await this.persistEstimate(payload, savedEstimate?.id || this.editingEstimateId);
+        await this.openWalkInConversionModal('order', payload, estimate);
         return;
       }
 

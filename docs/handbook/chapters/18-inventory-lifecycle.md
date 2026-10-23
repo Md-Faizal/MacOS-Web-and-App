@@ -20,7 +20,7 @@ Keep catalog IDs stable after labels are printed. Before launch, test generated 
 
 The product response calculates batch `units_sold` from invoice-item quantities matched by direct batch ID or legacy variant/batch/product fields, then adds the stored `batches.units_sold` value. This supports older references but means the displayed quantity combines multiple sources. Before changing the formula, establish whether stored units are a legacy aggregate, an increment, or an authoritative value for each migrated record; add a fixture covering old and new invoice-item references.
 
-On initialization, `ProductListApp` checks the API, then loads products/categories. It normalizes multiple historical response shapes and deserializes nested rows into client model instances. Product/variant/batch changes and billing invoice events invalidate `/products` and force a reload. The UI also reconciles the MacOS reactive store. A new/refreshed catalog update should preserve current subview/draft state; inspect the keep-alive panel before changing render calls.
+On initialization, `ProductListApp` checks the API, then loads products/categories. It normalizes multiple historical response shapes and deserializes nested rows into client model instances. Reactive-store payloads are rehydrated when received and before product, category, and inventory rendering so model methods remain available. Product/variant/batch changes and billing invoice events invalidate `/products` and force a reload. The UI also reconciles the MacOS reactive store. A new/refreshed catalog update should preserve current subview/draft state; inspect the keep-alive panel before changing render calls.
 
 ## Route Inventory
 

@@ -320,11 +320,7 @@ export class ProductListApp extends AppWindow {
     if (typeof window !== 'undefined' && window.MacOSStore) {
       this._storeProductsUnsub = window.MacOSStore.subscribe('products', (storeProducts) => {
         if (Array.isArray(storeProducts) && storeProducts !== this.products) {
-          this.products = storeProducts.map(product =>
-            product instanceof Product || typeof product?.getTotalUnitsSold === 'function'
-              ? product
-              : this.deserializeProductFromAPI(product)
-          );
+          this.products = this.normalizeProductModels(storeProducts);
           if (this.currentView === 'all') {
             this.renderAllProducts();
           }
@@ -343,6 +339,14 @@ export class ProductListApp extends AppWindow {
     if (Array.isArray(payload.products)) return payload.products;
     if (Array.isArray(payload.categories)) return payload.categories;
     return fallback;
+  }
+
+  normalizeProductModels(products) {
+    return products.map(product =>
+      product instanceof Product || typeof product?.getTotalUnitsSold === 'function'
+        ? product
+        : this.deserializeProductFromAPI(product)
+    );
   }
 
   async checkBackendConnection() {
@@ -1705,6 +1709,8 @@ export class ProductListApp extends AppWindow {
   }
 
   renderAllProducts() {
+    this.products = this.normalizeProductModels(this.products);
+
     // Get filtered products based on search query
     const productsToDisplay = this.filterProducts();
     
@@ -3203,6 +3209,7 @@ export class ProductListApp extends AppWindow {
   }
 
   showCategoryProducts(category) {
+    this.products = this.normalizeProductModels(this.products);
     const categoryProducts = this.products.filter(p => p.category === category);
     
     const dialogHtml = `
@@ -4116,6 +4123,8 @@ export class ProductListApp extends AppWindow {
 
 
   renderInventoryView() {
+    this.products = this.normalizeProductModels(this.products);
+
     // Calculate inventory statistics
     const totalProducts = this.products.length;
     const totalVariants = this.products.reduce((sum, p) => sum + p.variants.length, 0);

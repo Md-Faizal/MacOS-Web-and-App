@@ -1,6 +1,8 @@
 import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/catalog-qr.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 
+import { findBestOrderMatchForInvoice } from '../../../shared/order-invoice-matcher.mjs';
+
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:NewBill') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
@@ -92,6 +94,8 @@ class BillEditor {
     this.selectedIndex = -1; // Index for dropdown keyboard navigation
     this.isDropdownOpen = false; // Track dropdown state
     this.cachedProducts = []; // Local cache for instant Rust WASM fuzzy product search
+    this.selectedOrderForBill = null;
+    this.orderForBillCandidates = [];
   }
 
   // Proxy properties to billingApp for convenience
@@ -255,7 +259,10 @@ class BillEditor {
                     <datalist id="billCustomerDatalist"></datalist>
                     <div id="customerOrdersContainer" class="bill-customer-orders" style="display: none;"></div>
                     <button type="button" id="scanQrProductBtn" class="btn bill-customer-scan-btn">▦ Scan QR</button>
+                    <button type="button" id="linkInvoiceOrderBtn" class="btn bill-customer-scan-btn">Link Order</button>
+                    <button type="button" id="editInvoiceDispatchBtn" title="Edit LR number, date and transport for the linked order" style="padding:5px 8px; border:1px solid #cbd5e1; border-radius:4px; background:#f8fafc; color:#334155; cursor:pointer; font-size:10px; white-space:nowrap;">LR / Transport</button>
                   </div>
+                  <div id="linkedInvoiceOrderSummary" role="status" style="display:none; margin-top:8px; padding:9px 10px; border:1px solid #cbd5e1; border-radius:4px; background:#f8fafc; font-size:11px;"></div>
                 </div>
               </div>
             </div>
@@ -619,6 +626,8 @@ class BillEditor {
     const productNameInput = document.getElementById('productName');
     const customerNameInput = document.getElementById('customerName');
     const gstReverseBtn = document.getElementById('gstReverseBtn');
+    const linkOrderBtn = document.getElementById('linkInvoiceOrderBtn');
+    const editDispatchBtn = document.getElementById('editInvoiceDispatchBtn');
 
     addBtn?.addEventListener('click', () => this.addProductToBill());
     scanQrBtn?.addEventListener('click', () => {
@@ -629,6 +638,8 @@ class BillEditor {
       });
     });
     makeBtn?.addEventListener('click', () => this.makeBill());
+    linkOrderBtn?.addEventListener('click', () => this.linkOrderToBill(!!this.selectedOrderForBill));
+    editDispatchBtn?.addEventListener('click', () => this.openInvoiceDispatchModal());
     listBtn?.addEventListener('click', () => this.switchView('existing'));
     clearBtn?.addEventListener('click', () => this.clearBillForm());
     
@@ -675,6 +686,12 @@ class BillEditor {
       this.loadProductMemoryForCustomer();
       this.checkCustomerOrders();
     });
+    if (this.editingBillId) {
+      this.loadLinkedOrderForBill().catch(error => {
+        log.error('Unable to load linked order for invoice:', error);
+        this.showNotification(error.message || 'Unable to load the linked order.', 'error');
+      });
+    }
 
     // --- REAL-TIME SEARCH DROPDOWN LISTENERS ---
     productNameInput?.addEventListener('input', (e) => {
@@ -1249,9 +1266,9 @@ class BillEditor {
 
     const modalHtml = `
       <div id="variantSelectorModal" class="variant-modal-overlay">
-        <div class="variant-modal">
+        <div class="variant-modal" style="max-width: 500px;">
           <div class="variant-modal-header">
-            <h3>📦 Select Product Variant</h3>
+            <h3>📦 Select Product Variant / Batch${productName ? ` · ${this.escapeHtml(productName)}` : ''}</h3>
             <button class="variant-modal-close" id="variant-close-btn">×</button>
           </div>
           <div class="variant-modal-body">
@@ -1259,16 +1276,17 @@ class BillEditor {
               ${normalizedVariants.map((v, idx) => `
                 <div class="variant-group">
                   <div class="variant-pack-header">
-                    <strong>${v.pack_size_value}${v.pack_size_type ? ' ' + v.pack_size_type : ''}:</strong>
+                    <strong>${this.escapeHtml(v.pack_size_value || '')}${v.pack_size_type ? ` ${this.escapeHtml(v.pack_size_type)}` : ''}:</strong>
                   </div>
                   ${v.batches && v.batches.length > 0 ? `
                     <div class="variant-batches-list">
                       ${v.batches.map((batch, batchIdx) => `
                         <div class="variant-batch-item">
-                          <input type="radio" id="variant-${idx}-batch-${batchIdx}" name="variantOption" value="${idx}" data-batch-index="${batchIdx}" class="variant-radio" />
+                          <input type="radio" id="variant-${idx}-batch-${batchIdx}" name="variantOption" value="${idx}" data-batch-index="${batchIdx}" class="variant-radio" ${idx === 0 && batchIdx === 0 ? 'checked' : ''} />
                           <label for="variant-${idx}-batch-${batchIdx}" class="variant-batch-label">
-                            <span class="batch-no">${batch.batchNo || batch.batch_no}</span>
-                            <span class="batch-mrp">₹${parseFloat(batch.mrp || 0).toFixed(2)}</span>
+                            <span class="batch-no">${this.escapeHtml(batch.batchNo || batch.batch_no || '')}</span>
+                            ${batch.exp_date ? `<span class="variant-batches">${this.escapeHtml(batch.exp_date)}</span>` : ''}
+                            <span class="batch-mrp">₹${Number(batch.mrp || 0).toFixed(2)}</span>
                           </label>
                         </div>
                       `).join('')}
@@ -3473,6 +3491,327 @@ class BillEditor {
     updateElement('headerItems', productCount);
   }
 
+  getBillCustomer() {
+    const customerName = document.getElementById('customerName')?.value.trim().toLowerCase() || '';
+    return this.allContacts.find(contact => String(contact.name || '').trim().toLowerCase() === customerName) || null;
+  }
+
+  getBillInvoiceNumber() {
+    if (this.billDataToEdit?.invoice_no) return String(this.billDataToEdit.invoice_no);
+    const existing = (this.billingData?.bills || []).find(bill =>
+      String(bill.id || bill.bill_id || '') === String(this.editingBillId || '')
+    );
+    return String(existing?.invoice_no || existing?.reference_no || '');
+  }
+
+  async loadOrdersForBill(customerId) {
+    const response = await fetch(`/api/billing/orders?customer_id=${encodeURIComponent(customerId)}&limit=500`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Unable to load customer orders (${response.status}).`);
+    }
+    return Array.isArray(result.data) ? result.data : [];
+  }
+
+  async loadLinkedOrderForBill() {
+    const customer = this.getBillCustomer();
+    const invoiceNumber = this.getBillInvoiceNumber();
+    if (!customer?.id || !invoiceNumber) return;
+    const orders = await this.loadOrdersForBill(customer.id);
+    const linkedOrder = orders.find(order =>
+      String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
+    );
+    if (!linkedOrder) return;
+    this.selectedOrderForBill = linkedOrder;
+    this.renderInvoiceOrderSummary();
+  }
+
+  getInvoiceMatchCandidate(customerId, invoiceNumber = '') {
+    const products = this.currentBillProducts.map(product => ({
+      product_id: product.product_id || product.id || null,
+      product_name: product.product_name || product.name || '',
+      qty: Number(product.qty || product.quantity || 0)
+    }));
+    const totals = BillCalculator.calculateBillSummary(
+      this.currentBillProducts.map(product => BillCalculator.frontendToDb(product))
+    );
+    return {
+      id: invoiceNumber ? undefined : 'draft-invoice',
+      invoice_no: invoiceNumber || undefined,
+      customer_id: customerId,
+      invoice_date: document.getElementById('billDateTime')?.value || new Date().toISOString(),
+      grand_total: totals.grand_total,
+      items: products
+    };
+  }
+
+  renderInvoiceOrderSummary() {
+    const summary = document.getElementById('linkedInvoiceOrderSummary');
+    const button = document.getElementById('linkInvoiceOrderBtn');
+    if (!summary) return;
+    const order = this.selectedOrderForBill;
+    if (!order) {
+      summary.replaceChildren();
+      summary.style.display = 'none';
+      if (button) button.textContent = 'Link Order';
+      return;
+    }
+
+    const orderNo = this.escapeHtml(order.order_number || `Order ${order.id}`);
+    const orderDate = this.escapeHtml(String(order.order_date || '').slice(0, 10));
+    const lrNo = this.escapeHtml(order.lr_no || '—');
+    const lrDate = this.escapeHtml(String(order.lr_date || '').slice(0, 10) || '—');
+    const transport = this.escapeHtml(order.transport || '—');
+    const cases = Number.isInteger(Number(order.cases)) ? Number(order.cases) : '—';
+    summary.innerHTML = `
+      <div><strong>Linked order:</strong> ${orderNo}${orderDate ? ` · ${orderDate}` : ''}</div>
+      <div style="margin-top:4px; color:#475569;">LR: ${lrNo} · ${lrDate} · ${transport} · Cases: ${cases}</div>
+      <button type="button" id="unlinkInvoiceOrderBtn" style="margin-top:6px; padding:3px 8px; border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; font-size:10px;">Unlink</button>
+    `;
+    summary.style.display = 'block';
+    if (button) button.textContent = 'Change Order';
+    summary.querySelector('#unlinkInvoiceOrderBtn')?.addEventListener('click', () => this.unlinkOrderFromBill());
+  }
+
+  async updateOrderInvoiceReference(order, invoiceNumber) {
+    const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bill_reference: invoiceNumber || '' })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Unable to update order link (${response.status}).`);
+    }
+    return result;
+  }
+
+  openInvoiceDispatchModal() {
+    const order = this.selectedOrderForBill;
+    if (!order) {
+      this.showNotification('Link an order to this invoice before editing its LR and transport details.', 'warning');
+      return;
+    }
+
+    document.getElementById('invoiceDispatchModal')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'invoiceDispatchModal';
+    overlay.className = 'variant-modal-overlay';
+    overlay.innerHTML = `
+      <div class="variant-modal" style="max-width:420px;">
+        <div class="variant-modal-header">
+          <h3>Order LR & Transport</h3>
+          <button type="button" class="variant-modal-close" data-close-dispatch aria-label="Close">×</button>
+        </div>
+        <form id="invoiceDispatchForm">
+          <div class="variant-modal-body" style="display:grid; gap:12px;">
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+              L.R. Number
+              <input name="lr_no" type="text" maxlength="80" value="${this.escapeHtml(order.lr_no || '')}" class="form-input">
+            </label>
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+              L.R. Date
+              <input name="lr_date" type="date" value="${this.escapeHtml(String(order.lr_date || '').slice(0, 10))}" class="form-input">
+            </label>
+            <label style="display:grid; gap:5px; font-size:11px; font-weight:600;">
+              Transport
+              <input name="transport" type="text" maxlength="120" value="${this.escapeHtml(order.transport || '')}" class="form-input">
+            </label>
+            <div id="invoiceDispatchError" role="alert" style="display:none; color:#b91c1c; font-size:11px;"></div>
+          </div>
+          <div class="variant-modal-footer">
+            <button type="button" class="variant-modal-btn cancel" data-close-dispatch>Cancel</button>
+            <button type="submit" class="variant-modal-btn confirm" id="saveInvoiceDispatchBtn">Save details</button>
+          </div>
+        </form>
+      </div>
+    `;
+    this.viewContainer.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelectorAll('[data-close-dispatch]').forEach(button => button.addEventListener('click', close));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close();
+    });
+    overlay.querySelector('#invoiceDispatchForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const saveButton = overlay.querySelector('#saveInvoiceDispatchBtn');
+      const errorElement = overlay.querySelector('#invoiceDispatchError');
+      const formData = new FormData(form);
+      saveButton.disabled = true;
+      errorElement.style.display = 'none';
+      try {
+        const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lr_no: String(formData.get('lr_no') || '').trim(),
+            lr_date: String(formData.get('lr_date') || '') || null,
+            transport: String(formData.get('transport') || '').trim()
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || `Unable to save order details (${response.status}).`);
+        this.selectedOrderForBill = { ...order, ...result };
+        this.renderInvoiceOrderSummary();
+        close();
+        this.showNotification('Order LR and transport details saved.', 'success');
+      } catch (error) {
+        log.error('Unable to save invoice dispatch details:', error);
+        errorElement.textContent = error.message || 'Unable to save order details.';
+        errorElement.style.display = 'block';
+        saveButton.disabled = false;
+      }
+    });
+  }
+
+  async saveInvoiceOrderLink(order) {
+    const invoiceNumber = this.getBillInvoiceNumber();
+    const previousOrder = this.selectedOrderForBill;
+    if (invoiceNumber) {
+      const switchingLinkedOrder = previousOrder
+        && String(previousOrder.id) !== String(order.id)
+        && String(previousOrder.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase();
+      if (switchingLinkedOrder) {
+        await this.updateOrderInvoiceReference(previousOrder, '');
+      }
+      let savedOrder;
+      try {
+        savedOrder = await this.updateOrderInvoiceReference(order, invoiceNumber);
+      } catch (error) {
+        if (switchingLinkedOrder) {
+          try {
+            await this.updateOrderInvoiceReference(previousOrder, invoiceNumber);
+          } catch (restoreError) {
+            log.error('Unable to restore the previous invoice-order link:', restoreError);
+            throw new Error(`${error.message} The previous order link could not be restored: ${restoreError.message}`);
+          }
+        }
+        throw error;
+      }
+      this.selectedOrderForBill = { ...order, ...savedOrder };
+    } else {
+      this.selectedOrderForBill = order;
+    }
+    this.renderInvoiceOrderSummary();
+  }
+
+  async unlinkOrderFromBill() {
+    const order = this.selectedOrderForBill;
+    if (!order) return;
+    try {
+      const invoiceNumber = this.getBillInvoiceNumber();
+      if (invoiceNumber) await this.updateOrderInvoiceReference(order, '');
+      this.selectedOrderForBill = null;
+      this.renderInvoiceOrderSummary();
+      this.showNotification('Order unlinked from invoice.', 'success');
+    } catch (error) {
+      log.error('Unable to unlink order from invoice:', error);
+      this.showNotification(error.message || 'Unable to unlink order from invoice.', 'error');
+    }
+  }
+
+  renderInvoiceOrderPicker(orders, currentInvoiceNumber, forcePicker = false) {
+    document.getElementById('invoiceOrderPickerModal')?.remove();
+    const availableOrders = orders.filter(order => {
+      const reference = String(order.bill_reference || '').trim().toLowerCase();
+      return !reference || reference === String(currentInvoiceNumber || '').trim().toLowerCase();
+    });
+    const choices = availableOrders.map(order => {
+      const amount = Number(order.total_amount || 0).toFixed(2);
+      const date = String(order.order_date || '').slice(0, 10);
+      return `<option value="${this.escapeHtml(order.id)}">${this.escapeHtml(order.order_number || `Order ${order.id}`)} · ${this.escapeHtml(date)} · ₹${amount}</option>`;
+    }).join('');
+    const overlay = document.createElement('div');
+    overlay.id = 'invoiceOrderPickerModal';
+    overlay.className = 'variant-modal-overlay';
+    overlay.innerHTML = `
+      <div class="variant-modal" style="max-width:520px;">
+        <div class="variant-modal-header">
+          <h3>Link an Order to This Invoice</h3>
+          <button type="button" class="variant-modal-close" data-close-order-picker aria-label="Close">×</button>
+        </div>
+        <div class="variant-modal-body">
+          <p style="font-size:12px; color:#cbd5e1; margin:0 0 12px;">${forcePicker ? 'Choose an unlinked order for this customer.' : 'No strong automatic match was found. Choose an unlinked order for this customer.'}</p>
+          ${availableOrders.length ? `
+            <select id="invoiceOrderChoice" class="form-input" style="width:100%;">
+              <option value="">Select order</option>${choices}
+            </select>
+          ` : '<p style="font-size:12px; color:#cbd5e1;">There are no available unlinked orders for this customer.</p>'}
+        </div>
+        <div class="variant-modal-footer">
+          <button type="button" class="variant-modal-btn cancel" data-close-order-picker>Cancel</button>
+          <button type="button" class="variant-modal-btn confirm" id="confirmInvoiceOrderLink" ${availableOrders.length ? '' : 'disabled'}>Link Order</button>
+        </div>
+      </div>
+    `;
+    this.viewContainer.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelectorAll('[data-close-order-picker]').forEach(button => button.addEventListener('click', close));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close();
+    });
+    overlay.querySelector('#confirmInvoiceOrderLink')?.addEventListener('click', async () => {
+      const orderId = overlay.querySelector('#invoiceOrderChoice')?.value;
+      const order = availableOrders.find(candidate => String(candidate.id) === String(orderId));
+      if (!order) {
+        this.showNotification('Select an order to link.', 'warning');
+        return;
+      }
+      try {
+        await this.saveInvoiceOrderLink(order);
+        close();
+        this.showNotification(`Linked ${order.order_number || 'order'} to invoice.`, 'success');
+      } catch (error) {
+        log.error('Unable to link order to invoice:', error);
+        this.showNotification(error.message || 'Unable to link order to invoice.', 'error');
+      }
+    });
+  }
+
+  async linkOrderToBill(forcePicker = false) {
+    const customer = this.getBillCustomer();
+    if (!customer?.id) {
+      this.showNotification('Select a registered customer before linking an order.', 'warning');
+      return;
+    }
+
+    try {
+      const orders = await this.loadOrdersForBill(customer.id);
+      this.orderForBillCandidates = orders;
+      const invoiceNumber = this.getBillInvoiceNumber();
+      const existingOrder = invoiceNumber
+        ? orders.find(order => String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase())
+        : null;
+      if (existingOrder) {
+        this.selectedOrderForBill = existingOrder;
+        this.renderInvoiceOrderSummary();
+        if (!forcePicker) return;
+      }
+
+      if (!forcePicker && !existingOrder) {
+        const match = findBestOrderMatchForInvoice(
+          this.getInvoiceMatchCandidate(customer.id, invoiceNumber),
+          orders
+        );
+        if (match?.order) {
+          await this.saveInvoiceOrderLink(match.order);
+          this.showNotification(
+            `Automatically linked ${match.order.order_number || 'order'} (match score ${match.score}).`,
+            'success'
+          );
+          return;
+        }
+      }
+
+      this.renderInvoiceOrderPicker(orders, invoiceNumber, forcePicker);
+    } catch (error) {
+      log.error('Unable to find an order for invoice:', error);
+      this.showNotification(error.message || 'Unable to load orders for this customer.', 'error');
+    }
+  }
+
   async makeBill() {
     if (this.currentBillProducts.length === 0) {
       this.showNotification('Please add at least one product to the bill', 'warning');
@@ -3483,6 +3822,13 @@ class BillEditor {
     if (!customerName) {
       this.showNotification('Please enter customer name', 'warning');
       return;
+    }
+    if (this.selectedOrderForBill) {
+      const customer = this.getBillCustomer();
+      if (!customer?.id || String(customer.id) !== String(this.selectedOrderForBill.customer_id)) {
+        this.showNotification('The linked order belongs to a different customer. Select a matching customer or unlink the order.', 'error');
+        return;
+      }
     }
 
     // Calculate totals and format products for API using BillCalculator
@@ -3560,6 +3906,16 @@ class BillEditor {
             previous_due: 0
           });
 
+          if (this.selectedOrderForBill) {
+            try {
+              const invoiceNumber = result.invoice_no || this.getBillInvoiceNumber();
+              if (!invoiceNumber) throw new Error('The updated invoice number is unavailable.');
+              await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
+            } catch (error) {
+              log.error('Invoice updated but order link failed:', error);
+              this.showNotification(`Invoice updated, but the order link failed: ${error.message}`, 'error');
+            }
+          }
 
 
           // Update in memory
@@ -3649,6 +4005,17 @@ class BillEditor {
           const billReference = result.reference_no || result.invoice_no || 'N/A';
           const billId = result.id;
           this.showNotification(`✓ Bill Created: ${billReference}`, 'success');
+          if (this.selectedOrderForBill) {
+            try {
+              const invoiceNumber = result.invoice_no || result.reference_no;
+              if (!invoiceNumber) throw new Error('The server did not return an invoice number.');
+              await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
+              this.selectedOrderForBill = { ...this.selectedOrderForBill, bill_reference: invoiceNumber };
+            } catch (error) {
+              log.error('Invoice created but order link failed:', error);
+              this.showNotification(`Invoice ${billReference} was created, but the order link failed: ${error.message}. You can link it from the invoice editor.`, 'error');
+            }
+          }
 
           // Store result in memory with all API fields
           const storedBill = {
@@ -3704,6 +4071,9 @@ class BillEditor {
     this.qrScanHistory = [];
     this.editingBillId = null;
     this.billDataToEdit = null;
+    this.selectedOrderForBill = null;
+    this.orderForBillCandidates = [];
+    this.renderInvoiceOrderSummary();
     this.renderProductList();
     this.updateBillSummary();
     this.clearProductForm();

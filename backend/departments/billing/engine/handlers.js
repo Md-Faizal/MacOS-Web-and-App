@@ -4,6 +4,7 @@ const billingDepartment = require('../service');
 const { getOrCreateCustomerLedgerToken, generateLedgerToken } = require('../../../core/billing/ledger-token');
 const { encryptInvoiceLedgerReference } = require('../../../core/billing/invoice-ledger-ref');
 const dataBus = require('../../../core/sync/data-bus');
+const { findLinkedOrderDetails } = require('./invoice-order-details');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -84,6 +85,17 @@ function formatDateStr(dateStr) {
   return `${day}-${month}-${year}`;
 }
 
+function formatEstimatePack(product) {
+  const pack = String(product.pack || '').trim();
+  if (pack) return pack;
+
+  const value = product.pack_value ?? product.pack_size_value;
+  const type = String(product.pack_type ?? product.pack_size_type ?? '').trim();
+  if (value === undefined || value === null || !type) return '';
+  const numericValue = Number(value);
+  return `${Number.isFinite(numericValue) ? Math.trunc(numericValue) : String(value).trim()} ${type}`;
+}
+
 // Helper to get temp directory
 function getTempDir() {
   const tempDir = path.join(os.tmpdir(), 'macos-invoices');
@@ -152,8 +164,6 @@ async function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "prin
           i.invoice_no, 
           COALESCE(i.invoice_date, i.created_at) as invoice_date, 
           i.due_date, 
-          '' as lr_no,
-          COALESCE(i.invoice_date, i.created_at) as lr_date,
           c.name as party_name, 
           COALESCE(c.address, '') as address, 
           COALESCE(c.phone, '') as phone, 
@@ -176,6 +186,7 @@ async function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "prin
       `).get(String(invoiceNo), Number(invoiceNo) || 0, String(invoiceNo));
 
       if (!invRow) throw new Error(`Invoice not found: ${invoiceNo}`);
+      const linkedOrderDetails = findLinkedOrderDetails(invoiceDb, invRow.customer_id, invRow.invoice_no);
 
       const ledgerToken = getOrCreateCustomerLedgerToken(invoiceDb, invRow.customer_id);
       if (!ledgerToken) throw new Error('Unable to create a customer ledger access token for this invoice.');
@@ -230,6 +241,12 @@ async function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "prin
 
       renderData = {
         ...invRow,
+        order_no: linkedOrderDetails?.order_no || null,
+        order_date: linkedOrderDetails?.order_date || null,
+        lr_no: linkedOrderDetails?.lr_no || null,
+        lr_date: linkedOrderDetails?.lr_date || null,
+        transport: linkedOrderDetails?.transport || null,
+        cases: linkedOrderDetails?.cases ?? null,
         products: items || [],
         duplex_print: duplexPrint,
         export_mode: exportMode,
@@ -306,7 +323,7 @@ async function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode 
       name: String(p.name || ''),
       hsn: String(p.hsn || p.hsn_code || '30049011'),
       mfg: String(p.mfg || ''),
-      pack: String(p.pack || ''),
+      pack: formatEstimatePack(p),
       batch_no: String(p.batch_no || p.batch || 'EST-BATCH'),
       exp_date: String(p.exp_date || p.expiry || ''),
       qty: Number(p.qty) || 0,

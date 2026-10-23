@@ -121,6 +121,10 @@ module.exports = function(db) {
         checklist_items = '{}',
         delivery_date = null,
         bill_reference = '',
+        lr_no = '',
+        lr_date = null,
+        transport = '',
+        cases = 1,
         total_amount,
         status = 'pending',
         items = []
@@ -134,6 +138,10 @@ module.exports = function(db) {
       }
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: 'Order must have at least one item.' });
+      }
+      const caseCount = Number(cases);
+      if (!Number.isInteger(caseCount) || caseCount < 0) {
+        return res.status(400).json({ error: 'cases must be a non-negative whole number' });
       }
 
       try {
@@ -164,6 +172,17 @@ module.exports = function(db) {
             _retried: true
           });
         }
+        if (String(bill_reference || '').trim()) {
+          const linkedOrder = db.prepare(`
+            SELECT id FROM orders
+            WHERE customer_id = ?
+              AND LOWER(TRIM(bill_reference)) = LOWER(TRIM(?))
+            LIMIT 1
+          `).get(customer_id, bill_reference);
+          if (linkedOrder) {
+            return res.status(409).json({ error: 'This invoice reference is already linked to another order.' });
+          }
+        }
 
         // Insert order with created_at and updated_at
         const now = new Date().toISOString();
@@ -171,9 +190,9 @@ module.exports = function(db) {
           INSERT INTO orders (
             order_number, customer_id, current_stage, order_date,
             order_notes, qc_date, qc_notes, delivery_notes, checklist_items, delivery_date,
-            bill_reference, total_amount, status, created_by_user_id, created_at, updated_at
+            bill_reference, lr_no, lr_date, transport, cases, total_amount, status, created_by_user_id, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const stmtOrder = db.prepare(insertOrderSQL);
         const orderResult = stmtOrder.run(
@@ -188,6 +207,10 @@ module.exports = function(db) {
           typeof checklist_items === 'string' ? checklist_items : JSON.stringify(checklist_items),
           delivery_date || null,
           bill_reference || '',
+          String(lr_no || '').trim(),
+          lr_date || null,
+          String(transport || '').trim(),
+          caseCount,
           orderTotal,
           status,
           creatorId,
@@ -348,6 +371,10 @@ module.exports = function(db) {
         checklist_items,
         delivery_date,
         bill_reference,
+        lr_no,
+        lr_date,
+        transport,
+        cases,
         total_amount,
         status,
         items
@@ -359,6 +386,18 @@ module.exports = function(db) {
       }
       if (existing.customer_id && !isCustomerAccessible(req, existing.customer_id)) {
         return res.status(403).json({ error: 'Access denied to this order' });
+      }
+      if (bill_reference !== undefined && String(bill_reference || '').trim()) {
+        const linkedOrder = db.prepare(`
+          SELECT id FROM orders
+          WHERE customer_id = ?
+            AND id != ?
+            AND LOWER(TRIM(bill_reference)) = LOWER(TRIM(?))
+          LIMIT 1
+        `).get(existing.customer_id, id, bill_reference);
+        if (linkedOrder) {
+          return res.status(409).json({ error: 'This invoice reference is already linked to another order.' });
+        }
       }
 
       const updates = [];
@@ -406,6 +445,26 @@ module.exports = function(db) {
       if (bill_reference !== undefined) {
         updates.push('bill_reference = ?');
         values.push(bill_reference);
+      }
+      if (lr_no !== undefined) {
+        updates.push('lr_no = ?');
+        values.push(String(lr_no || '').trim());
+      }
+      if (lr_date !== undefined) {
+        updates.push('lr_date = ?');
+        values.push(lr_date || null);
+      }
+      if (transport !== undefined) {
+        updates.push('transport = ?');
+        values.push(String(transport || '').trim());
+      }
+      if (cases !== undefined) {
+        const parsedCases = Number(cases);
+        if (!Number.isInteger(parsedCases) || parsedCases < 0) {
+          return res.status(400).json({ error: 'cases must be a non-negative whole number' });
+        }
+        updates.push('cases = ?');
+        values.push(parsedCases);
       }
       if (total_amount !== undefined) {
         updates.push('total_amount = ?');
@@ -476,6 +535,7 @@ module.exports = function(db) {
           metadata: { current_stage: fullOrder?.current_stage, status: fullOrder?.status, total_amount: fullOrder?.total_amount }
         });
 
+        dataBus.broadcast('orders:order', 'updated', { id: Number(id) });
         res.json(fullOrder);
       } catch (err) {
         res.status(500).json({ error: err.message });

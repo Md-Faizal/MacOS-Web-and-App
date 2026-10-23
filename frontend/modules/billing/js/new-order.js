@@ -2,6 +2,7 @@ import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/cata
 import { parseInvoiceQrLink } from '../../../shared/invoice-qr-link.mjs';
 import { clampQcReceivedQuantity, incrementQcReceivedQuantity } from '../../../shared/qc-quantity.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
+import { findBestInvoiceMatchForOrder } from '../../../shared/order-invoice-matcher.mjs';
 
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
@@ -3684,153 +3685,7 @@ class OrdersView {
   }
 
   autoMatchOrderInvoice(orderData, invoices) {
-    if (!orderData || !Array.isArray(invoices) || invoices.length === 0) return null;
-
-    const orderItems = orderData.items || [];
-    const receivedItems = orderItems.filter(i => {
-      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-      return rec >= 1;
-    });
-
-    const grandTotal = receivedItems.reduce((s, i) => {
-      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-      return s + ((i.unit_price || i.price || 0) * rec);
-    }, 0);
-    const fullSubtotal = orderItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
-    const targetOrderTotal = grandTotal > 0 ? grandTotal : (Number(orderData.total_amount) || fullSubtotal);
-
-    const orderDateRaw = orderData.delivery_date || orderData.qc_date || orderData.order_date || orderData.created_at;
-    const orderDate = orderDateRaw ? new Date(orderDateRaw).getTime() : Date.now();
-
-    const orderProductsMap = new Map();
-    orderItems.forEach(i => {
-      const pid = String(i.product_id || '').trim();
-      const pname = String(i.product_name || '').trim().toLowerCase();
-      const qty = (i.received_quantity !== undefined && i.received_quantity !== null && i.received_quantity > 0)
-        ? i.received_quantity
-        : (i.qty || i.quantity || 0);
-      if (pid) orderProductsMap.set(`id:${pid}`, qty);
-      if (pname) orderProductsMap.set(`name:${pname}`, qty);
-    });
-
-    const linkedInvoiceNos = new Set();
-    if (Array.isArray(this.orders)) {
-      this.orders.forEach(o => {
-        if (o && String(o.id) !== String(orderData.id) && o.bill_reference) {
-          linkedInvoiceNos.add(String(o.bill_reference).trim().toLowerCase());
-        }
-      });
-    }
-
-    const scoredCandidates = [];
-
-    for (const inv of invoices) {
-      const invNo = String(inv.invoice_no || inv.id || '').trim();
-      if (!invNo) continue;
-
-      // Exclude if already linked to another distinct order
-      if (linkedInvoiceNos.has(invNo.toLowerCase())) {
-        continue;
-      }
-
-      let score = 0;
-      const matchReasons = [];
-
-      // A. TOTAL AMOUNT MATCH (Max 40 points)
-      const invTotal = parseFloat(inv.grand_total ?? inv.total_amount ?? inv.total ?? 0);
-      if (targetOrderTotal > 0 && invTotal > 0) {
-        const diff = Math.abs(invTotal - targetOrderTotal);
-        if (diff < 0.05) {
-          score += 40;
-          matchReasons.push('Exact total match');
-        } else if (diff <= 1.05) {
-          score += 35;
-          matchReasons.push('Total matches within rounding (₹' + diff.toFixed(2) + ')');
-        } else if (diff / targetOrderTotal <= 0.03) {
-          score += 25;
-          matchReasons.push('Total within 3%');
-        } else if (fullSubtotal > 0 && Math.abs(invTotal - fullSubtotal) <= 1.05) {
-          score += 25;
-          matchReasons.push('Subtotal match');
-        }
-      }
-
-      // B. ITEMS MATCH (Max 40 points)
-      const invItems = Array.isArray(inv.items) ? inv.items : [];
-      if (orderItems.length > 0 && invItems.length > 0) {
-        let matchedProductCount = 0;
-        let matchedQtyCount = 0;
-
-        invItems.forEach(ii => {
-          const pid = String(ii.product_id || '').trim();
-          const pname = String(ii.product_name || '').trim().toLowerCase();
-          const invQty = Number(ii.qty ?? ii.quantity ?? 0);
-
-          let expectedQty = null;
-          if (pid && orderProductsMap.has(`id:${pid}`)) {
-            expectedQty = orderProductsMap.get(`id:${pid}`);
-            matchedProductCount++;
-          } else if (pname && orderProductsMap.has(`name:${pname}`)) {
-            expectedQty = orderProductsMap.get(`name:${pname}`);
-            matchedProductCount++;
-          }
-
-          if (expectedQty !== null && expectedQty === invQty) {
-            matchedQtyCount++;
-          }
-        });
-
-        const maxItemCount = Math.max(orderItems.length, invItems.length, 1);
-        const itemOverlapRatio = matchedProductCount / maxItemCount;
-
-        if (itemOverlapRatio >= 0.95 && matchedQtyCount >= matchedProductCount * 0.9) {
-          score += 40;
-          matchReasons.push(`100% items and quantities match (${matchedProductCount} items)`);
-        } else if (itemOverlapRatio >= 0.7) {
-          score += 30;
-          matchReasons.push(`${Math.round(itemOverlapRatio * 100)}% items match`);
-        } else if (itemOverlapRatio >= 0.4) {
-          score += 15;
-          matchReasons.push('Partial items match');
-        }
-      }
-
-      // C. DATE PROXIMITY (Max 20 points)
-      const invDateRaw = inv.invoice_date || inv.bill_date || inv.created_at;
-      if (invDateRaw) {
-        const invDate = new Date(invDateRaw).getTime();
-        const diffMs = Math.abs(invDate - orderDate);
-        const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-        if (diffDays <= 1) {
-          score += 20;
-          matchReasons.push('Created on same date');
-        } else if (diffDays <= 3) {
-          score += 15;
-          matchReasons.push('Within 3 days');
-        } else if (diffDays <= 7) {
-          score += 10;
-          matchReasons.push('Within 7 days');
-        } else if (diffDays <= 14) {
-          score += 5;
-        } else if (diffDays > 45) {
-          score -= 10;
-        }
-      }
-
-      if (score >= 45) {
-        scoredCandidates.push({
-          invoice: inv,
-          score,
-          reasons: matchReasons
-        });
-      }
-    }
-
-    if (scoredCandidates.length === 0) return null;
-
-    scoredCandidates.sort((a, b) => b.score - a.score);
-    return scoredCandidates[0];
+    return findBestInvoiceMatchForOrder(orderData, invoices, this.orders);
   }
 
   renderLinkedInvoiceSummary() {
@@ -4039,6 +3894,25 @@ class OrdersView {
               </div>
             </div>
 
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:14px;">
+              <div>
+                <label for="orderLrNo" style="display:block; font-size:10px; font-weight:700; margin-bottom:6px;">L.R. NO.</label>
+                <input id="orderLrNo" type="text" value="${Utils.escapeHtml(this.currentOrderData.lr_no || '')}" maxlength="80" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ddd; border-radius:3px;" />
+              </div>
+              <div>
+                <label for="orderLrDate" style="display:block; font-size:10px; font-weight:700; margin-bottom:6px;">L.R. DATE</label>
+                <input id="orderLrDate" type="date" value="${Utils.escapeHtml(String(this.currentOrderData.lr_date || '').slice(0, 10))}" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ddd; border-radius:3px;" />
+              </div>
+              <div>
+                <label for="orderTransport" style="display:block; font-size:10px; font-weight:700; margin-bottom:6px;">TRANSPORT</label>
+                <input id="orderTransport" type="text" value="${Utils.escapeHtml(this.currentOrderData.transport || '')}" maxlength="120" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ddd; border-radius:3px;" />
+              </div>
+              <div>
+                <label for="orderCases" style="display:block; font-size:10px; font-weight:700; margin-bottom:6px;">CASES / CARTONS</label>
+                <input id="orderCases" type="number" min="0" step="1" value="${Number(this.currentOrderData.cases ?? 1)}" style="width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #ddd; border-radius:3px;" />
+              </div>
+            </div>
+
             <div id="linkedInvoiceSummary" role="status" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 0 16px; padding:10px 12px; background:#f8fafc; border:1px solid #dbe2ea; border-radius:6px; font-size:12px;"></div>
 
             <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">ITEMS RECEIVED</h4>
@@ -4244,6 +4118,20 @@ class OrdersView {
       this.currentOrderData.delivery_date = e.target.value;
       this.saveOrderDraft();
     });
+    ['orderLrNo', 'orderLrDate', 'orderTransport', 'orderCases'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', event => {
+        const field = {
+          orderLrNo: 'lr_no',
+          orderLrDate: 'lr_date',
+          orderTransport: 'transport',
+          orderCases: 'cases'
+        }[id];
+        this.currentOrderData[field] = id === 'orderCases'
+          ? (event.target.value === '' ? '' : Number(event.target.value))
+          : event.target.value;
+        this.saveOrderDraft();
+      });
+    });
 
     const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
     stage3NotesArea?.addEventListener('input', (e) => {
@@ -4343,6 +4231,10 @@ class OrdersView {
       checklist_items: this.currentOrderData.checklist_items,
       delivery_date: this.currentOrderData.delivery_date,
       bill_reference: this.currentOrderData.bill_reference,
+      lr_no: this.currentOrderData.lr_no || '',
+      lr_date: this.currentOrderData.lr_date || null,
+      transport: this.currentOrderData.transport || '',
+      cases: Number(this.currentOrderData.cases ?? 1),
       discount: this.currentOrderData.discount,
       tax: this.currentOrderData.tax,
       total_amount: this.currentOrderData.total_amount,
@@ -4646,6 +4538,20 @@ class OrdersView {
       if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
       const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
       if (stage3NotesArea) this.currentOrderData.delivery_notes = stage3NotesArea.value;
+      const lrNoInput = document.getElementById('orderLrNo');
+      const lrDateInput = document.getElementById('orderLrDate');
+      const transportInput = document.getElementById('orderTransport');
+      const casesInput = document.getElementById('orderCases');
+      if (lrNoInput) this.currentOrderData.lr_no = lrNoInput.value.trim();
+      if (lrDateInput) this.currentOrderData.lr_date = lrDateInput.value || null;
+      if (transportInput) this.currentOrderData.transport = transportInput.value.trim();
+      if (casesInput) {
+        const cases = Number(casesInput.value);
+        if (!Number.isInteger(cases) || cases < 0) {
+          throw new Error('Cases/cartons must be a non-negative whole number.');
+        }
+        this.currentOrderData.cases = cases;
+      }
       
       
       // Update the total amount explicitly based on billing sum (received quantity)
