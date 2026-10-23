@@ -81,7 +81,8 @@ export class BillingAPI {
       try {
         const response = await fetch(url, { ...options, headers });
         if (!response.ok) {
-          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+          const errorBody = await response.json().catch(() => null);
+          throw new Error(errorBody?.error || `API Error: ${response.status} ${response.statusText}`);
         }
         return await response.json();
       } catch (error) {
@@ -179,6 +180,41 @@ export class BillingAPI {
   // Bills (Transactions)
   async getOrders(options = {}) {
     return this.request('/billing/orders', options);
+  }
+
+  async createOrder(order) {
+    return this.request('/billing/orders', {
+      method: 'POST',
+      body: JSON.stringify(order)
+    });
+  }
+
+  async getEstimates(options = {}) {
+    return this.request('/billing/estimates', options);
+  }
+
+  async createEstimate(estimate) {
+    return this.request('/billing/estimates', {
+      method: 'POST',
+      body: JSON.stringify(estimate)
+    });
+  }
+
+  async getEstimate(id) {
+    return this.request(`/billing/estimates/${id}`);
+  }
+
+  async updateEstimate(id, estimate) {
+    return this.request(`/billing/estimates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(estimate)
+    });
+  }
+
+  async deleteEstimate(id) {
+    return this.request(`/billing/estimates/${id}`, {
+      method: 'DELETE'
+    });
   }
 
   async getLedgerCustomers(options = {}) {
@@ -378,6 +414,7 @@ export class BillingApp extends AppWindow {
     
     // Initialize BillEditor for create/edit operations
     this.billEditor = null;
+    this.estimateEditor = null;
     
     this.setupBillingUI();
     
@@ -449,6 +486,9 @@ export class BillingApp extends AppWindow {
           if (this.currentView === 'create') {
             if (domains.has('contacts')) this.billEditor?.populateCustomersList?.();
             if (domains.has('inventory')) this.billEditor?.populateProductsList?.();
+          } else if (this.currentView === 'estimate') {
+            if (domains.has('contacts')) this.estimateEditor?.populateContactsList?.();
+            if (domains.has('inventory')) this.estimateEditor?.populateProductsList?.();
           }
 
           const history = this._subviewInstances?.get('history');
@@ -615,7 +655,7 @@ export class BillingApp extends AppWindow {
     }
 
     // If we're not on dashboard, only refresh views that don't have active user input
-    const inputViews = ['create', 'edit', 'payment-credit', 'orders'];
+    const inputViews = ['create', 'edit', 'payment-credit', 'orders', 'estimate'];
     if (this.currentView && this.currentView !== 'dashboard' && !inputViews.includes(this.currentView)) {
       this.refreshCurrentView();
     }
@@ -698,6 +738,11 @@ export class BillingApp extends AppWindow {
     // Initialize BillEditor for bill creation
     this.billEditor = new BillEditor(this);
 
+    // Initialize EstimateEditor for quotation creation
+    if (typeof EstimateEditor !== 'undefined') {
+      this.estimateEditor = new EstimateEditor(this);
+    }
+
     // Initialize EditBillsPayments for bill editing
     this.editBillsPayments = new EditBillsPayments(this);
 
@@ -727,6 +772,7 @@ export class BillingApp extends AppWindow {
         <button class="billing-menu-item" data-view="orders">🧾 New Orders</button>
         <span style="display: block; padding: 8px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase;">Transactions</span>
         <button class="billing-menu-item" data-view="create">➕ New Bill</button>
+        <button class="billing-menu-item" data-view="estimate">📄 Estimates</button>
         <button class="billing-menu-item" data-view="edit">✏️ Edit Bills/Payments</button>
         <button class="billing-menu-item" data-view="payment-credit">💳 Payment/Credit Note</button>
         <span style="display: block; padding: 8px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase;">Archives</span>
@@ -1541,12 +1587,18 @@ export class BillingApp extends AppWindow {
       this._subviewInstances = new Map();
     }
 
+    const safeName = (viewName === 'existing') ? 'ledger' : viewName;
+    const returningToEstimateHistory = safeName === 'estimate' && !params;
+    const leavingEstimateEditor = this.currentView === 'estimate'
+      && this.estimateEditor?.hasUnsavedChanges?.()
+      && (safeName !== 'estimate' || returningToEstimateHistory);
+    if (leavingEstimateEditor && !confirm('Discard unsaved estimate changes?')) return;
+
     // Stop polling for the previous view if it exists
     if (this.currentViewInstance && typeof this.currentViewInstance.stopPolling === 'function') {
       this.currentViewInstance.stopPolling();
     }
 
-    const safeName = (viewName === 'existing') ? 'ledger' : viewName;
     this.currentView = safeName;
     
     // Clear search when switching away from ledger
@@ -1599,6 +1651,16 @@ export class BillingApp extends AppWindow {
             this.billEditor.renderCreateBillView();
           }
           break;
+        case 'estimate':
+          if (!this.estimateEditor && typeof EstimateEditor !== 'undefined') {
+            this.estimateEditor = new EstimateEditor(this);
+          }
+          viewInstance = this.estimateEditor;
+          if (viewInstance) {
+            viewInstance.viewContainer = targetPanel;
+            viewInstance.render(params || { mode: 'history' });
+          }
+          break;
         case 'ledger':
           viewInstance = new LedgerView(this);
           viewInstance.viewContainer = targetPanel;
@@ -1648,6 +1710,10 @@ export class BillingApp extends AppWindow {
           this.billEditor.renderCreateBillView(params.billDataToEdit);
         } else if (params && params.customerName) {
           this.billEditor.renderCreateBillView({ customer_name: params.customerName });
+        }
+      } else if (safeName === 'estimate') {
+        if (viewInstance && typeof viewInstance.render === 'function') {
+          viewInstance.render(params || { mode: 'history' });
         }
       } else if (safeName === 'edit') {
         if (this.editBillsPayments) {
@@ -3001,4 +3067,3 @@ export class BillingApp extends AppWindow {
 
 // Ensure global availability
 window.BillingApp = BillingApp;
-

@@ -344,6 +344,21 @@ CREATE TABLE IF NOT EXISTS invoice_items (
 
 ---
 
+### Estimates
+**Purpose:** Persist quotations separately from invoices and accounting records
+**Module:** Billing App
+**Relationships:** Optional reference to contacts; product lines are stored as a JSON snapshot
+
+Estimates can be listed, reopened, edited, exported, and deleted. Saving an estimate does not create invoice, ledger, inventory, or stock records. Conversion is explicit and goes through the existing bill or order workflow.
+
+The authoritative schema is `backend/core/db/schema-master.js`. The table stores the estimate number, customer snapshot, dates, subject, product lines and terms, totals, and editor IDs. Registered customer IDs use `ON DELETE SET NULL` so deleting a contact does not delete the quotation.
+
+Indexes:
+- `idx_estimates_customer` - Query by registered customer
+- `idx_estimates_date` - Sort/filter by estimate date
+
+---
+
 ### Customer Item Memory
 **Purpose:** Store customer product preferences and discount history for quick recall  
 **Module:** Billing App  
@@ -1206,5 +1221,3 @@ CREATE TABLE IF NOT EXISTS customer_preferences (
 |---|---|---|
 | 2026-03-06 | 2.0 | Updated to MacOS.db schema with 14 tables (removed calendar_events, analytics, app_settings, billing_transactions, customer_preferences) |
 | 2026-02-15 | 1.0 | Initial schema documentation for billing.db with 15 tables |
-
-

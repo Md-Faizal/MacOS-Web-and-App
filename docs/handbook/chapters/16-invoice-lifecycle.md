@@ -62,6 +62,14 @@ The browser awaits `BillingAPI.createBill`, displays a success notification, app
 
 Do not equate the server broadcast with the browser's local event: they are separate producers and may carry different payloads/origins. Verify deduplication and subscribers before changing notifications or refresh behavior.
 
+## Estimate Lifecycle
+
+The Billing Estimates view stores quotations in `estimates`; product lines are stored as a JSON snapshot. `GET/POST /api/billing/estimates` lists and creates estimates; `GET/PUT/DELETE /api/billing/estimates/:id` loads, updates, and deletes them. Registered customer details are read from contacts when saved. Walk-in estimates retain their entered details and are visible to their creating worker only.
+
+`GET /api/billing/estimates/next-number` previews the next `EST-YY####` reference using a separate calendar-year sequence; create assigns the authoritative number inside its transaction, and the unique estimate number constraint rejects collisions. The editor's three actions are Make Estimate, View Estimate, and Clear All. Saved-estimate history retains edit, export, delete, bill, and order operations.
+
+Estimate persistence does not create invoices, write ledger entries, or change inventory. Preview and PDF export use the existing estimate PDF endpoints and shared Rust renderer. Registered estimates use a contact selector; walk-in estimates store manually entered contact details. Billing focus/visibility refresh skips an active estimate editor so a data refresh cannot replace an in-progress draft with history. Creating a bill or order is explicit and uses the existing invoice/order workflows; an order requires a registered customer. Verify current route and schema code before relying on this contract.
+
 ## Review and Test Checklist
 
 | Invariant | Evidence/test to add or inspect |

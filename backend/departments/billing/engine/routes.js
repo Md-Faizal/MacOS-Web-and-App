@@ -13,6 +13,18 @@ module.exports = function(router, handlers) {
   router.post('/export-invoice-pdf', handlers.exportInvoicePDF);        // POST /api/billing/export-invoice-pdf - Generate export PDF
   router.get('/print-invoice-pdf', handlers.printInvoicePDF);           // GET /api/billing/print-invoice-pdf - Generate print PDF
   
+  // Estimate / Quotation PDFs
+  router.post('/preview-estimate-pdf', handlers.previewEstimatePDF);    // POST /api/billing/preview-estimate-pdf - Generate estimate preview PDF/JPG
+  router.post('/export-estimate-pdf', handlers.exportEstimatePDF);      // POST /api/billing/export-estimate-pdf - Generate estimate export PDF
+
+  // ============= ESTIMATES =============
+  router.get('/estimates/next-number', handlers.getNextEstimateNumber);
+  router.get('/estimates', handlers.getEstimates);
+  router.post('/estimates', handlers.createEstimate);
+  router.get('/estimates/:id', handlers.getEstimate);
+  router.put('/estimates/:id', handlers.updateEstimate);
+  router.delete('/estimates/:id', handlers.deleteEstimate);
+
   // Payment & Credit Note PDFs
   router.post('/preview-payment-pdf', handlers.previewPaymentPDF);      // POST /api/billing/preview-payment-pdf - Generate preview PDF
   router.post('/export-payment-pdf', handlers.exportPaymentPDF);        // POST /api/billing/export-payment-pdf - Generate export PDF

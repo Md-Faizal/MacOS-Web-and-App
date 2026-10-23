@@ -684,6 +684,36 @@ CREATE TABLE IF NOT EXISTS order_items (
   FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE
 );
 
+-- Estimates: saved quotations, separate from invoices and ledger records
+CREATE TABLE IF NOT EXISTS estimates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  estimate_no TEXT NOT NULL UNIQUE,
+  customer_id INTEGER,
+  party_name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
+  gstin TEXT,
+  licence_no TEXT,
+  pan TEXT,
+  estimate_date DATE,
+  valid_until DATE,
+  subject TEXT,
+  products_json TEXT NOT NULL,
+  terms_json TEXT NOT NULL DEFAULT '[]',
+  total_amount REAL DEFAULT 0,
+  total_discount REAL DEFAULT 0,
+  total_sgst REAL DEFAULT 0,
+  total_cgst REAL DEFAULT 0,
+  round_off REAL DEFAULT 0,
+  grand_total REAL DEFAULT 0,
+  duplex_print INTEGER DEFAULT 1,
+  created_by_user_id TEXT,
+  last_edited_by_user_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES contacts(id) ON DELETE SET NULL
+);
+
 -- ====================================================================
 -- INDEXES for performance
 -- ====================================================================
@@ -703,6 +733,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_stage ON orders(current_stage);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_batch ON order_items(batch_id);
+CREATE INDEX IF NOT EXISTS idx_estimates_customer ON estimates(customer_id);
+CREATE INDEX IF NOT EXISTS idx_estimates_date ON estimates(estimate_date);
 CREATE INDEX IF NOT EXISTS idx_status_checks_type ON status_checks(check_type);
 CREATE INDEX IF NOT EXISTS idx_status_checks_date ON status_checks(checked_at);
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);

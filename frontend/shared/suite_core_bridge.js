@@ -345,6 +345,24 @@ class SuiteCoreBridge {
   }
 
   /**
+   * Render modern Estimate / Quotation PDF directly in Rust WebAssembly (<5ms).
+   * Reuses InvoiceProductItem layout, adds watermarked header, indicative totals, validity footer.
+   * Returns { success, pdf_base64, byte_count }
+   * @param {Object} estimateData - Estimate render data structure
+   */
+  static renderEstimatePdf(estimateData) {
+    if (!this.isWasmLoaded()) {
+      throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for renderEstimatePdf');
+    }
+
+    const res = this.callWasmJson('suite_render_estimate_pdf', estimateData);
+    if (res && res.success && res.pdf_base64) {
+      return res;
+    }
+    throw new Error(`[SuiteCoreBridge] suite_render_estimate_pdf WASM call failed: ${res ? res.error : 'Unknown error'}`);
+  }
+
+  /**
    * Render modern, minimalist Payment Receipt, Credit Note, or Opening Balance PDF in Rust (<5ms).
    * Returns { success, pdf_base64, byte_count }
    * @param {Object} paymentData - Payment voucher render data

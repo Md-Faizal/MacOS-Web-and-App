@@ -202,6 +202,116 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
   }
 }
 
+// Generate QR-complete Estimate / Quotation PDFs using native Rust SuiteCore WebAssembly engine.
+function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode = "print") {
+  try {
+    const tempDir = getTempDir();
+    const estNo = estimatePayload.estimate_no || `EST-${Date.now()}`;
+    const sanitizedNo = String(estNo).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const pdfPath = path.join(tempDir, `estimate-${sanitizedNo}-${Date.now()}.pdf`);
+
+    const SuiteCoreBridge = require(path.resolve(__dirname, '../../../../frontend/shared/suite_core_bridge.js'));
+    if (!SuiteCoreBridge || !SuiteCoreBridge.isWasmLoaded()) {
+      throw new Error('[Billing] WebAssembly core (suite_core.wasm) not loaded for estimate generation.');
+    }
+
+    const app_settings = {};
+    let customer_ledger_token = null;
+
+    if (fs.existsSync(dbPath)) {
+      const Database = require('better-sqlite3');
+      const invoiceDb = new Database(dbPath);
+      try {
+        const rows = invoiceDb.prepare('SELECT setting_key, setting_value FROM app_settings').all();
+        for (const r of rows) {
+          if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
+        }
+        if (estimatePayload.customer_id) {
+          try {
+            customer_ledger_token = getOrCreateCustomerLedgerToken(invoiceDb, estimatePayload.customer_id);
+          } catch (tokErr) {
+            console.warn('[Billing] Unable to generate customer ledger token for estimate:', tokErr.message);
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[Billing] Warning reading app_settings for estimate:', dbErr.message);
+      } finally {
+        invoiceDb.close();
+      }
+    }
+
+    let duplexPrint = true;
+    if (duplex !== null && duplex !== undefined && duplex !== '') {
+      duplexPrint = String(duplex).toLowerCase() === 'true' || String(duplex).toLowerCase() === '1' || String(duplex).toLowerCase() === 'yes';
+    } else if (estimatePayload.duplex_print !== undefined) {
+      duplexPrint = Boolean(estimatePayload.duplex_print);
+    } else if (app_settings['invoice_duplex_print'] !== undefined) {
+      duplexPrint = String(app_settings['invoice_duplex_print']).toLowerCase() === 'true' || String(app_settings['invoice_duplex_print']).toLowerCase() === '1' || String(app_settings['invoice_duplex_print']).toLowerCase() === 'yes';
+    }
+
+    const exportMode = String(mode).toLowerCase() === 'export';
+
+    const products = (estimatePayload.products || []).map((p) => ({
+      name: String(p.name || ''),
+      hsn: String(p.hsn || p.hsn_code || '30049011'),
+      mfg: String(p.mfg || ''),
+      pack: String(p.pack || ''),
+      batch_no: String(p.batch_no || p.batch || 'EST-BATCH'),
+      exp_date: String(p.exp_date || p.expiry || ''),
+      qty: Number(p.qty) || 0,
+      free: Number(p.free) || 0,
+      mrp: Number(p.mrp) || 0,
+      rate: Number(p.rate) || 0,
+      amount: Number(p.amount) || 0,
+      dis1: Number(p.dis1 ?? p.discount_1_percent ?? p.discount ?? 0),
+      dis2: Number(p.dis2 ?? p.discount_2_percent ?? 0),
+      sgst_per: Number(p.sgst_per ?? (p.gst_percent ? p.gst_percent / 2 : 0)),
+      sgst_val: Number(p.sgst_val ?? (p.sgst_amount || 0)),
+      cgst_per: Number(p.cgst_per ?? (p.gst_percent ? p.gst_percent / 2 : 0)),
+      cgst_val: Number(p.cgst_val ?? (p.cgst_amount || 0)),
+      final_amt: Number(p.final_amt ?? p.final_amount ?? p.amount ?? 0),
+      is_gold: Number(p.is_gold) || 0,
+    }));
+
+    const renderData = {
+      estimate_no: String(estNo),
+      estimate_date: estimatePayload.estimate_date || formatDateStr(new Date()),
+      valid_until: estimatePayload.valid_until || null,
+      subject: String(estimatePayload.subject || ''),
+      party_name: String(estimatePayload.party_name || 'Walk-in Customer'),
+      address: String(estimatePayload.address || ''),
+      phone: String(estimatePayload.phone || ''),
+      licence_no: String(estimatePayload.licence_no || ''),
+      pan: String(estimatePayload.pan || ''),
+      gstin: String(estimatePayload.gstin || ''),
+      products,
+      total_amount: Number(estimatePayload.total_amount) || 0,
+      total_discount: Number(estimatePayload.total_discount) || 0,
+      total_sgst: Number(estimatePayload.total_sgst) || 0,
+      total_cgst: Number(estimatePayload.total_cgst) || 0,
+      round_off: Number(estimatePayload.round_off) || 0,
+      grand_total: Number(estimatePayload.grand_total) || 0,
+      duplex_print: duplexPrint,
+      export_mode: exportMode,
+      customer_id: estimatePayload.customer_id ? Number(estimatePayload.customer_id) : null,
+      customer_ledger_token: customer_ledger_token,
+      app_settings,
+      terms: Array.isArray(estimatePayload.terms) ? estimatePayload.terms.map(String) : [],
+    };
+
+    const res = SuiteCoreBridge.renderEstimatePdf(renderData);
+    if (!res || !res.success || !res.pdf_base64) {
+      throw new Error(`Rust estimate rendering failed: ${res ? res.error : 'Unknown error'}`);
+    }
+
+    fs.writeFileSync(pdfPath, Buffer.from(res.pdf_base64, 'base64'));
+    return pdfPath;
+  } catch (error) {
+    console.error(`Estimate PDF generation failed: ${error.message}`);
+    throw error;
+  }
+}
+
 // Generate Payment Receipt & Credit Note PDFs using native Rust SuiteCore WebAssembly engine.
 function generatePaymentPDF(dbPath, paymentId, options = {}) {
   try {
@@ -623,6 +733,162 @@ module.exports = function(db) {
     return Boolean(row);
   }
 
+  function getEstimateById(id) {
+    const estimate = db.prepare('SELECT * FROM estimates WHERE id = ?').get(id);
+    if (!estimate) return null;
+    const { products_json, terms_json, ...record } = estimate;
+    return {
+      ...record,
+      products: JSON.parse(products_json),
+      terms: JSON.parse(terms_json || '[]')
+    };
+  }
+
+  function canAccessEstimate(req, estimate) {
+    if (req.user?.role !== 'worker') return true;
+    if (estimate.customer_id) return isCustomerAccessible(req, estimate.customer_id);
+    const userId = req.user.id || req.user.userId;
+    return Boolean(userId && String(estimate.created_by_user_id) === String(userId));
+  }
+
+  function generateEstimateNumber(dateValue) {
+    const dateString = String(dateValue || '');
+    const date = dateValue && !Number.isNaN(new Date(dateValue).getTime())
+      ? new Date(dateValue)
+      : new Date();
+    const year = /^\d{4}/.test(dateString) ? Number(dateString.slice(0, 4)) : date.getFullYear();
+    const yearSuffix = String(year).slice(-2);
+    const prefix = `EST-${yearSuffix}`;
+    const rows = db.prepare('SELECT estimate_no FROM estimates WHERE estimate_no LIKE ?').all(`${prefix}%`);
+    const maxSequence = rows.reduce((max, row) => {
+      const match = String(row.estimate_no || '').match(new RegExp(`^${prefix}(\\d+)$`));
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+    return `${prefix}${String(maxSequence + 1).padStart(4, '0')}`;
+  }
+
+  function prepareEstimate(req, existing = null) {
+    const payload = req.body || {};
+    const customerId = Object.prototype.hasOwnProperty.call(payload, 'customer_id')
+      ? payload.customer_id
+      : existing?.customer_id;
+    let customer = null;
+    if (customerId !== null && customerId !== undefined && customerId !== '') {
+      const parsedId = Number(customerId);
+      if (!Number.isSafeInteger(parsedId) || parsedId < 1) {
+        const error = new Error('Invalid customer_id.');
+        error.statusCode = 400;
+        throw error;
+      }
+      customer = db.prepare(`
+        SELECT id, name, phone, address, gstin, licence_no, pan
+        FROM contacts WHERE id = ?
+      `).get(parsedId);
+      if (!customer) {
+        const error = new Error('Registered customer not found.');
+        error.statusCode = 400;
+        throw error;
+      }
+      if (!isCustomerAccessible(req, parsedId)) {
+        const error = new Error('Access denied to this customer.');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
+    const products = Object.prototype.hasOwnProperty.call(payload, 'products')
+      ? payload.products
+      : (existing ? JSON.parse(existing.products_json) : null);
+    if (!Array.isArray(products) || products.length === 0 || products.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
+      const error = new Error('Estimate must contain at least one valid product.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const defaultTerms = [
+      'Prices and product availability are subject to change after the validity date.',
+      'Goods supplied against an approved purchase order are subject to the terms of sale.',
+      'Subject to local jurisdiction only.'
+    ];
+    const terms = Array.isArray(payload.terms)
+      ? payload.terms.map(String)
+      : (existing ? JSON.parse(existing.terms_json || '[]') : defaultTerms);
+
+    const partyName = String(customer?.name ?? payload.party_name ?? existing?.party_name ?? '').trim();
+    if (!partyName) {
+      const error = new Error('Customer or party name is required.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const numberInput = payload.estimate_no ?? existing?.estimate_no ?? '';
+    const estimateNo = String(numberInput).trim() || generateEstimateNumber(payload.estimate_date || existing?.estimate_date);
+    if (estimateNo.length > 80) {
+      const error = new Error('Estimate number must be 80 characters or fewer.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const getValue = (key, customerKey = key) => {
+      if (customer) return customer[customerKey] || '';
+      return payload[key] !== undefined ? payload[key] : (existing?.[key] ?? '');
+    };
+    const getAmount = key => {
+      const value = payload[key] !== undefined ? payload[key] : (existing?.[key] ?? 0);
+      const amount = Number(value);
+      if (!Number.isFinite(amount)) {
+        const error = new Error(`Invalid ${key}.`);
+        error.statusCode = 400;
+        throw error;
+      }
+      return amount;
+    };
+
+    let productsJson;
+    try {
+      productsJson = JSON.stringify(products);
+    } catch (error) {
+      const invalid = new Error('Estimate products could not be serialized.');
+      invalid.statusCode = 400;
+      throw invalid;
+    }
+
+    return {
+      estimate_no: estimateNo,
+      customer_id: customer?.id ?? null,
+      party_name: partyName,
+      phone: String(getValue('phone') || ''),
+      address: String(getValue('address') || ''),
+      gstin: String(getValue('gstin') || ''),
+      licence_no: String(getValue('licence_no') || ''),
+      pan: String(getValue('pan') || ''),
+      estimate_date: payload.estimate_date ?? existing?.estimate_date ?? null,
+      valid_until: payload.valid_until ?? existing?.valid_until ?? null,
+      subject: String(payload.subject ?? existing?.subject ?? ''),
+      products_json: productsJson,
+      terms_json: JSON.stringify(terms),
+      total_amount: getAmount('total_amount'),
+      total_discount: getAmount('total_discount'),
+      total_sgst: getAmount('total_sgst'),
+      total_cgst: getAmount('total_cgst'),
+      round_off: getAmount('round_off'),
+      grand_total: getAmount('grand_total'),
+      duplex_print: payload.duplex_print === undefined
+        ? (existing?.duplex_print ?? 1)
+        : (payload.duplex_print ? 1 : 0)
+    };
+  }
+
+  function sendEstimateError(res, error, operation) {
+    const isConstraintError = String(error.code || '').startsWith('SQLITE_CONSTRAINT');
+    const statusCode = error.statusCode || (isConstraintError ? 409 : 500);
+    if (statusCode >= 500) console.error(`[Billing] Unable to ${operation}:`, error);
+    const message = statusCode === 500
+      ? `Unable to ${operation}.`
+      : (isConstraintError ? 'Estimate number already exists.' : error.message);
+    return res.status(statusCode).json({ error: message });
+  }
+
   function getCustomerDuplexPreference(req, customerId) {
     try {
       if (!customerId) return null;
@@ -645,6 +911,122 @@ module.exports = function(db) {
   }
 
   return {
+    // ============= ESTIMATES =============
+    getNextEstimateNumber: (req, res) => {
+      try {
+        return res.json({ estimate_no: generateEstimateNumber(req.query?.estimate_date) });
+      } catch (error) {
+        return sendEstimateError(res, error, 'generate estimate number');
+      }
+    },
+
+    getEstimates: (req, res) => {
+      try {
+        let rows;
+        if (req.user?.role === 'worker') {
+          const userId = req.user.id || req.user.userId;
+          const workerScope = getWorkerContactScope(req, 'c');
+          rows = db.prepare(`
+            SELECT e.id
+            FROM estimates e
+            WHERE (
+              e.customer_id IS NOT NULL
+              AND EXISTS (SELECT 1 FROM contacts c WHERE c.id = e.customer_id AND ${workerScope})
+            ) OR (
+              e.customer_id IS NULL AND e.created_by_user_id = ?
+            )
+            ORDER BY COALESCE(e.estimate_date, e.created_at) DESC, e.id DESC
+          `).all(userId);
+        } else {
+          rows = db.prepare(`
+            SELECT id FROM estimates
+            ORDER BY COALESCE(estimate_date, created_at) DESC, id DESC
+          `).all();
+        }
+        return res.json(rows.map(row => getEstimateById(row.id)));
+      } catch (error) {
+        return sendEstimateError(res, error, 'load estimates');
+      }
+    },
+
+    createEstimate: (req, res) => {
+      try {
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+        const create = db.transaction(() => {
+          const estimate = prepareEstimate(req);
+          const result = db.prepare(`
+            INSERT INTO estimates (
+              estimate_no, customer_id, party_name, phone, address, gstin, licence_no, pan,
+              estimate_date, valid_until, subject, products_json, terms_json, total_amount, total_discount,
+              total_sgst, total_cgst, round_off, grand_total, duplex_print,
+              created_by_user_id, last_edited_by_user_id
+            ) VALUES (
+              @estimate_no, @customer_id, @party_name, @phone, @address, @gstin, @licence_no, @pan,
+              @estimate_date, @valid_until, @subject, @products_json, @terms_json, @total_amount, @total_discount,
+              @total_sgst, @total_cgst, @round_off, @grand_total, @duplex_print, @user_id, @user_id
+            )
+          `).run({ ...estimate, user_id: userId });
+          return getEstimateById(result.lastInsertRowid);
+        });
+        return res.status(201).json({ success: true, estimate: create.immediate() });
+      } catch (error) {
+        return sendEstimateError(res, error, 'create estimate');
+      }
+    },
+
+    getEstimate: (req, res) => {
+      try {
+        const estimate = getEstimateById(req.params.id);
+        if (!estimate) return res.status(404).json({ error: 'Estimate not found.' });
+        if (!canAccessEstimate(req, estimate)) return res.status(403).json({ error: 'Access denied to this estimate.' });
+        return res.json(estimate);
+      } catch (error) {
+        return sendEstimateError(res, error, 'load estimate');
+      }
+    },
+
+    updateEstimate: (req, res) => {
+      try {
+        const existingRow = db.prepare('SELECT * FROM estimates WHERE id = ?').get(req.params.id);
+        if (!existingRow) return res.status(404).json({ error: 'Estimate not found.' });
+        const existing = getEstimateById(req.params.id);
+        if (!canAccessEstimate(req, existing)) return res.status(403).json({ error: 'Access denied to this estimate.' });
+
+        const estimate = prepareEstimate(req, existingRow);
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+        const update = db.transaction(() => {
+          db.prepare(`
+            UPDATE estimates SET
+              estimate_no = @estimate_no, customer_id = @customer_id, party_name = @party_name,
+              phone = @phone, address = @address, gstin = @gstin, licence_no = @licence_no,
+              pan = @pan, estimate_date = @estimate_date, valid_until = @valid_until, subject = @subject,
+              products_json = @products_json, terms_json = @terms_json,
+              total_amount = @total_amount, total_discount = @total_discount,
+              total_sgst = @total_sgst, total_cgst = @total_cgst, round_off = @round_off,
+              grand_total = @grand_total, duplex_print = @duplex_print,
+              last_edited_by_user_id = @user_id, updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id
+          `).run({ ...estimate, user_id: userId, id: req.params.id });
+          return getEstimateById(req.params.id);
+        });
+        return res.json({ success: true, estimate: update() });
+      } catch (error) {
+        return sendEstimateError(res, error, 'update estimate');
+      }
+    },
+
+    deleteEstimate: (req, res) => {
+      try {
+        const estimate = getEstimateById(req.params.id);
+        if (!estimate) return res.status(404).json({ error: 'Estimate not found.' });
+        if (!canAccessEstimate(req, estimate)) return res.status(403).json({ error: 'Access denied to this estimate.' });
+        db.prepare('DELETE FROM estimates WHERE id = ?').run(req.params.id);
+        return res.json({ success: true, deleted: { id: estimate.id, estimate_no: estimate.estimate_no } });
+      } catch (error) {
+        return sendEstimateError(res, error, 'delete estimate');
+      }
+    },
+
     // ============= REAL-TIME DATA BUS & STATE FINGERPRINT =============
     subscribeSSE: (req, res) => {
       dataBus.handleSSEConnection(req, res, db);
@@ -2286,6 +2668,97 @@ module.exports = function(db) {
         res.status(500).json({ 
           error: error.message,
           details: error.stack 
+        });
+      }
+    },
+
+    // Preview estimate as PDF / JPG (for inline display) - ephemeral, no DB write needed
+    previewEstimatePDF: (req, res) => {
+      try {
+        const dbPath = getDatabasePath();
+        const estimateData = req.body || {};
+        const duplex = req.query.duplex ?? req.body.duplex;
+
+        // Generate PDF using native Rust SuiteCore engine
+        const pdfPath = generateEstimatePDF(dbPath, estimateData, duplex, 'print');
+
+        const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
+        if (wantsPdf) {
+          const pdfData = fs.readFileSync(pdfPath);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline; filename="estimate-preview.pdf"');
+          return res.send(pdfData);
+        }
+
+        // Convert to JPG for preview image
+        const jpgPath = convertPDFToJPG(pdfPath);
+        const jpgData = fs.readFileSync(jpgPath);
+
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', 'inline; filename="estimate-preview.jpg"');
+        res.send(jpgData);
+
+        // Clean up temp files after short delay
+        setTimeout(() => {
+          try {
+            const tempDir = getTempDir();
+            const files = fs.readdirSync(tempDir);
+            const now = Date.now();
+            const maxAge = 24 * 60 * 60 * 1000;
+            files.forEach(file => {
+              const filePath = path.join(tempDir, file);
+              const fileStat = fs.statSync(filePath);
+              if (now - fileStat.mtimeMs > maxAge) {
+                fs.unlinkSync(filePath);
+              }
+            });
+          } catch (err) {
+            console.error('Error cleaning up temp files:', err);
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Error generating preview Estimate PDF:', error.message);
+        res.status(500).json({
+          error: error.message,
+          details: error.stack
+        });
+      }
+    },
+
+    // Export estimate as PDF (for download)
+    exportEstimatePDF: (req, res) => {
+      try {
+        const dbPath = getDatabasePath();
+        const estimateData = req.body || {};
+        const duplex = req.query.duplex ?? req.body.duplex;
+
+        // Generate PDF using native Rust SuiteCore engine in export mode
+        const pdfPath = generateEstimatePDF(dbPath, estimateData, duplex, 'export');
+        const pdfData = fs.readFileSync(pdfPath);
+
+        const estNo = (estimateData.estimate_no || 'Estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const dateStr = formatDateStr(estimateData.estimate_date);
+        const fileName = `${estNo}.${dateStr}`;
+
+        const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
+                          req.get('x-app-type') === 'native_android' ||
+                          (req.get('accept') || '').includes('application/pdf');
+
+        if (isAndroid) {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+          return res.send(pdfData);
+        }
+
+        res.json({
+          pdf: pdfData.toString('base64'),
+          fileName: `${fileName}.pdf`
+        });
+      } catch (error) {
+        console.error('Error exporting Estimate PDF:', error.message);
+        res.status(500).json({
+          error: error.message,
+          details: error.stack
         });
       }
     },
