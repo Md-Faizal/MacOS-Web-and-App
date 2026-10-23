@@ -60,7 +60,7 @@ class LedgerFileUtils {
   /**
    * Main export handler
    */
-  static async exportToLocation(customerName, fileName, blob) {
+  static async exportToLocation(customerName, fileName, blob, options = {}) {
     try {
       // 1. Try to get remembered directory handle (only when we have a customer key)
       if (customerName) {
@@ -70,11 +70,14 @@ class LedgerFileUtils {
           // Attempt to verify/request permission (requires user gesture context)
           const hasPermission = await this.verifyPermission(handle);
           if (hasPermission) {
-            const fileHandle = await handle.getFileHandle(fileName, { create: true });
+            const targetFileName = options.incrementFileName
+              ? await this.getAvailableFileName(handle, fileName)
+              : fileName;
+            const fileHandle = await handle.getFileHandle(targetFileName, { create: true });
             const writable = await fileHandle.createWritable();
             await writable.write(blob);
             await writable.close();
-            return { success: true, folder: handle.name, fileName: fileName };
+            return { success: true, folder: handle.name, fileName: targetFileName };
           }
         }
       }
@@ -93,12 +96,12 @@ class LedgerFileUtils {
         const writable = await saveHandle.createWritable();
         await writable.write(blob);
         await writable.close();
-        return { success: true, fileName: fileName };
+        return { success: true, fileName: saveHandle.name || fileName };
       }
 
       // 3. Absolute fallback: trigger traditional download
       this.fallbackDownload(fileName, blob);
-      return { success: true, fallback: true };
+      return { success: true, fallback: true, fileName };
       
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -106,6 +109,31 @@ class LedgerFileUtils {
       }
       console.error('Export Error:', error);
       throw error;
+    }
+  }
+
+  static async getAvailableFileName(directoryHandle, fileName) {
+    const extensionIndex = fileName.lastIndexOf('.');
+    const hasExtension = extensionIndex > 0;
+    const baseName = hasExtension ? fileName.slice(0, extensionIndex) : fileName;
+    const extension = hasExtension ? fileName.slice(extensionIndex) : '';
+    let candidate = fileName;
+    let increment = 1;
+
+    while (true) {
+      try {
+        await directoryHandle.getFileHandle(candidate);
+        candidate = `${baseName} (${increment})${extension}`;
+        increment += 1;
+      } catch (error) {
+        if (error.name === 'NotFoundError') return candidate;
+        if (error.name === 'TypeMismatchError') {
+          candidate = `${baseName} (${increment})${extension}`;
+          increment += 1;
+          continue;
+        }
+        throw error;
+      }
     }
   }
 

@@ -118,7 +118,7 @@ class EstimateEditor {
       pan: estimate.pan || ''
     };
     this.currentEstimateProducts = Array.isArray(estimate.products)
-      ? JSON.parse(JSON.stringify(estimate.products))
+      ? this.normalizeEstimateProducts(estimate.products)
       : [];
     const todayDate = new Date();
     const today = this.formatDate(todayDate);
@@ -1604,44 +1604,12 @@ class EstimateEditor {
     const taxPer = parseFloat(container.querySelector('#estProductTax')?.value) || 0;
     const scheme = container.querySelector('#estProductScheme')?.value || '';
     const customScheme = container.querySelector('#estCustomSchemeValue')?.value || '';
+    const schemeValue = scheme === 'custom' ? customScheme : scheme;
     const pack = container.querySelector('#estProductPack')?.value.trim() || '';
     const packUnit = container.querySelector('#estProductPackUnit')?.value || '';
     const fullPack = pack ? `${pack} ${packUnit}`.trim() : (this.currentProduct?.pack || '');
     const batch = container.querySelector('#estProductBatch')?.value.trim() || '';
     const isReverse = container.querySelector('#estGstReverseCheckbox')?.value === 'true';
-
-    // Calculate line item totals using BillCalculator
-    let lineItem;
-    if (typeof window !== 'undefined' && window.BillCalculator) {
-      lineItem = window.BillCalculator.calculateLineItem({
-        qty,
-        rate,
-        mrp,
-        dis1,
-        dis2,
-        scheme: scheme === 'custom' ? customScheme : scheme,
-        tax_percent: taxPer,
-        gst_reverse: isReverse
-      });
-    } else {
-      const gross = qty * rate;
-      const d1Val = gross * (dis1 / 100);
-      const d2Val = (gross - d1Val) * (dis2 / 100);
-      const totalDis = d1Val + d2Val;
-      const taxable = gross - totalDis;
-      const taxAmount = taxable * (taxPer / 100);
-      const finalAmount = taxable + taxAmount;
-      lineItem = {
-        amount: gross,
-        discount_amount: totalDis,
-        taxable_amount: taxable,
-        tax_amount: taxAmount,
-        sgst_amount: taxAmount / 2,
-        cgst_amount: taxAmount / 2,
-        final_amount: finalAmount,
-        free_qty: 0
-      };
-    }
 
     const productEntry = {
       product_id: this.currentProduct?.id || null,
@@ -1656,24 +1624,31 @@ class EstimateEditor {
       batch_no: batch,
       exp_date: this.currentProduct?.exp_date || '',
       qty,
-      free: lineItem.free_qty || 0,
-      scheme: scheme === 'custom' ? customScheme : scheme,
+      free: 0,
+      scheme: schemeValue,
       mrp,
       rate,
-      amount: lineItem.amount || (qty * rate),
       dis1,
       dis2,
-      discount_amount: lineItem.discount_amount || 0,
-      sgst_per: taxPer / 2,
-      sgst_val: lineItem.sgst_amount || 0,
-      cgst_per: taxPer / 2,
-      cgst_val: lineItem.cgst_amount || 0,
+      discount_amount: 0,
+      discount_1_percent: dis1,
+      discount_2_percent: dis2,
+      sgst_per: 0,
+      sgst_val: 0,
+      cgst_per: 0,
+      cgst_val: 0,
       gstTotal: taxPer,
       gst_percent: taxPer,
-      final_amt: lineItem.final_amount || lineItem.amount,
       gst_reverse: isReverse,
       is_gold: (this.currentProduct?.is_gold || 0)
     };
+    try {
+      this.recalculateEstimateProduct(productEntry);
+    } catch (error) {
+      log.error('Unable to calculate estimate product:', error);
+      this.showNotification(error.message || 'Unable to calculate this estimate product.', 'error');
+      return;
+    }
 
     this.currentEstimateProducts.push(productEntry);
     this.isEstimateDirty = true;
@@ -1920,23 +1895,19 @@ class EstimateEditor {
 
   recalculateEstimateProduct(product) {
     const calculator = window.BillCalculator;
-    if (!calculator?.calculateLineItem) {
+    if (!calculator?.calculateProductLine || !calculator?.calculateFreeItems) {
       throw new Error('Bill calculation engine is unavailable.');
     }
-    const line = calculator.calculateLineItem({
-      rate: product.rate,
-      mrp: product.mrp,
-      qty: product.qty || product.quantity,
-      disc1: product.dis1 ?? product.discount_1_percent ?? 0,
-      discount_1_percent: product.dis1 ?? product.discount_1_percent ?? 0,
-      disc2: product.dis2 ?? product.discount_2_percent ?? 0,
-      discount_2_percent: product.dis2 ?? product.discount_2_percent ?? 0,
-      gstTotal: product.gstTotal ?? product.gst_percent ?? 0,
-      scheme: product.scheme || '',
-      gst_reverse: Boolean(product.gst_reverse)
+    const line = calculator.calculateProductLine({
+      ...product,
+      disc1: product.disc1 ?? product.dis1 ?? product.discount_1_percent ?? product.discount_1 ?? 0,
+      disc2: product.disc2 ?? product.dis2 ?? product.discount_2_percent ?? product.discount_2 ?? 0,
+      gstTotal: product.gstTotal ?? product.gst_percent ?? 0
     });
     product.amount = line.amount;
     product.discount_amount = line.discount_1_amount + line.discount_2_amount;
+    product.disc1 = line.discount_1_percent;
+    product.disc2 = line.discount_2_percent;
     product.dis1 = line.discount_1_percent;
     product.dis2 = line.discount_2_percent;
     product.discount_1_percent = line.discount_1_percent;
@@ -1952,24 +1923,29 @@ class EstimateEditor {
     product.final_amount = line.final_amount;
   }
 
+  normalizeEstimateProducts(products) {
+    const normalizedProducts = JSON.parse(JSON.stringify(products));
+    normalizedProducts.forEach(product => this.recalculateEstimateProduct(product));
+    return normalizedProducts;
+  }
+
+  prepareSavedEstimate(estimate) {
+    const products = this.normalizeEstimateProducts(Array.isArray(estimate.products) ? estimate.products : []);
+    const { summary } = window.BillCalculator.calculateProducts(products);
+    return {
+      ...estimate,
+      products,
+      total_amount: summary.total_amount,
+      total_discount: summary.total_discount,
+      total_sgst: summary.total_sgst,
+      total_cgst: summary.total_cgst,
+      round_off: summary.round_off,
+      grand_total: summary.grand_total
+    };
+  }
+
   updateEstimateSummary() {
-    let subtotal = 0;
-    let totalDiscount = 0;
-    let totalSGST = 0;
-    let totalCGST = 0;
-    let totalQty = 0;
-
-    for (const p of this.currentEstimateProducts) {
-      subtotal += Number(p.amount) || 0;
-      totalDiscount += Number(p.discount_amount) || 0;
-      totalSGST += Number(p.sgst_val) || 0;
-      totalCGST += Number(p.cgst_val) || 0;
-      totalQty += Number(p.qty || p.quantity) || 0;
-    }
-
-    const unroundedGrand = subtotal - totalDiscount + totalSGST + totalCGST;
-    const roundedGrand = Math.round(unroundedGrand);
-    const roundOff = roundedGrand - unroundedGrand;
+    const { summary, total_quantity: totalQty } = window.BillCalculator.calculateProducts(this.currentEstimateProducts);
 
     const container = this.viewContainer;
     const setTxt = (id, val) => {
@@ -1977,25 +1953,18 @@ class EstimateEditor {
       if (el) el.textContent = val;
     };
 
-    setTxt('#estHeaderTotal', `₹${roundedGrand.toFixed(2)}`);
+    setTxt('#estHeaderTotal', `₹${summary.grand_total.toFixed(2)}`);
     setTxt('#estHeaderItems', String(this.currentEstimateProducts.length));
     setTxt('#estSummaryCount', String(this.currentEstimateProducts.length));
     setTxt('#estSummaryQty', String(totalQty));
-    setTxt('#estSummarySubtotal', `₹${subtotal.toFixed(2)}`);
-    setTxt('#estSummaryDiscount', `₹${totalDiscount.toFixed(2)}`);
-    setTxt('#estSummarySGST', `₹${totalSGST.toFixed(2)}`);
-    setTxt('#estSummaryCGST', `₹${totalCGST.toFixed(2)}`);
-    setTxt('#estSummaryRounding', `${roundOff >= 0 ? '+' : ''}${roundOff.toFixed(2)}`);
-    setTxt('#estSummaryGrandTotal', `₹${roundedGrand.toFixed(2)}`);
+    setTxt('#estSummarySubtotal', `₹${summary.total_amount.toFixed(2)}`);
+    setTxt('#estSummaryDiscount', `₹${summary.total_discount.toFixed(2)}`);
+    setTxt('#estSummarySGST', `₹${summary.total_sgst.toFixed(2)}`);
+    setTxt('#estSummaryCGST', `₹${summary.total_cgst.toFixed(2)}`);
+    setTxt('#estSummaryRounding', `${summary.round_off >= 0 ? '+' : ''}${summary.round_off.toFixed(2)}`);
+    setTxt('#estSummaryGrandTotal', `₹${summary.grand_total.toFixed(2)}`);
 
-    this.calculatedSummary = {
-      total_amount: subtotal,
-      total_discount: totalDiscount,
-      total_sgst: totalSGST,
-      total_cgst: totalCGST,
-      round_off: roundOff,
-      grand_total: roundedGrand
-    };
+    this.calculatedSummary = summary;
   }
 
   getEstimatePayload() {
@@ -2041,6 +2010,9 @@ class EstimateEditor {
       throw new Error('Please add at least one product to the estimate.');
     }
 
+    this.currentEstimateProducts = this.normalizeEstimateProducts(this.currentEstimateProducts);
+    this.updateEstimateSummary();
+
     const summary = this.calculatedSummary || {
       total_amount: 0,
       total_discount: 0,
@@ -2079,7 +2051,7 @@ class EstimateEditor {
 
   async previewEstimate(savedEstimate = null) {
     try {
-      const payload = savedEstimate || this.getEstimatePayload();
+      const payload = savedEstimate ? this.prepareSavedEstimate(savedEstimate) : this.getEstimatePayload();
       let ledgerView = this.billingApp?._subviewInstances?.get('ledger');
       if (!ledgerView && window.currentLedgerView?.billingApp === this.billingApp) {
         ledgerView = window.currentLedgerView;
@@ -2099,7 +2071,7 @@ class EstimateEditor {
 
   async exportEstimate(savedEstimate = null) {
     try {
-      const payload = savedEstimate || this.getEstimatePayload();
+      const payload = savedEstimate ? this.prepareSavedEstimate(savedEstimate) : this.getEstimatePayload();
 
       const resp = await fetch('/api/billing/export-estimate-pdf', {
         method: 'POST',
@@ -2115,15 +2087,27 @@ class EstimateEditor {
       const result = await resp.json();
       if (!result.pdf) throw new Error('No PDF data returned');
 
-      // Trigger browser download via base64 data URI
-      const link = document.createElement('a');
-      link.href = `data:application/pdf;base64,${result.pdf}`;
-      link.download = result.fileName || `${payload.estimate_no}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      this.showNotification(`Downloaded ${result.fileName || payload.estimate_no}.`, 'success');
+      if (!window.LedgerFileUtils?.exportToLocation) {
+        throw new Error('Estimate file export is unavailable.');
+      }
+      const rawFileName = result.fileName || `${payload.estimate_no || 'Estimate'}.pdf`;
+      const fileName = /^estimate[_ -]/i.test(rawFileName) ? rawFileName : `Estimate_${rawFileName}`;
+      const blob = await (await fetch(`data:application/pdf;base64,${result.pdf}`)).blob();
+      const saveResult = await window.LedgerFileUtils.exportToLocation(
+        payload.party_name || payload.customer_name,
+        fileName,
+        blob,
+        { incrementFileName: true }
+      );
+      if (saveResult.cancelled) return;
+      if (saveResult.success) {
+        const message = saveResult.folder
+          ? `Saved to ${saveResult.folder}/${saveResult.fileName}`
+          : saveResult.fallback
+            ? `Downloaded ${saveResult.fileName}`
+            : `Saved ${saveResult.fileName}`;
+        this.showNotification(message, 'success');
+      }
     } catch (e) {
       log.error('Export estimate failed:', e);
       this.showNotification(e.message, 'error');

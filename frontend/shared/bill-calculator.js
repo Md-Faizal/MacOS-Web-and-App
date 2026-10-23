@@ -131,6 +131,32 @@ class BillCalculator {
     };
   }
 
+  static calculateProductLine(product) {
+    return this.calculateLineItem({
+      rate: (product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0)
+        ? product.rate
+        : (product.mrp || 0),
+      mrp: product.mrp || product.rate || 0,
+      qty: product.qty || 1,
+      disc1: product.disc1 || 0,
+      disc2: product.disc2 || 0,
+      sgst: product.sgst || 0,
+      cgst: product.cgst || 0,
+      gstTotal: product.gstTotal || 0,
+      scheme: product.scheme || null,
+      gst_reverse: product.gst_reverse || false
+    });
+  }
+
+  static calculateProducts(products) {
+    const lineItems = products.map(product => this.calculateProductLine(product));
+    return {
+      lineItems,
+      summary: this.calculateBillSummary(lineItems),
+      total_quantity: lineItems.reduce((total, item) => total + item.qty, 0)
+    };
+  }
+
   /**
    * Calculate bill summary totals from array of line items
    * 

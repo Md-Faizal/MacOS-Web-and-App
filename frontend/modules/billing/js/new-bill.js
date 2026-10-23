@@ -3426,28 +3426,10 @@ class BillEditor {
     
     // Always recalculate using BillCalculator to ensure accuracy
     // This is more reliable than using stored amounts which might be incorrect
-    const lineItems = this.currentBillProducts.map((product, idx) => {
-      // Calculate each product line item
-      const lineCalc = BillCalculator.calculateLineItem({
-        rate: (product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0) ? product.rate : (product.mrp || 0),
-        mrp: product.mrp || product.rate || 0,
-        qty: product.qty || 1,
-        disc1: product.disc1 || 0,
-        disc2: product.disc2 || 0,
-        sgst: product.sgst || 0,
-        cgst: product.cgst || 0,
-        gstTotal: product.gstTotal || 0,
-        scheme: product.scheme || null,
-        gst_reverse: product.gst_reverse || false
-      });
-
-      log.debug(`  Product ${idx}: name=${product.name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
-
-      return lineCalc;
+    const { lineItems, summary, total_quantity: totalQty } = BillCalculator.calculateProducts(this.currentBillProducts);
+    lineItems.forEach((lineCalc, idx) => {
+      log.debug(`  Product ${idx}: name=${this.currentBillProducts[idx].name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
     });
-
-    // Calculate bill summary using BillCalculator
-    const summary = BillCalculator.calculateBillSummary(lineItems);
 
     log.debug(`📊 Summary Results:`, {
       total_amount: summary.total_amount.toFixed(2),
@@ -3468,8 +3450,6 @@ class BillEditor {
     };
 
     const productCount = this.currentBillProducts.length;
-    const totalQty = lineItems.reduce((sum, item) => sum + item.qty, 0);
-
     updateElement('summaryProductCount', productCount);
     updateElement('summaryTotalQty', totalQty.toFixed(2));
     updateElement('summarySubtotal', '₹' + summary.total_amount.toFixed(2));
