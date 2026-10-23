@@ -557,6 +557,7 @@ fn test_native_invoice_pdf_generation() {
 
     let data = InvoiceRenderData {
         invoice_no: "INV-2026-0042".to_string(),
+        is_estimate: false,
         invoice_date: Some("2026-10-03".to_string()),
         due_date: Some("2026-11-02".to_string()),
         lr_no: Some("LR-9988".to_string()),
@@ -911,4 +912,3 @@ fn test_payment_voucher_and_credit_note_generation() {
     assert!(!pdf_str.contains("9437026823"));
     assert!(!pdf_str.contains("computer-generated document"));
 }
-

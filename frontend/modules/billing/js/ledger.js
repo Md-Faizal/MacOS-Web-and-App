@@ -6,6 +6,12 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class LedgerView {
+  static previewEstimate(billingApp, estimateData) {
+    const previewView = Object.create(LedgerView.prototype);
+    previewView.billingApp = billingApp;
+    return previewView.viewDocument('estimate', estimateData);
+  }
+
   showNotification(message, type = 'info', options = {}) {
     const isError = type === 'error' || type === 'critical';
     const opts = typeof options === 'object' && options !== null ? options : {};
@@ -1825,7 +1831,7 @@ class LedgerView {
     modal.innerHTML = `
       <div style="position:fixed;top:5%;left:5%;width:90%;height:90%;background:white;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.6);z-index:2147483647;font-family:'Courier New',monospace;">
         <div style="padding:16px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.5px;">${title}</h3>
+          <h3 style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.5px;"></h3>
           <div style="display:flex;gap:8px;align-items:center;color:#666;">
             <span style="font-size:10px;color:#999;">Hold Z + scroll/drag to zoom/pan | Double-click to reset</span>
             <button id="close-attachment-modal" style="background:none;border:none;font-size:24px;cursor:pointer;color:#666;margin-left:12px;">&times;</button>
@@ -2598,6 +2604,9 @@ class LedgerView {
       if (type === 'invoice') {
         endpoint = '/api/billing/preview-invoice-pdf';
         title = `Invoice ${documentId}`;
+      } else if (type === 'estimate') {
+        endpoint = '/api/billing/preview-estimate-pdf';
+        title = `Estimate ${documentId?.estimate_no || 'Preview'}`;
       } else if (type === 'payment' || type === 'credit-note') {
         endpoint = '/api/billing/preview-payment-pdf';
         title = type === 'credit-note' ? `Credit Note ${documentId}` : `Payment ${documentId}`;
@@ -2619,7 +2628,9 @@ class LedgerView {
       // Fetch preview
       const API_BASE = window.BILLING_API_BASE || '';
       const requestBody = {};
-      if (type === 'invoice') {
+      if (type === 'estimate') {
+        Object.assign(requestBody, documentId);
+      } else if (type === 'invoice') {
         // If documentId is a number/string numeric, treat as invoiceId
         const docIdNum = parseInt(documentId);
         if (!isNaN(docIdNum) && docIdNum > 0) {
@@ -2630,7 +2641,7 @@ class LedgerView {
       else if (type === 'payment' || type === 'credit-note') requestBody.paymentId = documentId;
       else if (type === 'opening-balance') requestBody.customerName = documentId;
 
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}${endpoint}?format=pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
@@ -2648,7 +2659,10 @@ class LedgerView {
       }
 
       const blob = await response.blob();
-      const imageUrl = URL.createObjectURL(blob);
+      if (blob.type !== 'application/pdf') {
+        throw new Error(`Expected a PDF preview, received ${blob.type || 'an unknown content type'}`);
+      }
+      const pdfUrl = URL.createObjectURL(blob);
 
       const loadingEl = document.getElementById(loadingId);
       if (loadingEl) loadingEl.remove();
@@ -2662,14 +2676,14 @@ class LedgerView {
       modal.innerHTML = `
         <div style="position:fixed;top:5%;left:5%;width:90%;height:90%;background:white;border-radius:8px;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.6);z-index:2147483647;font-family:'Courier New',monospace;">
           <div style="padding:16px;border-bottom:1px solid rgba(0,0,0,0.1);display:flex;justify-content:space-between;align-items:center;">
-            <h3 style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.5px;">${title}</h3>
+            <h3 style="margin:0;font-size:14px;font-weight:700;letter-spacing:0.5px;"></h3>
             <div style="display:flex;gap:8px;align-items:center;color:#666;">
-              <span style="font-size:10px;color:#999;">Hold Z + scroll/drag to zoom/pan | Double-click to reset</span>
+              <span style="font-size:10px;color:#999;">Use the PDF controls to navigate pages, zoom, print, or download</span>
               <button id="close-document-modal" style="background:none;border:none;font-size:24px;cursor:pointer;color:#666;margin-left:12px;">&times;</button>
             </div>
           </div>
-          <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#f5f5f5;">
-            <img id="unified-document-img" src="${imageUrl}" style="max-width:100%;max-height:100%;object-fit:contain;" />
+          <div style="flex:1;overflow:hidden;background:#f5f5f5;">
+            <iframe id="unified-document-pdf" title="PDF document preview" style="width:100%;height:100%;border:0;background:#f5f5f5;"></iframe>
           </div>
           <div style="padding:12px;border-top:1px solid rgba(0,0,0,0.1);background:#fafbfc;display:flex;gap:8px;justify-content:flex-end;">
             <button id="download-document-btn" style="padding:8px 16px;background:#4CAF50;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:11px;">📥 Download</button>
@@ -2679,21 +2693,25 @@ class LedgerView {
       `;
       
       document.body.appendChild(modal);
+      modal.querySelector('h3').textContent = title;
+      modal.querySelector('#unified-document-pdf').src = pdfUrl;
 
       const closeHandler = () => {
         modal.remove();
-        URL.revokeObjectURL(imageUrl);
+        URL.revokeObjectURL(pdfUrl);
       };
 
-      document.getElementById('close-document-modal').onclick = closeHandler;
-      document.getElementById('close-document-btn').onclick = closeHandler;
-      document.getElementById('download-document-btn').onclick = () => {
-        if (type === 'opening-balance') {
+      modal.querySelector('#close-document-modal').onclick = closeHandler;
+      modal.querySelector('#close-document-btn').onclick = closeHandler;
+      modal.querySelector('#download-document-btn').onclick = () => {
+        if (type === 'estimate') {
+          this.billingApp.estimateEditor.exportEstimate(documentId);
+        } else if (type === 'opening-balance') {
           this.exportOpeningBalance(documentId);
         } else {
           const a = document.createElement('a');
-          a.href = imageUrl;
-          a.download = `${type}-${documentId}.png`;
+          a.href = pdfUrl;
+          a.download = `${type}-${documentId}.pdf`;
           a.click();
         }
       };
@@ -2701,103 +2719,6 @@ class LedgerView {
       modal.onclick = (e) => {
         if (e.target === modal) closeHandler();
       };
-
-      // Setup zoom/pan interactions
-      (function setupPreviewInteractions() {
-        const img = document.getElementById('unified-document-img');
-        if (!img) return;
-
-        const modalEl = document.getElementById(modalId);
-        let scale = 1;
-        let minScale = 0.2;
-        let maxScale = 5;
-        let translate = { x: 0, y: 0 };
-        let isPanning = false;
-        let lastPointer = { x: 0, y: 0 };
-        let zPressed = false;
-
-        const applyTransform = () => {
-          img.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${scale})`;
-          img.style.transformOrigin = 'center center';
-        };
-
-        // Keyboard controls
-        window.addEventListener('keydown', (e) => {
-          if (e.key === 'z' || e.key === 'Z') zPressed = true;
-        });
-        window.addEventListener('keyup', (e) => {
-          if (e.key === 'z' || e.key === 'Z') zPressed = false;
-        });
-
-        // Wheel zoom when Z held
-        modalEl.addEventListener('wheel', (ev) => {
-          if (!zPressed) return;
-          ev.preventDefault();
-          const delta = -ev.deltaY;
-          const factor = delta > 0 ? 1.12 : 0.88;
-          const prevScale = scale;
-          scale = Math.min(maxScale, Math.max(minScale, scale * factor));
-
-          // Zoom towards pointer
-          const rect = img.getBoundingClientRect();
-          const offsetX = ev.clientX - rect.left - rect.width / 2;
-          const offsetY = ev.clientY - rect.top - rect.height / 2;
-          translate.x -= offsetX * (scale / prevScale - 1);
-          translate.y -= offsetY * (scale / prevScale - 1);
-
-          applyTransform();
-        }, { passive: false });
-
-        // Prevent context menu when panning
-        modalEl.addEventListener('contextmenu', (ev) => {
-          if (zPressed) ev.preventDefault();
-        });
-
-        // Pointer pan (right button) when Z held
-        modalEl.addEventListener('pointerdown', (ev) => {
-          if (!(zPressed && ev.button === 2)) return;
-          ev.preventDefault();
-          isPanning = true;
-          lastPointer.x = ev.clientX;
-          lastPointer.y = ev.clientY;
-          modalEl.setPointerCapture(ev.pointerId);
-          img.style.cursor = 'grabbing';
-        });
-
-        modalEl.addEventListener('pointermove', (ev) => {
-          if (!isPanning) return;
-          ev.preventDefault();
-          const dx = ev.clientX - lastPointer.x;
-          const dy = ev.clientY - lastPointer.y;
-          lastPointer.x = ev.clientX;
-          lastPointer.y = ev.clientY;
-          translate.x += dx;
-          translate.y += dy;
-          applyTransform();
-        });
-
-        modalEl.addEventListener('pointerup', (ev) => {
-          if (!isPanning) return;
-          isPanning = false;
-          try { modalEl.releasePointerCapture(ev.pointerId); } catch (e) {}
-          img.style.cursor = 'auto';
-        });
-
-        // Double click resets
-        img.addEventListener('dblclick', (ev) => {
-          ev.preventDefault();
-          scale = 1;
-          translate.x = 0;
-          translate.y = 0;
-          applyTransform();
-        });
-
-        // Initial styles
-        img.style.transition = 'transform 120ms ease-out';
-        img.style.willChange = 'transform';
-        img.style.cursor = 'auto';
-        applyTransform();
-      })();
 
     } catch (error) {
       const loadingEl = document.querySelector('[id^="document-loading-"]');
@@ -3010,4 +2931,3 @@ class LedgerView {
 
 // Ensure global availability
 window.LedgerView = LedgerView;
-

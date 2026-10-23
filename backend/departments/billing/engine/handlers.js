@@ -8,6 +8,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const sharp = require('sharp');
 
 // Detect whether this system uses 'python3' or 'python'
 // Ubuntu/Linux uses python3; Windows uses python
@@ -22,6 +23,50 @@ function getPythonCmd() {
   }
 }
 const PYTHON_CMD = getPythonCmd();
+
+function settingEnabled(value) {
+  return ['true', '1', 'yes'].includes(String(value || '').trim().toLowerCase());
+}
+
+function usesAutoDigitalSignature(appSettings) {
+  const configuredMode = String(appSettings.document_signature_mode || '').trim().toLowerCase();
+  if (configuredMode === 'auto_digital') return true;
+  if (configuredMode === 'traditional') return false;
+
+  const legacyClassic = settingEnabled(appSettings.invoice_authority_sign_no_qr)
+    || settingEnabled(appSettings.invoice_classic_signature_mode)
+    || ['classic', 'usual'].includes(String(appSettings.invoice_signature_layout || '').trim().toLowerCase());
+  return !legacyClassic && settingEnabled(appSettings.invoice_auto_sign_disclaimer);
+}
+
+async function prepareProprietorSignature(appSettings) {
+  delete appSettings.proprietor_signature_jpeg_base64;
+  if (!settingEnabled(appSettings.document_use_proprietor_signature)
+    || usesAutoDigitalSignature(appSettings)
+    || !appSettings.proprietor_signature_data) {
+    return;
+  }
+
+  const signatureData = String(appSettings.proprietor_signature_data).trim();
+  const base64 = signatureData.includes(',')
+    ? signatureData.slice(signatureData.indexOf(',') + 1)
+    : signatureData;
+  if (!base64 || base64.length > 14_000_000) {
+    throw new Error('Saved proprietor signature image is empty or exceeds the PDF image size limit.');
+  }
+
+  try {
+    const image = Buffer.from(base64, 'base64');
+    if (!image.length) throw new Error('Image data is empty.');
+    const jpeg = await sharp(image)
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    appSettings.proprietor_signature_jpeg_base64 = jpeg.toString('base64');
+  } catch (error) {
+    throw new Error(`Could not prepare the saved proprietor signature image: ${error.message}`);
+  }
+}
 
 // Helper to format date as "dd-mm-yyyy"
 function formatDateStr(dateStr) {
@@ -78,7 +123,7 @@ function getScriptsPath(scriptName) {
 }
 
 // Generate QR-complete invoice PDFs using native Rust SuiteCore WebAssembly engine.
-function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
+async function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
   try {
     if (!fs.existsSync(dbPath)) throw new Error(`Database not found at: ${dbPath}`);
     const tempDir = getTempDir();
@@ -189,6 +234,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
       invoiceDb.close();
     }
 
+    await prepareProprietorSignature(renderData.app_settings);
     const res = SuiteCoreBridge.renderInvoicePdf(renderData);
     if (!res || !res.success || !res.pdf_base64) {
       throw new Error(`Rust invoice rendering failed: ${res ? res.error : 'Unknown error'}`);
@@ -203,7 +249,7 @@ function generateInvoicePDF(dbPath, invoiceNo, duplex = null, mode = "print") {
 }
 
 // Generate QR-complete Estimate / Quotation PDFs using native Rust SuiteCore WebAssembly engine.
-function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode = "print") {
+async function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode = "print") {
   try {
     const tempDir = getTempDir();
     const estNo = estimatePayload.estimate_no || `EST-${Date.now()}`;
@@ -240,13 +286,11 @@ function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode = "pri
       }
     }
 
-    let duplexPrint = true;
+    let duplexPrint = false;
     if (duplex !== null && duplex !== undefined && duplex !== '') {
       duplexPrint = String(duplex).toLowerCase() === 'true' || String(duplex).toLowerCase() === '1' || String(duplex).toLowerCase() === 'yes';
     } else if (estimatePayload.duplex_print !== undefined) {
-      duplexPrint = Boolean(estimatePayload.duplex_print);
-    } else if (app_settings['invoice_duplex_print'] !== undefined) {
-      duplexPrint = String(app_settings['invoice_duplex_print']).toLowerCase() === 'true' || String(app_settings['invoice_duplex_print']).toLowerCase() === '1' || String(app_settings['invoice_duplex_print']).toLowerCase() === 'yes';
+      duplexPrint = estimatePayload.duplex_print === true || Number(estimatePayload.duplex_print) === 1;
     }
 
     const exportMode = String(mode).toLowerCase() === 'export';
@@ -299,6 +343,7 @@ function generateEstimatePDF(dbPath, estimatePayload, duplex = null, mode = "pri
       terms: Array.isArray(estimatePayload.terms) ? estimatePayload.terms.map(String) : [],
     };
 
+    await prepareProprietorSignature(renderData.app_settings);
     const res = SuiteCoreBridge.renderEstimatePdf(renderData);
     if (!res || !res.success || !res.pdf_base64) {
       throw new Error(`Rust estimate rendering failed: ${res ? res.error : 'Unknown error'}`);
@@ -874,7 +919,7 @@ module.exports = function(db) {
       round_off: getAmount('round_off'),
       grand_total: getAmount('grand_total'),
       duplex_print: payload.duplex_print === undefined
-        ? (existing?.duplex_print ?? 1)
+        ? (existing?.duplex_print ?? 0)
         : (payload.duplex_print ? 1 : 0)
     };
   }
@@ -2511,7 +2556,7 @@ module.exports = function(db) {
     },
 
     // Preview invoice as PDF (for inline display) - Returns JPG
-    previewInvoicePDF: (req, res) => {
+    previewInvoicePDF: async (req, res) => {
       try {
         const { invoiceNo, invoiceId, duplex } = req.body;
         if (!invoiceNo && !invoiceId) {
@@ -2551,8 +2596,23 @@ module.exports = function(db) {
         }
         
         // Generate PDF using native Rust SuiteCore engine
-        const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'print');
+        const pdfPath = await generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'print');
         console.log('PDF generated:', pdfPath);
+
+        const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
+        if (wantsPdf) {
+          const pdfData = fs.readFileSync(pdfPath);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${invoice.invoice_no}.pdf"`);
+          setImmediate(() => {
+            try {
+              if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+            } catch (error) {
+              console.warn('Could not clean up preview PDF:', error.message);
+            }
+          });
+          return res.send(pdfData);
+        }
         
         // Convert to JPG
         const jpgPath = convertPDFToJPG(pdfPath);
@@ -2596,7 +2656,7 @@ module.exports = function(db) {
     },
 
     // Export invoice as PDF (for download)
-    exportInvoicePDF: (req, res) => {
+    exportInvoicePDF: async (req, res) => {
       try {
         const { invoiceNo, invoiceId, duplex } = req.body;
         
@@ -2637,7 +2697,7 @@ module.exports = function(db) {
         }
         
         // Generate PDF using native Rust SuiteCore engine in export mode
-        const pdfPath = generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'export');
+        const pdfPath = await generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'export');
         console.log('PDF generated (export mode):', pdfPath);
         
         // Read PDF and send as response
@@ -2673,20 +2733,27 @@ module.exports = function(db) {
     },
 
     // Preview estimate as PDF / JPG (for inline display) - ephemeral, no DB write needed
-    previewEstimatePDF: (req, res) => {
+    previewEstimatePDF: async (req, res) => {
       try {
         const dbPath = getDatabasePath();
         const estimateData = req.body || {};
         const duplex = req.query.duplex ?? req.body.duplex;
 
         // Generate PDF using native Rust SuiteCore engine
-        const pdfPath = generateEstimatePDF(dbPath, estimateData, duplex, 'print');
+        const pdfPath = await generateEstimatePDF(dbPath, estimateData, duplex, 'print');
 
         const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
         if (wantsPdf) {
           const pdfData = fs.readFileSync(pdfPath);
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', 'inline; filename="estimate-preview.pdf"');
+          setImmediate(() => {
+            try {
+              if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+            } catch (error) {
+              console.warn('Could not clean up preview PDF:', error.message);
+            }
+          });
           return res.send(pdfData);
         }
 
@@ -2726,14 +2793,14 @@ module.exports = function(db) {
     },
 
     // Export estimate as PDF (for download)
-    exportEstimatePDF: (req, res) => {
+    exportEstimatePDF: async (req, res) => {
       try {
         const dbPath = getDatabasePath();
         const estimateData = req.body || {};
         const duplex = req.query.duplex ?? req.body.duplex;
 
         // Generate PDF using native Rust SuiteCore engine in export mode
-        const pdfPath = generateEstimatePDF(dbPath, estimateData, duplex, 'export');
+        const pdfPath = await generateEstimatePDF(dbPath, estimateData, duplex, 'export');
         const pdfData = fs.readFileSync(pdfPath);
 
         const estNo = (estimateData.estimate_no || 'Estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -2764,7 +2831,7 @@ module.exports = function(db) {
     },
 
     // Print invoice as PDF
-    printInvoicePDF: (req, res) => {
+    printInvoicePDF: async (req, res) => {
       try {
         const { invoiceNo, invoiceId, duplex } = req.query;
         
@@ -2791,7 +2858,7 @@ module.exports = function(db) {
         const dbPath = getDatabasePath();
         
         // Force duplex mode ON for all print operations
-        const pdfPath = generateInvoicePDF(dbPath, invoice.id, 'yes', 'print');
+        const pdfPath = await generateInvoicePDF(dbPath, invoice.id, 'yes', 'print');
         console.log('PDF generated (print mode, forced duplex):', pdfPath);
         
         // Read PDF and convert to base64
@@ -2952,6 +3019,21 @@ module.exports = function(db) {
         const dbPath = getDatabasePath();
         
         const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: true });
+        const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
+        if (wantsPdf) {
+          const pdfBuffer = fs.readFileSync(pdfPath);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline; filename="payment-preview.pdf"');
+          setImmediate(() => {
+            try {
+              if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+            } catch (error) {
+              console.warn('Could not clean up preview PDF:', error.message);
+            }
+          });
+          return res.send(pdfBuffer);
+        }
+
         const jpgPath = convertPDFToJPG(pdfPath);
         const jpgBuffer = fs.readFileSync(jpgPath);
         
@@ -2996,6 +3078,21 @@ module.exports = function(db) {
 
         const dbPath = getDatabasePath();
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: true });
+        const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
+        if (wantsPdf) {
+          const pdfBuffer = fs.readFileSync(pdfPath);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline; filename="opening-balance-preview.pdf"');
+          setImmediate(() => {
+            try {
+              if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+            } catch (error) {
+              console.warn('Could not clean up preview PDF:', error.message);
+            }
+          });
+          return res.send(pdfBuffer);
+        }
+
         const jpgPath = convertPDFToJPG(pdfPath);
         const jpgBuffer = fs.readFileSync(jpgPath);
         res.setHeader('Content-Type', 'image/jpeg');

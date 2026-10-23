@@ -219,9 +219,9 @@ class EstimateEditor {
 
               <!-- Duplex Option -->
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" id="estDuplexPrint" ${estimate.duplex_print === undefined || estimate.duplex_print ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;">
+                <input type="checkbox" id="estDuplexPrint" ${estimate.duplex_print === true || Number(estimate.duplex_print) === 1 ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;">
                 <label for="estDuplexPrint" style="cursor: pointer; font-size: 12px; color: #374151; font-weight: 500;">
-                  Include Duplex Back-Page (Terms & Conditions, Company Bank Details, and UPI QR)
+                  Include estimate back-page (company UPI QR, bank details, estimate terms, and registered-customer portal)
                 </label>
               </div>
             </div>
@@ -609,7 +609,7 @@ class EstimateEditor {
               </div>
               <div class="estimate-history-actions">
                 <button type="button" data-estimate-action="view" data-estimate-id="${estimate.id}">View</button>
-                <button type="button" data-estimate-action="export" data-estimate-id="${estimate.id}">PDF</button>
+                <button type="button" data-estimate-action="export" data-estimate-id="${estimate.id}">Export</button>
                 <button type="button" data-estimate-action="edit" data-estimate-id="${estimate.id}">Edit</button>
                 <button type="button" data-estimate-action="bill" data-estimate-id="${estimate.id}">Make Bill</button>
                 <button type="button" data-estimate-action="order" data-estimate-id="${estimate.id}" ${estimate.customer_id ? '' : 'title="Register or link this customer first"'}>Make Order</button>
@@ -1933,174 +1933,22 @@ class EstimateEditor {
   }
 
   async previewEstimate(savedEstimate = null) {
-    let loadingDiv = null;
     try {
       const payload = savedEstimate || this.getEstimatePayload();
-
-      loadingDiv = document.createElement('div');
-      loadingDiv.id = 'est-loading-indicator';
-      loadingDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:999999;font-weight:600;display:flex;align-items:center;gap:10px;';
-      loadingDiv.textContent = 'Loading estimate preview...';
-      document.body.appendChild(loadingDiv);
-
-      const resp = await fetch('/api/billing/preview-estimate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: resp.statusText }));
-        throw new Error(err.error || 'Failed to render estimate preview');
+      let ledgerView = this.billingApp?._subviewInstances?.get('ledger');
+      if (!ledgerView && window.currentLedgerView?.billingApp === this.billingApp) {
+        ledgerView = window.currentLedgerView;
       }
-
-      const blob = await resp.blob();
-      const imageUrl = URL.createObjectURL(blob);
-
-      // Open Modal Preview
-      this.showPreviewModal(payload, imageUrl);
+      if (ledgerView) {
+        await ledgerView.viewDocument('estimate', payload);
+      } else if (typeof window.LedgerView === 'function' && typeof window.LedgerView.previewEstimate === 'function') {
+        await window.LedgerView.previewEstimate(this.billingApp, payload);
+      } else {
+        throw new Error('Ledger PDF viewer is unavailable');
+      }
     } catch (e) {
       log.error('Preview estimate failed:', e);
       this.showNotification(e.message, 'error');
-    } finally {
-      loadingDiv?.remove();
-    }
-  }
-
-  showPreviewModal(payload, imageUrl) {
-    const modalId = 'est-preview-modal';
-    const existing = document.getElementById(modalId);
-    if (existing) {
-      existing.previewCleanup?.();
-      existing.remove();
-    }
-
-    const modal = document.createElement('div');
-    modal.id = modalId;
-    modal.className = 'estimate-pdf-preview-overlay';
-
-    modal.innerHTML = `
-      <div class="estimate-pdf-preview-panel">
-        <div class="estimate-pdf-preview-header">
-          <h3>Estimate ${this.escapeHtml(payload.estimate_no || 'Preview')}</h3>
-          <button type="button" id="closeEstModalBtn" class="estimate-pdf-preview-close" aria-label="Close preview">&times;</button>
-        </div>
-        <div class="estimate-pdf-preview-stage">
-          <img id="estimate-preview-img" src="${imageUrl}" alt="Estimate PDF preview" />
-        </div>
-        <div class="estimate-pdf-preview-footer">
-          <button type="button" id="modalExportPdfBtn" class="estimate-pdf-preview-download">Download</button>
-          <button type="button" id="modalCloseBtn" class="estimate-pdf-preview-dismiss">Close</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    const img = modal.querySelector('#estimate-preview-img');
-    let scale = 1;
-    const minScale = 0.2;
-    const maxScale = 5;
-    let translate = { x: 0, y: 0 };
-    let isPanning = false;
-    let lastPointer = { x: 0, y: 0 };
-    let zPressed = false;
-
-    const applyTransform = () => {
-      if (!img) return;
-      img.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${scale})`;
-      img.style.transformOrigin = 'center center';
-    };
-    const onKeyDown = event => {
-      if (event.key === 'z' || event.key === 'Z') zPressed = true;
-    };
-    const onKeyUp = event => {
-      if (event.key === 'z' || event.key === 'Z') zPressed = false;
-    };
-    const onWheel = event => {
-      if (!zPressed || !img) return;
-      event.preventDefault();
-      const previousScale = scale;
-      scale = Math.min(maxScale, Math.max(minScale, scale * (event.deltaY < 0 ? 1.12 : 0.88)));
-      const rect = img.getBoundingClientRect();
-      const offsetX = event.clientX - rect.left - rect.width / 2;
-      const offsetY = event.clientY - rect.top - rect.height / 2;
-      translate.x -= offsetX * (scale / previousScale - 1);
-      translate.y -= offsetY * (scale / previousScale - 1);
-      applyTransform();
-    };
-    const onContextMenu = event => {
-      if (zPressed) event.preventDefault();
-    };
-    const onPointerDown = event => {
-      if (!zPressed || event.button !== 2) return;
-      event.preventDefault();
-      isPanning = true;
-      lastPointer = { x: event.clientX, y: event.clientY };
-      modal.setPointerCapture(event.pointerId);
-      if (img) img.style.cursor = 'grabbing';
-    };
-    const onPointerMove = event => {
-      if (!isPanning) return;
-      event.preventDefault();
-      translate.x += event.clientX - lastPointer.x;
-      translate.y += event.clientY - lastPointer.y;
-      lastPointer = { x: event.clientX, y: event.clientY };
-      applyTransform();
-    };
-    const onPointerUp = event => {
-      if (!isPanning) return;
-      isPanning = false;
-      if (modal.hasPointerCapture(event.pointerId)) modal.releasePointerCapture(event.pointerId);
-      if (img) img.style.cursor = 'auto';
-    };
-    const onDoubleClick = event => {
-      event.preventDefault();
-      scale = 1;
-      translate = { x: 0, y: 0 };
-      applyTransform();
-    };
-    const closeModal = () => {
-      modal.previewCleanup?.();
-      modal.remove();
-      URL.revokeObjectURL(imageUrl);
-    };
-    modal.previewCleanup = () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      modal.removeEventListener('wheel', onWheel);
-      modal.removeEventListener('contextmenu', onContextMenu);
-      modal.removeEventListener('pointerdown', onPointerDown);
-      modal.removeEventListener('pointermove', onPointerMove);
-      modal.removeEventListener('pointerup', onPointerUp);
-      modal.removeEventListener('pointercancel', onPointerUp);
-      img?.removeEventListener('dblclick', onDoubleClick);
-    };
-
-    modal.querySelector('#closeEstModalBtn')?.addEventListener('click', closeModal);
-    modal.querySelector('#modalCloseBtn')?.addEventListener('click', closeModal);
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-
-    modal.querySelector('#modalExportPdfBtn')?.addEventListener('click', () => {
-      this.exportEstimate(payload);
-    });
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    modal.addEventListener('wheel', onWheel, { passive: false });
-    modal.addEventListener('contextmenu', onContextMenu);
-    modal.addEventListener('pointerdown', onPointerDown);
-    modal.addEventListener('pointermove', onPointerMove);
-    modal.addEventListener('pointerup', onPointerUp);
-    modal.addEventListener('pointercancel', onPointerUp);
-    img?.addEventListener('dblclick', onDoubleClick);
-    if (img) {
-      img.style.transition = 'transform 120ms ease-out';
-      img.style.willChange = 'transform';
-      img.style.cursor = 'auto';
-      applyTransform();
     }
   }
 

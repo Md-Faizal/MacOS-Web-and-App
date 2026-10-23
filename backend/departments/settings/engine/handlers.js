@@ -941,6 +941,7 @@ module.exports = function(db) {
           'proprietor_signature_data': '',
           'invoice_show_dues_widget': 'true',
           'invoice_auto_sign_disclaimer': 'true',
+          'document_use_proprietor_signature': 'false',
           'payment_qr_image': '',
           'payment_upi_id': '7749089400@hdfc',
           'bank_account_holder': 'MD  FAIZAL',

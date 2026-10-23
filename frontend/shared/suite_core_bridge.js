@@ -345,8 +345,7 @@ class SuiteCoreBridge {
   }
 
   /**
-   * Render modern Estimate / Quotation PDF directly in Rust WebAssembly (<5ms).
-   * Reuses InvoiceProductItem layout, adds watermarked header, indicative totals, validity footer.
+   * Render an estimate PDF using the invoice layout with estimate-specific labels and validity wording.
    * Returns { success, pdf_base64, byte_count }
    * @param {Object} estimateData - Estimate render data structure
    */
