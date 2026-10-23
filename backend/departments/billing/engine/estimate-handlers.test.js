@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const Database = require('better-sqlite3');
 const createBillingHandlers = require('./handlers');
 const createBillingRoutes = require('./routes');
@@ -257,6 +260,69 @@ test('estimate numbers are generated when omitted and duplicate numbers return a
     assert.equal(duplicate.body.error, 'Estimate number already exists.');
   } finally {
     db.close();
+  }
+});
+
+test('estimate PDF pack formatting matches invoice pack values before rendering', async () => {
+  const db = createTestDatabase();
+  const bridgePath = require.resolve('../../../../frontend/shared/suite_core_bridge.js');
+  const SuiteCoreBridge = require(bridgePath);
+  const originalIsWasmLoaded = SuiteCoreBridge.isWasmLoaded;
+  const originalRenderEstimatePdf = SuiteCoreBridge.renderEstimatePdf;
+  const tempDir = path.join(os.tmpdir(), 'macos-invoices');
+  const existingFiles = new Set(fs.existsSync(tempDir) ? fs.readdirSync(tempDir) : []);
+  const result = { body: null };
+  let renderedEstimate;
+  const res = {
+    json(value) {
+      result.body = value;
+    },
+    status() {
+      return this;
+    },
+    send() {}
+  };
+
+  SuiteCoreBridge.isWasmLoaded = () => true;
+  SuiteCoreBridge.renderEstimatePdf = estimateData => {
+    renderedEstimate = estimateData;
+    return { success: true, pdf_base64: Buffer.from('test-pdf').toString('base64') };
+  };
+
+  try {
+    const handlers = createBillingHandlers(db);
+    await handlers.exportEstimatePDF({
+      body: {
+        estimate_no: 'EST-PACK-FORMAT',
+        party_name: 'Walk-in Customer',
+        products: [
+          { pack: '200.0 GM' },
+          { pack_value: '10.0', pack_type: 'TAB', pack: '10.0 TAB' },
+          { pack: 'Custom pack' }
+        ]
+      },
+      query: {},
+      get: () => ''
+    }, res);
+
+    assert.ok(result.body?.pdf);
+    assert.deepEqual(
+      renderedEstimate.products.map(product => product.pack),
+      ['200 GM', '10 TAB', 'Custom pack']
+    );
+    assert.match(result.body.fileName, /^EST-PACK-FORMAT\.\d{2}-\d{2}-\d{4}\.pdf$/);
+  } finally {
+    SuiteCoreBridge.isWasmLoaded = originalIsWasmLoaded;
+    SuiteCoreBridge.renderEstimatePdf = originalRenderEstimatePdf;
+    db.close();
+
+    if (fs.existsSync(tempDir)) {
+      for (const file of fs.readdirSync(tempDir)) {
+        if (!existingFiles.has(file) && file.startsWith('estimate-EST-PACK-FORMAT-')) {
+          fs.unlinkSync(path.join(tempDir, file));
+        }
+      }
+    }
   }
 });
 

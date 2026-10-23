@@ -86,14 +86,21 @@ function formatDateStr(dateStr) {
 }
 
 function formatEstimatePack(product) {
-  const pack = String(product.pack || '').trim();
-  if (pack) return pack;
-
   const value = product.pack_value ?? product.pack_size_value;
   const type = String(product.pack_type ?? product.pack_size_type ?? '').trim();
-  if (value === undefined || value === null || !type) return '';
-  const numericValue = Number(value);
-  return `${Number.isFinite(numericValue) ? Math.trunc(numericValue) : String(value).trim()} ${type}`;
+  const hasValue = value !== undefined && value !== null && String(value).trim() !== '';
+  if (hasValue && type) {
+    const numericValue = Number(value);
+    return `${Number.isFinite(numericValue) ? Math.trunc(numericValue) : String(value).trim()} ${type}`;
+  }
+
+  const pack = String(product.pack || '').trim();
+  const match = pack.match(/^(-?(?:\d+(?:\.\d*)?|\.\d+))\s+(.+)$/);
+  if (!match) return pack;
+
+  const numericValue = Number(match[1]);
+  const formattedValue = Number.isFinite(numericValue) ? Math.trunc(numericValue) : match[1];
+  return `${formattedValue} ${match[2].trim()}`;
 }
 
 // Helper to get temp directory
