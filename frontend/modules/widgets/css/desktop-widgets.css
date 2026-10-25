@@ -13,8 +13,8 @@
   flex-direction: column;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.1) 100%);
   background-color: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(25px) saturate(180%) brightness(1.05) !important;
-  -webkit-backdrop-filter: blur(25px) saturate(180%) brightness(1.05) !important;
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-bottom: none;
   border-top-left-radius: 1rem;
@@ -36,8 +36,6 @@
   z-index: -1;
   border-radius: inherit;
   background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(25px) saturate(180%) brightness(1.05);
-  -webkit-backdrop-filter: blur(25px) saturate(180%) brightness(1.05);
 }
 
 .desktop-widgets-panel > * {
@@ -230,8 +228,8 @@
 /* Widget Card */
 .widget-card {
   background: var(--mac-w-glass-bg);
-  backdrop-filter: blur(25px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
   border: 1px solid var(--mac-w-glass-border);
   border-radius: 12px;
   padding: 12px;

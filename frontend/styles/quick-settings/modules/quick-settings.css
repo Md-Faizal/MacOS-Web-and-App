@@ -252,18 +252,17 @@
   right: 20px;
   width: 320px;
   padding: 16px;
-  background: rgba(28, 28, 30, 0.45);
-  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
-  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(28, 28, 32, 0.82);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--qs-panel-radius);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
   z-index: 1000;
   color: var(--qs-text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
   user-select: none;
   transform: translateZ(0);
-  will-change: backdrop-filter;
   animation: qsFadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

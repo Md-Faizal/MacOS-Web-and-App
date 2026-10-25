@@ -566,10 +566,9 @@
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.4);
-  -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
-  backdrop-filter: blur(30px) saturate(190%) contrast(100%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  backdrop-filter: blur(8px) saturate(150%);
   transform: translateZ(0);
-  will-change: backdrop-filter;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;

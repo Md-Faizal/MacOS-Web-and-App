@@ -50,6 +50,8 @@ body::-webkit-scrollbar {
   background-repeat: no-repeat;
   background-attachment: fixed;
   pointer-events: none;
+  transform: translateZ(0);
+  will-change: transform;
   transition: filter 0.35s ease, transform 0.35s ease;
 }
 
@@ -60,9 +62,9 @@ body::-webkit-scrollbar {
 }
 
 body.login-active #wallpaperBackground {
-  filter: blur(25px) brightness(0.92);
-  -webkit-filter: blur(25px) brightness(0.92);
-  transform: scale(1.04);
+  filter: brightness(0.85);
+  -webkit-filter: brightness(0.85);
+  transform: scale(1.02) translateZ(0);
 }
 
 /* Frosted Blur Overlay (Activated on modal open or swipe) */
@@ -72,14 +74,15 @@ body.login-active #wallpaperBackground {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(25px) brightness(0.92);
-  -webkit-backdrop-filter: blur(25px) brightness(0.92);
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s ease;
   z-index: 15;
   pointer-events: none;
+  transform: translateZ(0);
 }
 
 .blur-overlay.active,
@@ -354,8 +357,6 @@ body.login-active .blur-overlay {
   font-size: 32px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
 }
 
@@ -373,12 +374,12 @@ body.login-active .blur-overlay {
   left: calc(100% + 12px);
   min-width: 150px;
   padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 10px;
-  background: rgba(30, 30, 30, 0.75);
+  background: rgba(30, 30, 36, 0.9);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(25px) saturate(140%);
-  -webkit-backdrop-filter: blur(25px) saturate(140%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   opacity: 0;
   visibility: hidden;
   transform: translateY(6px);

@@ -43,18 +43,19 @@
   padding: 26px 30px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
-  background: rgba(30, 30, 36, 0.78);
+  background: rgba(30, 30, 36, 0.86);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55),
               0 4px 16px rgba(0, 0, 0, 0.25),
               inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(40px) saturate(160%);
-  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
   display: flex;
   flex-direction: column;
   align-items: center;
   box-sizing: border-box;
   overflow: visible;
   max-height: none;
+  transform: translateZ(0);
 }
 
 /* AVATAR & HEADER (Floating for main login, or inside dialogs) */
@@ -70,8 +71,6 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   margin-bottom: 8px;
   overflow: hidden;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .modal-avatar img {
@@ -146,8 +145,6 @@
   font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   outline: none;
   transition: all 0.25s ease;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   box-sizing: border-box;
 }
@@ -211,14 +208,12 @@
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.85);
   font-size: 1.05rem;
   font-weight: 800;
   line-height: 22px;
   color: rgba(18, 35, 52, 0.86);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.8), 0 3px 10px rgba(20, 50, 80, 0.16);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 .password-action-toggle:hover {
@@ -269,8 +264,6 @@
   font-family: inherit;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(0, 0, 0, 0.2);
   display: flex;
   align-items: center;
@@ -407,11 +400,9 @@
   padding: 10px 14px;
   border: 1px solid rgba(255, 100, 100, 0.35);
   border-radius: 10px;
-  background: rgba(180, 40, 50, 0.35);
+  background: rgba(180, 40, 50, 0.45);
   color: rgba(255, 240, 240, 0.95);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -437,12 +428,10 @@
 @keyframes preferenceStepIn {
   from {
     opacity: 0;
-    filter: blur(8px);
-    transform: scale(0.98) translateY(4px);
+    transform: scale(0.97) translateY(4px);
   }
   to {
     opacity: 1;
-    filter: blur(0);
     transform: scale(1) translateY(0);
   }
 }
@@ -450,12 +439,10 @@
 @keyframes preferencePopupIn {
   from {
     opacity: 0;
-    filter: blur(8px);
-    transform: scale(0.98) translateY(4px);
+    transform: scale(0.97) translateY(4px);
   }
   to {
     opacity: 1;
-    filter: blur(0);
     transform: scale(1) translateY(0);
   }
 }

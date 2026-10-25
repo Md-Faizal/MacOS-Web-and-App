@@ -302,15 +302,15 @@ export class WindowGeometryManager {
         position: fixed;
         pointer-events: none;
         z-index: 899990;
-        background: rgba(59, 130, 246, 0.16);
-        border: 1.5px solid rgba(96, 165, 250, 0.65);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        background: rgba(59, 130, 246, 0.2);
+        border: 1.5px solid rgba(96, 165, 250, 0.75);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         border-radius: 12px;
         box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.35);
         transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
         opacity: 0;
-        transform: scale(0.98);
+        transform: scale(0.98) translateZ(0);
       `;
       document.body.appendChild(this.snapOverlay);
     }

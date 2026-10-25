@@ -37,19 +37,14 @@
     ),
     rgba(255, 255, 255, 0.12);
 
-  backdrop-filter: blur(28px) saturate(190%) brightness(108%) contrast(105%);
-  will-change: transform, backdrop-filter;
+  backdrop-filter: blur(16px) saturate(170%);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  will-change: transform;
   border: 1px solid rgba(255, 255, 255, 0.42);
 
   box-shadow: 
-    0 20px 48px -8px rgba(0, 0, 0, 0.42),
-    0 8px 24px -4px rgba(0, 0, 0, 0.28),
-    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1.5px 1.5px 0 rgba(255, 255, 255, 0.3),
-    inset 0 -4px 10px 0 rgba(0, 0, 0, 0.15),
-    inset 0 0 22px 0 rgba(255, 255, 255, 0.18),
-    inset 1.5px 0 3px 0 rgba(140, 200, 255, 0.3),
-    inset -1.5px 0 3px 0 rgba(255, 170, 200, 0.25);
+    0 14px 36px -4px rgba(0, 0, 0, 0.38),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.75);
 
   /* MUST be visible so the icons in .dock can pop out! */
   overflow: visible;

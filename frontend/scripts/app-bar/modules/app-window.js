@@ -387,13 +387,10 @@ class AppWindow {
         transform: translate(-50%, -50%);
         width: 600px;
         height: 500px;
-        background: #ffffff;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(0, 0, 0, 0.3);
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid rgba(0, 0, 0, 0.25);
         border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3),
-                    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.25);
         display: flex;
         flex-direction: column;
         /* Keep app windows below the dock which uses a very large z-index */
@@ -401,6 +398,43 @@ class AppWindow {
         font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         user-select: none;
         overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+
+      /* Focused Window: crisp, subtle blur only when active */
+      .app-window.is-focused {
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-color: rgba(0, 0, 0, 0.35);
+      }
+
+      /* Inactive Windows: Drop expensive blur immediately */
+      .app-window:not(.is-focused) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      /* High-performance Dragging & Resizing States: Anti-aliased 60/120 FPS transforms */
+      .app-window.is-dragging,
+      .app-window.resizing {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+        transition: none !important;
+        will-change: left, top, width, height;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        image-rendering: -webkit-optimize-contrast;
+        outline: 1px solid rgba(0, 0, 0, 0.08); /* Anti-aliasing edge blend prevents border shimmering */
+      }
+
+      .app-window.is-dragging .app-content,
+      .app-window.resizing .app-content {
+        pointer-events: none !important;
+        user-select: none !important;
       }
 
       .app-window.maximized {
@@ -965,6 +999,9 @@ class AppWindow {
     let activeSnapZone = null;
     let isDragging = false;
     let shield = null;
+    let pendingLeft = startLeft;
+    let pendingTop = startTop;
+    let dragRafId = null;
 
     const moveFn = (moveEvent) => {
       const moveClientX = moveEvent.clientX || (moveEvent.touches && moveEvent.touches[0].clientX);
@@ -1004,9 +1041,19 @@ class AppWindow {
       newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
       newTop = Math.max(minTop, Math.min(newTop, maxTop));
       
-      this.window.style.left = newLeft + 'px';
-      this.window.style.top = newTop + 'px';
-      this.window.style.transform = 'none';
+      pendingLeft = Math.round(newLeft);
+      pendingTop = Math.round(newTop);
+
+      if (!dragRafId) {
+        dragRafId = requestAnimationFrame(() => {
+          dragRafId = null;
+          if (this.window && isDragging) {
+            this.window.style.left = pendingLeft + 'px';
+            this.window.style.top = pendingTop + 'px';
+            this.window.style.transform = 'none';
+          }
+        });
+      }
 
       if (geomMgr && this.resizable && !this.fixedSize && isDragging) {
         let newSnapZone = null;
@@ -1037,6 +1084,15 @@ class AppWindow {
       document.removeEventListener('mouseup', upFn);
       document.removeEventListener('touchmove', moveFn);
       document.removeEventListener('touchend', upFn);
+      if (dragRafId) {
+        cancelAnimationFrame(dragRafId);
+        dragRafId = null;
+      }
+      if (this.window && isDragging) {
+        this.window.style.left = pendingLeft + 'px';
+        this.window.style.top = pendingTop + 'px';
+        this.window.style.transform = 'none';
+      }
       this.window.classList.remove('is-dragging');
       if (shield) shield.remove();
       
@@ -1114,6 +1170,12 @@ class AppWindow {
     shield.style.cssText = `position:fixed;inset:0;z-index:999999;cursor:${this.getCursorForDirection(direction)};user-select:none;`;
     document.body.appendChild(shield);
 
+    let pendingW = startWidth;
+    let pendingH = startHeight;
+    let pendingLeft = startLeft;
+    let pendingTop = startTop;
+    let resizeRafId = null;
+
     const moveFn = (moveEvent) => {
       const moveClientX = moveEvent.clientX || (moveEvent.touches && moveEvent.touches[0].clientX);
       const moveClientY = moveEvent.clientY || (moveEvent.touches && moveEvent.touches[0].clientY);
@@ -1155,11 +1217,23 @@ class AppWindow {
         newHeight = proposedHeight;
       }
 
-      this.window.style.width = newWidth + 'px';
-      this.window.style.height = newHeight + 'px';
-      this.window.style.left = newLeft + 'px';
-      this.window.style.top = newTop + 'px';
-      this.window.style.transform = 'none';
+      pendingW = Math.round(newWidth);
+      pendingH = Math.round(newHeight);
+      pendingLeft = Math.round(newLeft);
+      pendingTop = Math.round(newTop);
+
+      if (!resizeRafId) {
+        resizeRafId = requestAnimationFrame(() => {
+          resizeRafId = null;
+          if (this.window) {
+            this.window.style.width = pendingW + 'px';
+            this.window.style.height = pendingH + 'px';
+            this.window.style.left = pendingLeft + 'px';
+            this.window.style.top = pendingTop + 'px';
+            this.window.style.transform = 'none';
+          }
+        });
+      }
     };
 
     const upFn = () => {
@@ -1167,6 +1241,17 @@ class AppWindow {
       document.removeEventListener('mouseup', upFn);
       document.removeEventListener('touchmove', moveFn);
       document.removeEventListener('touchend', upFn);
+      if (resizeRafId) {
+        cancelAnimationFrame(resizeRafId);
+        resizeRafId = null;
+      }
+      if (this.window) {
+        this.window.style.width = pendingW + 'px';
+        this.window.style.height = pendingH + 'px';
+        this.window.style.left = pendingLeft + 'px';
+        this.window.style.top = pendingTop + 'px';
+        this.window.style.transform = 'none';
+      }
       shield.remove();
       this.window.classList.remove('resizing');
 
