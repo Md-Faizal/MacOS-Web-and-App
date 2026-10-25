@@ -1,0 +1,145 @@
+/* ============================================================
+   MacOS Cursor  ·  Industrial Standard Edition  v4.0
+   
+   Fixes:
+     • 100% Offline & Synchronous (Embedded pre-compiled SVG assets)
+     • Decoupled from RAF: zero-latency direct transform tracking
+     • Robust NaN math protection for DevTools & debugger resilience
+     • Edge & right-click context menu visibility guarantee
+     • Transparent pointer-events pass-through
+   ============================================================ */
+
+/* ── Kill the OS cursor everywhere ── */
+*, *::before, *::after {
+  cursor: none !important;
+}
+
+/* ══════════════════════════════════════════════════
+   CURSOR IMAGE ELEMENT
+   ══════════════════════════════════════════════════ */
+#macos-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  pointer-events: none !important;
+  user-select: none;
+  z-index: 2147483647 !important;
+  will-change: transform;
+  transform-origin: 0 0;
+
+  /* Smooth size transitions when changing cursor type */
+  transition: width  0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
+              height 0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.12s ease,
+              filter 0.25s ease;
+
+  /* Match Apple's cursor shadow exactly */
+  filter: drop-shadow(-1px 2px 3px rgba(0,0,0,0.35))
+          drop-shadow(0px 0.5px 1px rgba(0,0,0,0.2));
+}
+
+#macos-cursor img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none !important;
+}
+
+/* ── Wait cursor: rotate the whole element ── */
+#macos-cursor.state-wait {
+  animation: macos-spin 0.85s linear infinite;
+}
+
+@keyframes macos-spin {
+  to { transform: var(--cursor-pos, translate(0,0)) rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════
+   TRAIL DOT
+   ══════════════════════════════════════════════════ */
+#macos-cursor-dot {
+  position: fixed;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.65);
+  pointer-events: none !important;
+  z-index: 2147483646;
+  will-change: transform;
+  transform: translate(-50%, -50%);
+  transition: width 0.18s ease,
+              height 0.18s ease,
+              opacity 0.18s ease;
+  box-shadow: 0 0 5px 1.5px rgba(255,255,255,0.18);
+  opacity: 0;
+}
+
+#macos-cursor-dot.dot-hover {
+  width: 8px;
+  height: 8px;
+  opacity: 0.38;
+}
+
+/* ══════════════════════════════════════════════════
+   CLICK RING (left-click only, very subtle)
+   ══════════════════════════════════════════════════ */
+#macos-cursor-ring {
+  position: fixed;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  pointer-events: none !important;
+  z-index: 2147483645;
+  transform: translate(-50%, -50%) scale(0.4);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+@keyframes macos-ring-burst {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.55; }
+  100% { transform: translate(-50%, -50%) scale(1.9); opacity: 0;    }
+}
+
+#macos-cursor-ring.burst {
+  animation: macos-ring-burst 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ══════════════════════════════════════════════════
+   CLICK SQUEEZE
+   macOS click is very subtle — 0.94× compress only.
+   No exaggerated bounce. Feels physical, not cartoon.
+   ══════════════════════════════════════════════════ */
+@keyframes macos-click-squeeze {
+  0%   { transform: var(--cursor-pos) scale(var(--vs, 1));          }
+  35%  { transform: var(--cursor-pos) scale(calc(var(--vs,1)*0.92)); }
+  70%  { transform: var(--cursor-pos) scale(calc(var(--vs,1)*1.03)); }
+  100% { transform: var(--cursor-pos) scale(var(--vs, 1));          }
+}
+
+#macos-cursor.clicking {
+  animation: macos-click-squeeze 0.18s ease-out forwards;
+}
+
+/* ══════════════════════════════════════════════════
+   HIDDEN STATE  (only when mouse leaves window)
+   ══════════════════════════════════════════════════ */
+#macos-cursor.hidden,
+#macos-cursor-dot.hidden {
+  opacity: 0 !important;
+}
+
+/* ══════════════════════════════════════════════════
+   SHAKE-TO-FIND GLOW
+   Adds a soft white halo when cursor is enlarged
+   from fast mouse movement.
+   ══════════════════════════════════════════════════ */
+#macos-cursor.shaking {
+  filter: drop-shadow(-1px 2px 3px rgba(0,0,0,0.35))
+          drop-shadow(0px 0.5px 1px rgba(0,0,0,0.2))
+          drop-shadow(0 0 10px rgba(255,255,255,0.3));
+}

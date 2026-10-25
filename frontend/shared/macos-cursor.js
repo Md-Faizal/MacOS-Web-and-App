@@ -31,8 +31,8 @@
 (function MacOSCursorEngine() {
   'use strict';
 
-  /* ── Touch-only devices: skip ── */
-  if (window.matchMedia('(hover: none)').matches) return;
+  /* ── Touch-only devices (pure phones/tablets without mouse/trackpad): skip ── */
+  if (window.matchMedia('(pointer: coarse) and (hover: none)').matches && !window.matchMedia('(any-hover: hover)').matches) return;
   /* ── No double-init ── */
   if (document.getElementById('macos-cursor')) return;
 
