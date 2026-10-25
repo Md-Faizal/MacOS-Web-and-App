@@ -1,10 +1,16 @@
 {
 	"version": "2.0.0",
+	"options": {
+		"env": {
+			"PATH": "C:\\Program Files\\nodejs;C:\\Program Files\\Git\\cmd;${env:PATH}"
+		}
+	},
 	"tasks": [
 		{
 			"label": "▶ Start MacOS Frontend + Backend",
-			"type": "npm",
-			"script": "dev:local",
+			"type": "shell",
+			"command": "npm run dev:local",
+			"isBackground": true,
 			"problemMatcher": [],
 			"detail": "Runs the main MacOS web frontend and the shared backend together"
 		},
