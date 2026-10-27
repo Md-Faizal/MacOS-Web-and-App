@@ -9,23 +9,38 @@ const { getAIContextString, generateDatabaseContext, getEntityDirectory } = requ
 const fs = require('fs');
 const path = require('path');
 
+function sanitizeApiKey(raw) {
+  if (!raw) return '';
+  const match = String(raw).match(/AIzaSy[A-Za-z0-9_-]{33}/);
+  if (match) return match[0];
+  return String(raw).replace(/["'\r\n\s]/g, '').trim();
+}
+
 function getGeminiApiKey() {
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
-    return process.env.GEMINI_API_KEY.trim();
+    return sanitizeApiKey(process.env.GEMINI_API_KEY);
   }
   if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY.trim()) {
-    return process.env.GOOGLE_API_KEY.trim();
+    return sanitizeApiKey(process.env.GOOGLE_API_KEY);
   }
   // Check if .env file has GEMINI_API_KEY (supports updating .env without full backend restart)
   try {
-    const envPath = path.resolve(__dirname, '../../../../../.env');
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf8');
-      const match = content.match(/^\s*GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/m);
-      if (match && match[1] && match[1].trim()) {
-        const key = match[1].trim();
-        process.env.GEMINI_API_KEY = key;
-        return key;
+    const candidatePaths = [
+      path.resolve(__dirname, '../../../../.env'),
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(__dirname, '../../../../../.env')
+    ];
+    for (const envPath of candidatePaths) {
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        const match = content.match(/^\s*GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/m);
+        if (match && match[1] && match[1].trim()) {
+          const key = sanitizeApiKey(match[1]);
+          if (key) {
+            process.env.GEMINI_API_KEY = key;
+            return key;
+          }
+        }
       }
     }
   } catch (e) {}
@@ -40,16 +55,17 @@ function getGenAI() {
 const AVAILABLE_MODELS = {
   'gemini-2.5-flash': 'gemini-2.5-flash',           // Latest, fastest
   'gemini-2.5-pro': 'gemini-2.5-pro',               // Smartest
-  'gemini-2.0-flash': 'gemini-2.0-flash',           // Legacy
-  'gemini-2.0-flash-001': 'gemini-2.0-flash-001',   // Legacy variant
-  'gemini-2.0-flash-lite': 'gemini-2.0-flash-lite', // Lightweight
-  'gemini-2.0-flash-lite-001': 'gemini-2.0-flash-lite-001', // Lightweight variant
-  'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite', // Latest lightweight
-  'gemini-1.5-flash': 'gemini-1.5-flash',
-  'gemini-1.5-pro': 'gemini-1.5-pro',
-  // Backward compatibility mappings
-  'gemini-pro-vision': 'gemini-1.5-flash',
-  'gemini-pro': 'gemini-1.5-flash'
+  'gemini-flash-latest': 'gemini-flash-latest',
+  'gemini-pro-latest': 'gemini-pro-latest',
+  'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
+  'gemini-2.0-flash': 'gemini-2.5-flash',
+  'gemini-2.0-flash-001': 'gemini-2.5-flash',
+  'gemini-2.0-flash-lite': 'gemini-2.5-flash-lite',
+  'gemini-2.0-flash-lite-001': 'gemini-2.5-flash-lite',
+  'gemini-1.5-flash': 'gemini-2.5-flash',
+  'gemini-1.5-pro': 'gemini-2.5-pro',
+  'gemini-pro': 'gemini-2.5-flash',
+  'gemini-pro-vision': 'gemini-2.5-flash'
 };
 
 // Conversation history for context
@@ -236,7 +252,7 @@ ${query}`;
           } catch (modelErr) {
             const errStr = String(modelErr && modelErr.message ? modelErr.message : modelErr);
             if (errStr.includes('404') || errStr.toLowerCase().includes('not found') || errStr.toLowerCase().includes('is not supported')) {
-              const fallbackName = actualModel === 'gemini-1.5-flash' ? 'gemini-2.0-flash' : 'gemini-1.5-flash';
+              const fallbackName = actualModel === 'gemini-2.5-flash' ? 'gemini-flash-latest' : 'gemini-2.5-flash';
               console.warn(`[AI Engine] Model "${actualModel}" unavailable (${errStr}), falling back to "${fallbackName}"`);
               const fallbackModel = getGenAI().getGenerativeModel({ model: fallbackName });
               activeChat = fallbackModel.startChat({
