@@ -25,6 +25,7 @@ class EstimateEditor {
     this.historyCustomerSort = 'name-asc';
     this.isEditing = false;
     this.isEstimateDirty = false;
+    this.orderCheckDebounceTimer = null;
   }
 
   selectHistoryCustomer(customerKey) {
@@ -197,9 +198,10 @@ class EstimateEditor {
                 <div class="form-row">
                   <div class="form-group" style="flex: 1;">
                     <label>Customer Name</label>
-                    <div style="position: relative;">
+                    <div class="bill-customer-actions" style="position: relative;">
                       <input type="text" id="estCustomerName" list="estCustomerDatalist" class="form-input" value="${isRegistered ? registeredCustomerName : ''}" placeholder="Select customer" autocomplete="off">
                       <datalist id="estCustomerDatalist"></datalist>
+                      <div id="estCustomerOrdersContainer" class="bill-customer-orders" style="display: none;"></div>
                     </div>
                   </div>
                 </div>
@@ -406,6 +408,9 @@ class EstimateEditor {
     this.populateContactsList();
     this.populateProductsList();
     this.updateEstimateSummary();
+    if (isRegistered && registeredCustomerName) {
+      this.checkCustomerOrders();
+    }
   }
 
   async renderHistory() {
@@ -911,7 +916,10 @@ class EstimateEditor {
       secReg.style.display = 'block';
       secUnreg.style.display = 'none';
       const custName = container.querySelector('#estCustomerName')?.value.trim();
-      if (custName) this.onCustomerSelected(custName);
+      if (custName) {
+        this.onCustomerSelected(custName);
+        this.checkCustomerOrders();
+      }
     });
 
     btnUnreg?.addEventListener('click', () => {
@@ -923,12 +931,23 @@ class EstimateEditor {
       secUnreg.style.display = 'block';
       this.selectedCustomer = null;
       this.selectedCustomerId = null;
+      const ordersContainer = container.querySelector('#estCustomerOrdersContainer');
+      if (ordersContainer) ordersContainer.style.display = 'none';
     });
 
     // Registered customer selection
     const customerInput = container.querySelector('#estCustomerName');
-    customerInput?.addEventListener('input', (e) => this.onCustomerSelected(e.target.value));
-    customerInput?.addEventListener('change', (e) => this.onCustomerSelected(e.target.value));
+    customerInput?.addEventListener('input', (e) => {
+      this.onCustomerSelected(e.target.value);
+      this.checkCustomerOrders();
+    });
+    customerInput?.addEventListener('change', (e) => {
+      this.onCustomerSelected(e.target.value);
+      this.checkCustomerOrders();
+    });
+    customerInput?.addEventListener('blur', () => {
+      this.checkCustomerOrders();
+    });
 
     // Product search autocomplete
     const prodNameInput = container.querySelector('#estProductName');
@@ -1120,6 +1139,7 @@ class EstimateEditor {
       if (this.currentProduct && this.currentProduct.name) {
         this.loadProductMemoryFromAPI(this.currentProduct.name, contact.name);
       }
+      this.checkCustomerOrders();
     } else {
       this.selectedCustomer = null;
       this.selectedCustomerId = null;
@@ -1128,6 +1148,8 @@ class EstimateEditor {
         const field = container.querySelector(selector);
         if (field) field.value = '';
       });
+      const ordersContainer = container.querySelector('#estCustomerOrdersContainer');
+      if (ordersContainer) ordersContainer.style.display = 'none';
     }
   }
 
@@ -1585,6 +1607,650 @@ class EstimateEditor {
       }
     } catch (e) {
       log.warn('Could not load customer product preference:', e);
+    }
+  }
+
+  checkCustomerOrders() {
+    if (this.orderCheckDebounceTimer) {
+      clearTimeout(this.orderCheckDebounceTimer);
+    }
+
+    const container = this.viewContainer;
+    const customerNameInput = container?.querySelector('#estCustomerName');
+    const customerName = customerNameInput?.value.trim();
+    const ordersContainer = container?.querySelector('#estCustomerOrdersContainer');
+
+    if (!customerName || !ordersContainer) {
+      if (ordersContainer) ordersContainer.style.display = 'none';
+      return;
+    }
+
+    this.orderCheckDebounceTimer = setTimeout(async () => {
+      // Find customer ID from cached contacts
+      const customer = this.allContacts.find(c => c.name && c.name.toLowerCase() === customerName.toLowerCase());
+
+      if (!customer || !customer.id) {
+        ordersContainer.style.display = 'none';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/billing/orders?customer_id=${customer.id}`);
+        if (response.ok) {
+          const result = await response.json();
+          const orders = result.data || [];
+
+          if (orders.length > 0) {
+            ordersContainer.innerHTML = `
+              <button type="button" id="estViewCustomerOrdersBtn" class="view-orders-badge">
+                <span style="font-size: 18px;">📋</span> View ${orders.length} Orders
+              </button>
+            `;
+            ordersContainer.style.display = 'block';
+
+            const btn = container.querySelector('#estViewCustomerOrdersBtn');
+            if (btn) {
+              btn.onclick = (e) => {
+                e.preventDefault();
+                this.showCustomerOrdersModal(orders, customerName);
+              };
+            }
+          } else {
+            ordersContainer.style.display = 'none';
+          }
+        }
+      } catch (error) {
+        log.error('Error checking customer orders for estimate:', error);
+        ordersContainer.style.display = 'none';
+      }
+    }, 500);
+  }
+
+  showCustomerOrdersModal(orders, customerName) {
+    // Remove existing modal if any
+    const existingModal = document.getElementById('customerOrdersModal');
+    if (existingModal) existingModal.remove();
+
+    const sortedOrders = [...orders].sort((a, b) => {
+      const isPendingA = a.status !== 'completed' && a.status !== 'cancelled';
+      const isPendingB = b.status !== 'completed' && b.status !== 'cancelled';
+      if (isPendingA && !isPendingB) return -1;
+      if (!isPendingA && isPendingB) return 1;
+      return new Date(b.order_date) - new Date(a.order_date);
+    });
+
+    const getStageLabel = (stage) => {
+      const labels = {
+        'stage1': 'Order Entry',
+        'stage2': 'Quality Check (QC)',
+        'stage3': 'Billing/Dispatch'
+      };
+      return labels[stage] || stage || 'Unknown';
+    };
+
+    const getStatusBadge = (status) => {
+      const s = (status || 'pending').toLowerCase();
+      let bg = '#e5e7eb', color = '#374151';
+      if (s === 'completed') { bg = '#dcfce7'; color = '#166534'; }
+      else if (s === 'cancelled') { bg = '#fee2e2'; color = '#991b1b'; }
+      else if (s === 'pending') { bg = '#fef9c3'; color = '#854d0e'; }
+      return `<span style="padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; background: ${bg}; color: ${color}; text-transform: uppercase;">${s}</span>`;
+    };
+
+    const modalHtml = `
+      <div id="customerOrdersModal" class="variant-modal-overlay">
+        <div class="variant-modal" style="max-width: 650px; width: 95%;">
+          <div class="variant-modal-header" style="background: #1f2937; color: white;">
+            <h3>📦 Order History: ${this.escapeHtml(customerName)}</h3>
+            <button class="variant-modal-close" id="orders-close-btn" style="color: white;">×</button>
+          </div>
+          <div class="variant-modal-body" style="max-height: 500px; overflow-y: auto; padding: 20px; background: #f8fafc;">
+            <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Detailed list of all past and pending orders for this customer.</p>
+            <div class="orders-selection-list">
+              ${sortedOrders.map(order => `
+                <div class="order-selection-item" style="padding: 18px; margin-bottom: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                  <div class="order-selection-info" style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                      <span style="font-weight: 700; font-size: 15px; color: #1f2937;">#${order.order_number || order.id}</span>
+                      ${getStatusBadge(order.status)}
+                    </div>
+                    <div style="font-size: 11px; color: #6b7280; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                      📅 ${new Date(order.order_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} | 🏷️ ${getStageLabel(order.current_stage)}
+                    </div>
+                    ${order.order_notes ? `<div style="font-size: 12px; color: #4b5563; font-style: italic; background: #f9fafb; padding: 6px 10px; border-radius: 4px; border-left: 3px solid #d1d5db; margin: 8px 0;">"${this.escapeHtml(order.order_notes.length > 80 ? order.order_notes.substring(0, 80) + '...' : order.order_notes)}"</div>` : ''}
+                    <div class="order-meta" style="font-size: 12px; display: flex; gap: 15px; color: #374151;">
+                      <span><strong>${order.items?.length || 0}</strong> Items</span>
+                      <span><strong>${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(order.total_amount || 0)}</strong> Total</span>
+                    </div>
+                  </div>
+                  <div class="order-selection-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                    <button class="btn view-details-btn" style="background: #d97706; color: white; white-space: nowrap; padding: 8px 12px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600;" data-id="${order.id}">👁️ Details</button>
+                    <button class="btn quick-import-btn" style="background: #059669; color: white; white-space: nowrap; padding: 8px 12px; border-radius: 6px; cursor: pointer; border: none; font-weight: 600; font-size: 12px;" data-id="${order.id}">✓ Import</button>
+                    ${order.status === 'pending' || order.status === 'stage1' || order.status === 'stage2' ? `<span style="font-size: 10px; color: #059669; font-weight: 700; text-align: center;">PENDING</span>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div class="variant-modal-footer">
+            <button class="variant-modal-btn cancel" id="orders-cancel-btn" style="padding: 10px 20px;">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const modalDiv = document.createElement('div');
+    modalDiv.innerHTML = modalHtml;
+    this.viewContainer.appendChild(modalDiv.firstElementChild);
+
+    const closeModal = () => {
+      const modal = document.getElementById('customerOrdersModal');
+      if (modal) modal.remove();
+    };
+
+    document.getElementById('orders-close-btn').onclick = closeModal;
+    document.getElementById('orders-cancel-btn').onclick = closeModal;
+
+    // View Details buttons
+    document.querySelectorAll('.view-details-btn').forEach(btn => {
+      btn.onclick = () => {
+        const orderId = btn.getAttribute('data-id');
+        const order = orders.find(o => String(o.id) === String(orderId));
+        if (order) {
+          this.showOrderDetailsModal(order, customerName);
+        }
+      };
+    });
+
+    // Quick Import buttons
+    document.querySelectorAll('.quick-import-btn').forEach(btn => {
+      btn.onclick = () => {
+        const orderId = btn.getAttribute('data-id');
+        const order = orders.find(o => String(o.id) === String(orderId));
+        if (order) {
+          closeModal();
+          this.importOrderIntoEstimate(order);
+        }
+      };
+    });
+  }
+
+  showOrderDetailsModal(order, customerName) {
+    const existingModal = document.getElementById('customerOrdersModal');
+    if (existingModal) existingModal.remove();
+
+    const orderNumber = order.order_number || order.id;
+
+    const getStageLabel = (stage) => {
+      const labels = { 'stage1': 'Order Entry', 'stage2': 'Quality Check (QC)', 'stage3': 'Billing/Dispatch' };
+      return labels[stage] || stage || 'Unknown';
+    };
+
+    const getStatusStyle = (status) => {
+      const s = (status || 'pending').toLowerCase();
+      if (s === 'completed') return 'background: #dcfce7; color: #166534; border: 1px solid #bdf0cc;';
+      if (s === 'cancelled') return 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;';
+      return 'background: #fef9c3; color: #854d0e; border: 1px solid #fef08a;';
+    };
+
+    const isStage1 = order.current_stage === 'stage1' || !order.current_stage;
+
+    const modalHtml = `
+      <div id="customerOrdersModal" class="variant-modal-overlay">
+        <div class="variant-modal" style="max-width: 850px; width: 95%; border: 1px solid #e2e8f0; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
+          <div class="variant-modal-header" style="background: #1f2937; color: white; padding: 15px 20px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <h3 style="margin: 0;">📦 Order Details: #${orderNumber}</h3>
+              <span style="padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; ${getStatusStyle(order.status)}">
+                ${order.status}
+              </span>
+            </div>
+            <button class="variant-modal-close" id="details-close-btn" style="color: white; font-size: 24px; opacity: 0.8;">×</button>
+          </div>
+          
+          <div class="variant-modal-body" style="max-height: 600px; overflow-y: auto; padding: 25px; background: #fff;">
+            <!-- Order Header Info -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9;">
+              <div>
+                <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Customer</label>
+                <div style="font-size: 14px; font-weight: 600; color: #1e293b;">${this.escapeHtml(customerName)}</div>
+              </div>
+              <div>
+                <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Order Date</label>
+                <div style="font-size: 14px; color: #1e293b;">${new Date(order.order_date).toLocaleDateString()} ${new Date(order.order_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+              </div>
+              <div>
+                <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Current Stage</label>
+                <div style="font-size: 14px; color: #1e293b;">${getStageLabel(order.current_stage)}</div>
+              </div>
+              <div>
+                <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Delivery Date</label>
+                <div style="font-size: 14px; color: #1e293b;">${order.delivery_date ? new Date(order.delivery_date).toLocaleDateString() : 'Not Delivered'}</div>
+              </div>
+            </div>
+
+            <!-- Notes Section -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 25px;">
+              <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 4px;">
+                <label style="display: block; font-size: 11px; color: #92400e; font-weight: 700; margin-bottom: 6px;">📝 Order Notes</label>
+                <div style="font-size: 12px; color: #451a03; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${this.escapeHtml(order.order_notes || 'None')}</div>
+              </div>
+              <div style="background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 12px; border-radius: 4px;">
+                <label style="display: block; font-size: 11px; color: #075985; font-weight: 700; margin-bottom: 6px;">🛡️ QC Notes ${order.qc_date ? `<small>(${new Date(order.qc_date).toLocaleDateString()})</small>` : ''}</label>
+                <div style="font-size: 12px; color: #0c4a6e; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${this.escapeHtml(order.qc_notes || 'None')}</div>
+              </div>
+              <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px; border-radius: 4px;">
+                <label style="display: block; font-size: 11px; color: #15803d; font-weight: 700; margin-bottom: 6px;">🚚 Delivery Notes ${order.delivery_date ? `<small>(${new Date(order.delivery_date).toLocaleDateString()})</small>` : ''}</label>
+                <div style="font-size: 12px; color: #14532d; line-height: 1.4; white-space: pre-wrap; word-break: break-word;">${this.escapeHtml(order.delivery_notes || 'None')}</div>
+              </div>
+            </div>
+            
+            <!-- Items Table -->
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+              <table class="bill-items-table" style="width: 100%; min-width: 700px; border-collapse: collapse; font-size: 13px;">
+                <thead style="background: #f1f5f9; border-bottom: 2px solid #e2e8f0;">
+                  <tr>
+                    <th style="padding: 12px; text-align: left; color: #475569;">#</th>
+                    <th style="padding: 12px; text-align: left; color: #475569;">Product / Batch Details</th>
+                    <th style="padding: 12px; text-align: right; color: #475569;">MRP</th>
+                    <th style="padding: 12px; text-align: right; color: #475569;">Rate</th>
+                    <th style="padding: 12px; text-align: center; color: #475569;">Ordered</th>
+                    <th style="padding: 12px; text-align: center; color: #475569;">Picked</th>
+                    <th style="padding: 12px; text-align: right; color: #475569;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(order.items || []).map((item, idx) => {
+                    const rec = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
+                    const orderedQty = item.qty || item.quantity || 0;
+                    const isNotReceived = !isStage1 && rec < 1;
+                    const strikeStyle = isNotReceived ? 'text-decoration: line-through; text-decoration-color: #ef4444; opacity: 0.7;' : '';
+                    const displayPicked = isStage1 ? orderedQty : rec;
+                    const displayAmt = item.line_total || ((item.unit_price || item.price || 0) * (isStage1 ? orderedQty : (rec || orderedQty)));
+                    return `
+                    <tr style="border-bottom: 1px solid #f1f5f9; vertical-align: middle; ${isNotReceived ? 'background: #fafafa;' : ''}">
+                      <td style="padding: 12px; color: #94a3b8; font-weight: 600; ${strikeStyle}">${idx + 1}</td>
+                      <td style="padding: 12px; ${strikeStyle}">
+                        <div style="font-weight: 700; color: #1e293b; font-size: 14px;">${this.escapeHtml(item.product_name)}</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                          ${item.pack_size_value || ''} ${item.pack_size_type || ''} | 
+                          <span style="font-weight: 600;">Batch: ${this.escapeHtml(item.batch_no || 'N/A')}</span>
+                          ${item.exp_date ? ` | Exp: ${new Date(item.exp_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}
+                        </div>
+                      </td>
+                      <td style="padding: 12px; text-align: right; color: #64748b; ${strikeStyle}">₹${parseFloat(item.mrp || 0).toFixed(2)}</td>
+                      <td style="padding: 12px; text-align: right; font-weight: 600; color: #1e293b; ${strikeStyle}">₹${parseFloat(item.unit_price || item.price || 0).toFixed(2)}</td>
+                      <td style="padding: 12px; text-align: center; font-weight: 600; ${strikeStyle}">${orderedQty}</td>
+                      <td style="padding: 12px; text-align: center;">
+                        <span style="padding: 2px 8px; border-radius: 4px; background: ${(rec >= orderedQty || isStage1) ? '#dcfce7' : '#fee2e2'}; color: ${(rec >= orderedQty || isStage1) ? '#166534' : '#991b1b'}; font-weight: 700;">
+                          ${displayPicked}
+                        </span>
+                      </td>
+                      <td style="padding: 12px; text-align: right; font-weight: 700; color: #1e293b; ${strikeStyle}">
+                        ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(displayAmt)}
+                      </td>
+                    </tr>
+                  `;}).join('')}
+                </tbody>
+                <tfoot style="background: #f8fafc; border-top: 2px solid #e2e8f0;">
+                  <tr>
+                    <td colspan="6" style="padding: 15px; text-align: right; font-weight: 700; color: #475569;">Grand Total:</td>
+                    <td style="padding: 15px; text-align: right; font-size: 16px; font-weight: 800; color: #1e293b;">
+                      ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(order.total_amount || 0)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+          
+          <div class="variant-modal-footer" style="padding: 15px 25px; border-top: 1px solid #f1f5f9;">
+            <button class="variant-modal-btn cancel" id="details-back-btn" style="padding: 10px 20px;">← Back to List</button>
+            <div style="flex: 1;"></div>
+            <button class="btn" id="confirm-import-btn" style="background: #d97706; color: white; padding: 10px 25px; border-radius: 6px; font-weight: 700; font-size: 14px; cursor: pointer; border: none;">✓ Import to Current Estimate</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const modalDiv = document.createElement('div');
+    modalDiv.innerHTML = modalHtml;
+    this.viewContainer.appendChild(modalDiv.firstElementChild);
+
+    const closeModal = () => {
+      const modal = document.getElementById('customerOrdersModal');
+      if (modal) modal.remove();
+    };
+
+    document.getElementById('details-close-btn').onclick = closeModal;
+    document.getElementById('details-back-btn').onclick = () => {
+      const btn = this.viewContainer.querySelector('#estViewCustomerOrdersBtn');
+      if (btn) btn.click();
+      else closeModal();
+    };
+
+    const confirmBtn = document.getElementById('confirm-import-btn');
+    if (confirmBtn) {
+      confirmBtn.onclick = () => {
+        this.importOrderIntoEstimate(order);
+        closeModal();
+      };
+    }
+  }
+
+  async showMissingPreferenceModal(productName, customerName, item = {}) {
+    const mrpStr = item.mrp ? `₹${parseFloat(item.mrp).toFixed(2)}` : 'N/A';
+    const variantStr = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : 'No Variant';
+    const batchStr = item.batch_no || item.batch || 'N/A';
+
+    return new Promise((resolve) => {
+      const existingModal = document.getElementById('missingPreferenceModal');
+      if (existingModal) existingModal.remove();
+
+      const modalHtml = `
+        <div id="missingPreferenceModal" class="variant-modal-overlay" style="z-index: 20000;">
+          <div class="variant-modal" style="max-width: 450px; width: 90%; border: 2px solid #d97706;">
+            <div class="variant-modal-header" style="background: #d97706; color: white;">
+              <h3>⚙️ Set Product Preference</h3>
+              <button class="variant-modal-close" id="pref-close-btn" style="color: white;">×</button>
+            </div>
+            <div class="variant-modal-body" style="padding: 20px;">
+              <div style="background: rgba(217, 119, 6, 0.1); padding: 12px; border-radius: 6px; margin-bottom: 20px; border: 1px solid rgba(217, 119, 6, 0.2);">
+                <div style="font-weight: 700; color: #1f2937; margin-bottom: 4px; font-size: 15px;">${this.escapeHtml(productName)}</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: #64748b; font-weight: 600;">
+                  <span>📋 Batch: ${this.escapeHtml(batchStr)}</span>
+                  <span>📦 Variant: ${this.escapeHtml(variantStr)}</span>
+                  <span>🏷️ MRP: ${mrpStr}</span>
+                </div>
+              </div>
+              <p style="font-size: 13px; margin-bottom: 20px; color: #475569;">
+                Preferences for this customer (<strong>${this.escapeHtml(customerName)}</strong>) are not set. Please provide them to continue import.
+              </p>
+              
+              <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: 600;">Discount 1 (%)</label>
+                <input type="number" id="prefDisc1" class="form-input" value="0" step="0.01" style="width: 100%;">
+              </div>
+              
+              <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: 600;">Discount 2 (%)</label>
+                <input type="number" id="prefDisc2" class="form-input" value="0" step="0.01" style="width: 100%;">
+              </div>
+              
+              <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: 600;">Tax (%)</label>
+                <select id="prefTax" class="form-input" style="width: 100%;">
+                  <option value="0">0%</option>
+                  <option value="5" selected>5%</option>
+                  <option value="12">12%</option>
+                  <option value="18">18%</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: 600;">Scheme</label>
+                <select id="prefScheme" class="form-input" style="width: 100%;">
+                  <option value="">No Scheme</option>
+                  <option value="5+1">5+1 Free</option>
+                  <option value="10+1">10+1 Free</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
+                <label style="font-size: 12px; font-weight: 600;">Tax Calculation</label>
+                <button type="button" id="prefGstReverseBtn" class="gst-reverse-btn" style="width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; height: 38px;">↩️ GST Reverse</button>
+                <input type="hidden" id="prefGstReverse" value="false">
+              </div>
+            </div>
+            <div class="variant-modal-footer">
+              <button class="variant-modal-btn cancel" id="pref-skip-btn">Use Defaults</button>
+              <button class="btn" id="pref-save-btn" style="background: #d97706; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Save & Import</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const modalDiv = document.createElement('div');
+      modalDiv.innerHTML = modalHtml;
+      this.viewContainer.appendChild(modalDiv.firstElementChild);
+
+      const closeModal = (pref = null) => {
+        const modal = document.getElementById('missingPreferenceModal');
+        if (modal) modal.remove();
+        resolve(pref);
+      };
+
+      document.getElementById('pref-close-btn').onclick = () => closeModal();
+
+      const gstReverseBtn = document.getElementById('prefGstReverseBtn');
+      const gstReverseInput = document.getElementById('prefGstReverse');
+
+      gstReverseBtn.onclick = (e) => {
+        e.preventDefault();
+        const newState = gstReverseInput.value !== 'true';
+        gstReverseInput.value = newState.toString();
+        gstReverseBtn.classList.toggle('active', newState);
+      };
+
+      document.getElementById('pref-skip-btn').onclick = () => {
+        closeModal({
+          disc1: 0,
+          disc2: 0,
+          tax: 5,
+          scheme: '',
+          gst_reverse: false
+        });
+      };
+
+      document.getElementById('pref-save-btn').onclick = async () => {
+        const disc1 = parseFloat(document.getElementById('prefDisc1').value) || 0;
+        const disc2 = parseFloat(document.getElementById('prefDisc2').value) || 0;
+        const tax = parseFloat(document.getElementById('prefTax').value) || 0;
+        const scheme = document.getElementById('prefScheme').value;
+        const gstReverse = gstReverseInput.value === 'true';
+
+        const prefObj = {
+          disc1,
+          disc2,
+          tax,
+          scheme,
+          gst_reverse: gstReverse
+        };
+
+        await this.saveProductMemoryToAPI(productName, customerName, disc1, disc2, scheme, tax, gstReverse);
+        closeModal(prefObj);
+      };
+    });
+  }
+
+  async saveProductMemoryToAPI(productName, customerName, disc1, disc2, scheme, tax, gst_reverse) {
+    if (!customerName || !productName) return;
+    try {
+      await fetch('/api/billing/preference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          customerName,
+          productName,
+          disc1,
+          disc2,
+          scheme,
+          tax,
+          gst_reverse
+        })
+      });
+    } catch (error) {
+      log.warn('Could not save product memory preference:', error);
+    }
+  }
+
+  async importOrderIntoEstimate(order) {
+    if (this.currentEstimateProducts.length > 0) {
+      if (!confirm('This will replace the current items in your estimate. Continue?')) {
+        return;
+      }
+    }
+
+    if (order.customer_id) {
+      const contact = this.allContacts.find(c => String(c.id) === String(order.customer_id));
+      if (contact) {
+        this.customerType = 'registered';
+        this.selectedCustomer = contact;
+        this.selectedCustomerId = contact.id;
+        this.customerSnapshot = {
+          name: contact.name || '',
+          phone: contact.phone || contact.mobile || '',
+          gstin: contact.gstin || '',
+          address: [contact.address, contact.city, contact.state].filter(Boolean).join(', '),
+          licence_no: contact.licence_no || contact.dl_no || '',
+          pan: contact.pan || ''
+        };
+        const custInput = this.viewContainer.querySelector('#estCustomerName');
+        if (custInput) custInput.value = contact.name;
+        const btnReg = this.viewContainer.querySelector('#estToggleRegistered');
+        const btnUnreg = this.viewContainer.querySelector('#estToggleUnregistered');
+        const secReg = this.viewContainer.querySelector('#estRegisteredCustomerSection');
+        const secUnreg = this.viewContainer.querySelector('#estUnregisteredCustomerSection');
+        btnReg?.classList.add('active');
+        btnUnreg?.classList.remove('active');
+        if (secReg) secReg.style.display = 'block';
+        if (secUnreg) secUnreg.style.display = 'none';
+      }
+    }
+
+    const customerInput = this.viewContainer.querySelector('#estCustomerName');
+    const customerName = (customerInput?.value.trim()) || order.customer_name || '';
+    if (!customerName) {
+      this.showNotification('Please ensure customer name is set.', 'warning');
+      return;
+    }
+
+    log.debug(`📦 Importing ${order.items?.length || 0} items from order #${order.order_number || order.id} into Estimate`);
+
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    loadingOverlay.innerHTML = '<div style="background:white;padding:20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);font-weight:600;color:#1f2937;">🔄 Applying customer preferences...</div>';
+    document.body.appendChild(loadingOverlay);
+
+    try {
+      this.currentEstimateProducts = [];
+
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          const rec = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
+          const orderedQty = Number(item.qty || item.quantity || 0);
+
+          let qty = rec;
+          if (rec < 1) {
+            if (order.current_stage === 'stage1' || !order.current_stage) {
+              qty = orderedQty;
+            } else {
+              log.debug(`🚫 Skipping unreceived product: ${item.product_name || 'Unknown'}`);
+              continue;
+            }
+          }
+          if (qty < 1) continue;
+
+          let preference = null;
+          const pName = (item.product_name || '').trim();
+          try {
+            const url = `/api/billing/preference/${encodeURIComponent(customerName)}/${encodeURIComponent(pName)}`;
+            const prefRes = await fetch(url);
+            if (prefRes.ok) {
+              const prefData = await prefRes.json();
+              preference = prefData.data;
+            }
+          } catch (prefErr) {
+            log.warn(`Could not load preference for ${pName}:`, prefErr);
+          }
+
+          const hasPref = preference && Object.keys(preference).length > 0;
+          if (!hasPref) {
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
+            preference = await this.showMissingPreferenceModal(pName, customerName, item);
+            if (loadingOverlay) loadingOverlay.style.display = 'flex';
+            if (!preference) {
+              preference = { disc1: 0, disc2: 0, tax: 5, scheme: '', gst_reverse: false };
+            }
+          }
+
+          let productInfo = this.cachedProducts.find(p => p.name && p.name.toLowerCase() === pName.toLowerCase());
+          if (!productInfo) {
+            try {
+              const prodRes = await fetch(`/api/products?search=${encodeURIComponent(pName)}`);
+              if (prodRes.ok) {
+                const prodData = await prodRes.json();
+                const products = this.normalizeCollection(prodData);
+                if (Array.isArray(products)) {
+                  productInfo = products.find(p => p.name && p.name.toLowerCase() === pName.toLowerCase());
+                }
+              }
+            } catch (err) {
+              log.warn(`Could not fetch metadata for ${pName}:`, err);
+            }
+          }
+
+          const packVal = item.pack_size_value || productInfo?.pack_value || productInfo?.pack_size_value || '';
+          const packType = item.pack_size_type || productInfo?.pack_type || productInfo?.pack_size_type || '';
+          const fullPack = (packVal && packType) ? `${packVal} ${packType}`.trim() : (productInfo?.pack || '');
+
+          const disc1 = parseFloat(preference.disc1) || 0;
+          const disc2 = parseFloat(preference.disc2) || 0;
+          const taxPer = parseFloat(preference.tax !== undefined && preference.tax !== null ? preference.tax : 5) || 0;
+          const isReverse = Boolean(preference.gst_reverse);
+          const mrp = parseFloat(item.mrp || productInfo?.mrp || item.unit_price || 0) || 0;
+          const rate = parseFloat(item.unit_price || item.rate || productInfo?.rate || mrp) || mrp;
+
+          const productEntry = {
+            product_id: productInfo?.id || item.product_id || null,
+            variant_id: item.variant_id || productInfo?.variant_id || null,
+            batch_id: item.batch_id || productInfo?.batch_id || null,
+            name: productInfo?.name || pName,
+            hsn: productInfo?.hsn_code || '30049011',
+            mfg: productInfo?.mfg || '',
+            pack: fullPack,
+            pack_value: packVal,
+            pack_type: packType,
+            batch_no: item.batch_no || productInfo?.batch_no || '',
+            exp_date: item.exp_date || productInfo?.exp_date || '',
+            qty: qty,
+            free: 0,
+            scheme: preference.scheme || '',
+            mrp: mrp,
+            rate: rate,
+            dis1: disc1,
+            dis2: disc2,
+            discount_amount: 0,
+            discount_1_percent: disc1,
+            discount_2_percent: disc2,
+            sgst_per: 0,
+            sgst_val: 0,
+            cgst_per: 0,
+            cgst_val: 0,
+            gstTotal: taxPer,
+            gst_percent: taxPer,
+            gst_reverse: isReverse,
+            is_gold: (productInfo?.is_gold || item.is_gold || 0)
+          };
+
+          this.recalculateEstimateProduct(productEntry);
+          this.currentEstimateProducts.push(productEntry);
+        }
+      }
+
+      this.isEstimateDirty = true;
+      this.renderProductList();
+      this.updateEstimateSummary();
+      this.showNotification(`Imported ${this.currentEstimateProducts.length} items from order #${order.order_number || order.id}.`, 'success');
+
+      this.viewContainer.querySelector('#estProductListTable')?.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      log.error('Import Error:', err);
+      this.showNotification('Failed to import order items', 'error');
+    } finally {
+      loadingOverlay.remove();
     }
   }
 
