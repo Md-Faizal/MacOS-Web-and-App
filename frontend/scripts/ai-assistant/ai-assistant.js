@@ -1,19 +1,25 @@
 /**
  * AI Assistant Chat Widget
  * Provides a beautiful chat interface for interacting with the Gemini AI backend
+ * Includes session history, auto-naming, manual rename, inline deletion, model selection,
+ * quick prompts, copy responses, and Chart.js visualization.
  */
 
 class AIAssistant {
   constructor(containerSelector = 'body') {
     this.container = document.querySelector(containerSelector);
-    this.sessionId = this.generateSessionId();
     this.isOpen = false;
     this.isLoading = false;
     this.isExpanded = false;
+    this.isHistoryOpen = false;
     this.isDragging = false;
     this.isResizing = false;
     this.dragOffset = { x: 0, y: 0 };
     this.apiBase = this.getApiBaseUrl() + '/api/ai';
+    this.selectedModel = 'gemini-2.5-flash';
+    this.sessions = [];
+    this.currentSessionId = null;
+    this.sessionId = null;
     this.quickSearchQueries = [
       // Database/Business queries
       'Show me all products',
@@ -48,10 +54,56 @@ class AIAssistant {
     return '';
   }
 
+  loadSessions() {
+    try {
+      const raw = localStorage.getItem('macos_ai_chat_sessions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.sessions = parsed;
+          this.currentSessionId = parsed[0].id;
+          this.sessionId = this.currentSessionId;
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse sessions from localStorage:', e);
+    }
+    const fresh = this.createNewSession();
+    this.sessions = [fresh];
+    this.currentSessionId = fresh.id;
+    this.sessionId = fresh.id;
+    this.saveSessions();
+  }
+
+  saveSessions() {
+    try {
+      localStorage.setItem('macos_ai_chat_sessions', JSON.stringify(this.sessions));
+    } catch (e) {
+      console.error('Failed to save sessions to localStorage:', e);
+    }
+  }
+
+  createNewSession() {
+    return {
+      id: 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 7),
+      title: 'New conversation',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: []
+    };
+  }
+
+  getCurrentSession() {
+    return this.sessions.find(s => s.id === this.currentSessionId) || this.sessions[0];
+  }
+
   init() {
     this.loadStyles();
+    this.loadSessions();
     this.createChatWidget();
     this.attachEventListeners();
+    this.switchSession(this.currentSessionId);
   }
 
   loadStyles() {
@@ -72,25 +124,33 @@ class AIAssistant {
           <span>AI Assistant</span>
         </div>
         <div class="ai-widget-controls">
+          <button class="ai-header-btn" id="aiHistoryBtn" title="Conversation History">🕒 History</button>
+          <button class="ai-header-btn" id="aiNewChatBtn" title="Start New Conversation">+ New</button>
           <select id="aiModelSelector" class="ai-model-selector" title="Select AI Model">
             <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
             <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
-            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            <option value="gemini-2.0-flash-001">Gemini 2.0 Flash 001</option>
-            <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash-Lite</option>
-            <option value="gemini-2.0-flash-lite-001">Gemini 2.0 Flash-Lite 001</option>
+            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
           </select>
           <button class="ai-widget-expand" title="Expand" id="aiExpandBtn">⛶</button>
           <button class="ai-widget-close" title="Close">✕</button>
         </div>
       </div>
-      <div class="ai-messages" id="aiMessages">
-        <div class="ai-welcome">
-          <div class="ai-welcome-title">Welcome to AI Assistant</div>
-          <p>I can help with anything - ask me questions, get explanations, write code, analyze data, or just chat!</p>
+
+      <!-- Sliding History Drawer -->
+      <div class="ai-history-drawer" id="aiHistoryDrawer">
+        <div class="ai-history-drawer-header">
+          <span>Past Conversations</span>
+          <div class="ai-history-header-actions">
+            <button class="ai-history-clear-btn" id="aiClearAllBtn" title="Clear all history">Clear All</button>
+            <button class="ai-history-close-btn" id="aiHistoryCloseBtn" title="Close history">✕</button>
+          </div>
         </div>
+        <div class="ai-history-list" id="aiHistoryList"></div>
       </div>
+
+      <div class="ai-messages" id="aiMessages"></div>
+
       <div class="ai-input-area">
         <input 
           type="text" 
@@ -121,6 +181,12 @@ class AIAssistant {
 
     // Close button
     document.querySelector('.ai-widget-close').addEventListener('click', () => this.toggleChat());
+
+    // History Toggle & New Chat buttons
+    document.getElementById('aiHistoryBtn').addEventListener('click', () => this.toggleHistoryDrawer());
+    document.getElementById('aiNewChatBtn').addEventListener('click', () => this.startNewChat());
+    document.getElementById('aiHistoryCloseBtn').addEventListener('click', () => this.closeHistoryDrawer());
+    document.getElementById('aiClearAllBtn').addEventListener('click', () => this.clearAllSessions());
 
     // Dragging functionality
     const dragHandle = document.getElementById('aiDragHandle');
@@ -264,7 +330,7 @@ class AIAssistant {
     const deltaX = e.clientX - this.resizeStart.x;
     const deltaY = e.clientY - this.resizeStart.y;
     
-    const newWidth = Math.max(300, this.resizeStart.width + deltaX);
+    const newWidth = Math.max(320, this.resizeStart.width + deltaX);
     const newHeight = Math.max(300, this.resizeStart.height + deltaY);
     
     widget.style.width = newWidth + 'px';
@@ -275,19 +341,229 @@ class AIAssistant {
     this.isResizing = false;
   }
 
+  /* ==========================================================================
+     SESSION & HISTORY MANAGEMENT
+     ========================================================================== */
+
+  startNewChat() {
+    const fresh = this.createNewSession();
+    this.sessions.unshift(fresh);
+    this.saveSessions();
+    this.switchSession(fresh.id);
+    this.closeHistoryDrawer();
+    const input = document.getElementById('aiInput');
+    if (input) input.focus();
+  }
+
+  switchSession(sessionId) {
+    this.currentSessionId = sessionId;
+    this.sessionId = sessionId;
+    const session = this.getCurrentSession();
+    
+    const messages = document.getElementById('aiMessages');
+    if (messages) {
+      messages.innerHTML = '';
+      if (!session.messages || session.messages.length === 0) {
+        this.renderWelcomeScreen();
+      } else {
+        session.messages.forEach(msg => {
+          this.addMessage(msg.text, msg.role, msg.data, false);
+        });
+      }
+    }
+    this.renderHistoryList();
+  }
+
+  renderWelcomeScreen() {
+    const messages = document.getElementById('aiMessages');
+    if (!messages) return;
+
+    messages.innerHTML = `
+      <div class="ai-welcome">
+        <div class="ai-welcome-title">Welcome to AI Assistant</div>
+        <p>I can help with anything - ask me questions, write queries, analyze inventory, or check revenue!</p>
+        <div class="ai-welcome-chips">
+          <button class="ai-chip" data-query="Show me all products">📦 All Products</button>
+          <button class="ai-chip" data-query="List top selling products">🔥 Top Selling</button>
+          <button class="ai-chip" data-query="Get total revenue">💰 Total Revenue</button>
+          <button class="ai-chip" data-query="Which products have low stock?">⚠️ Low Stock</button>
+        </div>
+      </div>
+    `;
+
+    messages.querySelectorAll('.ai-chip').forEach(chip => {
+      chip.addEventListener('click', (e) => {
+        const query = e.currentTarget.dataset.query;
+        const input = document.getElementById('aiInput');
+        if (input && query) {
+          input.value = query;
+          this.sendMessage();
+        }
+      });
+    });
+  }
+
+  toggleHistoryDrawer() {
+    this.isHistoryOpen = !this.isHistoryOpen;
+    const drawer = document.getElementById('aiHistoryDrawer');
+    if (drawer) {
+      drawer.classList.toggle('ai-history-open', this.isHistoryOpen);
+      if (this.isHistoryOpen) {
+        this.renderHistoryList();
+      }
+    }
+  }
+
+  closeHistoryDrawer() {
+    this.isHistoryOpen = false;
+    const drawer = document.getElementById('aiHistoryDrawer');
+    if (drawer) {
+      drawer.classList.remove('ai-history-open');
+    }
+  }
+
+  renderHistoryList() {
+    const list = document.getElementById('aiHistoryList');
+    if (!list) return;
+
+    if (this.sessions.length === 0) {
+      list.innerHTML = `<div class="ai-history-empty">No conversations yet</div>`;
+      return;
+    }
+
+    list.innerHTML = this.sessions.map(s => {
+      const isActive = s.id === this.currentSessionId;
+      const d = new Date(s.updatedAt || s.createdAt || Date.now());
+      const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const msgCount = (s.messages || []).length;
+      return `
+        <div class="ai-history-item ${isActive ? 'active' : ''}" data-id="${s.id}">
+          <div class="ai-history-item-top">
+            <span class="ai-history-title" data-id="${s.id}" title="Double-click to rename">${this.escapeHtml(s.title || 'New conversation')}</span>
+            <div class="ai-history-actions">
+              <button class="ai-history-action-btn ai-hist-edit" title="Rename conversation" data-id="${s.id}">✎</button>
+              <button class="ai-history-action-btn ai-hist-del" title="Delete conversation" data-id="${s.id}">✕</button>
+            </div>
+          </div>
+          <div class="ai-history-meta">${dateStr} • ${msgCount} msgs</div>
+        </div>
+      `;
+    }).join('');
+
+    // Clicking an item switches to that session
+    list.querySelectorAll('.ai-history-item').forEach(item => {
+      const id = item.dataset.id;
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.ai-history-actions') || e.target.classList.contains('ai-history-rename-input')) return;
+        this.switchSession(id);
+        this.closeHistoryDrawer();
+      });
+    });
+
+    // Edit button & double-click title
+    list.querySelectorAll('.ai-hist-edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startInlineRename(btn.dataset.id);
+      });
+    });
+
+    list.querySelectorAll('.ai-history-title').forEach(span => {
+      span.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        this.startInlineRename(span.dataset.id);
+      });
+    });
+
+    // Delete button
+    list.querySelectorAll('.ai-hist-del').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteSession(btn.dataset.id);
+      });
+    });
+  }
+
+  startInlineRename(sessionId) {
+    const span = document.querySelector(`.ai-history-title[data-id="${sessionId}"]`);
+    if (!span) return;
+    const session = this.sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ai-history-rename-input';
+    input.value = session.title;
+    
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const val = input.value.trim();
+      if (val) {
+        session.title = val;
+        session.updatedAt = Date.now();
+        this.saveSessions();
+      }
+      this.renderHistoryList();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === 'Escape') {
+        committed = true;
+        this.renderHistoryList();
+      }
+    });
+    input.addEventListener('blur', commit);
+
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
+  deleteSession(sessionId) {
+    this.sessions = this.sessions.filter(s => s.id !== sessionId);
+    if (this.sessions.length === 0) {
+      const fresh = this.createNewSession();
+      this.sessions = [fresh];
+      this.currentSessionId = fresh.id;
+    } else if (this.currentSessionId === sessionId) {
+      this.currentSessionId = this.sessions[0].id;
+    }
+    this.saveSessions();
+    this.switchSession(this.currentSessionId);
+  }
+
+  clearAllSessions() {
+    if (!confirm('Clear all conversation history?')) return;
+    const fresh = this.createNewSession();
+    this.sessions = [fresh];
+    this.saveSessions();
+    this.switchSession(fresh.id);
+    this.closeHistoryDrawer();
+  }
+
+  /* ==========================================================================
+     SEND & RENDER MESSAGES
+     ========================================================================== */
+
   async sendMessage() {
     const input = document.getElementById('aiInput');
     const message = input.value.trim();
 
     if (!message || this.isLoading) return;
 
-    // Add user message to chat
+    // Add user message to chat and save to session
     this.addMessage(message, 'user');
     input.value = '';
 
-    // Show loading indicator
+    // Show loading indicator (not saved to session)
     this.isLoading = true;
-    this.addMessage('', 'bot-loading');
+    this.addMessage('', 'bot-loading', null, false);
 
     try {
       const response = await fetch(`${this.apiBase}/query`, {
@@ -306,7 +582,7 @@ class AIAssistant {
 
       const data = await response.json();
 
-      // Remove loading indicator - find and remove the loading spinner
+      // Remove loading indicator
       const messages = document.getElementById('aiMessages');
       const loadingSpinner = messages.querySelector('.ai-loading');
       if (loadingSpinner) {
@@ -328,7 +604,6 @@ class AIAssistant {
     } catch (error) {
       console.error('Error sending message:', error);
 
-      // Remove loading indicator
       const messages = document.getElementById('aiMessages');
       const loadingSpinner = messages.querySelector('.ai-loading');
       if (loadingSpinner) {
@@ -344,8 +619,9 @@ class AIAssistant {
     }
   }
 
-  addMessage(text, role, data = null) {
+  addMessage(text, role, data = null, saveToHistory = true) {
     const messages = document.getElementById('aiMessages');
+    if (!messages) return;
 
     // Remove welcome message if it exists
     const welcome = messages.querySelector('.ai-welcome');
@@ -369,13 +645,17 @@ class AIAssistant {
         </div>
       `;
     } else {
-      let contentHTML = `<div class="ai-message-content">${this.formatMarkdown(text)}</div>`;
+      let contentHTML = `<div class="ai-message-content">`;
       
+      if (role === 'bot') {
+        contentHTML += `<div class="ai-text-reply">${this.formatMarkdown(text)}</div>`;
+      } else {
+        contentHTML += this.formatMarkdown(text);
+      }
+
       // If we have SQL query results, enrich the message block
       if (data && data.query) {
-        contentHTML = `<div class="ai-message-content">
-          <div class="ai-text-reply">${this.formatMarkdown(text)}</div>
-          
+        contentHTML += `
           <details class="ai-sql-details">
             <summary>🔍 View SQL Query</summary>
             <pre><code class="language-sql">${this.escapeHtml(data.query)}</code></pre>
@@ -425,15 +705,61 @@ class AIAssistant {
         } else if (data.results) {
           contentHTML += `<div class="ai-no-results">No records found matching this query.</div>`;
         }
-
-        contentHTML += `</div>`;
       }
 
+      if (role === 'bot') {
+        contentHTML += `
+          <div class="ai-msg-footer">
+            <button class="ai-copy-btn" title="Copy reply">📋 Copy</button>
+          </div>
+        `;
+      }
+
+      contentHTML += `</div>`;
       messageDiv.innerHTML = contentHTML;
+
+      // Copy response handler
+      const copyBtn = messageDiv.querySelector('.ai-copy-btn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(text).then(() => {
+            copyBtn.textContent = '✓ Copied';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1500);
+          }).catch(() => {});
+        });
+      }
     }
 
     messages.appendChild(messageDiv);
     messages.scrollTop = messages.scrollHeight;
+
+    // Save to active session
+    if (saveToHistory && role !== 'bot-loading') {
+      const session = this.getCurrentSession();
+      if (session) {
+        session.messages = session.messages || [];
+        session.messages.push({
+          role,
+          text,
+          data: data ? { query: data.query, results: data.results } : null,
+          timestamp: Date.now()
+        });
+        session.updatedAt = Date.now();
+
+        // Auto-generate title on first user prompt if still default
+        if (role === 'user' && (session.title === 'New conversation' || session.messages.filter(m => m.role === 'user').length <= 1)) {
+          const cleanTitle = text.trim().slice(0, 32);
+          if (cleanTitle) {
+            session.title = cleanTitle;
+          }
+        }
+
+        this.saveSessions();
+        if (this.isHistoryOpen) {
+          this.renderHistoryList();
+        }
+      }
+    }
   }
 
   async renderChart(canvasId, results, labelKey, valueKey) {
@@ -622,10 +948,6 @@ class AIAssistant {
     return div.innerHTML;
   }
 
-  handleNavigation(navigation) {
-    // Navigation feature removed - all queries go to AI for database processing
-  }
-
   showSuggestions(input) {
     const suggestionsDiv = document.getElementById('aiSuggestions');
     if (!input.trim()) {
@@ -637,7 +959,7 @@ class AIAssistant {
     const filtered = this.quickSearchQueries.filter(q => 
       q.toLowerCase().startsWith(inputLower) || 
       q.toLowerCase().includes(inputLower)
-    ).slice(0, 5); // Show top 5
+    ).slice(0, 5);
 
     if (filtered.length === 0) {
       suggestionsDiv.innerHTML = '';
@@ -650,7 +972,6 @@ class AIAssistant {
       </div>
     `).join('');
 
-    // Attach click handlers to suggestions
     suggestionsDiv.querySelectorAll('.ai-suggestion-item').forEach(item => {
       item.addEventListener('click', (e) => {
         const input = document.getElementById('aiInput');
@@ -659,14 +980,6 @@ class AIAssistant {
         this.sendMessage();
       });
     });
-  }
-
-  openApp(appName) {
-    // Removed - navigation feature disabled
-  }
-
-  openPage(appName, pageName) {
-    // Removed - navigation feature disabled
   }
 }
 
@@ -682,4 +995,3 @@ if (document.readyState === 'loading') {
 } else {
   window.aiAssistant = new AIAssistant();
 }
-

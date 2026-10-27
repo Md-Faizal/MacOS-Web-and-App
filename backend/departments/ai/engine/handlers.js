@@ -55,9 +55,10 @@ function getGenAI() {
 const AVAILABLE_MODELS = {
   'gemini-2.5-flash': 'gemini-2.5-flash',           // Latest, fastest
   'gemini-2.5-pro': 'gemini-2.5-pro',               // Smartest
+  'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
+  'gemini-3.8-flash': 'gemini-3.8-flash',           // Next-gen preview
   'gemini-flash-latest': 'gemini-flash-latest',
   'gemini-pro-latest': 'gemini-pro-latest',
-  'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
   'gemini-2.0-flash': 'gemini-2.5-flash',
   'gemini-2.0-flash-001': 'gemini-2.5-flash',
   'gemini-2.0-flash-lite': 'gemini-2.5-flash-lite',
@@ -251,7 +252,7 @@ ${query}`;
             result = await chat.sendMessage(prompt);
           } catch (modelErr) {
             const errStr = String(modelErr && modelErr.message ? modelErr.message : modelErr);
-            if (errStr.includes('404') || errStr.toLowerCase().includes('not found') || errStr.toLowerCase().includes('is not supported')) {
+            if (errStr.includes('404') || errStr.toLowerCase().includes('not found') || errStr.toLowerCase().includes('is not supported') || errStr.includes('503') || errStr.toLowerCase().includes('high demand') || errStr.toLowerCase().includes('service unavailable')) {
               const fallbackName = actualModel === 'gemini-2.5-flash' ? 'gemini-flash-latest' : 'gemini-2.5-flash';
               console.warn(`[AI Engine] Model "${actualModel}" unavailable (${errStr}), falling back to "${fallbackName}"`);
               const fallbackModel = getGenAI().getGenerativeModel({ model: fallbackName });

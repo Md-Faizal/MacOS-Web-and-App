@@ -32,7 +32,7 @@ const MODEL_OPTIONS = [
   { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
   { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
 ];
 
 const QUICK_PROMPTS = [
@@ -256,6 +256,48 @@ export function AIBubble({ user }: AIBubbleProps) {
         messages: nextMessages,
       };
     }));
+  };
+
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  const deleteSession = (sessionIdToDelete: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSessions(prev => {
+      const updated = prev.filter(s => s.id !== sessionIdToDelete);
+      if (updated.length === 0) {
+        const fresh = createSession();
+        setActiveSessionId(fresh.id);
+        return [fresh];
+      }
+      if (activeSessionId === sessionIdToDelete) {
+        setActiveSessionId(updated[0].id);
+      }
+      return updated;
+    });
+  };
+
+  const startRenameSession = (session: ChatSession, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingSessionId(session.id);
+    setEditingTitle(session.title);
+  };
+
+  const saveRenameSession = (sessionIdToRename: string) => {
+    const trimmed = editingTitle.trim();
+    if (trimmed) {
+      setSessions(prev => prev.map(s => s.id === sessionIdToRename ? { ...s, title: trimmed, updatedAt: Date.now() } : s));
+    }
+    setEditingSessionId(null);
+    setEditingTitle('');
+  };
+
+  const copyMessageText = (messageId: string, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 1500);
+    }).catch(() => {});
   };
 
   const createFreshChat = () => {
@@ -571,17 +613,72 @@ export function AIBubble({ user }: AIBubbleProps) {
 
                 <div className="zentra-ai-history-list">
                   {sessions.map(session => (
-                    <button
+                    <div
                       key={session.id}
-                      type="button"
                       className={`zentra-ai-history-item ${session.id === activeSessionId ? 'active' : ''}`}
                       onClick={() => setActiveSessionId(session.id)}
                     >
-                      <span className="zentra-ai-history-title">{session.title}</span>
+                      <div className="zentra-ai-history-row">
+                        {editingSessionId === session.id ? (
+                          <input
+                            type="text"
+                            className="zentra-ai-history-input"
+                            value={editingTitle}
+                            autoFocus
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setEditingTitle(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveRenameSession(session.id);
+                              if (e.key === 'Escape') setEditingSessionId(null);
+                            }}
+                            onBlur={() => saveRenameSession(session.id)}
+                          />
+                        ) : (
+                          <span 
+                            className="zentra-ai-history-title"
+                            onDoubleClick={(e) => startRenameSession(session, e)}
+                            title="Double-click to rename"
+                          >
+                            {session.title}
+                          </span>
+                        )}
+                        <div className="zentra-ai-history-actions">
+                          {editingSessionId === session.id ? (
+                            <button
+                              type="button"
+                              className="zentra-ai-history-action-btn"
+                              title="Save title"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                saveRenameSession(session.id);
+                              }}
+                            >
+                              ✓
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="zentra-ai-history-action-btn"
+                              title="Rename conversation"
+                              onClick={(e) => startRenameSession(session, e)}
+                            >
+                              ✎
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="zentra-ai-history-action-btn zentra-ai-del-btn"
+                            title="Delete conversation"
+                            onClick={(e) => deleteSession(session.id, e)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
                       <span className="zentra-ai-history-meta">
-                        {new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        {new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
-                    </button>
+                    </div>
                   ))}
                 </div>
 
@@ -636,6 +733,18 @@ export function AIBubble({ user }: AIBubbleProps) {
                                   </tbody>
                                 </table>
                               </div>
+                            </div>
+                          )}
+                          {!isUser && (
+                            <div className="zentra-ai-msg-footer">
+                              <button
+                                type="button"
+                                className="zentra-ai-copy-btn"
+                                onClick={() => copyMessageText(message.id, message.content)}
+                                title="Copy response"
+                              >
+                                {copiedMessageId === message.id ? 'Copied ✓' : '📋 Copy'}
+                              </button>
                             </div>
                           )}
                         </div>

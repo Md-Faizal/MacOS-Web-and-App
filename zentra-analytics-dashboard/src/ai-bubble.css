@@ -260,6 +260,14 @@
   border-color: rgba(17, 17, 17, 0.08);
 }
 
+.zentra-ai-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
 .zentra-ai-history-title {
   font-size: 0.74rem;
   line-height: 1.3;
@@ -267,11 +275,82 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 600;
+  flex: 1;
+}
+
+.zentra-ai-history-input {
+  flex: 1;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid #f28a1d;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+}
+
+.zentra-ai-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.zentra-ai-history-item:hover .zentra-ai-history-actions {
+  opacity: 1;
+}
+
+.zentra-ai-history-action-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.72rem;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--zentra-ai-muted);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zentra-ai-history-action-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--zentra-ai-text);
+}
+
+.zentra-ai-del-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
 }
 
 .zentra-ai-history-meta {
   color: var(--zentra-ai-muted);
   font-size: 0.64rem;
+}
+
+.zentra-ai-msg-footer {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.zentra-ai-copy-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  color: var(--zentra-ai-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zentra-ai-copy-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--zentra-ai-text);
 }
 
 .zentra-ai-clear-button {
