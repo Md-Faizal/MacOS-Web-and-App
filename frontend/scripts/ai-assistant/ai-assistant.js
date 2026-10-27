@@ -124,16 +124,20 @@ class AIAssistant {
           <span>AI Assistant</span>
         </div>
         <div class="ai-widget-controls">
-          <button class="ai-widget-btn" id="aiHistoryBtn" title="Conversation History">🕒</button>
-          <button class="ai-widget-btn" id="aiNewChatBtn" title="New Conversation">＋</button>
+          <button class="ai-pill-btn" id="aiHistoryBtn" title="Conversation History">
+            <span class="ai-pill-icon">🕒</span><span class="ai-pill-label">History</span>
+          </button>
+          <button class="ai-pill-btn" id="aiNewChatBtn" title="Start New Conversation">
+            <span class="ai-pill-icon">＋</span><span class="ai-pill-label">New</span>
+          </button>
           <select id="aiModelSelector" class="ai-model-selector" title="Select AI Model">
             <option value="gemini-2.5-flash" selected>2.5 Flash</option>
             <option value="gemini-2.5-pro">2.5 Pro</option>
             <option value="gemini-2.5-flash-lite">2.5 Lite</option>
             <option value="gemini-3.8-flash">3.8 Flash</option>
           </select>
-          <button class="ai-widget-expand" title="Expand" id="aiExpandBtn">⛶</button>
-          <button class="ai-widget-close" title="Close">✕</button>
+          <button class="ai-icon-btn ai-widget-expand" title="Expand" id="aiExpandBtn">⛶</button>
+          <button class="ai-icon-btn ai-widget-close" title="Close">✕</button>
         </div>
       </div>
 
