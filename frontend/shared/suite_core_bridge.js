@@ -561,9 +561,15 @@ class SuiteCoreBridge {
       throw new Error('[SuiteCoreBridge] WebAssembly core (suite_core.wasm) not loaded for searchCatalog');
     }
 
+    const catalogList = Array.isArray(catalog) ? catalog : [];
     const payload = {
       query: (query || '').toString(),
-      catalog: Array.isArray(catalog) ? catalog : [],
+      catalog: catalogList.map((item, idx) => {
+        if (item && typeof item === 'object') {
+          return Object.assign({}, item, { _catalog_idx: idx });
+        }
+        return item;
+      }),
       options: {
         min_score: options.min_score !== undefined ? options.min_score : 20.0,
         limit: options.limit !== undefined ? options.limit : 50
@@ -572,10 +578,22 @@ class SuiteCoreBridge {
 
     const res = this.callWasmJson('suite_search_catalog', payload);
     if (res && res.success && Array.isArray(res.results)) {
+      const getOriginalItem = (r) => {
+        const idx = r.item && r.item._catalog_idx;
+        if (typeof idx === 'number' && idx >= 0 && idx < catalogList.length) {
+          return catalogList[idx];
+        }
+        if (r.item && r.item.id !== undefined) {
+          const found = catalogList.find(c => c && String(c.id) === String(r.item.id));
+          if (found) return found;
+        }
+        return r.item;
+      };
+
       if (options.raw_results) {
-        return res.results;
+        return res.results.map(r => ({ ...r, item: getOriginalItem(r) }));
       }
-      return res.results.map(r => r.item);
+      return res.results.map(r => getOriginalItem(r));
     }
     throw new Error(`[SuiteCoreBridge] suite_search_catalog WASM call failed: ${res ? res.error : 'Unknown'}`);
   }

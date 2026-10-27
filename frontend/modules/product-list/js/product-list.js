@@ -104,8 +104,8 @@ class Product {
   }
 
   getTotalUnitsSold() {
-    return this.variants.reduce((total, variant) => {
-      return total + variant.batches.reduce((sum, batch) => sum + batch.unitsSold, 0);
+    return (this.variants || []).reduce((total, variant) => {
+      return total + ((variant && variant.batches) || []).reduce((sum, batch) => sum + (batch ? (batch.unitsSold || batch.units_sold || 0) : 0), 0);
     }, 0);
   }
 }
@@ -342,11 +342,14 @@ export class ProductListApp extends AppWindow {
   }
 
   normalizeProductModels(products) {
-    return products.map(product =>
-      product instanceof Product || typeof product?.getTotalUnitsSold === 'function'
-        ? product
-        : this.deserializeProductFromAPI(product)
-    );
+    if (!Array.isArray(products)) return [];
+    return products.map(product => {
+      if (!product) return null;
+      if (typeof product.getTotalUnitsSold === 'function') {
+        return product;
+      }
+      return this.deserializeProductFromAPI(product);
+    }).filter(Boolean);
   }
 
   async checkBackendConnection() {
@@ -996,7 +999,7 @@ export class ProductListApp extends AppWindow {
           limit: this.products.length
         });
         if (Array.isArray(fuzzyResults) && fuzzyResults.length > 0) {
-          return fuzzyResults;
+          return this.normalizeProductModels(fuzzyResults);
         }
       } catch (err) {
         log.warn('[ProductList] WASM fuzzy search fallback:', err);
@@ -1807,15 +1810,15 @@ export class ProductListApp extends AppWindow {
             </div>
             
             <div class="product-card-details">
-              <span class="product-detail">📂 ${product.category}</span>
-              <span class="product-detail">📊 Total Sold: ${product.getTotalUnitsSold()} units</span>
-              <span class="product-detail">📅 Created: ${product.createdAt.toLocaleDateString()}</span>
-              ${product.lastUpdated.toLocaleDateString() !== product.createdAt.toLocaleDateString() ? `<span class="product-detail">✏️ Updated: ${product.lastUpdated.toLocaleDateString()}</span>` : ''}
+              <span class="product-detail">📂 ${product.category || product.category_name || 'General'}</span>
+              <span class="product-detail">📊 Total Sold: ${typeof product.getTotalUnitsSold === 'function' ? product.getTotalUnitsSold() : (product.units_sold || 0)} units</span>
+              <span class="product-detail">📅 Created: ${(product.createdAt instanceof Date ? product.createdAt : new Date(product.createdAt || Date.now())).toLocaleDateString()}</span>
+              ${(product.lastUpdated instanceof Date ? product.lastUpdated : new Date(product.lastUpdated || product.createdAt || Date.now())).toLocaleDateString() !== (product.createdAt instanceof Date ? product.createdAt : new Date(product.createdAt || Date.now())).toLocaleDateString() ? `<span class="product-detail">✏️ Updated: ${(product.lastUpdated instanceof Date ? product.lastUpdated : new Date(product.lastUpdated || Date.now())).toLocaleDateString()}</span>` : ''}
             </div>
 
             <div class="product-variants-section">
-              <h4 class="variant-section-title">Variants (${product.variants.length})</h4>
-              ${product.variants.length === 0 ? `
+              <h4 class="variant-section-title">Variants (${(product.variants || []).length})</h4>
+              ${!(product.variants && product.variants.length) ? `
                 <p class="no-variants-text">No variants added yet</p>
               ` : product.variants.map(variant => `
                 <div class="variant-item">
@@ -3230,7 +3233,7 @@ export class ProductListApp extends AppWindow {
                       </span>
                     </div>
                     <div style="font-size: 12px; color: #666;">
-                      Variants: ${product.variants.length} | Batches: ${product.variants.reduce((sum, v) => sum + v.batches.length, 0)} | Sold: ${product.getTotalUnitsSold()}
+                      Variants: ${(product.variants || []).length} | Batches: ${(product.variants || []).reduce((sum, v) => sum + ((v && v.batches) || []).length, 0)} | Sold: ${typeof product.getTotalUnitsSold === 'function' ? product.getTotalUnitsSold() : (product.units_sold || 0)}
                     </div>
                   </div>
                 `).join('')}
@@ -4127,26 +4130,27 @@ export class ProductListApp extends AppWindow {
 
     // Calculate inventory statistics
     const totalProducts = this.products.length;
-    const totalVariants = this.products.reduce((sum, p) => sum + p.variants.length, 0);
-    const totalBatches = this.products.reduce((sum, p) => sum + p.variants.reduce((vsum, v) => vsum + v.batches.length, 0), 0);
-    const totalUnitsSold = this.products.reduce((sum, p) => sum + p.getTotalUnitsSold(), 0);
+    const totalVariants = this.products.reduce((sum, p) => sum + (p.variants || []).length, 0);
+    const totalBatches = this.products.reduce((sum, p) => sum + (p.variants || []).reduce((vsum, v) => vsum + ((v && v.batches) || []).length, 0), 0);
+    const totalUnitsSold = this.products.reduce((sum, p) => sum + (typeof p.getTotalUnitsSold === 'function' ? p.getTotalUnitsSold() : (p.units_sold || 0)), 0);
     
     // Group by category
     const categoryInventory = {};
     this.products.forEach(product => {
-      if (!categoryInventory[product.category]) {
-        categoryInventory[product.category] = {
+      const catName = product.category || product.category_name || 'General';
+      if (!categoryInventory[catName]) {
+        categoryInventory[catName] = {
           products: 0,
           variants: 0,
           batches: 0,
           unitsSold: 0
         };
       }
-      categoryInventory[product.category].products++;
-      categoryInventory[product.category].variants += product.variants.length;
-      categoryInventory[product.category].unitsSold += product.getTotalUnitsSold();
-      product.variants.forEach(v => {
-        categoryInventory[product.category].batches += v.batches.length;
+      categoryInventory[catName].products++;
+      categoryInventory[catName].variants += (product.variants || []).length;
+      categoryInventory[catName].unitsSold += typeof product.getTotalUnitsSold === 'function' ? product.getTotalUnitsSold() : (product.units_sold || 0);
+      (product.variants || []).forEach(v => {
+        categoryInventory[catName].batches += ((v && v.batches) || []).length;
       });
     });
 

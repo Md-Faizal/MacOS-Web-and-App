@@ -6,7 +6,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { getAIContextString, generateDatabaseContext, getEntityDirectory } = require('./db-context');
 
-const GEMINI_API_KEY = 'AIzaSyDUAiHHjq0TZMUfi602inE0FVu2dJShoa8';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || 'AIzaSyDUAiHHjq0TZMUfi602inE0FVu2dJShoa8';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Available models - from actual API listModels response
@@ -18,10 +18,11 @@ const AVAILABLE_MODELS = {
   'gemini-2.0-flash-lite': 'gemini-2.0-flash-lite', // Lightweight
   'gemini-2.0-flash-lite-001': 'gemini-2.0-flash-lite-001', // Lightweight variant
   'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite', // Latest lightweight
+  'gemini-1.5-flash': 'gemini-1.5-flash',
+  'gemini-1.5-pro': 'gemini-1.5-pro',
   // Backward compatibility mappings
-  'gemini-pro-vision': 'gemini-2.5-flash',
-  'gemini-1.5-pro': 'gemini-2.5-flash',
-  'gemini-1.5-flash': 'gemini-2.5-flash'
+  'gemini-pro-vision': 'gemini-1.5-flash',
+  'gemini-pro': 'gemini-1.5-flash'
 };
 
 // Conversation history for context
@@ -139,8 +140,28 @@ ${query}`;
             }))
           });
 
-          // Send message to Gemini
-          const result = await chat.sendMessage(prompt);
+          // Send message to Gemini with fallback retry if model not available
+          let result;
+          let activeChat = chat;
+          try {
+            result = await chat.sendMessage(prompt);
+          } catch (modelErr) {
+            const errStr = String(modelErr && modelErr.message ? modelErr.message : modelErr);
+            if (errStr.includes('404') || errStr.toLowerCase().includes('not found') || errStr.toLowerCase().includes('is not supported')) {
+              const fallbackName = actualModel === 'gemini-1.5-flash' ? 'gemini-2.0-flash' : 'gemini-1.5-flash';
+              console.warn(`[AI Engine] Model "${actualModel}" unavailable (${errStr}), falling back to "${fallbackName}"`);
+              const fallbackModel = genAI.getGenerativeModel({ model: fallbackName });
+              activeChat = fallbackModel.startChat({
+                history: history.map(msg => ({
+                  role: msg.role,
+                  parts: [{ text: msg.content }]
+                }))
+              });
+              result = await activeChat.sendMessage(prompt);
+            } else {
+              throw modelErr;
+            }
+          }
           let responseText = result.response.text();
           let executedQuery = null;
           let queryResults = null;
@@ -186,7 +207,7 @@ ${query}`;
                   (queryResults.length === 0
                     ? `Note: 0 matching rows were returned by this query. If the user query contained a typo or scribbled name, use the known entities directory to explain what was searched or clarify if they meant a specific known customer/product.`
                     : `Please summarize these results and provide a friendly, helpful, and concise answer to the user's original query. Do not repeat the SQL code block.`);
-                const secondResult = await chat.sendMessage(secondPrompt);
+                const secondResult = await activeChat.sendMessage(secondPrompt);
                 responseText = secondResult.response.text();
               } catch (dbError) {
                 console.error('Database query execution failed:', dbError.message);
@@ -194,7 +215,7 @@ ${query}`;
                 
                 // Feed error back to Gemini for explanation
                 const secondPrompt = `The SQLite query failed with the following error: "${dbError.message}". Please explain this error or suggest a fix to the user.`;
-                const secondResult = await chat.sendMessage(secondPrompt);
+                const secondResult = await activeChat.sendMessage(secondPrompt);
                 responseText = secondResult.response.text();
               }
             }
