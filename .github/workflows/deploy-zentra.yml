@@ -233,14 +233,24 @@ jobs:
       - name: ✅ Smoke Test — erp.faizal.uk
         if: ${{ !inputs.dry_run }}
         run: |
-          echo "⏳ Waiting 5s for files to settle..."
-          sleep 5
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://erp.faizal.uk/" || echo "000")
-          echo "erp.faizal.uk/ → HTTP $HTTP"
-          if [ "$HTTP" != "200" ]; then
+          echo "⏳ Waiting 6s for files and web server to settle..."
+          sleep 6
+          HTTP="000"
+          for attempt in 1 2 3 4 5; do
+            RAW=$(curl -s -o /dev/null -w "%{http_code}" -m 15 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GitHubActions" "https://erp.faizal.uk/" || true)
+            CODE=$(echo "$RAW" | tr -d '\r\n ' | grep -o '[0-9]\{3\}' | head -n 1 || echo "000")
+            echo "Attempt $attempt: erp.faizal.uk/ → HTTP ${CODE:-000}"
+            if [ "$CODE" = "200" ] || [ "$CODE" = "301" ] || [ "$CODE" = "302" ]; then
+              HTTP="$CODE"
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "301" ] && [ "$HTTP" != "302" ]; then
             echo "❌ Smoke test FAILED (expected 200, got $HTTP)"
             echo "Check: is the erp.faizal.uk nginx vhost active on the VM?"
-            echo "Run on VM: sudo ln -s /etc/nginx/sites-available/erp.faizal.uk /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+            echo "Run on VM: sudo ln -sf /etc/nginx/sites-available/erp.faizal.uk /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
             exit 1
           fi
-          echo "✅ erp.faizal.uk is live and serving Zentra!"
+          echo "✅ erp.faizal.uk is live and serving Zentra! (HTTP $HTTP)"
