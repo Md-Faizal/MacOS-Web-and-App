@@ -555,20 +555,33 @@ class AIAssistant {
      SEND & RENDER MESSAGES
      ========================================================================== */
 
-  async sendMessage() {
+  removeLoadingSpinner() {
+    const messages = document.getElementById('aiMessages');
+    if (!messages) return;
+    const loadingSpinner = messages.querySelector('.ai-loading');
+    if (loadingSpinner) {
+      loadingSpinner.closest('.ai-message')?.remove();
+    }
+  }
+
+  async sendMessage(retryCount = 0) {
     const input = document.getElementById('aiInput');
-    const message = input.value.trim();
+    const message = (retryCount > 0 && this._lastMessage) ? this._lastMessage : (input ? input.value.trim() : '');
 
-    if (!message || this.isLoading) return;
+    if (!message || (this.isLoading && retryCount === 0)) return;
 
-    // Add user message to chat and save to session
-    this.addMessage(message, 'user');
-    input.value = '';
+    if (retryCount === 0) {
+      this._lastMessage = message;
+      this.isLoading = true;
+      // Add user message to chat and save to session
+      this.addMessage(message, 'user');
+      if (input) input.value = '';
 
-    // Show loading indicator (not saved to session)
-    this.isLoading = true;
-    this.addMessage('', 'bot-loading', null, false);
+      // Show loading indicator (not saved to session)
+      this.addMessage('', 'bot-loading', null, false);
+    }
 
+    let willRetry = false;
     try {
       const response = await fetch(`${this.apiBase}/query`, {
         method: 'POST',
@@ -584,21 +597,20 @@ class AIAssistant {
         })
       });
 
-      const data = await response.json();
-
-      // Remove loading indicator
-      const messages = document.getElementById('aiMessages');
-      const loadingSpinner = messages.querySelector('.ai-loading');
-      if (loadingSpinner) {
-        loadingSpinner.closest('.ai-message')?.remove();
+      if (response.status === 401) {
+        this.removeLoadingSpinner();
+        this.addMessage('Session expired. Please refresh the page or log in again.', 'bot');
+        return;
       }
+
+      const data = await response.json();
+      this.removeLoadingSpinner();
 
       if (data.success) {
         this.addMessage(data.response, 'bot', data);
       } else {
-        // Check for quota/rate limit errors
         if (data.details && data.details.includes('quota')) {
-          this.addMessage('⚠️ API quota exceeded. Please try again in a few moments or upgrade your plan at https://ai.google.dev', 'bot');
+          this.addMessage('⚠️ API quota exceeded. Please try again in a few moments.', 'bot');
         } else if (data.details && data.details.includes('429')) {
           this.addMessage('⏳ Too many requests. Please wait a moment and try again.', 'bot');
         } else {
@@ -606,20 +618,24 @@ class AIAssistant {
         }
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.warn(`[AI Assistant] Request attempt ${retryCount + 1} failed:`, error);
 
-      const messages = document.getElementById('aiMessages');
-      const loadingSpinner = messages.querySelector('.ai-loading');
-      if (loadingSpinner) {
-        loadingSpinner.closest('.ai-message')?.remove();
+      // Auto-retry once on transient network drops (e.g. QUIC disconnects or blue/green deploy blips)
+      if (retryCount < 1) {
+        willRetry = true;
+        await new Promise(r => setTimeout(r, 1200));
+        return await this.sendMessage(retryCount + 1);
       }
 
+      this.removeLoadingSpinner();
       this.addMessage(
-        'Connection error. Make sure the AI service is running on port 3002.',
+        'Connection interrupted. Please try again.',
         'bot'
       );
     } finally {
-      this.isLoading = false;
+      if (!willRetry) {
+        this.isLoading = false;
+      }
     }
   }
 
