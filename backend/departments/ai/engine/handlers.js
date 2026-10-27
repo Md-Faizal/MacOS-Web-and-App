@@ -6,8 +6,35 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { getAIContextString, generateDatabaseContext, getEntityDirectory } = require('./db-context');
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || 'AIzaSyDUAiHHjq0TZMUfi602inE0FVu2dJShoa8';
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const fs = require('fs');
+const path = require('path');
+
+function getGeminiApiKey() {
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+  if (process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY.trim()) {
+    return process.env.GOOGLE_API_KEY.trim();
+  }
+  // Check if .env file has GEMINI_API_KEY (supports updating .env without full backend restart)
+  try {
+    const envPath = path.resolve(__dirname, '../../../../../.env');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const match = content.match(/^\s*GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/m);
+      if (match && match[1] && match[1].trim()) {
+        const key = match[1].trim();
+        process.env.GEMINI_API_KEY = key;
+        return key;
+      }
+    }
+  } catch (e) {}
+  return 'AIzaSyDUAiHHjq0TZMUfi602inE0FVu2dJShoa8';
+}
+
+function getGenAI() {
+  return new GoogleGenerativeAI(getGeminiApiKey());
+}
 
 // Available models - from actual API listModels response
 const AVAILABLE_MODELS = {
@@ -42,6 +69,67 @@ function getScopedSessionKey(req, sessionId = 'default') {
   return `${userKey}::${sessionId}`;
 }
 
+function tryLocalQueryFallback(db, req, query) {
+  if (!query || !db) return null;
+  const q = query.toLowerCase().trim();
+  const isWorker = req.user && req.user.role === 'worker';
+  const safeUserId = isWorker ? String(req.user.id || req.user.userId).replace(/'/g, "''") : null;
+
+  try {
+    // 1. Products / Inventory query
+    if (q.includes('product') || q.includes('item') || q.includes('inventory') || q.includes('stock')) {
+      const sql = 'SELECT p.id, p.name, c.name as category, p.classification FROM products p LEFT JOIN categories c ON p.category_id = c.id ORDER BY p.name ASC LIMIT 20';
+      const results = db.prepare(sql).all();
+      let response = `Here are ${results.length} products from your inventory:\n\n` +
+        results.map(p => `• **${p.name}** (${p.category || 'General'}) - *${p.classification || 'Standard'}*`).join('\n') +
+        '\n\n*(Note: Displaying offline results. Add a valid `GEMINI_API_KEY` in `.env` for conversational AI)*';
+      return { query: sql, results, response };
+    }
+
+    // 2. Customers / Contacts query
+    if (q.includes('customer') || q.includes('contact') || q.includes('client')) {
+      let sql = 'SELECT id, name, phone, email, address FROM contacts';
+      if (isWorker) {
+        sql += ` WHERE (id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR created_by_user_id = '${safeUserId}')`;
+      }
+      sql += ' ORDER BY name ASC LIMIT 20';
+      const results = db.prepare(sql).all();
+      let response = `Here are ${results.length} contacts from your directory:\n\n` +
+        results.map(c => `• **${c.name}** ${c.phone ? `(${c.phone})` : ''} ${c.address ? `- ${c.address}` : ''}`).join('\n') +
+        '\n\n*(Note: Displaying offline results. Add a valid `GEMINI_API_KEY` in `.env` for conversational AI)*';
+      return { query: sql, results, response };
+    }
+
+    // 3. Invoices / Orders query
+    if (q.includes('invoice') || q.includes('bill') || q.includes('order')) {
+      let sql = 'SELECT id, invoice_no, grand_total, total_amount, invoice_date FROM invoices';
+      if (isWorker) {
+        sql += ` WHERE (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id = '${safeUserId}'))`;
+      }
+      sql += ' ORDER BY id DESC LIMIT 15';
+      const results = db.prepare(sql).all();
+      let response = `Here are the latest ${results.length} invoices:\n\n` +
+        results.map(i => `• **#${i.invoice_no || i.id}** - ₹${Number(i.grand_total || i.total_amount || 0).toLocaleString('en-IN')} (${i.invoice_date || 'Recent'})`).join('\n') +
+        '\n\n*(Note: Displaying offline results. Add a valid `GEMINI_API_KEY` in `.env` for conversational AI)*';
+      return { query: sql, results, response };
+    }
+
+    // 4. Revenue / Sales query
+    if (q.includes('revenue') || q.includes('sale') || q.includes('turnover') || q.includes('earnings') || q.includes('total')) {
+      let sql = 'SELECT COUNT(*) as count, COALESCE(SUM(grand_total), SUM(total_amount), 0) as total FROM invoices';
+      if (isWorker) {
+        sql += ` WHERE (customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR customer_id IN (SELECT id FROM contacts WHERE created_by_user_id = '${safeUserId}'))`;
+      }
+      const data = db.prepare(sql).get() || { count: 0, total: 0 };
+      let response = `**Business Summary:**\n• Total Invoices: **${data.count}**\n• Total Revenue: **₹${Number(data.total || 0).toLocaleString('en-IN')}**\n\n*(Note: Displaying offline results. Add a valid \`GEMINI_API_KEY\` in \`.env\` for conversational AI)*`;
+      return { query: sql, results: [data], response };
+    }
+  } catch (err) {
+    console.warn('[AI Engine] Local query fallback failed:', err.message);
+  }
+  return null;
+}
+
 module.exports = function(db) {
   return {
     /**
@@ -71,7 +159,7 @@ module.exports = function(db) {
 
         try {
           // Get model instance
-          const aiModel = genAI.getGenerativeModel({ model: actualModel });
+          const aiModel = getGenAI().getGenerativeModel({ model: actualModel });
 
           // Build the prompt with context and user-based scoping rules
           let prompt = query;
@@ -150,7 +238,7 @@ ${query}`;
             if (errStr.includes('404') || errStr.toLowerCase().includes('not found') || errStr.toLowerCase().includes('is not supported')) {
               const fallbackName = actualModel === 'gemini-1.5-flash' ? 'gemini-2.0-flash' : 'gemini-1.5-flash';
               console.warn(`[AI Engine] Model "${actualModel}" unavailable (${errStr}), falling back to "${fallbackName}"`);
-              const fallbackModel = genAI.getGenerativeModel({ model: fallbackName });
+              const fallbackModel = getGenAI().getGenerativeModel({ model: fallbackName });
               activeChat = fallbackModel.startChat({
                 history: history.map(msg => ({
                   role: msg.role,
@@ -249,31 +337,56 @@ ${query}`;
         } catch (geminiError) {
           console.error('Gemini API Error:', geminiError.message);
           
-          // Check for quota/rate limit errors
-          const isQuotaError = geminiError.message && (
-            geminiError.message.includes('429') || 
-            geminiError.message.includes('quota') ||
-            geminiError.message.includes('exceeded')
-          );
-          
-          const statusCode = isQuotaError ? 429 : 500;
-          const errorMessage = isQuotaError 
-            ? 'API quota or rate limit exceeded. Please try again in a moment.'
-            : 'Sorry, I encountered an error processing your request. Please try again.';
-          
-          res.status(statusCode).json({
-            error: 'AI processing error',
-            response: errorMessage,
-            details: geminiError.message
+          const errStr = String(geminiError && geminiError.message ? geminiError.message : geminiError);
+          const isLeaked = errStr.includes('leaked') || errStr.includes('reported as leaked');
+          const isInvalidKey = errStr.includes('API key not valid') || errStr.includes('API_KEY_INVALID') || errStr.includes('API key expired') || errStr.includes('Forbidden') || errStr.includes('403');
+          const isQuotaError = errStr.includes('429') || errStr.includes('quota') || errStr.includes('exceeded');
+
+          // Attempt local fallback query if possible
+          const localFallback = tryLocalQueryFallback(db, req, query);
+          if (localFallback) {
+            return res.status(200).json({
+              success: true,
+              response: localFallback.response,
+              query: localFallback.query,
+              results: localFallback.results,
+              error: null,
+              sessionId: sessionId,
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          let responseText;
+          if (isLeaked) {
+            responseText = '⚠️ **Google Gemini API Key Blocked**\n\nGoogle detected that the default Gemini API key was leaked and blocked it (403 Forbidden).\n\n**To enable AI Assistant:**\n1. Open your `.env` file in the project root.\n2. Add your own key:\n   `GEMINI_API_KEY="your_api_key_here"`\n3. You can get a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey).';
+          } else if (isInvalidKey) {
+            responseText = '⚠️ **Invalid Gemini API Key**\n\nThe configured Gemini API key is invalid or lacks permissions. Please check `GEMINI_API_KEY` in your `.env` file.';
+          } else if (isQuotaError) {
+            responseText = '⚠️ **API Quota Exceeded**\n\nThe Gemini API quota has been reached for this minute. Please wait 30-60 seconds and try again.';
+          } else {
+            responseText = `⚠️ **AI Service Error**\n\n${geminiError.message || 'Unable to communicate with Gemini AI.'}`;
+          }
+
+          // Return HTTP 200 with success: false so frontends display friendly explanation instead of an opaque 500 error
+          return res.status(200).json({
+            success: false,
+            error: isLeaked ? 'Gemini API key revoked' : 'AI processing error',
+            response: responseText,
+            details: geminiError.message,
+            sessionId: sessionId,
+            timestamp: new Date().toISOString()
           });
         }
 
       } catch (error) {
         console.error('Query processing error:', error);
-        res.status(500).json({
+        return res.status(200).json({
+          success: false,
           error: 'Internal server error',
-          response: 'An unexpected error occurred',
-          details: error.message
+          response: 'An unexpected error occurred while processing your query.',
+          details: error.message,
+          sessionId: req.body?.sessionId || 'default',
+          timestamp: new Date().toISOString()
         });
       }
     },
@@ -293,7 +406,7 @@ ${query}`;
         }
 
         const actualModel = AVAILABLE_MODELS[selectedModel] || 'gemini-2.5-flash';
-        const aiModel = genAI.getGenerativeModel({ model: actualModel });
+        const aiModel = getGenAI().getGenerativeModel({ model: actualModel });
 
         const dbContext = generateDatabaseContext(db, req);
         const entityDirectory = getEntityDirectory(db, req);
@@ -403,7 +516,7 @@ Rules:
         const { type = 'general', model: selectedModel = 'gemini-2.5-flash' } = req.query;
 
         const actualModel = AVAILABLE_MODELS[selectedModel] || 'gemini-2.5-flash';
-        const aiModel = genAI.getGenerativeModel({ model: actualModel });
+        const aiModel = getGenAI().getGenerativeModel({ model: actualModel });
 
         let analysisPrompt = '';
         let data = {};
