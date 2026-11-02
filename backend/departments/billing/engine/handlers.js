@@ -2356,7 +2356,7 @@ module.exports = function(db) {
     // Server-authoritative Customer Statement of Account endpoint
     trackPublicLedgerEvent: (req, res) => {
       try {
-        const { token, event_type, dwell_seconds, scroll_depth, metadata } = req.body || {};
+        const { token, event_type, dwell_seconds, scroll_depth, metadata, source, ref_number } = req.body || {};
         if (!token) return res.status(400).json({ error: 'Token is required' });
 
         const { findCustomerByLedgerToken } = require('../../../core/billing/ledger-token');
@@ -2371,7 +2371,9 @@ module.exports = function(db) {
           req,
           dwellSeconds: dwell_seconds || 0,
           scrollDepth: scroll_depth || 0,
-          metadata
+          metadata,
+          source: source || req.body?.source,
+          refNumber: ref_number || req.body?.ref_number
         });
 
         res.json({ success: true });

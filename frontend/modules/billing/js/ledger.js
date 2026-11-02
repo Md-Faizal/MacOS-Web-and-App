@@ -1109,15 +1109,17 @@ class LedgerView {
                  
                  document.body.appendChild(shareOptions);
                  
+                 const copyUrl = ledgerUrl + (ledgerUrl.includes("?") ? "&" : "?") + "src=manual_share";
+                 const waUrl = ledgerUrl + (ledgerUrl.includes("?") ? "&" : "?") + "src=whatsapp";
                  document.getElementById('copyLinkBtn').onclick = () => {
-                   navigator.clipboard.writeText(ledgerUrl).then(() => {
+                   navigator.clipboard.writeText(copyUrl).then(() => {
                      this.showNotification('Ledger link copied to clipboard!', 'success');
                      if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
                    });
                  };
                  
                  document.getElementById('waLinkBtn').onclick = () => {
-                    const msg = encodeURIComponent('Hello! You can view your bills, payments, and ledger balance here: ' + ledgerUrl);
+                    const msg = encodeURIComponent('Hello! You can view your bills, payments, and ledger balance here: ' + waUrl);
                     window.open('https://wa.me/?text=' + msg, '_blank');
                     if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
                  };

@@ -1,7 +1,8 @@
 // @ts-nocheck
 /**
  * Shared Customer Ledger & Bill Link Tracking Modal
- * Displays real-time read receipts, view counts, dwell time, device info, and engagement logs.
+ * Displays real-time read receipts, view counts, dwell time, device info,
+ * granular traffic source attribution, and financial freshness ("seen up to").
  */
 
 (function() {
@@ -40,6 +41,19 @@
     }
   }
 
+  function formatSourceName(src, ref) {
+    let label = 'Direct / Manual';
+    let icon = '🔗';
+    if (src === 'whatsapp') { label = 'WhatsApp Share'; icon = '💬'; }
+    else if (src === 'invoice') { label = 'Invoice / Bill'; icon = '🧾'; }
+    else if (src === 'payment') { label = 'Payment Receipt'; icon = '💳'; }
+    else if (src === 'credit_note') { label = 'Credit Note'; icon = '📝'; }
+    else if (src === 'manual_share') { label = 'Manual Portal Share'; icon = '🔗'; }
+    
+    if (ref) return `${icon} ${label} (${ref})`;
+    return `${icon} ${label}`;
+  }
+
   window.openLedgerTrackingModal = async function(identifier, customerName = 'Customer') {
     // Remove any existing tracking modal
     const existing = document.getElementById('ledgerTrackingModalOverlay');
@@ -50,9 +64,9 @@
     overlay.style.cssText = `
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.65);
       backdrop-filter: blur(4px);
-      z-index: 100000;
+      z-index: 2000000000;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -64,8 +78,8 @@
     modal.style.cssText = `
       background: #ffffff;
       color: #000000;
-      width: min(780px, 95vw);
-      max-height: 88vh;
+      width: min(840px, 95vw);
+      max-height: 90vh;
       border: 2px solid #000000;
       box-shadow: 6px 6px 0px rgba(0,0,0,1);
       display: flex;
@@ -148,6 +162,8 @@
       if (!res.ok) throw new Error('Could not retrieve tracking details');
       const data = await res.json();
       const summary = data.summary || {};
+      const freshness = data.freshness || {};
+      const sources = data.sources || {};
       const logs = data.logs || [];
       const customer = data.customer || {};
 
@@ -161,9 +177,71 @@
         statusBadge = '<span style="background: #6b7280; color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 2px;">⚪ UNOPENED / PENDING</span>';
       }
 
+      // Financial Freshness Banner HTML
+      let freshnessBannerHtml = '';
+      if (freshness.status === 'ALL_CAUGHT_UP') {
+        const lastRef = freshness.lastSeenTransaction ? ` (Up to ${freshness.lastSeenTransaction.refNumber} on ${new Date(freshness.lastSeenTransaction.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : '';
+        freshnessBannerHtml = `
+          <div style="background: #ecfdf5; border: 1.5px solid #10b981; padding: 10px 12px; margin-bottom: 14px; box-shadow: 2px 2px 0 #10b981;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">✅</span>
+                <strong style="font-size: 11px; color: #065f46; letter-spacing: 0.3px;">ALL FINANCIAL TRANSACTIONS VIEWED (UP TO DATE)</strong>
+              </div>
+              <span style="font-size: 10px; color: #047857; font-weight: 600;">Last visit: ${formatRelativeTime(freshness.lastSeenAt)}</span>
+            </div>
+            <div style="font-size: 10px; color: #065f46; margin-top: 4px;">
+              Customer has viewed all posted bills and payments${lastRef}. No new unviewed transactions are pending.
+            </div>
+          </div>
+        `;
+      } else if (freshness.status === 'NEW_TRANSACTIONS_UNSEEN') {
+        const lastRefText = freshness.lastSeenTransaction ? `${freshness.lastSeenTransaction.refNumber} (${new Date(freshness.lastSeenTransaction.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : 'Earlier records';
+        const unseenList = freshness.unseenTransactions || [];
+        freshnessBannerHtml = `
+          <div style="background: #fffbeb; border: 1.5px solid #f59e0b; padding: 10px 12px; margin-bottom: 14px; box-shadow: 2px 2px 0 #f59e0b;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">⚠️</span>
+                <strong style="font-size: 11px; color: #92400e; letter-spacing: 0.3px;">NEW TRANSACTIONS UNSEEN BY CUSTOMER</strong>
+              </div>
+              <span style="font-size: 10px; background: #fef3c7; color: #b45309; padding: 2px 6px; font-weight: bold; border: 1px solid #f59e0b;">
+                ${freshness.unseenCount} NEW UNVIEWED RECORD${freshness.unseenCount > 1 ? 'S' : ''}
+              </span>
+            </div>
+            <div style="font-size: 10px; color: #78350f; margin-top: 4px;">
+              Customer last visited on <strong>${formatRelativeTime(freshness.lastSeenAt)}</strong> (viewed up to <strong>${lastRefText}</strong>). 
+              The following ${freshness.unseenCount} transaction(s) were posted <em>after</em> their visit and haven't been seen yet:
+            </div>
+            <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+              ${unseenList.map(t => `
+                <span style="display: inline-flex; align-items: center; gap: 4px; background: #ffffff; border: 1px solid #d97706; padding: 2px 6px; font-size: 9px; font-weight: 700; color: #92400e;">
+                  ${t.type === 'INVOICE' ? '🧾' : '💳'} ${t.refNumber} (₹${Number(t.amount || 0).toLocaleString('en-IN')} • ${new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        freshnessBannerHtml = `
+          <div style="background: #f3f4f6; border: 1.5px solid #9ca3af; padding: 10px 12px; margin-bottom: 14px; box-shadow: 2px 2px 0 #9ca3af;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">⏳</span>
+              <strong style="font-size: 11px; color: #374151; letter-spacing: 0.3px;">STATEMENT NOT OPENED YET</strong>
+            </div>
+            <div style="font-size: 10px; color: #4b5563; margin-top: 4px;">
+              Customer has not yet accessed this ledger link. Share via WhatsApp to send them their statement.
+            </div>
+          </div>
+        `;
+      }
+
       const shareLink = customer.shareUrl || (customer.ledgerToken ? `${window.location.origin}/ledger/${customer.ledgerToken}` : '');
 
       content.innerHTML = `
+        <!-- Financial Freshness & Seen Up To Status -->
+        ${freshnessBannerHtml}
+
         <!-- Status & Share Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
           <div>
@@ -183,7 +261,7 @@
         </div>
 
         <!-- 4 Metric Cards -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px;">
           <div style="border: 1px solid #000000; padding: 10px; box-shadow: 2px 2px 0 #000000; background: #fafafa;">
             <div style="font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase;">Total Opens</div>
             <div style="font-size: 20px; font-weight: 900; margin-top: 4px;">${summary.totalViews || 0}</div>
@@ -206,8 +284,24 @@
           </div>
         </div>
 
+        <!-- Traffic Sources Section -->
+        <div style="margin-bottom: 14px; border: 1px solid #000000; padding: 8px 10px; background: #f9fafb; box-shadow: 2px 2px 0 #000000;">
+          <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; justify-content: space-between;">
+            <span>LINK TRAFFIC SOURCES</span>
+            <span style="font-weight: normal; color: #6b7280;">Where link was opened from</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${Object.keys(sources).length > 0 ? Object.entries(sources).map(([srcKey, count]) => `
+              <div style="background: #ffffff; border: 1px solid #000000; padding: 3px 8px; font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                <span>${formatSourceName(srcKey)}</span>
+                <span style="background: #000000; color: #ffffff; border-radius: 999px; padding: 1px 6px; font-size: 9px; font-weight: 800;">${count}</span>
+              </div>
+            `).join('') : '<span style="font-size: 10px; color: #6b7280;">No traffic source data recorded yet</span>'}
+          </div>
+        </div>
+
         <!-- Devices & Location Badges -->
-        <div style="margin-bottom: 16px; font-size: 11px;">
+        <div style="margin-bottom: 14px; font-size: 11px;">
           <div style="margin-bottom: 6px;">
             <strong>Detected Devices:</strong> 
             ${summary.uniqueDevices?.length 
@@ -234,6 +328,7 @@
               <thead>
                 <tr style="border-bottom: 1px solid #000000; background: #f3f4f6; font-weight: bold;">
                   <th style="padding: 6px;">TIME</th>
+                  <th style="padding: 6px;">SOURCE</th>
                   <th style="padding: 6px;">EVENT</th>
                   <th style="padding: 6px;">DEVICE & OS</th>
                   <th style="padding: 6px;">LOCATION / IP</th>
@@ -244,6 +339,7 @@
                 ${logs.map(l => `
                   <tr style="border-bottom: 1px solid #e5e7eb;">
                     <td style="padding: 6px; white-space: nowrap; color: #4b5563;">${formatRelativeTime(l.createdAt)}</td>
+                    <td style="padding: 6px; white-space: nowrap; font-weight: 600;">${formatSourceName(l.source, l.refNumber)}</td>
                     <td style="padding: 6px; font-weight: 700;">${formatEventName(l.eventType)}</td>
                     <td style="padding: 6px;">${l.deviceType} (${l.os || 'OS'} • ${l.browser || 'Browser'})</td>
                     <td style="padding: 6px; color: #4b5563;">${l.location !== 'Unknown Location' ? l.location : (l.ipAddress || '—')}</td>
@@ -287,4 +383,3 @@
     }
   };
 })();
-

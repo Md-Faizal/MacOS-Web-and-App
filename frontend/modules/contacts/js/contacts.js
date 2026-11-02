@@ -64,6 +64,21 @@ class ContactsApp extends AppWindow {
     }
   }
 
+  openTrackingModal(contactId, contactName) {
+    if (typeof window.openLedgerTrackingModal === "function") {
+      window.openLedgerTrackingModal(contactId, contactName || "Customer");
+    } else {
+      const script = document.createElement("script");
+      script.src = "/shared/ledger-tracking-modal.js";
+      script.onload = () => {
+        if (typeof window.openLedgerTrackingModal === "function") {
+          window.openLedgerTrackingModal(contactId, contactName || "Customer");
+        }
+      };
+      document.body.appendChild(script);
+    }
+  }
+
   setupContactsUI() {
     // Inject contacts-specific styles
     this.injectContactsStyles();
@@ -150,6 +165,7 @@ class ContactsApp extends AppWindow {
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'contacts-header-buttons';
     buttonsContainer.innerHTML = `
+      <button class="contacts-header-btn tracking-btn-text" id="headerTrackingBtn" title="Link Tracking & Read Receipts" style="display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">📡 Tracking</button>
       <button class="contacts-header-btn edit-btn-text" id="editBtn" title="Edit Contact">Edit</button>
       <button class="contacts-header-btn" id="addBtn" title="Add Contact">+</button>
     `;
@@ -163,6 +179,17 @@ class ContactsApp extends AppWindow {
     
     rightControls.appendChild(buttonsContainer);
     rightControls.appendChild(searchInput);
+    const trackingBtn = buttonsContainer.querySelector("#headerTrackingBtn");
+    if (trackingBtn) {
+      trackingBtn.onclick = () => {
+        const contact = this.contacts.find(c => c.id === this.selectedContactId);
+        if (contact) {
+          this.openTrackingModal(contact.id, contact.name);
+        } else {
+          this.showNotification("Please select a contact to view link tracking activity", "info");
+        }
+      };
+    }
     
     // Replace spacer with right controls
     spacer.parentNode.replaceChild(rightControls, spacer);
@@ -424,6 +451,7 @@ class ContactsApp extends AppWindow {
             <button class="contact-action-btn message-btn" title="Message (WhatsApp)" data-action="whatsapp">💬</button>
             <button class="contact-action-btn phone-btn" title="View Ledger" data-action="ledger">📄</button>
             <button class="contact-action-btn" title="Share Ledger" data-action="share-ledger" style="font-size: 14px;">🔗</button>
+            <button class="contact-action-btn tracking-btn" title="View Link Tracking & Telemetry" data-action="link-tracking" style="font-size: 14px;">📡</button>
             ${!this.isWorkerUser() ? `<button class="contact-action-btn share-worker-btn" title="Share with Worker" data-action="share-worker" style="font-size: 14px;">👥</button>` : ''}
             <button class="contact-action-btn video-btn" title="New Bill" data-action="new-bill">🧾</button>
             <button class="contact-action-btn mail-btn" title="New Payment" data-action="new-payment">💰</button>
@@ -549,33 +577,44 @@ class ContactsApp extends AppWindow {
                    }
                  } catch (_) {}
                }
-               const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
+               const baseUrl = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
+               const copyUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=manual_share";
+               const waUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=whatsapp";
                
-               const shareOptions = document.createElement('div');
-               shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 100000 !important; font-family: "Courier New", monospace;';
+               const shareOptions = document.createElement("div");
+               shareOptions.style.cssText = "position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 100000 !important; font-family: 'Courier New', monospace;";
                shareOptions.innerHTML = `
                  <div style="margin-bottom: 8px; font-size: 12px; font-weight: bold;">Share Ledger Link:</div>
                  <button id="copyLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: white; border: 1px solid black;">📋 Copy Link</button>
-                 <button id="waLinkBtn" style="display: block; width: 100%; padding: 6px; font-size: 11px; cursor: pointer; background: #25D366; color: white; border: 1px solid black;">💬 WhatsApp</button>
+                 <button id="waLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: #25D366; color: white; border: 1px solid black;">💬 WhatsApp</button>
+                 <button id="viewTrackingShortcutBtn" style="display: block; width: 100%; padding: 6px; font-size: 11px; cursor: pointer; background: #111827; color: white; border: 1px solid black; font-weight: bold;">📡 View Link Activity</button>
                `;
                
                const rect = btn.getBoundingClientRect();
-               shareOptions.style.top = (rect.bottom + window.scrollY + 5) + 'px';
-               shareOptions.style.left = (rect.left + window.scrollX) + 'px';
+               shareOptions.style.top = (rect.bottom + window.scrollY + 5) + "px";
+               shareOptions.style.left = (rect.left + window.scrollX) + "px";
                
                document.body.appendChild(shareOptions);
                
-               document.getElementById('copyLinkBtn').onclick = () => {
-                 navigator.clipboard.writeText(url).then(() => {
-                   this.showNotification('Ledger link copied to clipboard!', 'success');
+               document.getElementById("copyLinkBtn").onclick = () => {
+                 navigator.clipboard.writeText(copyUrl).then(() => {
+                   this.showNotification("Ledger link copied to clipboard!", "success");
                    if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
                  });
                };
                
-               document.getElementById('waLinkBtn').onclick = () => {
-                  const msg = encodeURIComponent('Hello! You can view your bills, payments, and ledger balance here: ' + url);
-                  window.open('https://wa.me/?text=' + msg, '_blank');
+               document.getElementById("waLinkBtn").onclick = () => {
+                  const msg = encodeURIComponent("Hello! You can view your bills, payments, and ledger balance here: " + waUrl);
+                  window.open("https://wa.me/?text=" + msg, "_blank");
                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+               };
+               
+               const trackShortcut = document.getElementById("viewTrackingShortcutBtn");
+               if (trackShortcut) {
+                 trackShortcut.onclick = () => {
+                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+                   this.openTrackingModal(contact.id, contact.name);
+                 };
                };
                
                setTimeout(() => {
@@ -613,6 +652,9 @@ class ContactsApp extends AppWindow {
             } else {
               this.showNotification('No phone number available for WhatsApp', 'warning');
             }
+            break;
+          case 'link-tracking':
+            this.openTrackingModal(contact.id, contact.name);
             break;
           case 'print-slip':
             this.printSlip(contact.id);

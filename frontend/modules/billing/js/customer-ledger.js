@@ -14,12 +14,18 @@ function sendTelemetryBeacon(eventType, metadata = null) {
     const token = rawData?.customer?.ledger_token || rawData?.customer?.token || (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get('token');
     if (!token) return;
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const source = urlParams.get('src') || urlParams.get('source') || undefined;
+    const ref_number = urlParams.get('ref') || urlParams.get('ref_number') || undefined;
+
     const payload = JSON.stringify({
       token,
       event_type: eventType,
       dwell_seconds: activeDwellSeconds,
       scroll_depth: maxScrollDepth,
-      metadata
+      metadata,
+      source,
+      ref_number
     });
 
     if (navigator.sendBeacon) {

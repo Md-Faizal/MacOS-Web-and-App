@@ -1224,6 +1224,8 @@ CREATE TABLE IF NOT EXISTS ledger_link_access_logs (
   dwell_seconds INTEGER DEFAULT 0,
   scroll_depth INTEGER DEFAULT 0,
   metadata_json TEXT,
+  source TEXT DEFAULT 'manual_share',
+  ref_number TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES contacts(id) ON DELETE CASCADE
 );
@@ -1231,6 +1233,7 @@ CREATE TABLE IF NOT EXISTS ledger_link_access_logs (
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_token ON ledger_link_access_logs(ledger_token);
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_customer ON ledger_link_access_logs(customer_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_created ON ledger_link_access_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_ledger_logs_source ON ledger_link_access_logs(source);
 `;
 
 module.exports = { schema };
