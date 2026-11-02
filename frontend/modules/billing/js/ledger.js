@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Ledger') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
@@ -1089,50 +1090,122 @@ class LedgerView {
           shareBtn.onclick = () => {
              const customerObj = ledgerData.find(c => c.customerName === selectedCustomer);
              if (customerObj && (customerObj.customer_id || customerObj.customerId)) {
-               const token = customerObj.ledger_token || customerObj.ledgerToken || customerObj.token;
-               const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${customerObj.customer_id || customerObj.customerId}`;
+               const customerId = customerObj.customer_id || customerObj.customerId;
+               let token = customerObj.ledger_token || customerObj.ledgerToken || customerObj.token;
                
-               const shareOptions = document.createElement('div');
-               shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 2147483647 !important; font-family: "Courier New", monospace;';
-               shareOptions.innerHTML = `
-                 <div style="margin-bottom: 8px; font-size: 12px; font-weight: bold;">Share Ledger Link:</div>
-                 <button id="copyLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: white; border: 1px solid black;">📋 Copy Link</button>
-                 <button id="waLinkBtn" style="display: block; width: 100%; padding: 6px; font-size: 11px; cursor: pointer; background: #25D366; color: white; border: 1px solid black;">💬 WhatsApp</button>
-               `;
-               
-               const rect = shareBtn.getBoundingClientRect();
-               shareOptions.style.top = (rect.bottom + window.scrollY + 5) + 'px';
-               shareOptions.style.left = (rect.left + window.scrollX) + 'px';
-               
-               document.body.appendChild(shareOptions);
-               
-               document.getElementById('copyLinkBtn').onclick = () => {
-                 navigator.clipboard.writeText(url).then(() => {
-                   this.showNotification('Ledger link copied to clipboard!', 'success');
-                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-                 });
-               };
-               
-               document.getElementById('waLinkBtn').onclick = () => {
-                  const msg = encodeURIComponent('Hello! You can view your bills, payments, and ledger balance here: ' + url);
-                  window.open('https://wa.me/?text=' + msg, '_blank');
-                  if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-               };
-               
-               setTimeout(() => {
-                 const closeFn = (e) => {
-                   if (!shareOptions.contains(e.target)) {
+               const renderShareMenu = (ledgerUrl) => {
+                 const shareOptions = document.createElement('div');
+                 shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 100000 !important; font-family: "Courier New", monospace;';
+                 shareOptions.innerHTML = `
+                   <div style="margin-bottom: 8px; font-size: 12px; font-weight: bold;">Share Ledger Link:</div>
+                   <button id="copyLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: white; border: 1px solid black;">📋 Copy Link</button>
+                   <button id="waLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: #25D366; color: white; border: 1px solid black;">💬 WhatsApp</button>
+                    <button id="viewTrackingShortcutBtn" style="display: block; width: 100%; padding: 6px; font-size: 11px; cursor: pointer; background: #111827; color: white; border: 1px solid black;">📡 View Link Activity</button>
+                 `;
+                 
+                 const rect = shareBtn.getBoundingClientRect();
+                 shareOptions.style.top = (rect.bottom + window.scrollY + 5) + 'px';
+                 shareOptions.style.left = (rect.left + window.scrollX) + 'px';
+                 
+                 document.body.appendChild(shareOptions);
+                 
+                 document.getElementById('copyLinkBtn').onclick = () => {
+                   navigator.clipboard.writeText(ledgerUrl).then(() => {
+                     this.showNotification('Ledger link copied to clipboard!', 'success');
                      if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-                     document.removeEventListener('click', closeFn);
-                   }
+                   });
                  };
-                 document.addEventListener('click', closeFn);
-               }, 100);
+                 
+                 document.getElementById('waLinkBtn').onclick = () => {
+                    const msg = encodeURIComponent('Hello! You can view your bills, payments, and ledger balance here: ' + ledgerUrl);
+                    window.open('https://wa.me/?text=' + msg, '_blank');
+                    if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+                 };
+                  
+                  const trackShortcut = document.getElementById('viewTrackingShortcutBtn');
+                  if (trackShortcut) {
+                    trackShortcut.onclick = () => {
+                      if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+                      const targetId = token || customerId;
+                      if (typeof window.openLedgerTrackingModal === 'function') {
+                        window.openLedgerTrackingModal(targetId, customerObj.customerName || selectedCustomer);
+                      } else {
+                        const script = document.createElement('script');
+                        script.src = '/shared/ledger-tracking-modal.js';
+                        script.onload = () => {
+                          if (typeof window.openLedgerTrackingModal === 'function') {
+                            window.openLedgerTrackingModal(targetId, customerObj.customerName || selectedCustomer);
+                          }
+                        };
+                        document.body.appendChild(script);
+                      }
+                    };
+                  }
+                 
+                 setTimeout(() => {
+                   const closeFn = (e) => {
+                     if (!shareOptions.contains(e.target)) {
+                       if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+                       document.removeEventListener('click', closeFn);
+                     }
+                   };
+                   document.addEventListener('click', closeFn);
+                 }, 100);
+               };
+
+               if (token) {
+                 renderShareMenu(`${window.location.origin}/ledger/${token}`);
+               } else {
+                 fetch(`/api/contacts/${customerId}`, { credentials: 'same-origin' })
+                   .then(res => res.json())
+                   .then(data => {
+                     const contact = data.data || data;
+                     token = contact.ledger_token || contact.ledgerToken || contact.token;
+                     if (token) {
+                       customerObj.ledger_token = token;
+                       customerObj.ledgerToken = token;
+                       customerObj.token = token;
+                     }
+                     const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${customerId}`;
+                     renderShareMenu(url);
+                   })
+                   .catch(() => {
+                     const url = `${window.location.origin}/customer-ledger.html?id=${customerId}`;
+                     renderShareMenu(url);
+                   });
+               }
              } else {
                this.showNotification('Customer ID not found. Please wait for sync.', 'warning');
              }
           };
           customerHeader.appendChild(shareBtn);
+
+          const trackHeaderBtn = document.createElement('button');
+          trackHeaderBtn.id = 'trackingLedgerBtn';
+          trackHeaderBtn.innerHTML = '📡 TRACKING';
+          trackHeaderBtn.title = 'View Customer Ledger Link Telemetry & Read Receipts';
+          trackHeaderBtn.style.cssText = 'font-size: 10px; padding: 4px 8px; background: #f3f4f6; color: #000000; border: 1px solid #000000; border-radius: 2px; cursor: pointer; margin-left: 6px; font-weight: 700; font-family: "Courier New", monospace; vertical-align: middle;';
+          trackHeaderBtn.onclick = () => {
+            const customerObj = ledgerData.find(c => c.customerName === selectedCustomer);
+            const targetId = customerObj?.ledger_token || customerObj?.customer_id || customerObj?.customerId;
+            if (targetId) {
+              if (typeof window.openLedgerTrackingModal === 'function') {
+                window.openLedgerTrackingModal(targetId, selectedCustomer);
+              } else {
+                const script = document.createElement('script');
+                script.src = '/shared/ledger-tracking-modal.js';
+                script.onload = () => {
+                  if (typeof window.openLedgerTrackingModal === 'function') {
+                    window.openLedgerTrackingModal(targetId, selectedCustomer);
+                  }
+                };
+                document.body.appendChild(script);
+              }
+            } else {
+              this.showNotification('Please select a customer to view tracking', 'info');
+            }
+          };
+          customerHeader.appendChild(trackHeaderBtn);
         }
 
         const due = customer.amountDue || 0;
@@ -2141,7 +2214,11 @@ class LedgerView {
           lastBillDate: ledgerCustomer.lastBillDate || 'N/A',
           lastPaymentDate: ledgerCustomer.lastPaymentDate || 'N/A',
           bills: localMap[name]?.bills || [],
-          payments: localMap[name]?.payments || []
+          payments: localMap[name]?.payments || [],
+          ledger_token: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
+          ledgerToken: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
+          token: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
+          share_url: ledgerCustomer.share_url || null
         };
       });
 

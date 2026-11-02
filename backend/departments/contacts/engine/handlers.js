@@ -1,6 +1,6 @@
 const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildContactsListResponse } = require('../../../shared/api/contacts-contract');
-const { generateLedgerToken } = require('../../../core/billing/ledger-token');
+const { generateLedgerToken, getOrCreateCustomerLedgerToken } = require('../../../core/billing/ledger-token');
 const contactsDepartment = require('../service');
 const dataBus = require('../../../core/sync/data-bus');
 
@@ -76,7 +76,12 @@ module.exports = function(db) {
           GROUP BY c.id
           ORDER BY c.name ASC
         `);
-        const contacts = stmt.all();
+        const contacts = stmt.all().map(c => {
+          if (!c.ledger_token) {
+            c.ledger_token = getOrCreateCustomerLedgerToken(db, c.id);
+          }
+          return c;
+        });
         const response = contactsDepartment.getContacts(contacts, { requestId: req.requestId });
         return res.json(response);
       } catch (error) {
@@ -202,6 +207,9 @@ module.exports = function(db) {
         `);
         const contact = stmt.get(id);
         if (!contact) return res.status(404).json({ error: 'Contact not found' });
+        if (contact && !contact.ledger_token) {
+          contact.ledger_token = getOrCreateCustomerLedgerToken(db, contact.id);
+        }
         res.json(contact);
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -591,6 +599,22 @@ module.exports = function(db) {
         });
       } catch (error) {
         console.error('Error updating activity statuses:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    getContactTracking: (req, res) => {
+      try {
+        const { id } = req.params;
+        if (!isContactAccessible(req, id)) {
+          return res.status(403).json({ error: 'Access denied to this contact tracking' });
+        }
+        const { getTrackingSummary } = require('../../../core/billing/link-telemetry');
+        const summary = getTrackingSummary(db, id);
+        if (!summary) return res.status(404).json({ error: 'Tracking data not found' });
+        res.json(summary);
+      } catch (error) {
+        console.error('Error fetching contact tracking:', error);
         res.status(500).json({ error: error.message });
       }
     }

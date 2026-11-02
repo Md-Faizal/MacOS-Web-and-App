@@ -8,7 +8,8 @@
 
   <!-- Critical Inline CSS: Eliminates white flash during initial page load -->
   <style>
-    html, body {
+    html,
+    body {
       background-color: #000000 !important;
       background: #000000 !important;
       color: #ffffff;
@@ -43,13 +44,13 @@
   <script>
     // Proactively request native device notification permission if not yet decided
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
+      Notification.requestPermission().catch(() => { });
     }
   </script>
 
   <script>
     // Industrial Standard Session Termination: Clear session on backend AND frontend when landing on login page
-    (async function() {
+    (async function () {
       try {
         sessionStorage.removeItem('macos_session_active');
         await fetch('/api/auth/logout', { method: 'POST' });
@@ -64,7 +65,7 @@
       window.chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
           sendResponse({});
-        } catch (e) {}
+        } catch (e) { }
         return true;
       });
     }
@@ -162,12 +163,14 @@
       <img src="/assets/Images/DefaultUser.png" alt="Profile">
     </div>
     <div class="modal-username" id="modalUsername">Sign in</div>
-    
+
     <div class="password-wrapper">
-      <div id="passwordProtectionSection" style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+      <div id="passwordProtectionSection"
+        style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
         <div class="password-field-container" id="loginIdentifierField">
           <label class="password-label" for="loginIdentifierInput">Username or email</label>
-          <input type="text" class="password-input password-text-input" id="loginIdentifierInput" placeholder="Username or email" autocomplete="username webauthn">
+          <input type="text" class="password-input password-text-input" id="loginIdentifierInput"
+            placeholder="Username or email" autocomplete="username webauthn">
         </div>
 
         <div class="password-field-container" id="recoveryIdentityField" style="display: none;">
@@ -178,10 +181,14 @@
         <div class="password-field-container" id="loginPasswordField">
           <label class="password-label" for="loginPasswordInput">Password</label>
           <div class="password-input-wrapper">
-            <input type="password" class="password-input" id="loginPasswordInput" placeholder="password" autocomplete="current-password">
-            <button class="password-toggle password-action-toggle" id="loginPasswordActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-            <button class="password-toggle" id="passwordToggleBtn" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <input type="password" class="password-input" id="loginPasswordInput" placeholder="password"
+              autocomplete="current-password">
+            <button class="password-toggle password-action-toggle" id="loginPasswordActionBtn" type="button"
+              aria-label="Continue" title="Continue">➜</button>
+            <button class="password-toggle" id="passwordToggleBtn" type="button"
+              aria-label="Toggle password visibility">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -191,7 +198,8 @@
 
         <div class="login-links-row">
           <a class="touchid-text" id="touchidText" style="display: none;">(Touch ID)</a>
-          <a class="touchid-text forgot-password-link" id="forgotPasswordText" style="font-size: 0.78rem; opacity: 0.65;">Forgot Password?</a>
+          <a class="touchid-text forgot-password-link" id="forgotPasswordText"
+            style="font-size: 0.78rem; opacity: 0.65;">Forgot Password?</a>
         </div>
 
         <!-- Google Sign-In Container (Hidden during Forgot Password flow) -->
@@ -202,29 +210,38 @@
 
         <!-- Password Recovery Challenge Section (Security Question or Recovery Key) -->
         <div id="securityQuestionSection" style="display: none; width: 100%;">
-          <div id="challengeQuestionDisplay" style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin-bottom: 10px; font-weight: 500; text-align: center;"></div>
+          <div id="challengeQuestionDisplay"
+            style="color: rgba(255,255,255,0.85); font-size: 0.85rem; margin-bottom: 10px; font-weight: 500; text-align: center;">
+          </div>
           <div class="password-field-container" style="width: 100%;">
             <label class="password-label" id="securityAnswerLabel" for="securityAnswerInput">Security Answer</label>
             <div class="password-input-wrapper">
-              <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer" autocomplete="off">
-              <button class="password-toggle password-action-toggle" id="verifyAnswerActionBtn" type="button" aria-label="Verify" title="Verify">➜</button>
+              <input type="text" id="securityAnswerInput" class="password-input" placeholder="Your Answer"
+                autocomplete="off">
+              <button class="password-toggle password-action-toggle" id="verifyAnswerActionBtn" type="button"
+                aria-label="Verify" title="Verify">➜</button>
             </div>
           </div>
           <div style="display: flex; gap: 8px; width: 100%; margin-top: 10px;">
             <button class="login-button" id="cancelRecoveryBtn" type="button" style="flex: 1;">Cancel</button>
-            <button class="login-button btn-primary" id="verifyAnswerBtn" type="button" style="flex: 1.4;">Verify</button>
+            <button class="login-button btn-primary" id="verifyAnswerBtn" type="button"
+              style="flex: 1.4;">Verify</button>
           </div>
         </div>
 
         <!-- New Password Reset Section -->
-        <div id="passwordResetSection" style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+        <div id="passwordResetSection"
+          style="display: none; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
           <div style="color: rgba(255,255,255,0.85); font-size: 0.9rem; margin-bottom: 4px;">Set New Password</div>
           <div class="password-field-container">
             <label class="password-label" for="resetNewPassword">New Password</label>
             <div class="password-input-wrapper password-no-action">
-              <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password" autocomplete="new-password">
-              <button class="password-toggle" id="resetNewToggleBtn" type="button" aria-label="Toggle password visibility">
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <input type="password" id="resetNewPassword" class="password-input" placeholder="New Password"
+                autocomplete="new-password">
+              <button class="password-toggle" id="resetNewToggleBtn" type="button"
+                aria-label="Toggle password visibility">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
@@ -234,22 +251,28 @@
           <div class="password-field-container">
             <label class="password-label" for="resetConfirmPassword">Confirm Password</label>
             <div class="password-input-wrapper">
-              <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password" autocomplete="new-password">
-              <button class="password-toggle password-action-toggle" id="resetConfirmActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-              <button class="password-toggle" id="resetConfirmToggleBtn" type="button" aria-label="Toggle password visibility">
-                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <input type="password" id="resetConfirmPassword" class="password-input" placeholder="Confirm Password"
+                autocomplete="new-password">
+              <button class="password-toggle password-action-toggle" id="resetConfirmActionBtn" type="button"
+                aria-label="Continue" title="Continue">➜</button>
+              <button class="password-toggle" id="resetConfirmToggleBtn" type="button"
+                aria-label="Toggle password visibility">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                   <circle cx="12" cy="12" r="3"></circle>
                 </svg>
               </button>
             </div>
           </div>
-          <button class="login-button btn-primary" id="confirmResetBtn" style="margin-top: 6px; width: 100%;">Save & Sign In</button>
+          <button class="login-button btn-primary" id="confirmResetBtn" style="margin-top: 6px; width: 100%;">Save &
+            Sign In</button>
         </div>
       </div>
 
       <div id="noPasswordSection" style="display: none; width: 100%; text-align: center;">
-        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 16px;">Password protection is off</div>
+        <div style="color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 16px;">Password protection is off
+        </div>
         <button class="login-button btn-primary" id="unlockButton">Sign In Without Password</button>
       </div>
 
@@ -273,10 +296,14 @@
       <div class="password-field-container" style="width: 100%; margin-bottom: 16px;">
         <label class="password-label" for="setupPasswordInput">Password</label>
         <div class="password-input-wrapper">
-          <input type="password" id="setupPasswordInput" class="password-input" placeholder="Password" autocomplete="current-password">
-          <button class="password-toggle password-action-toggle" id="setupPasswordActionBtn" type="button" aria-label="Continue" title="Continue">➜</button>
-          <button class="password-toggle" id="setupPasswordToggleBtn" type="button" aria-label="Toggle password visibility">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <input type="password" id="setupPasswordInput" class="password-input" placeholder="Password"
+            autocomplete="current-password">
+          <button class="password-toggle password-action-toggle" id="setupPasswordActionBtn" type="button"
+            aria-label="Continue" title="Continue">➜</button>
+          <button class="password-toggle" id="setupPasswordToggleBtn" type="button"
+            aria-label="Toggle password visibility">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
@@ -298,24 +325,28 @@
         <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🔐</div>
         <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Remember this account?</div>
         <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.4;">
-          Remember your username or email on this device. Future sign-ins will show this account and ask only for your password.
+          Remember your username or email on this device. Future sign-ins will show this account and ask only for your
+          password.
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
           <button class="login-button" id="dontRememberAccountBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="rememberAccountBtn" type="button" style="flex: 1.2;">Remember</button>
+          <button class="login-button btn-primary" id="rememberAccountBtn" type="button"
+            style="flex: 1.2;">Remember</button>
         </div>
       </div>
 
       <!-- Popup: Remember Account Warning -->
       <div id="rememberAccountWarningStep" class="preference-popup" style="display: none;">
         <div class="preference-warning-icon">⚠️</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Public Device Warning</div>
+        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Public Device Warning
+        </div>
         <p>
           Anyone who uses this device may see this account. Do not choose this on a shared or public computer.
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
           <button class="login-button" id="cancelRememberAccountBtn" type="button" style="flex: 1;">Cancel</button>
-          <button class="login-button btn-primary" id="confirmRememberAccountBtn" type="button" style="flex: 1.2;">Confirm</button>
+          <button class="login-button btn-primary" id="confirmRememberAccountBtn" type="button"
+            style="flex: 1.2;">Confirm</button>
         </div>
       </div>
 
@@ -323,12 +354,14 @@
       <div id="rememberAccountDismissStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeRememberDismissStep" type="button" aria-label="Close">×</button>
         <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without remembering?</div>
+        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without
+          remembering?</div>
         <p>This device will not keep your account details for the next sign-in.</p>
         <button class="preference-dismiss-option" id="rememberAccountDontAskOption" type="button">
           Don't ask again on this device
         </button>
-        <button class="login-button" id="confirmDontRememberAccountBtn" type="button" style="width: 100%;">Continue without remembering</button>
+        <button class="login-button" id="confirmDontRememberAccountBtn" type="button" style="width: 100%;">Continue
+          without remembering</button>
       </div>
 
       <!-- Step: Touch ID Choice -->
@@ -340,7 +373,8 @@
         </p>
         <div style="display: flex; gap: 10px; width: 100%;">
           <button class="login-button" id="skipTouchIdBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="chooseTouchIdBtn" type="button" style="flex: 1.2;">Set Up</button>
+          <button class="login-button btn-primary" id="chooseTouchIdBtn" type="button" style="flex: 1.2;">Set
+            Up</button>
         </div>
       </div>
 
@@ -348,26 +382,31 @@
       <div id="touchIdDismissStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeTouchIdDismissStep" type="button" aria-label="Close">×</button>
         <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without Touch ID?</div>
+        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem;">Continue without Touch
+          ID?</div>
         <p>You can still use your password and enable Touch ID later in Settings.</p>
         <button class="preference-dismiss-option" id="touchIdDontAskOption" type="button">
           Don't ask again on this device
         </button>
-        <button class="login-button" id="confirmSkipTouchIdBtn" type="button" style="width: 100%;">Continue without Touch ID</button>
+        <button class="login-button" id="confirmSkipTouchIdBtn" type="button" style="width: 100%;">Continue without
+          Touch ID</button>
       </div>
 
       <!-- Popup: Touch ID Setup Failed (Direct retry, not now, don't show again) -->
       <div id="touchIdFailedStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeTouchIdFailedStep" type="button" aria-label="Close">×</button>
         <div class="preference-warning-icon">⚠️</div>
-        <div class="profile-name" id="touchIdFailedTitle" style="display: block; margin-bottom: 8px; font-size: 1.15rem;">Touch ID Setup Failed</div>
-        <p id="touchIdFailedMessage">Biometric setup could not be completed. You can try again or continue using your password.</p>
+        <div class="profile-name" id="touchIdFailedTitle"
+          style="display: block; margin-bottom: 8px; font-size: 1.15rem;">Touch ID Setup Failed</div>
+        <p id="touchIdFailedMessage">Biometric setup could not be completed. You can try again or continue using your
+          password.</p>
         <button class="preference-dismiss-option" id="touchIdFailedDontAskBtn" type="button">
           Don't show again on this device
         </button>
         <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px;">
           <button class="login-button" id="touchIdFailedNotNowBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="touchIdFailedRetryBtn" type="button" style="flex: 1.4;">Retry Touch ID</button>
+          <button class="login-button btn-primary" id="touchIdFailedRetryBtn" type="button" style="flex: 1.4;">Retry
+            Touch ID</button>
         </div>
       </div>
     </div>
@@ -378,10 +417,14 @@
     <div class="login-modal-content" style="max-width: 360px; text-align: center;">
       <div class="profile-avatar-large" style="margin-bottom: 10px; font-size: 40px;">🔐</div>
       <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Waiting for approval</div>
-      <p id="workerPendingMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 14px;">Share this code with the owner.</p>
-      <div id="workerInviteCode" style="font-size: 2rem; letter-spacing: 0.25rem; font-weight: 800; margin-bottom: 12px; color: #ffffff;"></div>
-      <img id="workerInviteQr" alt="Worker approval QR code" style="width: 180px; height: 180px; background: white; padding: 8px; border-radius: 12px; display: none; margin: 0 auto 16px;">
-      <button class="login-button" id="cancelWorkerPendingBtn" type="button" style="width: 100%;">Back to sign in</button>
+      <p id="workerPendingMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 14px;">Share
+        this code with the owner.</p>
+      <div id="workerInviteCode"
+        style="font-size: 2rem; letter-spacing: 0.25rem; font-weight: 800; margin-bottom: 12px; color: #ffffff;"></div>
+      <img id="workerInviteQr" alt="Worker approval QR code"
+        style="width: 180px; height: 180px; background: white; padding: 8px; border-radius: 12px; display: none; margin: 0 auto 16px;">
+      <button class="login-button" id="cancelWorkerPendingBtn" type="button" style="width: 100%;">Back to sign
+        in</button>
     </div>
   </div>
 
@@ -389,14 +432,19 @@
   <div class="login-modal" id="ownerLinkModal">
     <div class="login-modal-content" style="max-width: 360px; text-align: center;">
       <div class="profile-name" style="margin-bottom: 8px; font-size: 1.2rem;">Link Google to your account</div>
-      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 16px; line-height: 1.4;">Confirm your existing password once. Google will then sign in directly to your account.</p>
+      <p style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 16px; line-height: 1.4;">Confirm your
+        existing password once. Google will then sign in directly to your account.</p>
       <div class="password-field-container" style="width: 100%;">
         <label class="password-label" for="ownerLinkPassword">Password</label>
         <div class="password-input-wrapper">
-          <input type="password" id="ownerLinkPassword" class="password-input" placeholder="password" autocomplete="current-password">
-          <button class="password-toggle password-action-toggle" id="ownerLinkActionBtn" type="button" aria-label="Link and continue" title="Link and continue">➜</button>
-          <button class="password-toggle" id="ownerLinkPasswordToggle" type="button" aria-label="Show password" title="Show password">
-            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <input type="password" id="ownerLinkPassword" class="password-input" placeholder="password"
+            autocomplete="current-password">
+          <button class="password-toggle password-action-toggle" id="ownerLinkActionBtn" type="button"
+            aria-label="Link and continue" title="Link and continue">➜</button>
+          <button class="password-toggle" id="ownerLinkPasswordToggle" type="button" aria-label="Show password"
+            title="Show password">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
@@ -415,7 +463,8 @@
     <div class="login-modal-content" style="max-width: 390px; text-align: center;">
       <div id="workerPasswordInputStep" style="width: 100%;">
         <div class="profile-avatar-large" style="margin-bottom: 8px; font-size: 38px;">🔑</div>
-        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Create a Local Account</div>
+        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Create a Local
+          Account</div>
         <p style="color: rgba(255, 255, 255, 0.78); font-size: 0.84rem; line-height: 1.45; margin-bottom: 16px;">
           Set up alternative login credentials linked with your Google account. Google remains your primary sign-in.
         </p>
@@ -423,19 +472,27 @@
         <!-- Smart Identifier Field (Email / Username) -->
         <div class="password-field-container" style="width: 100%; margin-bottom: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="password-label" id="workerIdentifierLabel" for="workerIdentifierInput" style="margin-bottom: 0;">Email address</label>
-            <div class="identifier-type-switcher" style="display: flex; background: rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 2px; gap: 2px;">
-              <button type="button" id="workerTypeEmailBtn" style="background: rgba(255, 255, 255, 0.3); color: #fff; border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Email</button>
-              <button type="button" id="workerTypeUsernameBtn" style="background: transparent; color: rgba(255, 255, 255, 0.65); border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Username</button>
+            <label class="password-label" id="workerIdentifierLabel" for="workerIdentifierInput"
+              style="margin-bottom: 0;">Email address</label>
+            <div class="identifier-type-switcher"
+              style="display: flex; background: rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 2px; gap: 2px;">
+              <button type="button" id="workerTypeEmailBtn"
+                style="background: rgba(255, 255, 255, 0.3); color: #fff; border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Email</button>
+              <button type="button" id="workerTypeUsernameBtn"
+                style="background: transparent; color: rgba(255, 255, 255, 0.65); border: none; border-radius: 10px; padding: 2px 9px; font-size: 0.74rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Username</button>
             </div>
           </div>
           <div class="password-input-wrapper">
-            <input type="text" id="workerIdentifierInput" class="password-input password-text-input" placeholder="name@example.com" autocomplete="username">
+            <input type="text" id="workerIdentifierInput" class="password-input password-text-input"
+              placeholder="name@example.com" autocomplete="username">
           </div>
-          <div id="workerIdentifierStatus" style="display: none; font-size: 0.76rem; margin-top: 4px; text-align: left; transition: all 0.2s;"></div>
+          <div id="workerIdentifierStatus"
+            style="display: none; font-size: 0.76rem; margin-top: 4px; text-align: left; transition: all 0.2s;"></div>
           <div id="workerGoogleEmailCheckboxContainer">
-            <label class="checkbox-container" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); cursor: pointer; text-align: left;">
-              <input type="checkbox" id="workerUseGoogleEmailCheckbox" checked style="accent-color: #0071E3; cursor: pointer; width: 15px; height: 15px;">
+            <label class="checkbox-container"
+              style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); cursor: pointer; text-align: left;">
+              <input type="checkbox" id="workerUseGoogleEmailCheckbox" checked
+                style="accent-color: #0071E3; cursor: pointer; width: 15px; height: 15px;">
               <span>Use same as Google email</span>
             </label>
           </div>
@@ -445,9 +502,12 @@
         <div class="password-field-container" style="width: 100%; margin-bottom: 12px;">
           <label class="password-label" for="workerNewPassword">Password</label>
           <div class="password-input-wrapper">
-            <input type="password" id="workerNewPassword" class="password-input" placeholder="Password" autocomplete="new-password">
-            <button class="password-toggle" id="workerNewPasswordToggle" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <input type="password" id="workerNewPassword" class="password-input" placeholder="Password"
+              autocomplete="new-password">
+            <button class="password-toggle" id="workerNewPasswordToggle" type="button"
+              aria-label="Toggle password visibility">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -459,9 +519,12 @@
         <div class="password-field-container" style="width: 100%; margin-bottom: 18px;">
           <label class="password-label" for="workerConfirmPassword">Confirm password</label>
           <div class="password-input-wrapper">
-            <input type="password" id="workerConfirmPassword" class="password-input" placeholder="Confirm password" autocomplete="new-password">
-            <button class="password-toggle" id="workerConfirmPasswordToggle" type="button" aria-label="Toggle password visibility">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <input type="password" id="workerConfirmPassword" class="password-input" placeholder="Confirm password"
+              autocomplete="new-password">
+            <button class="password-toggle" id="workerConfirmPasswordToggle" type="button"
+              aria-label="Toggle password visibility">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -472,14 +535,16 @@
         <!-- Action Buttons -->
         <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
           <button class="login-button" id="skipWorkerPasswordBtn" type="button" style="flex: 1;">Not Now</button>
-          <button class="login-button btn-primary" id="saveWorkerPasswordBtn" type="button" style="flex: 1.4;">Continue</button>
+          <button class="login-button btn-primary" id="saveWorkerPasswordBtn" type="button"
+            style="flex: 1.4;">Continue</button>
         </div>
       </div>
 
       <!-- Step 2: Security Question Step -->
       <div id="workerSecurityQuestionStep" style="width: 100%; display: none;">
         <div class="profile-avatar-large" style="margin-bottom: 8px; font-size: 38px;">🛡️</div>
-        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Security Question</div>
+        <div class="profile-name" style="margin-bottom: 6px; font-size: 1.25rem; font-weight: 600;">Security Question
+        </div>
         <p style="color: rgba(255, 255, 255, 0.78); font-size: 0.84rem; line-height: 1.45; margin-bottom: 16px;">
           Choose a security question to secure and recover your local account credentials.
         </p>
@@ -488,15 +553,18 @@
         <div class="password-field-container" style="width: 100%; margin-bottom: 12px; text-align: left;">
           <label class="password-label" for="workerSecurityQuestionSelect">Select a question</label>
           <div class="password-input-wrapper">
-            <select id="workerSecurityQuestionSelect" class="password-input password-text-input" style="cursor: pointer; appearance: auto; -webkit-appearance: auto; padding-right: 12px; background: rgba(30, 30, 30, 0.75); color: #ffffff;">
+            <select id="workerSecurityQuestionSelect" class="password-input password-text-input"
+              style="cursor: pointer; appearance: auto; -webkit-appearance: auto; padding-right: 12px; background: rgba(30, 30, 30, 0.75); color: #ffffff;">
               <option value="" disabled selected>Choose a security question...</option>
               <option value="What was the name of your first pet?">What was the name of your first pet?</option>
               <option value="In what city were you born?">In what city were you born?</option>
               <option value="What was your childhood nickname?">What was your childhood nickname?</option>
               <option value="What is the name of your favorite book?">What is the name of your favorite book?</option>
               <option value="What was the model of your first car?">What was the model of your first car?</option>
-              <option value="What school did you attend for sixth grade?">What school did you attend for sixth grade?</option>
-              <option value="What is the name of your favorite childhood friend?">What is the name of your favorite childhood friend?</option>
+              <option value="What school did you attend for sixth grade?">What school did you attend for sixth grade?
+              </option>
+              <option value="What is the name of your favorite childhood friend?">What is the name of your favorite
+                childhood friend?</option>
             </select>
           </div>
         </div>
@@ -505,14 +573,16 @@
         <div class="password-field-container" style="width: 100%; margin-bottom: 18px; text-align: left;">
           <label class="password-label" for="workerSecurityAnswerInput">Your Answer</label>
           <div class="password-input-wrapper">
-            <input type="text" id="workerSecurityAnswerInput" class="password-input password-text-input" placeholder="Secret answer" autocomplete="off">
+            <input type="text" id="workerSecurityAnswerInput" class="password-input password-text-input"
+              placeholder="Secret answer" autocomplete="off">
           </div>
         </div>
 
         <!-- Action Buttons -->
         <div style="display: flex; gap: 10px; width: 100%; margin-top: 4px;">
           <button class="login-button" id="backToWorkerCredentialsBtn" type="button" style="flex: 1;">Back</button>
-          <button class="login-button btn-primary" id="saveWorkerSecurityBtn" type="button" style="flex: 1.4;">Save Account</button>
+          <button class="login-button btn-primary" id="saveWorkerSecurityBtn" type="button" style="flex: 1.4;">Save
+            Account</button>
         </div>
       </div>
 
@@ -520,12 +590,14 @@
       <div id="workerPasswordDismissStep" class="preference-popup" style="display: none;">
         <button class="preference-popup-close" id="closeWorkerDismissStep" type="button" aria-label="Close">×</button>
         <div class="preference-warning-icon">↩</div>
-        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem; color: #ffffff;">Continue without local credentials?</div>
+        <div class="profile-name" style="display: block; margin-bottom: 8px; font-size: 1.1rem; color: #ffffff;">
+          Continue without local credentials?</div>
         <p>You can continue signing in with Google and set up a local account anytime in Settings.</p>
         <button class="preference-dismiss-option" id="dontAskWorkerPasswordBtn" type="button">
           Don't ask again on this device
         </button>
-        <button class="login-button" id="confirmWorkerJustThisTimeBtn" type="button" style="width: 100%;">Not Now</button>
+        <button class="login-button" id="confirmWorkerJustThisTimeBtn" type="button" style="width: 100%;">Not
+          Now</button>
       </div>
     </div>
   </div>
@@ -536,13 +608,16 @@
       <div class="remove-account-avatar" id="removeAccountAvatar">
         <img src="/assets/Images/DefaultUser.png" alt="User">
       </div>
-      <div class="profile-name" id="removeAccountTitle" style="margin-bottom: 8px; font-size: 1.15rem;">Remove Account?</div>
-      <p id="removeAccountMessage" style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 18px; line-height: 1.45;">
+      <div class="profile-name" id="removeAccountTitle" style="margin-bottom: 8px; font-size: 1.15rem;">Remove Account?
+      </div>
+      <p id="removeAccountMessage"
+        style="color: rgba(255,255,255,0.75); font-size: 0.85rem; margin-bottom: 18px; line-height: 1.45;">
         This account shortcut will be removed from the lock screen on this Mac.
       </p>
       <div style="display: flex; gap: 10px; width: 100%;">
         <button class="login-button" id="cancelRemoveAccountBtn" type="button" style="flex: 1;">Cancel</button>
-        <button class="login-button btn-primary" id="confirmRemoveAccountBtn" type="button" style="flex: 1.2; background: #ff453a; border-color: #ff453a;">Remove</button>
+        <button class="login-button btn-primary" id="confirmRemoveAccountBtn" type="button"
+          style="flex: 1.2; background: #ff453a; border-color: #ff453a;">Remove</button>
       </div>
     </div>
   </div>
@@ -559,13 +634,14 @@
   <script type="module" src="/scripts/weather/modules/weather.js"></script>
   <!-- Pure Rust Core WASM Engine & Bridge -->
   <script type="module" src="/shared/suite_core_bridge.js"></script>
+  <script src="/shared/ledger-tracking-modal.js"></script>
   <script type="module" src="/shared/wallpaper-engine.js"></script>
 
   <!-- PWA Service Worker Registration & Connectivity Monitor -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+        navigator.serviceWorker.register('/service-worker.js').catch(() => { });
       });
     }
 

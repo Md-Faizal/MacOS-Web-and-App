@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Contacts') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
@@ -526,17 +527,32 @@ class ContactsApp extends AppWindow {
 
     // Add action buttons listeners
     card.querySelectorAll('.contact-action-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const action = btn.dataset.action;
         const contact = this.contacts.find(c => c.id === this.selectedContactId);
         
         switch(action) {
           case 'share-ledger':
-               const token = contact.ledger_token || contact.ledgerToken || contact.token;
+               let token = contact.ledger_token || contact.ledgerToken || contact.token;
+               if (!token && contact.id) {
+                 try {
+                   const cRes = await fetch(`${this.apiUrl}/${contact.id}`, { credentials: 'same-origin' });
+                   if (cRes.ok) {
+                     const cJson = await cRes.json();
+                     const cObj = cJson.data || cJson;
+                     token = cObj.ledger_token || cObj.ledgerToken || cObj.token;
+                     if (token) {
+                       contact.ledger_token = token;
+                       contact.ledgerToken = token;
+                       contact.token = token;
+                     }
+                   }
+                 } catch (_) {}
+               }
                const url = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
                
                const shareOptions = document.createElement('div');
-               shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 2147483647 !important; font-family: "Courier New", monospace;';
+               shareOptions.style.cssText = 'position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 100000 !important; font-family: "Courier New", monospace;';
                shareOptions.innerHTML = `
                  <div style="margin-bottom: 8px; font-size: 12px; font-weight: bold;">Share Ledger Link:</div>
                  <button id="copyLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: white; border: 1px solid black;">📋 Copy Link</button>
@@ -912,6 +928,9 @@ class ContactsApp extends AppWindow {
           created_by_name: contact.created_by_name,
           last_edited_by_role: contact.last_edited_by_role,
           last_edited_by_name: contact.last_edited_by_name,
+          ledger_token: contact.ledger_token || contact.ledgerToken || contact.token || null,
+          ledgerToken: contact.ledger_token || contact.ledgerToken || contact.token || null,
+          token: contact.ledger_token || contact.ledgerToken || contact.token || null,
           color: this.generateColorForContact(contact.name)
         }));
         log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);

@@ -2326,6 +2326,22 @@ module.exports = function(db) {
           return res.status(response.error?.status || 404).json(response.error || { error: 'Ledger not found or invalid link' });
         }
 
+        if (!isAuth) {
+          try {
+            const rawCust = response.data?.raw?.customer || response.data?.customer;
+            const customerId = rawCust?.id || rawCust?.customer_id;
+            const token = rawCust?.ledger_token || rawCust?.token || identifier;
+            if (customerId) {
+              setImmediate(() => {
+                try {
+                  const { recordAccess } = require('../../../core/billing/link-telemetry');
+                  recordAccess(db, { customerId, ledgerToken: token, eventType: 'VIEW', req });
+                } catch (_) {}
+              });
+            }
+          } catch (_) {}
+        }
+
         return res.json({
           success: true,
           data: response.data?.raw || response.data,
@@ -2338,6 +2354,46 @@ module.exports = function(db) {
     },
 
     // Server-authoritative Customer Statement of Account endpoint
+    trackPublicLedgerEvent: (req, res) => {
+      try {
+        const { token, event_type, dwell_seconds, scroll_depth, metadata } = req.body || {};
+        if (!token) return res.status(400).json({ error: 'Token is required' });
+
+        const { findCustomerByLedgerToken } = require('../../../core/billing/ledger-token');
+        const customer = findCustomerByLedgerToken(db, token);
+        if (!customer) return res.status(404).json({ error: 'Invalid ledger token' });
+
+        const { recordAccess } = require('../../../core/billing/link-telemetry');
+        recordAccess(db, {
+          customerId: customer.id,
+          ledgerToken: token,
+          eventType: event_type || 'ENGAGE',
+          req,
+          dwellSeconds: dwell_seconds || 0,
+          scrollDepth: scroll_depth || 0,
+          metadata
+        });
+
+        res.json({ success: true });
+      } catch (err) {
+        console.error('Error tracking public ledger event:', err);
+        res.status(500).json({ error: 'Failed to record tracking event' });
+      }
+    },
+
+    getLedgerTracking: (req, res) => {
+      try {
+        const identifier = req.params.token || req.params.customerId;
+        const { getTrackingSummary } = require('../../../core/billing/link-telemetry');
+        const summary = getTrackingSummary(db, identifier);
+        if (!summary) return res.status(404).json({ error: 'Tracking data not found for customer' });
+        res.json(summary);
+      } catch (err) {
+        console.error('Error getting ledger tracking:', err);
+        res.status(500).json({ error: 'Failed to retrieve tracking data' });
+      }
+    },
+
     getCustomerStatement: (req, res) => {
       try {
         const customerId = req.params.id || req.params.customerId;

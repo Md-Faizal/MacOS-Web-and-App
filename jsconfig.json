@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "checkJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "/*": ["./frontend/*"]
+    }
+  },
+  "include": [
+    "frontend/**/*",
+    "backend/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "zentra-analytics-dashboard"
+  ]
+}

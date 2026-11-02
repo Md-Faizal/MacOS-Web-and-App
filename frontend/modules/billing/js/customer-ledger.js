@@ -1,5 +1,70 @@
+// @ts-nocheck
 let rawData = null;
 let currentTab = 'bills';
+
+// ==========================================================================
+// Customer Telemetry & Read Receipt Tracking
+// ==========================================================================
+let activeDwellSeconds = 0;
+let maxScrollDepth = 0;
+
+function sendTelemetryBeacon(eventType, metadata = null) {
+  try {
+    const pathMatch = window.location.pathname.match(/\/(?:ledger|l)\/([a-zA-Z0-9_-]+)/i);
+    const token = rawData?.customer?.ledger_token || rawData?.customer?.token || (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get('token');
+    if (!token) return;
+
+    const payload = JSON.stringify({
+      token,
+      event_type: eventType,
+      dwell_seconds: activeDwellSeconds,
+      scroll_depth: maxScrollDepth,
+      metadata
+    });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon('/api/billing/public/track-event', blob);
+    } else {
+      fetch('/api/billing/public/track-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+setInterval(() => {
+  if (document.visibilityState === 'visible') {
+    activeDwellSeconds++;
+  }
+}, 1000);
+
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const b = document.body;
+  const st = 'scrollTop';
+  const sh = 'scrollHeight';
+  const total = (h[sh] || b[sh]) - h.clientHeight;
+  if (total > 0) {
+    const percent = Math.round(((h[st] || b[st]) / total) * 100);
+    if (!isNaN(percent) && percent > maxScrollDepth) {
+      maxScrollDepth = Math.min(100, percent);
+    }
+  }
+}, { passive: true });
+
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    sendTelemetryBeacon('HEARTBEAT', { reason: 'hidden' });
+  }
+});
+window.addEventListener('pagehide', () => {
+  sendTelemetryBeacon('HEARTBEAT', { reason: 'pagehide' });
+});
+
 
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
@@ -792,6 +857,7 @@ function initAdditionalHandlers() {
   if (downloadBtn && !downloadBtn.dataset.bound) {
     downloadBtn.dataset.bound = "true";
     downloadBtn.addEventListener('click', () => {
+      sendTelemetryBeacon('DOWNLOAD_CSV');
       downloadStatementCSV();
     });
   }
@@ -803,6 +869,7 @@ function initAdditionalHandlers() {
   if (copyNumberBtn && !copyNumberBtn.dataset.bound) {
     copyNumberBtn.dataset.bound = "true";
     copyNumberBtn.addEventListener('click', () => {
+      sendTelemetryBeacon('COPY_ACCOUNT');
       const text = document.getElementById('bankNumber').textContent;
       navigator.clipboard.writeText(text).then(() => {
         copyNumberBtn.textContent = "✓ COPIED";
@@ -814,6 +881,7 @@ function initAdditionalHandlers() {
   if (copyIfscBtn && !copyIfscBtn.dataset.bound) {
     copyIfscBtn.dataset.bound = "true";
     copyIfscBtn.addEventListener('click', () => {
+      sendTelemetryBeacon('COPY_IFSC');
       const text = document.getElementById('bankIfsc').textContent;
       navigator.clipboard.writeText(text).then(() => {
         copyIfscBtn.textContent = "✓ COPIED";
@@ -827,6 +895,7 @@ function initAdditionalHandlers() {
   if (printBtn && !printBtn.dataset.bound) {
     printBtn.dataset.bound = "true";
     printBtn.addEventListener('click', () => {
+      sendTelemetryBeacon('PRINT');
       window.print();
     });
   }

@@ -103,12 +103,7 @@ module.exports = function(db) {
       } catch (err) {
         res.status(500).json({ error: err.message });
       }
-          items,
-          created_at: new Date().toISOString()
-        });
-      } catch (err) {
-        res.status(500).json({ error: err.message });
-      }
+
     },
 
     // Get all orders
