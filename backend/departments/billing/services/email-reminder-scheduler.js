@@ -1407,4 +1407,4 @@ class EmailReminderScheduler {
   }
 }
 
-module.exports = { EmailReminderScheduler };
+module.exports = { EmailReminderScheduler, sendEmail };

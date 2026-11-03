@@ -42,6 +42,8 @@ module.exports = function(router, handlers) {
   router.get('/public/ledger/t/:token', handlers.getPublicLedger);
   router.post('/public/export-invoice-pdf', handlers.exportInvoicePDF); // POST /api/billing/public/export-invoice-pdf - Public export PDF
   router.post('/public/track-event', handlers.trackPublicLedgerEvent); // POST /api/billing/public/track-event - Telemetry action beacon
+  router.get('/public/customer-items/:token', handlers.getPublicCustomerItems); // GET /api/billing/public/customer-items/:token - Customer purchase history for kiosk & pattern engine
+  router.post('/public/kiosk-order', handlers.submitPublicKioskOrder); // POST /api/billing/public/kiosk-order - Submit self-ordering kiosk order
   router.get('/public/ledger/:customerId/tracking', handlers.getLedgerTracking);
   router.get('/ledger/:token/tracking', handlers.getLedgerTracking);
 

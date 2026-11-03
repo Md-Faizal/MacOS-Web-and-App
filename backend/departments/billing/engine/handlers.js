@@ -2396,6 +2396,189 @@ module.exports = function(db) {
       }
     },
 
+    getPublicCustomerItems: (req, res) => {
+      try {
+        const { token } = req.params;
+        if (!token) return res.status(400).json({ error: 'Token is required' });
+
+        const { findCustomerByLedgerToken } = require('../../../core/billing/ledger-token');
+        const customer = findCustomerByLedgerToken(db, token);
+        if (!customer) return res.status(404).json({ error: 'Invalid ledger token' });
+
+        const items = db.prepare(`
+          SELECT 
+            ii.id, 
+            ii.product_id, 
+            COALESCE(p.name, 'Item #' || ii.product_id) as product_name, 
+            ii.qty, 
+            ii.rate, 
+            ii.pack_value,
+            i.invoice_no, 
+            COALESCE(i.invoice_date, i.created_at) as invoice_date
+          FROM invoice_items ii
+          JOIN invoices i ON ii.invoice_id = i.id
+          LEFT JOIN products p ON ii.product_id = p.id
+          WHERE i.customer_id = ?
+          ORDER BY i.created_at DESC
+          LIMIT 150
+        `).all(customer.id);
+
+        let catalog = [];
+        try {
+          catalog = db.prepare(`
+            SELECT id, name, category, price, mrp, stock, unit
+            FROM products
+            WHERE is_active = 1 OR is_active IS NULL
+            ORDER BY name ASC
+            LIMIT 200
+          `).all();
+        } catch (_) {}
+
+        return res.json({
+          success: true,
+          customer: {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            creditLimit: customer.credit_limit
+          },
+          items,
+          catalog
+        });
+      } catch (err) {
+        console.error('Error fetching public customer items:', err);
+        return res.status(500).json({ error: 'Failed to fetch items' });
+      }
+    },
+
+    submitPublicKioskOrder: async (req, res) => {
+      try {
+        const { token, items = [], notes = '', promoCode = '', promoDiscount = 0 } = req.body || {};
+        if (!token) return res.status(400).json({ error: 'Token is required' });
+        if (!Array.isArray(items) || items.length === 0) {
+          return res.status(400).json({ error: 'At least one item is required in the order' });
+        }
+
+        const { findCustomerByLedgerToken } = require('../../../core/billing/ledger-token');
+        const customer = findCustomerByLedgerToken(db, token);
+        if (!customer) return res.status(404).json({ error: 'Invalid customer token' });
+
+        let subtotal = 0;
+        items.forEach(it => {
+          subtotal += (Number(it.qty) || 1) * (Number(it.rate || it.price) || 0);
+        });
+        const discountAmount = Math.max(0, Number(promoDiscount) || 0);
+        const totalAmount = Math.max(0, subtotal - discountAmount);
+
+        const randSuffix = Math.floor(1000 + Math.random() * 9000);
+        const orderNumber = `ORD-K-${Date.now().toString(36).toUpperCase()}-${randSuffix}`;
+
+        const insertOrderStmt = db.prepare(`
+          INSERT INTO orders (
+            order_number, customer_id, current_stage, order_date, status,
+            total_amount, order_notes, created_at, updated_at
+          ) VALUES (
+            ?, ?, 'stage1', datetime('now'), 'pending',
+            ?, ?, datetime('now'), datetime('now')
+          )
+        `);
+
+        const fullNotes = notes ? `[Self-Ordering Kiosk] ${notes}${discountAmount > 0 ? ` (Rebate: -₹${discountAmount})` : ''}` : `[Self-Ordering Kiosk Order]${discountAmount > 0 ? ` (Rebate: -₹${discountAmount})` : ''}`;
+        const orderResult = insertOrderStmt.run(
+          orderNumber,
+          customer.id,
+          totalAmount,
+          fullNotes
+        );
+        const orderId = orderResult.lastInsertRowid;
+
+        const insertItemStmt = db.prepare(`
+          INSERT INTO order_items (
+            order_id, product_id, quantity, unit_price, line_total
+          ) VALUES (?, ?, ?, ?, ?)
+        `);
+
+        items.forEach(it => {
+          const qty = Math.max(1, Number(it.qty) || 1);
+          const unitPrice = Number(it.rate || it.price) || 0;
+          const lineTotal = qty * unitPrice;
+          const pId = it.productId || it.product_id || null;
+          insertItemStmt.run(orderId, pId, qty, unitPrice, lineTotal);
+        });
+
+        // Send email alert to store owner / admin
+        setImmediate(async () => {
+          try {
+            const { sendEmail } = require('../services/email-reminder-scheduler');
+            if (typeof sendEmail === 'function') {
+              const itemsListHtml = items.map(it => `
+                <tr style="border-bottom: 1px solid #e5e7eb;">
+                  <td style="padding: 8px;">${it.name || it.product_name}</td>
+                  <td style="padding: 8px; text-align: center;">${it.qty}</td>
+                  <td style="padding: 8px; text-align: right;">₹${(Number(it.rate || it.price) || 0).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px; text-align: right; font-weight: bold;">₹${((Number(it.qty) || 1) * (Number(it.rate || it.price) || 0)).toLocaleString('en-IN')}</td>
+                </tr>
+              `).join('');
+
+              const emailSubject = `🚨 New B2B Kiosk Order #${orderNumber} from ${customer.name} (₹${totalAmount.toLocaleString('en-IN')})`;
+              const emailHtml = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 2px solid #000; background: #ffffff;">
+                  <div style="background: #000; color: #fff; padding: 12px 16px; font-weight: 800; font-size: 14px;">
+                    ⚡ NEW SELF-ORDERING KIOSK ORDER
+                  </div>
+                  <div style="padding: 16px;">
+                    <p style="font-size: 14px; margin-top: 0;"><strong>Customer:</strong> ${customer.name} (${customer.phone || 'No phone'})</p>
+                    <p style="font-size: 14px;"><strong>Order Number:</strong> ${orderNumber}</p>
+                    ${notes ? `<p style="font-size: 13px; background: #fef9c3; padding: 8px; border-left: 3px solid #ca8a04;"><strong>Customer Notes:</strong> ${notes}</p>` : ''}
+                    
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px;">
+                      <thead>
+                        <tr style="background: #f3f4f6; border-bottom: 2px solid #000;">
+                          <th style="padding: 8px; text-align: left;">ITEM</th>
+                          <th style="padding: 8px; text-align: center;">QTY</th>
+                          <th style="padding: 8px; text-align: right;">RATE</th>
+                          <th style="padding: 8px; text-align: right;">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${itemsListHtml}
+                      </tbody>
+                    </table>
+
+                    <div style="margin-top: 14px; text-align: right; font-size: 15px; font-weight: 900;">
+                      GRAND TOTAL: ₹${totalAmount.toLocaleString('en-IN')}
+                    </div>
+
+                    <div style="margin-top: 20px; padding: 12px; background: #f0fdf4; border: 1px solid #16a34a; font-size: 12px; color: #166534;">
+                      ✓ This order has been logged into your Orders database in pending status. Open MacOS Billing to review, approve, and convert to invoice.
+                    </div>
+                  </div>
+                </div>
+              `;
+
+              await sendEmail(db, {
+                subject: emailSubject,
+                html: emailHtml,
+                text: `New Kiosk Order #${orderNumber} from ${customer.name} for ₹${totalAmount}`
+              });
+            }
+          } catch (emailErr) {
+            console.error('[KioskOrder] Failed to send email alert:', emailErr.message);
+          }
+        });
+
+        return res.json({
+          success: true,
+          orderNumber,
+          totalAmount,
+          message: 'Order placed successfully! The store has been notified and will process your dispatch.'
+        });
+      } catch (err) {
+        console.error('Error submitting kiosk order:', err);
+        return res.status(500).json({ error: 'Failed to place order' });
+      }
+    },
+
     getCustomerStatement: (req, res) => {
       try {
         const customerId = req.params.id || req.params.customerId;

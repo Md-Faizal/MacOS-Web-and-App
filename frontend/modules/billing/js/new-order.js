@@ -4379,6 +4379,19 @@ class OrdersView {
   }
 
   analyzePurchasePatterns(billItems) {
+    // Utilize shared Multi-Factor Predictive Pattern Engine when available
+    if (typeof window !== 'undefined' && window.CustomerPatternEngine && typeof window.CustomerPatternEngine.analyzeProductCadenceAndDepletion === 'function') {
+      const results = window.CustomerPatternEngine.analyzeProductCadenceAndDepletion(billItems, this.suppressionDays || 0);
+      return results.map(r => ({
+        productId: r.productId,
+        name: r.name,
+        frequency: r.orderCount,
+        totalQty: r.totalQty,
+        daysSinceLast: r.daysSinceLast,
+        score: r.score
+      })).slice(0, 6);
+    }
+
     const patterns = {};
     const now = Date.now();
     const suppressionMs = this.suppressionDays * 24 * 60 * 60 * 1000;

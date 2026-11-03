@@ -570,6 +570,47 @@ body {
 /* ==========================================================================
    Print Optimization
    ========================================================================== */
+
+/* ==========================================================================
+   Period Sales, Buying Power Gauge & Kiosk Enhancements
+   ========================================================================== */
+.vip-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+}
+
+.period-sales-breakdown {
+  width: 100%;
+}
+
+.period-sales-breakdown .metric-sub-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.buying-power-container {
+  width: 100%;
+}
+
+#smartRestockAlertContainer,
+#dynamicPromoBannerContainer {
+  transition: transform 0.15s ease-out;
+}
+
+#smartRestockAlertContainer:hover,
+#dynamicPromoBannerContainer:hover {
+  transform: translateY(-1px);
+}
+
+@keyframes kioskFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 @media print {
   /* Hide interactive elements, themes, scrollbars, tabs and filters */
   .header, 
@@ -578,6 +619,11 @@ body {
   .list-controls, 
   .payment-panel-brutalist,
   .download-btn,
+  #smartRestockAlertContainer,
+  #dynamicPromoBannerContainer,
+  #customerKioskOverlay,
+  #openKioskBtn,
+  .vip-tier-badge,
   #themeSelect,
   .tab-content,
   #billsTab,

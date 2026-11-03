@@ -58,7 +58,9 @@
           <h1>CUSTOMER LEDGER</h1>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <p id="customerName" class="customer-name" style="margin-top: 0;">LOADING...</p>
+            <span id="vipTierBadge" class="vip-tier-badge" style="display: none; font-size: 10px; font-weight: 800; padding: 2px 8px; border: 1.5px solid var(--border-color); background: var(--bg-card); box-shadow: 2px 2px 0 var(--shadow-color);">👑 WHOLESALE PARTNER</span>
             <button id="sharePortalBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">🔗 SHARE LINK</button>
+            <button id="openKioskBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 8px; background: #000000; color: #ffffff; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 2px 2px 0 var(--shadow-color);">⚡ SELF-ORDER KIOSK</button>
           </div>
         </div>
         <div class="header-right">
@@ -92,23 +94,43 @@
       </div>
 
       <div class="metrics-grid">
-        <!-- Tile 1: Total Sales -->
+        <!-- Tile 1: Total Purchases & Period Breakdown -->
         <div class="metric-card">
-          <div class="metric-title">TOTAL SALES</div>
-          <div class="metric-value" id="totalSales">₹0.00</div>
+          <div class="metric-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>TOTAL PURCHASES</span>
+            <span class="period-pill" style="font-size: 9px; font-weight: 800; border: 1px solid var(--border-color); padding: 1px 5px;">ALL TIME</span>
+          </div>
+          <div class="metric-value" id="totalSales" style="font-size: 1.55rem; margin-bottom: 6px;">₹0.00</div>
+          <div class="period-sales-breakdown" style="border-top: 1px dashed var(--border-color); padding-top: 6px; display: flex; flex-direction: column; gap: 3px;">
+            <div class="metric-sub-item">
+              <span style="font-size: 10px; color: var(--text-secondary);">THIS MONTH:</span>
+              <strong id="salesThisMonth" style="font-size: 11px;">₹0.00</strong>
+            </div>
+            <div class="metric-sub-item">
+              <span style="font-size: 10px; color: var(--text-secondary);">THIS QUARTER:</span>
+              <strong id="salesThisQuarter" style="font-size: 11px;">₹0.00</strong>
+            </div>
+            <div class="metric-sub-item">
+              <span style="font-size: 10px; color: var(--text-secondary);">THIS YEAR:</span>
+              <strong id="salesThisYear" style="font-size: 11px;">₹0.00</strong>
+            </div>
+          </div>
         </div>
 
-        <!-- Tile 2: Averages & Settlement -->
+        <!-- Tile 2: Averages & Cadence -->
         <div class="metric-card">
-          <div class="metric-title">AVERAGES & SETTLEMENT</div>
+          <div class="metric-title">AVERAGES & CADENCE</div>
           <div class="metric-sub-item">
             <span>AVG BILL:</span> <strong id="avgBill">₹0.00</strong>
           </div>
           <div class="metric-sub-item">
+            <span>BILL CADENCE:</span> <strong id="billCadence">EVERY 0 DAYS</strong>
+          </div>
+          <div class="metric-sub-item" style="border-top: 1px dashed var(--border-color); margin-top: 4px; padding-top: 4px;">
             <span>AVG PMT:</span> <strong id="avgPayment">₹0.00</strong>
           </div>
           <div class="metric-sub-item">
-            <span>SETTLEMENT:</span> <strong id="settlementDays">0 DAYS</strong>
+            <span>PMT SETTLEMENT:</span> <strong id="settlementDays">0 DAYS</strong>
           </div>
         </div>
 
@@ -121,7 +143,7 @@
           <div class="metric-sub-item">
             <span>TOTAL PMTS:</span> <strong id="totalPaymentsCount">0</strong>
           </div>
-          <div class="metric-sub-item" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);">
+          <div class="metric-sub-item" style="margin-top: 6px; font-size: 0.85rem; color: var(--text-secondary);">
             <span>LAST BILL:</span> <strong id="lastBillDays" style="color: var(--text-color);">N/A</strong>
           </div>
           <div class="metric-sub-item" style="font-size: 0.85rem; color: var(--text-secondary);">
@@ -129,15 +151,35 @@
           </div>
         </div>
 
-        <!-- Tile 4: Total Outstanding -->
+        <!-- Tile 4: Total Outstanding & Available Buying Power -->
         <div class="metric-card">
-          <div class="metric-title">TOTAL OUTSTANDING</div>
-          <div class="metric-value" id="currentDue">₹0.00</div>
-          <div style="font-size: 12px; margin-top: 8px; font-weight: 600;" class="text-secondary">
+          <div class="metric-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>TOTAL OUTSTANDING</span>
+            <span id="creditHealthBadge" style="font-size: 9px; font-weight: 800; padding: 1px 4px; background: #ecfdf5; color: #065f46; border: 1px solid #10b981;">HEALTHY</span>
+          </div>
+          <div class="metric-value" id="currentDue" style="font-size: 1.55rem;">₹0.00</div>
+          <div style="font-size: 10px; margin-bottom: 6px; font-weight: 600;" class="text-secondary">
             INCL. OPENING: <span id="openingBalance">₹0.00</span>
+          </div>
+          <!-- Available Buying Power Progress Gauge -->
+          <div class="buying-power-container" style="border-top: 1px dashed var(--border-color); padding-top: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; margin-bottom: 2px;">
+              <span style="color: var(--text-secondary);">BUYING POWER:</span>
+              <span id="availableBuyingPower">₹0.00</span>
+            </div>
+            <div style="width: 100%; height: 6px; border: 1px solid var(--border-color); background: #f3f4f6; overflow: hidden;">
+              <div id="buyingPowerBar" style="width: 100%; height: 100%; background: #10b981; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="font-size: 8px; color: var(--text-secondary); margin-top: 2px; text-align: right;" id="buyingPowerLimitLabel">
+              LINE: ₹0.00
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- Depletion Alert Card & Dynamic Promotion Banner -->
+      <div id="smartRestockAlertContainer" style="display: none; margin-bottom: 1.5rem;"></div>
+      <div id="dynamicPromoBannerContainer" style="margin-bottom: 1.5rem;"></div>
 
       <!-- Payment Progress and Ageing Section -->
       <div class="progress-ageing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
@@ -269,7 +311,9 @@
     </div>
   </div>
 
+  <script src="/shared/customer-pattern-engine.js"></script>
   <script type="module" src="/shared/suite_core_bridge.js"></script>
   <script type="module" src="/modules/billing/js/customer-ledger.js"></script>
+  <script type="module" src="/modules/billing/js/customer-kiosk.js"></script>
 </body>
 </html>

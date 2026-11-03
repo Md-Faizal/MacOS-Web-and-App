@@ -463,6 +463,163 @@ function updateDashboard() {
   document.getElementById('lastBillDays').textContent = lastBillDays;
   document.getElementById('lastPmtDays').textContent = lastPmtDays;
 
+  // Pattern Engine, Period Sales, Symmetrical Cadence & Buying Power
+  if (window.CustomerPatternEngine) {
+    const periodSales = window.CustomerPatternEngine.calculatePeriodSales(rawData.bills);
+    const mEl = document.getElementById('salesThisMonth');
+    const qEl = document.getElementById('salesThisQuarter');
+    const yEl = document.getElementById('salesThisYear');
+    if (mEl) mEl.textContent = `${formatCurrency(periodSales.month.total)} (${periodSales.month.count})`;
+    if (qEl) qEl.textContent = `${formatCurrency(periodSales.quarter.total)} (${periodSales.quarter.count})`;
+    if (yEl) yEl.textContent = `${formatCurrency(periodSales.year.total)} (${periodSales.year.count})`;
+
+    // Symmetrical Cadence & Interval
+    const cadence = window.CustomerPatternEngine.calculateBillCadence(rawData.bills);
+    const cadenceEl = document.getElementById('billCadence');
+    if (cadenceEl) {
+      cadenceEl.textContent = cadence.label;
+      cadenceEl.title = `Average order interval: ${cadence.avgIntervalDays} days (~${cadence.monthlyFrequency}x/month)`;
+    }
+
+    // Industrial Credit Limit & Buying Power
+    const credit = window.CustomerPatternEngine.calculateCreditLimitAndBuyingPower({
+      manualCreditLimit: rawData.customer?.credit_limit,
+      avgBill,
+      currentDue: rawData.customer?.current_due,
+      settlementDays,
+      avgIntervalDays: cadence.avgIntervalDays
+    });
+
+    const buyPowerEl = document.getElementById('availableBuyingPower');
+    const buyPowerBar = document.getElementById('buyingPowerBar');
+    const buyPowerLimit = document.getElementById('buyingPowerLimitLabel');
+    const healthBadge = document.getElementById('creditHealthBadge');
+
+    if (buyPowerEl) buyPowerEl.textContent = formatCurrency(credit.available);
+    if (buyPowerBar) {
+      buyPowerBar.style.width = `${credit.availablePercent}%`;
+      buyPowerBar.style.background = credit.isExceeded ? '#ef4444' : (credit.utilizationPercent > 70 ? '#f59e0b' : '#10b981');
+    }
+    if (buyPowerLimit) buyPowerLimit.textContent = `LINE: ${formatCurrency(credit.approvedCreditLimit)}`;
+    if (healthBadge) {
+      if (credit.isExceeded) {
+        healthBadge.textContent = 'LINE EXCEEDED';
+        healthBadge.style.background = '#fef2f2';
+        healthBadge.style.color = '#b91c1c';
+        healthBadge.style.borderColor = '#ef4444';
+      } else if (credit.utilizationPercent > 70) {
+        healthBadge.textContent = 'NEARING LIMIT';
+        healthBadge.style.background = '#fffbeb';
+        healthBadge.style.color = '#b45309';
+        healthBadge.style.borderColor = '#f59e0b';
+      } else {
+        healthBadge.textContent = 'HEALTHY';
+        healthBadge.style.background = '#ecfdf5';
+        healthBadge.style.color = '#065f46';
+        healthBadge.style.borderColor = '#10b981';
+      }
+    }
+
+    // VIP Wholesale Partner Tier Badge
+    const allTimeSpend = periodSales.allTime.total;
+    const vipBadge = document.getElementById('vipTierBadge');
+    if (vipBadge) {
+      vipBadge.style.display = 'inline-block';
+      if (allTimeSpend >= 500000) {
+        vipBadge.innerHTML = '💎 PLATINUM VIP';
+        vipBadge.style.borderColor = '#8b5cf6';
+      } else if (allTimeSpend >= 200000) {
+        vipBadge.innerHTML = '👑 GOLD PARTNER';
+        vipBadge.style.borderColor = '#eab308';
+      } else if (allTimeSpend >= 50000) {
+        vipBadge.innerHTML = '🥈 SILVER WHOLESALE';
+        vipBadge.style.borderColor = '#6b7280';
+      } else {
+        vipBadge.innerHTML = '⭐ BRONZE PARTNER';
+        vipBadge.style.borderColor = '#d97706';
+      }
+    }
+
+    // Render Smart Restock Cadence Alert
+    const restockContainer = document.getElementById('smartRestockAlertContainer');
+    if (restockContainer) {
+      if (cadence.daysSinceLastBill !== null && cadence.avgIntervalDays > 0 && cadence.daysSinceLastBill >= (cadence.avgIntervalDays - 2)) {
+        restockContainer.style.display = 'block';
+        restockContainer.innerHTML = `
+          <div style="background: #ffffff; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">📦</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 800; letter-spacing: 0.3px;">RESTOCK CADENCE DUE: TYPICAL ORDER CYCLE IS EVERY ${cadence.avgIntervalDays} DAYS</div>
+                <div style="font-size: 11px; color: #4b5563; margin-top: 2px;">
+                  Your last order was <strong>${cadence.daysSinceLastBill} days ago</strong>. Need replenishment before running out of stock?
+                </div>
+              </div>
+            </div>
+            <button id="alertReorderBtn" style="background: #10b981; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
+              ⚡ QUICK REORDER IN KIOSK
+            </button>
+          </div>
+        `;
+        const alertBtn = restockContainer.querySelector('#alertReorderBtn');
+        if (alertBtn) {
+          alertBtn.onclick = () => launchKiosk();
+        }
+      } else {
+        restockContainer.style.display = 'none';
+      }
+    }
+
+    // Render Dynamic Promo Banner
+    const promoContainer = document.getElementById('dynamicPromoBannerContainer');
+    if (promoContainer) {
+      const currentDueAmt = rawData.customer?.current_due || 0;
+      if (currentDueAmt > 0) {
+        promoContainer.innerHTML = `
+          <div style="background: #fffbeb; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">⚡</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 800; color: #92400e;">EARLY SETTLEMENT PERK: UNLOCK 2% EXTRA REBATE</div>
+                <div style="font-size: 11px; color: #78350f; margin-top: 2px;">
+                  Settle your pending balance of <strong>${formatCurrency(currentDueAmt)}</strong> today via UPI to unlock priority dispatch & 2% instant discount on your next kiosk order!
+                </div>
+              </div>
+            </div>
+            <button id="promoKioskOrderBtn" style="background: #000000; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
+              CLAIM & ORDER NOW ⚡
+            </button>
+          </div>
+        `;
+        const promoBtn = promoContainer.querySelector('#promoKioskOrderBtn');
+        if (promoBtn) {
+          promoBtn.onclick = () => launchKiosk('EARLY2', 2.0, '2% Early Settlement Cash Rebate');
+        }
+      } else {
+        promoContainer.innerHTML = `
+          <div style="background: #f0fdf4; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">🔥</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 800; color: #166534;">WHOLESALE CLEARANCE & BULK VOLUME DISCOUNTS ACTIVE</div>
+                <div style="font-size: 11px; color: #14532d; margin-top: 2px;">
+                  Your account balance is completely clear! Browse new arrivals and special lot rates in our self-ordering kiosk.
+                </div>
+              </div>
+            </div>
+            <button id="promoKioskOrderBtn" style="background: #16a34a; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
+              OPEN SELF-ORDER KIOSK 📦
+            </button>
+          </div>
+        `;
+        const promoBtn = promoContainer.querySelector('#promoKioskOrderBtn');
+        if (promoBtn) {
+          promoBtn.onclick = () => launchKiosk();
+        }
+      }
+    }
+  }
+
   renderLists();
 }
 
@@ -836,7 +993,34 @@ function initPaymentHandlers() {
 // ==========================================================================
 // Additional Portal Actions (Share, Copy, CSV Export)
 // ==========================================================================
+function launchKiosk(promoCode = '', promoPercent = 0, promoDesc = '') {
+  const pathMatch = window.location.pathname.match(/\/(?:ledger|l)\/([a-zA-Z0-9_-]+)/i);
+  const token = rawData?.customer?.ledger_token || rawData?.customer?.token || (pathMatch && pathMatch[1]) || new URLSearchParams(window.location.search).get('token');
+  const custName = rawData?.customer?.name || 'Customer';
+
+  if (typeof window.openCustomerKiosk === 'function') {
+    window.openCustomerKiosk({
+      token,
+      customerName: custName,
+      promoCode,
+      promoDiscountPercent: promoPercent,
+      promoDescription: promoDesc
+    });
+  } else {
+    alert('Loading self-ordering kiosk...');
+  }
+}
+
 function initAdditionalHandlers() {
+  // 0. Open Kiosk Button
+  const kioskBtn = document.getElementById('openKioskBtn');
+  if (kioskBtn && !kioskBtn.dataset.bound) {
+    kioskBtn.dataset.bound = 'true';
+    kioskBtn.addEventListener('click', () => {
+      launchKiosk();
+    });
+  }
+
   // 1. Share Portal Link Button
   const shareBtn = document.getElementById('sharePortalBtn');
   if (shareBtn && !shareBtn.dataset.bound) {

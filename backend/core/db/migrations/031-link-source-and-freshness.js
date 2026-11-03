@@ -22,3 +22,4 @@ function up(db) {
 }
 
 module.exports = { up };
+
