@@ -191,56 +191,6 @@ module.exports = function(db) {
       }
     },
 
-    getCustomerStats: (req, res) => {
-      try {
-        const { id } = req.params;
-        
-        // Avg Order Value
-        const avgOrder = db.prepare('SELECT AVG(grand_total) as avg_value FROM invoices WHERE customer_id = ?').get(id);
-        
-        // Favorite Products
-        const favProducts = db.prepare(`
-          SELECT p.name, COUNT(*) as frequency
-          FROM invoice_items ii
-          JOIN products p ON ii.product_id = p.id
-          WHERE ii.invoice_id IN (SELECT id FROM invoices WHERE customer_id = ?)
-          GROUP BY ii.product_id
-          ORDER BY frequency DESC
-          LIMIT 3
-        `).all(id);
-
-        // Settlement Time (Approximate: Avg days between invoice and payment for this customer)
-        const settlement = db.prepare(`
-          WITH CustomerDates AS (
-            SELECT created_at as date, 'invoice' as type FROM invoices WHERE customer_id = ?
-            UNION ALL
-            SELECT created_at as date, 'payment' as type FROM payments WHERE customer_id = ?
-          )
-          SELECT 
-            AVG(JulianDay(p.date) - JulianDay(i.date)) as avg_settlement_days
-          FROM CustomerDates i
-          JOIN CustomerDates p ON p.date > i.date
-          WHERE i.type = 'invoice' AND p.type = 'payment'
-          AND i.date = (SELECT MAX(date) FROM CustomerDates WHERE type = 'invoice' AND date < p.date)
-        `).get(id, id);
-
-        // Current Debt
-        const ledger = db.prepare('SELECT current_due FROM ledger WHERE customer_id = ?').get(id);
-
-        // Total Sales (Lifetime Revenue)
-        const totalSales = db.prepare('SELECT SUM(grand_total) as total FROM invoices WHERE customer_id = ?').get(id);
-
-        res.json({
-          avg_order_value: avgOrder?.avg_value || 0,
-          favorite_products: favProducts,
-          avg_settlement_days: settlement?.avg_settlement_days || 0,
-          current_due: ledger?.current_due || 0,
-          total_sales: totalSales?.total || 0
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    },
 
     getSalesTrend: (req, res) => {
       try {

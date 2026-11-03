@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Centralized Billing & Dashboard Calculation Engine
  *

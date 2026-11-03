@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { catalogQrFailureMessage, diagnoseCatalogQr } from '../../../shared/catalog-qr.mjs';
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 

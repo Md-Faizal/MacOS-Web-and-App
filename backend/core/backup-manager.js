@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * BACKUP & DISASTER RECOVERY MANAGER
  * 

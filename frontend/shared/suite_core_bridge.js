@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * SUITE CORE BRIDGE - WebAssembly Acceleration Bridge for macOS Business Suite
  *

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Estimate') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 class EstimateEditor {

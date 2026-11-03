@@ -183,8 +183,8 @@ class WallpaperStorageManager {
         let targetH = 270;
         if (imageScan && imageScan.width && imageScan.height) {
           try {
-            const SuiteCoreBridge = require('../../../../frontend/shared/suite_core_bridge');
-            const fit = SuiteCoreBridge.calculateFitDimensions(imageScan.width, imageScan.height, 480, 270, 'cover');
+            const fitBridge = require('../../../../frontend/shared/suite_core_bridge');
+            const fit = fitBridge.calculateFitDimensions(imageScan.width, imageScan.height, 480, 270, 'cover');
             if (fit && fit.target_width && fit.target_height) {
               targetW = fit.target_width;
               targetH = fit.target_height;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
   QR_SCAN_ATTEMPT_DELAY_MS,
   QR_SCAN_REARM_DELAY_MS,

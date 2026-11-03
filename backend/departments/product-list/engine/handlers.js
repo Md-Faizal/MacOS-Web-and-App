@@ -146,7 +146,7 @@ module.exports = function(db) {
           }
         } else {
           // Get all products
-          stmt = db.prepare(`
+          const stmt = db.prepare(`
             SELECT p.*, c.name as category_name,
                    COALESCE(u_creator.role, 'owner') as created_by_role,
                    COALESCE(u_creator.full_name, u_creator.username, u_creator.google_name, 'Admin') as created_by_name,

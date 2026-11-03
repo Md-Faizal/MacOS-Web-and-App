@@ -542,11 +542,11 @@ class DatabaseManager {
    */
   runColumnMigrations() {
     try {
-      const paymentMigration = require('./migrations/001-add-payment-fields');
-      paymentMigration(this.db);
+      // Legacy column migrations consolidated in schema-master.js
 
-      const cleanupMigration = require('./migrations/002-remove-redundant-columns');
-      cleanupMigration(this.db);
+
+
+
     } catch (error) {
       console.error('⚠️  Column migration warning:', error.message);
       // Don't throw - allow app to continue

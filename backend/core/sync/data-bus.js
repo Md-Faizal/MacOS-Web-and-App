@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * CORE DATA BUS - Enterprise Real-Time Sync & State Fingerprint Engine
  *

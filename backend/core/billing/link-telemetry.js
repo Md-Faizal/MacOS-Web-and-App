@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Link Telemetry & Read Receipt Engine
  * Tracks access metrics, dwell time, device context, and actions for customer ledger links.

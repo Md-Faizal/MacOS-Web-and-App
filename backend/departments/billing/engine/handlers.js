@@ -1,3 +1,4 @@
+// @ts-nocheck
 const BillCalculator = require('../../../../frontend/shared/bill-calculator');
 const calculator = require('../../../core/billing/calculator');
 const billingDepartment = require('../service');

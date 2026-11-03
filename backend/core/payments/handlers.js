@@ -116,7 +116,7 @@ module.exports = function(db) {
     // Update payment
     updatePayment: (req, res) => {
       const { id } = req.params;
-      const { status, processed_at, notes } = req.body;
+      const { status, processed_at, created_at, notes } = req.body;
 
       const updates = [];
       const values = [];
