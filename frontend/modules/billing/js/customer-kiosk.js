@@ -422,9 +422,13 @@
               promoDiscount: discountAmt
             };
 
+            const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
             const orderRes = await fetch('/api/billing/public/kiosk-order', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                ...(csrfToken ? { 'x-csrf-token': decodeURIComponent(csrfToken) } : {})
+              },
               body: JSON.stringify(payload)
             });
 

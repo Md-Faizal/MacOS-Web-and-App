@@ -298,9 +298,14 @@ app.use((req, res, next) => {
                       req.path === '/api/auth/logout' || 
                       req.path === '/api/auth/worker-google';
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  const isPublicApi = req.path.startsWith('/api/billing/public/') ||
+                      req.path.startsWith('/api/products/public/') ||
+                      req.path.startsWith('/api/orders/public/') ||
+                      req.path.startsWith('/api/product-list/public/') ||
+                      (req.method === 'POST' && req.path === '/api/logs/app');
   const hasBearerAuth = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ');
 
-  if (hasBrowserSession && mutatingApiRequest && !isAuthEntry && !hasBearerAuth) {
+  if (hasBrowserSession && mutatingApiRequest && !isAuthEntry && !isPublicApi && !hasBearerAuth) {
     const clientHeaderCsrf = req.get('x-csrf-token');
     if (req.get('x-csrf-token') !== csrfToken) {
       return res.status(403).json({ error: 'CSRF validation failed' });
@@ -461,7 +466,12 @@ app.use((req, res, next) => {
   const origin = req.headers.origin || (() => {
     try { return new URL(req.headers.referer || '').origin; } catch { return null; }
   })();
-  if (!isOriginAllowed(origin)) {
+  const isPublicApi = req.path.startsWith('/api/billing/public/') ||
+                      req.path.startsWith('/api/products/public/') ||
+                      req.path.startsWith('/api/orders/public/') ||
+                      req.path.startsWith('/api/product-list/public/') ||
+                      (req.method === 'POST' && req.path === '/api/logs/app');
+  if (!isPublicApi && !isOriginAllowed(origin)) {
     return res.status(403).json({ error: 'Request origin is not allowed' });
   }
 

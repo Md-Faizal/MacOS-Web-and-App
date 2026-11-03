@@ -28,13 +28,17 @@ function sendTelemetryBeacon(eventType, metadata = null) {
       ref_number
     });
 
+    const csrfToken = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)?.[1] || '';
     if (navigator.sendBeacon) {
       const blob = new Blob([payload], { type: 'application/json' });
       navigator.sendBeacon('/api/billing/public/track-event', blob);
     } else {
       fetch('/api/billing/public/track-event', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': decodeURIComponent(csrfToken) } : {})
+        },
         body: payload,
         keepalive: true
       }).catch(() => {});
