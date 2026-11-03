@@ -1532,6 +1532,14 @@ class BillEditor {
           }
 
           // Show custom scheme field if needed
+          if (result.isInferred || memory.inferred) {
+            const goldIndicator = document.getElementById('productGoldIndicator');
+            if (goldIndicator && goldIndicator.style.display !== 'none') {
+              const tierLabel = (memory.tier || '').toUpperCase();
+              goldIndicator.textContent += ` • ✨ INFERRED ${tierLabel} PATTERN (D1: ${memory.disc1}%, D2: ${memory.disc2}%)`;
+            }
+          }
+
           if (memory.scheme === 'custom') {
             document.getElementById('customSchemeContainer').style.display = 'flex';
           }

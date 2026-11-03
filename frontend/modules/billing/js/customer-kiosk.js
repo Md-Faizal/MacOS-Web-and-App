@@ -169,12 +169,22 @@
               </div>
             </div>
 
-            <!-- Full Catalog Search -->
+            <!-- Full Catalog Search & Category Filters -->
             <div>
-              <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px;">
-                <span>📦 WHOLESALE CATALOG SEARCH</span>
+              <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                <span>📦 WHOLESALE CATALOG</span>
+                <span id="kioskCatalogMatchCount" style="font-size: 9px; color: #6b7280; font-weight: normal;"></span>
               </div>
-              <input type="text" id="kioskCatalogSearch" placeholder="Search product name or category..." style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 11px; border: 1.5px solid #000000; margin-bottom: 10px; font-family: monospace;">
+              
+              <!-- Category Filter Pills -->
+              <div id="kioskCategoryPills" style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px;">
+                <button class="kiosk-cat-pill active" data-cat="all" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #000; color: #fff; cursor: pointer; white-space: nowrap;">ALL PRODUCTS</button>
+                <button class="kiosk-cat-pill" data-cat="gold" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #fff; color: #b45309; cursor: pointer; white-space: nowrap;">🔶 GOLD PREPARATIONS</button>
+                <button class="kiosk-cat-pill" data-cat="nongold" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #fff; color: #000; cursor: pointer; white-space: nowrap;">GENERAL WHOLESALE</button>
+                <button class="kiosk-cat-pill" data-cat="fast" style="padding: 3px 8px; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #fff; color: #16a34a; cursor: pointer; white-space: nowrap;">⚡ FAST MOVING</button>
+              </div>
+
+              <input type="text" id="kioskCatalogSearch" placeholder="Search product name, category, or code..." style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 11px; border: 1.5px solid #000000; margin-bottom: 10px; font-family: monospace;">
               <div id="kioskCatalogList" style="display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;">
                 <!-- Catalog items rendered via JS -->
               </div>
@@ -237,38 +247,87 @@
         </div>
       `;
 
-      // Render Catalog helper
+      let currentCatalogCategory = 'all';
+
+      // Render Catalog helper with category filtering and visual badges
       function renderCatalog(filterText = '') {
         const list = content.querySelector('#kioskCatalogList');
+        const matchCountSpan = content.querySelector('#kioskCatalogMatchCount');
         if (!list) return;
+
         const q = filterText.toLowerCase().trim();
-        const filtered = catalog.filter(p => !q || p.name.toLowerCase().includes(q) || (p.category && p.category.toLowerCase().includes(q)));
+        const filtered = catalog.filter(p => {
+          const isGold = (p.classification && String(p.classification).toLowerCase() === 'gold') ||
+                         (p.category && String(p.category).toLowerCase().includes('gold'));
+          const isFast = (Number(p.units_sold) > 5) || predictions.some(pr => pr.name === p.name);
+
+          if (currentCatalogCategory === 'gold' && !isGold) return false;
+          if (currentCatalogCategory === 'nongold' && isGold) return false;
+          if (currentCatalogCategory === 'fast' && !isFast) return false;
+
+          if (!q) return true;
+          return p.name.toLowerCase().includes(q) || (p.category && String(p.category).toLowerCase().includes(q));
+        });
+
+        if (matchCountSpan) {
+          matchCountSpan.textContent = `Showing ${filtered.length} of ${catalog.length} items`;
+        }
 
         if (filtered.length === 0) {
-          list.innerHTML = `<div style="font-size: 11px; color: #6b7280; padding: 8px;">No products match "${filterText}"</div>`;
+          list.innerHTML = `<div style="font-size: 11px; color: #6b7280; padding: 12px; text-align: center; border: 1px dashed #d1d5db;">No wholesale products match "${filterText || currentCatalogCategory}"</div>`;
           return;
         }
 
-        list.innerHTML = filtered.map(p => `
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border: 1px solid #e5e7eb; background: #ffffff;">
-            <div>
-              <div style="font-weight: 700; font-size: 11px;">${p.name}</div>
-              <div style="font-size: 9px; color: #6b7280;">${p.category || 'General'} • MRP: ₹${p.mrp || p.price}</div>
+        list.innerHTML = filtered.map(p => {
+          const isGold = (p.classification && String(p.classification).toLowerCase() === 'gold') ||
+                         (p.category && String(p.category).toLowerCase().includes('gold'));
+          const isFast = (Number(p.units_sold) > 5) || predictions.some(pr => pr.name === p.name);
+
+          return `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 9px; border: 1px solid #e5e7eb; background: #ffffff;">
+              <div style="flex: 1; padding-right: 8px;">
+                <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 2px;">
+                  <span style="font-weight: 800; font-size: 11px; line-height: 1.2;">${p.name}</span>
+                  ${isGold ? '<span style="font-size: 8px; font-weight: 800; background: #fff8e6; color: #b45309; border: 1px solid #fde68a; padding: 1px 4px;">GOLD</span>' : ''}
+                  ${isFast ? '<span style="font-size: 8px; font-weight: 800; background: #ecfdf5; color: #16a34a; border: 1px solid #a7f3d0; padding: 1px 4px;">⚡ FAST</span>' : ''}
+                </div>
+                <div style="font-size: 9px; color: #6b7280;">
+                  ${p.unit || '1 Pack'} • ${p.category || 'General'}
+                  ${p.mrp && Number(p.mrp) > Number(p.price) ? ` • MRP: <span style="text-decoration: line-through;">₹${p.mrp}</span>` : ''}
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 900; font-size: 11px;">${formatCurrency(p.price)}</span>
+                <button class="kiosk-add-btn" data-id="${p.id}" data-name="${p.name}" data-rate="${p.price}" data-qty="1" style="background: #ffffff; border: 1px solid #000; padding: 3px 8px; font-size: 10px; cursor: pointer; font-weight: bold; box-shadow: 1px 1px 0 #000;">
+                  + Add
+                </button>
+              </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 800; font-size: 11px;">${formatCurrency(p.price)}</span>
-              <button class="kiosk-add-btn" data-id="${p.id}" data-name="${p.name}" data-rate="${p.price}" data-qty="1" style="background: #ffffff; border: 1px solid #000; padding: 2px 6px; font-size: 10px; cursor: pointer; font-weight: bold;">
-                + Add
-              </button>
-            </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
 
         // Wire catalog add buttons
         list.querySelectorAll('.kiosk-add-btn').forEach(btn => {
           btn.onclick = () => addToCart(btn.dataset.id, btn.dataset.name, Number(btn.dataset.rate) || 0, Number(btn.dataset.qty) || 1);
         });
       }
+
+      // Wire Category Pills
+      content.querySelectorAll('.kiosk-cat-pill').forEach(pill => {
+        pill.onclick = () => {
+          content.querySelectorAll('.kiosk-cat-pill').forEach(p => {
+            p.classList.remove('active');
+            p.style.background = '#ffffff';
+            p.style.color = p.dataset.cat === 'gold' ? '#b45309' : (p.dataset.cat === 'fast' ? '#16a34a' : '#000000');
+          });
+          pill.classList.add('active');
+          pill.style.background = '#000000';
+          pill.style.color = '#ffffff';
+          currentCatalogCategory = pill.dataset.cat;
+          const searchInput = content.querySelector('#kioskCatalogSearch');
+          renderCatalog(searchInput ? searchInput.value : '');
+        };
+      });
 
       // Catalog search input
       const searchInput = content.querySelector('#kioskCatalogSearch');
@@ -353,10 +412,15 @@
           btn.onclick = () => updateItemQty(Number(btn.dataset.idx), Number(btn.dataset.delta));
         });
 
-        // Calculate discounts (Promo + Volume Threshold)
+        // Multi-tier Wholesale Rebates (Tier-1: >= 50,000 => 3%, Tier-2: >= 100,000 => 5%)
         let effectiveDiscountPercent = appliedPromoPercent;
-        if (subtotal >= 50000) {
-          effectiveDiscountPercent = Math.max(effectiveDiscountPercent, 3.0); // 3% wholesale volume rebate
+        let rebateTierLabel = '';
+        if (subtotal >= 100000) {
+          effectiveDiscountPercent = Math.max(effectiveDiscountPercent, 5.0);
+          rebateTierLabel = '5% Tier-2 Wholesale Lot Rebate';
+        } else if (subtotal >= 50000) {
+          effectiveDiscountPercent = Math.max(effectiveDiscountPercent, 3.0);
+          rebateTierLabel = '3% Tier-1 Bulk Volume Rebate';
         }
 
         const discountAmt = (subtotal * effectiveDiscountPercent) / 100;
@@ -367,21 +431,42 @@
 
         if (effectiveDiscountPercent > 0) {
           discountRow.style.display = 'flex';
-          discountAmountSpan.textContent = `-${formatCurrency(discountAmt)} (${effectiveDiscountPercent}%)`;
+          discountAmountSpan.textContent = `-${formatCurrency(discountAmt)} (${effectiveDiscountPercent}% ${rebateTierLabel})`;
         } else {
           discountRow.style.display = 'none';
         }
 
-        // Update Volume Milestone Bar (Target: 50,000)
-        const milestonePercent = Math.min(100, Math.round((subtotal / 50000) * 100));
-        if (milestoneBar) milestoneBar.style.width = `${milestonePercent}%`;
-        if (milestoneStatus) milestoneStatus.textContent = `${formatCurrency(subtotal)} / ₹50,000`;
-        if (milestonePrompt) {
-          if (subtotal >= 50000) {
-            milestonePrompt.innerHTML = `<strong style="color: #16a34a;">✓ 3% Wholesale Volume Rebate Qualified!</strong>`;
-          } else {
+        // Dynamic Multi-Tier Milestone Progress Bar
+        if (subtotal < 50000) {
+          const milestonePercent = Math.min(100, Math.round((subtotal / 50000) * 100));
+          if (milestoneBar) {
+            milestoneBar.style.width = `${milestonePercent}%`;
+            milestoneBar.style.background = '#8b5cf6';
+          }
+          if (milestoneStatus) milestoneStatus.textContent = `${formatCurrency(subtotal)} / ₹50,000`;
+          if (milestonePrompt) {
             const rem = 50000 - subtotal;
-            milestonePrompt.textContent = `Add ${formatCurrency(rem)} more to unlock an extra 3% Wholesale Volume Rebate!`;
+            milestonePrompt.textContent = `Add ${formatCurrency(rem)} more to unlock Tier-1 (3% Wholesale Rebate)!`;
+          }
+        } else if (subtotal < 100000) {
+          const milestonePercent = Math.min(100, Math.round(((subtotal - 50000) / 50000) * 100));
+          if (milestoneBar) {
+            milestoneBar.style.width = `${milestonePercent}%`;
+            milestoneBar.style.background = '#10b981';
+          }
+          if (milestoneStatus) milestoneStatus.textContent = `${formatCurrency(subtotal)} / ₹1,00,000`;
+          if (milestonePrompt) {
+            const rem = 100000 - subtotal;
+            milestonePrompt.innerHTML = `<strong style="color: #16a34a;">✓ 3% Tier-1 Active!</strong> Add ${formatCurrency(rem)} more to unlock Tier-2 (5% Wholesale Lot Rebate)!`;
+          }
+        } else {
+          if (milestoneBar) {
+            milestoneBar.style.width = '100%';
+            milestoneBar.style.background = '#16a34a';
+          }
+          if (milestoneStatus) milestoneStatus.textContent = `${formatCurrency(subtotal)} (MAX TIER)`;
+          if (milestonePrompt) {
+            milestonePrompt.innerHTML = `<strong style="color: #16a34a;">🎉 MAXIMUM WHOLESALE REBATE ACTIVE (5% Lot Rebate Qualified)</strong>`;
           }
         }
       }

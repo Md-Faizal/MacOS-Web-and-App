@@ -2426,13 +2426,26 @@ module.exports = function(db) {
         let catalog = [];
         try {
           catalog = db.prepare(`
-            SELECT id, name, category, price, mrp, stock, unit
-            FROM products
-            WHERE is_active = 1 OR is_active IS NULL
-            ORDER BY name ASC
-            LIMIT 200
+            SELECT 
+              p.id, 
+              p.name, 
+              COALESCE(c.name, 'General') as category, 
+              COALESCE(p.classification, 'Non-Gold') as classification, 
+              COALESCE(b.mrp, 0) as mrp, 
+              COALESCE(b.mrp, 0) as price, 
+              COALESCE(v.pack_size_value || ' ' || v.pack_size_type, '1 Unit') as unit,
+              COALESCE(b.units_sold, 0) as units_sold
+            FROM products p 
+            LEFT JOIN categories c ON p.category_id = c.id 
+            LEFT JOIN variants v ON v.product_id = p.id 
+            LEFT JOIN batches b ON b.variant_id = v.id 
+            GROUP BY p.id 
+            ORDER BY p.name ASC 
+            LIMIT 300
           `).all();
-        } catch (_) {}
+        } catch (e) {
+          console.error('Error fetching kiosk catalog:', e);
+        }
 
         return res.json({
           success: true,
@@ -2638,8 +2651,9 @@ module.exports = function(db) {
         const preference = stmt.get(customer.id, product.id);
         
         if (preference) {
-          res.json({
+          return res.json({
             status: 'success',
+            isInferred: false,
             data: {
               id: preference.id,
               disc1: preference.discount_1,
@@ -2650,8 +2664,127 @@ module.exports = function(db) {
               last_updated: preference.updated_at
             }
           });
-        } else {
-          res.json({
+        }
+
+        // ====================================================================
+        // Pattern Recognition Engine: Learn from Customer Category Profile
+        // When a product has no prior customer memory, infer Disc 1, Disc 2,
+        // and Scheme based on the customer's historical Gold vs Non-Gold behavior.
+        // ====================================================================
+        try {
+          const prodCategory = db.prepare(`
+            SELECT p.id, p.name, p.classification, c.name as category_name 
+            FROM products p 
+            LEFT JOIN categories c ON p.category_id = c.id 
+            WHERE p.id = ?
+          `).get(product.id);
+
+          const isTargetGold = (prodCategory?.classification && String(prodCategory.classification).toLowerCase() === 'gold') ||
+                               (prodCategory?.category_name && String(prodCategory.category_name).toLowerCase().includes('gold'));
+
+          const memProfile = db.prepare(`
+            SELECT 
+              ROUND(AVG(cim.discount_1), 2) as avg_disc1,
+              ROUND(AVG(cim.discount_2), 2) as avg_disc2,
+              COUNT(*) as total_samples
+            FROM customer_item_memory cim
+            JOIN products p ON cim.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE cim.customer_id = ?
+              AND (
+                CASE 
+                  WHEN LOWER(COALESCE(p.classification, '')) = 'gold' OR LOWER(COALESCE(c.name, '')) LIKE '%gold%' THEN 1 
+                  ELSE 0 
+                END
+              ) = ?
+          `).get(customer.id, isTargetGold ? 1 : 0);
+
+          const invProfile = db.prepare(`
+            SELECT 
+              ROUND(SUM(ii.qty * ii.discount_1_percent) / NULLIF(SUM(ii.qty), 0), 2) as weighted_disc1,
+              ROUND(AVG(ii.discount_2_percent), 2) as avg_disc2,
+              COUNT(*) as total_samples
+            FROM invoice_items ii
+            JOIN invoices inv ON ii.invoice_id = inv.id
+            JOIN products p ON ii.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE inv.customer_id = ?
+              AND (
+                CASE 
+                  WHEN LOWER(COALESCE(p.classification, '')) = 'gold' OR LOWER(COALESCE(c.name, '')) LIKE '%gold%' THEN 1 
+                  ELSE 0 
+                END
+              ) = ?
+          `).get(customer.id, isTargetGold ? 1 : 0);
+
+          let inferredDisc1 = 0;
+          let inferredDisc2 = 0;
+          let sampleCount = 0;
+
+          if (memProfile && memProfile.total_samples > 0) {
+            inferredDisc1 = memProfile.avg_disc1 ?? 0;
+            inferredDisc2 = memProfile.avg_disc2 ?? 0;
+            sampleCount = memProfile.total_samples;
+          } else if (invProfile && invProfile.total_samples > 0) {
+            inferredDisc1 = invProfile.weighted_disc1 ?? 0;
+            inferredDisc2 = invProfile.avg_disc2 ?? 0;
+            sampleCount = invProfile.total_samples;
+          } else {
+            inferredDisc1 = isTargetGold ? 0 : 10;
+            inferredDisc2 = isTargetGold ? 0 : 2;
+            sampleCount = 0;
+          }
+
+          const schemeRow = db.prepare(`
+            SELECT ii.scheme, COUNT(*) as cnt
+            FROM invoice_items ii
+            JOIN invoices inv ON ii.invoice_id = inv.id
+            JOIN products p ON ii.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE inv.customer_id = ?
+              AND ii.scheme IS NOT NULL AND TRIM(ii.scheme) != ''
+              AND (
+                CASE 
+                  WHEN LOWER(COALESCE(p.classification, '')) = 'gold' OR LOWER(COALESCE(c.name, '')) LIKE '%gold%' THEN 1 
+                  ELSE 0 
+                END
+              ) = ?
+            GROUP BY ii.scheme
+            ORDER BY cnt DESC
+            LIMIT 1
+          `).get(customer.id, isTargetGold ? 1 : 0);
+
+          const taxRow = db.prepare(`
+            SELECT ii.gst_percent 
+            FROM invoice_items ii 
+            WHERE ii.product_id = ? 
+            ORDER BY ii.id DESC 
+            LIMIT 1
+          `).get(product.id);
+
+          const gstReverseRow = db.prepare(`
+            SELECT gst_reverse FROM customer_item_memory WHERE customer_id = ? AND gst_reverse = 1 LIMIT 1
+          `).get(customer.id);
+
+          return res.json({
+            status: 'success',
+            isInferred: true,
+            tier: isTargetGold ? 'gold' : 'standard',
+            data: {
+              id: null,
+              disc1: inferredDisc1,
+              disc2: inferredDisc2,
+              scheme: schemeRow ? schemeRow.scheme : '',
+              tax: taxRow ? taxRow.gst_percent : 0,
+              gst_reverse: !!gstReverseRow,
+              inferred: true,
+              tier: isTargetGold ? 'gold' : 'standard',
+              sampleCount
+            }
+          });
+        } catch (inferErr) {
+          console.error('Pattern inference error:', inferErr);
+          return res.json({
             status: 'not_found',
             data: null
           });
