@@ -15,7 +15,7 @@ try {
 
 function naturalSortBatches(batches) {
   if (!Array.isArray(batches)) return [];
-  return batches.sort((a, b) => 
+  return batches.sort((a, b) =>
     (a.batch_no || '').localeCompare(b.batch_no || '', undefined, { numeric: true, sensitivity: 'base' })
   );
 }
@@ -24,11 +24,11 @@ function escapeXml(value) {
   return String(value ?? '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
     .replace(/[<>&"']/g, character => ({
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    '"': '&quot;',
-    "'": '&apos;'
+      '<': '&lt;',
+      '>': '&gt;',
+      '&': '&amp;',
+      '"': '&quot;',
+      "'": '&apos;'
     })[character]);
 }
 
@@ -80,15 +80,15 @@ function catalogLabelsCsv(labels) {
   return [header, ...rows].map(row => row.map(csvValue).join(',')).join('\r\n');
 }
 
-module.exports = function(db) {
+module.exports = function (db) {
   // Validate database is available
   if (!db) {
     console.error('✗ Database not initialized in product handlers');
     throw new Error('Database not initialized');
   }
-  
+
   const activityLogger = createActivityLogger(db);
-  
+
   return {
     // ============= PRODUCTS =============
     getProducts: (req, res) => {
@@ -263,7 +263,7 @@ module.exports = function(db) {
         // Use a transaction for atomic product creation
         const createTransaction = db.transaction((data) => {
           const { name, finalCategoryId, classification, hsn_code, variants } = data;
-          
+
           // 1. Create product
           const productStmt = db.prepare(`
             INSERT INTO products (name, category_id, classification, hsn_code, created_by_user_id, created_at, updated_at)
@@ -280,7 +280,7 @@ module.exports = function(db) {
                 VALUES (?, ?, ?, datetime('now'), datetime('now'))
               `);
               const variantInfo = variantStmt.run(
-                productId, 
+                productId,
                 variant.pack_size_value || '1',
                 variant.pack_size_type || 's'
               );
@@ -294,8 +294,8 @@ module.exports = function(db) {
                     VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                   `);
                   batchStmt.run(
-                    variantId, 
-                    batch.batch_no || 'DEFAULT', 
+                    variantId,
+                    batch.batch_no || 'DEFAULT',
                     batch.mrp || 0,
                     batch.mfg_date || null,
                     batch.exp_date || null,
@@ -323,8 +323,8 @@ module.exports = function(db) {
         // Real-Time SSE Broadcast
         dataBus.broadcast('inventory:product', 'created', { id: productId, name, category_id: finalCategoryId, hsn_code: hsn_code || '30049011' });
 
-        res.status(201).json({ 
-          success: true, 
+        res.status(201).json({
+          success: true,
           id: productId,
           name: name,
           category_id: finalCategoryId,
@@ -434,7 +434,7 @@ module.exports = function(db) {
             WHERE id = ?
           `);
           const productResult = productStmt.run(name || null, categoryId || null, classification || null, hsn_code || null, editorId, productId);
-          
+
           if (productResult.changes === 0) {
             // Check if product actually exists
             const exists = db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
@@ -459,7 +459,7 @@ module.exports = function(db) {
             // Update or Create variants
             variants.forEach(variant => {
               let variantId = variant.id;
-              
+
               if (variantId) {
                 // Update existing variant
                 db.prepare(`
@@ -498,12 +498,12 @@ module.exports = function(db) {
                       SET batch_no = ?, mrp = ?, mfg_date = ?, exp_date = ?, units_sold = ?, updated_at = datetime('now')
                       WHERE id = ? AND variant_id = ?
                     `).run(
-                      batch.batch_no, 
-                      batch.mrp, 
-                      batch.mfg_date || null, 
-                      batch.exp_date || null, 
-                      batch.units_sold || 0, 
-                      batch.id, 
+                      batch.batch_no,
+                      batch.mrp,
+                      batch.mfg_date || null,
+                      batch.exp_date || null,
+                      batch.units_sold || 0,
+                      batch.id,
                       variantId
                     );
                   } else {
@@ -580,7 +580,7 @@ module.exports = function(db) {
 
           // 6. Finally, delete the product itself
           const result = db.prepare('DELETE FROM products WHERE id = ?').run(productId);
-          
+
           return result.changes;
         });
 
@@ -636,7 +636,7 @@ module.exports = function(db) {
         const result = stmt.run(name);
         try {
           dataBus.broadcast('inventory:category', 'created', { id: result.lastInsertRowid, name });
-        } catch (_) {}
+        } catch (_) { }
         res.status(201).json({ success: true, id: result.lastInsertRowid, name });
       } catch (error) {
         if (error.message && error.message.includes('UNIQUE constraint failed')) {
@@ -669,7 +669,7 @@ module.exports = function(db) {
 
         try {
           dataBus.broadcast('inventory:category', 'updated', { id, name });
-        } catch (_) {}
+        } catch (_) { }
         res.json({ success: true, id, name });
       } catch (error) {
         console.error('Error updating category:', error.message);
@@ -700,7 +700,7 @@ module.exports = function(db) {
 
         try {
           dataBus.broadcast('inventory:category', 'deleted', { id });
-        } catch (_) {}
+        } catch (_) { }
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error deleting category:', error.message);
@@ -742,7 +742,7 @@ module.exports = function(db) {
 
         try {
           dataBus.broadcast('inventory:batch', 'updated', { id, batch_no });
-        } catch (_) {}
+        } catch (_) { }
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error updating batch:', error.message);
@@ -766,7 +766,7 @@ module.exports = function(db) {
 
         try {
           dataBus.broadcast('inventory:batch', 'deleted', { id });
-        } catch (_) {}
+        } catch (_) { }
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error deleting batch:', error.message);
@@ -800,14 +800,14 @@ module.exports = function(db) {
         res.status(500).json({ error: error.message });
       }
     },
-    
+
     updateVariant: (req, res) => {
       try {
         if (!db) throw new Error('Database connection lost');
 
         const { id } = req.params;
         const { pack_size_value, pack_size_type } = req.body;
-        
+
         if (!id) return res.status(400).json({ error: 'Variant ID required' });
 
         const stmt = db.prepare(`
@@ -825,7 +825,7 @@ module.exports = function(db) {
 
         try {
           dataBus.broadcast('inventory:variant', 'updated', { id });
-        } catch (_) {}
+        } catch (_) { }
         res.json({ success: true, id });
       } catch (error) {
         console.error('Error updating variant:', error.message);
@@ -849,7 +849,7 @@ module.exports = function(db) {
         const result = stmt.run(product_id, pack_size_value, pack_size_type);
         try {
           dataBus.broadcast('inventory:variant', 'created', { id: result.lastInsertRowid, product_id });
-        } catch (_) {}
+        } catch (_) { }
         res.status(201).json({ success: true, id: result.lastInsertRowid });
       } catch (error) {
         console.error('Error creating variant:', error.message);
@@ -873,7 +873,7 @@ module.exports = function(db) {
         const result = stmt.run(variant_id, batch_no, mrp, mfg_date || null, exp_date || null);
         try {
           dataBus.broadcast('inventory:batch', 'created', { id: result.lastInsertRowid, variant_id, batch_no });
-        } catch (_) {}
+        } catch (_) { }
         res.status(201).json({ success: true, id: result.lastInsertRowid });
       } catch (error) {
         if (error.message && error.message.includes('UNIQUE constraint failed')) {
@@ -1121,7 +1121,7 @@ module.exports = function(db) {
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdfBuffer.length);
-        
+
         if (action === 'inline' || action === 'print') {
           res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
         } else {

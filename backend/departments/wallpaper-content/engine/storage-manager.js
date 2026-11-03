@@ -150,7 +150,7 @@ class WallpaperStorageManager {
 
     // Move primary file
     fs.copyFileSync(primaryFile.path, primaryPath);
-    try { fs.unlinkSync(primaryFile.path); } catch (e) {}
+    try { fs.unlinkSync(primaryFile.path); } catch (e) { }
 
     let darkFilename = null;
     let darkRelPath = null;
@@ -160,7 +160,7 @@ class WallpaperStorageManager {
       darkFilename = `dark${darkExt}`;
       const darkPath = path.join(destDir, darkFilename);
       fs.copyFileSync(darkFile.path, darkPath);
-      try { fs.unlinkSync(darkFile.path); } catch (e) {}
+      try { fs.unlinkSync(darkFile.path); } catch (e) { }
       darkRelPath = `/storage/wallpapers/custom/${safeId}/${darkFilename}`;
     }
 
@@ -189,7 +189,7 @@ class WallpaperStorageManager {
               targetW = fit.target_width;
               targetH = fit.target_height;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         await sharp(primaryPath)
@@ -208,7 +208,7 @@ class WallpaperStorageManager {
         execSync(`"${ffmpeg}" -y -ss 00:00:01 -i "${primaryPath}" -vframes 1 -q:v 2 "${framePath}"`, { stdio: 'ignore' });
         if (fs.existsSync(framePath)) {
           await sharp(framePath).resize(480, 270, { fit: 'cover' }).webp({ quality: 85 }).toFile(thumbPath);
-          try { fs.unlinkSync(framePath); } catch (e) {}
+          try { fs.unlinkSync(framePath); } catch (e) { }
         }
       } catch (e) {
         console.warn('[StorageManager] Video frame extraction failed:', e.message);
