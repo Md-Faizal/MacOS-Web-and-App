@@ -58,9 +58,9 @@
           <h1>CUSTOMER LEDGER</h1>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <p id="customerName" class="customer-name" style="margin-top: 0;">LOADING...</p>
-            <span id="vipTierBadge" class="vip-tier-badge" style="display: none; font-size: 10px; font-weight: 800; padding: 2px 8px; border: 1.5px solid var(--border-color); background: var(--bg-card); box-shadow: 2px 2px 0 var(--shadow-color);">👑 WHOLESALE PARTNER</span>
-            <button id="sharePortalBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">🔗 SHARE LINK</button>
-            <button id="openKioskBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 8px; background: #000000; color: #ffffff; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 2px 2px 0 var(--shadow-color);">⚡ SELF-ORDER KIOSK</button>
+            <span id="vipTierBadge" class="vip-tier-badge" style="display: none;"></span>
+            <button id="sharePortalBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">SHARE LINK</button>
+            <button id="openKioskBtn" class="brutalist-button" style="font-size: 11px; padding: 4px 10px; background: #000000; color: #ffffff; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 2px 2px 0 var(--shadow-color); font-weight: 700;">+ ORDER</button>
           </div>
         </div>
         <div class="header-right">
@@ -177,16 +177,15 @@
         </div>
       </div>
 
-      <!-- Depletion Alert Card & Dynamic Promotion Banner -->
-      <div id="smartRestockAlertContainer" style="display: none; margin-bottom: 1.5rem;"></div>
-      <div id="dynamicPromoBannerContainer" style="margin-bottom: 1.5rem;"></div>
+      <div id="smartRestockAlertContainer" style="display: none;"></div>
+      <div id="dynamicPromoBannerContainer" style="display: none;"></div>
 
       <!-- Payment Progress and Ageing Section -->
-      <div class="progress-ageing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+      <div class="progress-ageing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
         <!-- Progress Bar -->
         <div class="payment-panel-brutalist" style="margin-bottom: 0;">
           <div class="payment-header" style="margin-bottom: 8px;">
-            <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">📈 PAYMENT PROGRESS</h2>
+            <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">PAYMENT PROGRESS</h2>
           </div>
           <div style="margin-top: 15px;">
             <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-bottom: 6px;">
@@ -203,7 +202,7 @@
         <!-- Ageing analysis -->
         <div class="payment-panel-brutalist" style="margin-bottom: 0;">
           <div class="payment-header" style="margin-bottom: 8px;">
-            <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">⌛ DUE AGEING ANALYSIS</h2>
+            <h2 style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">DUE AGING ANALYSIS</h2>
           </div>
           <div class="ageing-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
             <div class="ageing-row" style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; padding: 6px; border: 2px solid var(--border-color); box-shadow: 1px 1px 0px var(--shadow-color);">
@@ -229,7 +228,7 @@
       <!-- UPI & Bank Transfer Payment Section -->
       <div class="payment-panel-brutalist">
         <div class="payment-header">
-          <h2>⚡ INSTANT UPI & BANK PAYMENT</h2>
+          <h2>SETTLEMENT & PAYMENT DETAILS</h2>
         </div>
         <div class="payment-body">
           <div class="payment-qr-section">
@@ -285,6 +284,7 @@
         <div class="tabs">
           <button class="tab-btn active" data-tab="bills">█ BILLS</button>
           <button class="tab-btn" data-tab="payments">█ PAYMENTS & CREDITS</button>
+          <button class="tab-btn" data-tab="orders">█ ORDERS & STATUS</button>
         </div>
         <div class="list-controls">
           <input type="text" id="searchInput" class="brutalist-input" placeholder="SEARCH...">
@@ -306,6 +306,12 @@
       <div class="tab-content" id="paymentsTab">
         <div class="list-container" id="paymentsList">
           <!-- Payments will be injected here -->
+        </div>
+      </div>
+
+      <div class="tab-content" id="ordersTab">
+        <div class="list-container" id="ordersList">
+          <!-- Orders will be injected here -->
         </div>
       </div>
     </div>

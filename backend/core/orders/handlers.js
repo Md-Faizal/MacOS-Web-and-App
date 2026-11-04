@@ -675,3 +675,5 @@ function generateOrderNumber(db, orderDate = new Date()) {
     return `ORD-${Date.now().toString().slice(-8)}`;
   }
 }
+
+module.exports.generateOrderNumber = generateOrderNumber;

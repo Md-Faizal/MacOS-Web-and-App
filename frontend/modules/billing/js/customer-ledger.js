@@ -524,104 +524,13 @@ function updateDashboard() {
       }
     }
 
-    // VIP Wholesale Partner Tier Badge
-    const allTimeSpend = periodSales.allTime.total;
+    // Cleaned UI: No AI slop or promotional banner clutter
     const vipBadge = document.getElementById('vipTierBadge');
-    if (vipBadge) {
-      vipBadge.style.display = 'inline-block';
-      if (allTimeSpend >= 500000) {
-        vipBadge.innerHTML = '💎 PLATINUM VIP';
-        vipBadge.style.borderColor = '#8b5cf6';
-      } else if (allTimeSpend >= 200000) {
-        vipBadge.innerHTML = '👑 GOLD PARTNER';
-        vipBadge.style.borderColor = '#eab308';
-      } else if (allTimeSpend >= 50000) {
-        vipBadge.innerHTML = '🥈 SILVER WHOLESALE';
-        vipBadge.style.borderColor = '#6b7280';
-      } else {
-        vipBadge.innerHTML = '⭐ BRONZE PARTNER';
-        vipBadge.style.borderColor = '#d97706';
-      }
-    }
-
-    // Render Smart Restock Cadence Alert
+    if (vipBadge) vipBadge.style.display = 'none';
     const restockContainer = document.getElementById('smartRestockAlertContainer');
-    if (restockContainer) {
-      if (cadence.daysSinceLastBill !== null && cadence.avgIntervalDays > 0 && cadence.daysSinceLastBill >= (cadence.avgIntervalDays - 2)) {
-        restockContainer.style.display = 'block';
-        restockContainer.innerHTML = `
-          <div style="background: #ffffff; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 22px;">📦</span>
-              <div>
-                <div style="font-size: 12px; font-weight: 800; letter-spacing: 0.3px;">RESTOCK CADENCE DUE: TYPICAL ORDER CYCLE IS EVERY ${cadence.avgIntervalDays} DAYS</div>
-                <div style="font-size: 11px; color: #4b5563; margin-top: 2px;">
-                  Your last order was <strong>${cadence.daysSinceLastBill} days ago</strong>. Need replenishment before running out of stock?
-                </div>
-              </div>
-            </div>
-            <button id="alertReorderBtn" style="background: #10b981; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
-              ⚡ QUICK REORDER IN KIOSK
-            </button>
-          </div>
-        `;
-        const alertBtn = restockContainer.querySelector('#alertReorderBtn');
-        if (alertBtn) {
-          alertBtn.onclick = () => launchKiosk();
-        }
-      } else {
-        restockContainer.style.display = 'none';
-      }
-    }
-
-    // Render Dynamic Promo Banner
+    if (restockContainer) restockContainer.style.display = 'none';
     const promoContainer = document.getElementById('dynamicPromoBannerContainer');
-    if (promoContainer) {
-      const currentDueAmt = rawData.customer?.current_due || 0;
-      if (currentDueAmt > 0) {
-        promoContainer.innerHTML = `
-          <div style="background: #fffbeb; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 22px;">⚡</span>
-              <div>
-                <div style="font-size: 12px; font-weight: 800; color: #92400e;">EARLY SETTLEMENT PERK: UNLOCK 2% EXTRA REBATE</div>
-                <div style="font-size: 11px; color: #78350f; margin-top: 2px;">
-                  Settle your pending balance of <strong>${formatCurrency(currentDueAmt)}</strong> today via UPI to unlock priority dispatch & 2% instant discount on your next kiosk order!
-                </div>
-              </div>
-            </div>
-            <button id="promoKioskOrderBtn" style="background: #000000; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
-              CLAIM & ORDER NOW ⚡
-            </button>
-          </div>
-        `;
-        const promoBtn = promoContainer.querySelector('#promoKioskOrderBtn');
-        if (promoBtn) {
-          promoBtn.onclick = () => launchKiosk('EARLY2', 2.0, '2% Early Settlement Cash Rebate');
-        }
-      } else {
-        promoContainer.innerHTML = `
-          <div style="background: #f0fdf4; border: 2px solid #000000; box-shadow: 4px 4px 0 #000000; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 22px;">🔥</span>
-              <div>
-                <div style="font-size: 12px; font-weight: 800; color: #166534;">WHOLESALE CLEARANCE & BULK VOLUME DISCOUNTS ACTIVE</div>
-                <div style="font-size: 11px; color: #14532d; margin-top: 2px;">
-                  Your account balance is completely clear! Browse new arrivals and special lot rates in our self-ordering kiosk.
-                </div>
-              </div>
-            </div>
-            <button id="promoKioskOrderBtn" style="background: #16a34a; color: #ffffff; border: 1.5px solid #000000; padding: 6px 14px; font-weight: 800; font-size: 11px; cursor: pointer; box-shadow: 2px 2px 0 #000000;">
-              OPEN SELF-ORDER KIOSK 📦
-            </button>
-          </div>
-        `;
-        const promoBtn = promoContainer.querySelector('#promoKioskOrderBtn');
-        if (promoBtn) {
-          promoBtn.onclick = () => launchKiosk();
-        }
-      }
-    }
+    if (promoContainer) promoContainer.style.display = 'none';
   }
 
   renderLists();
@@ -663,9 +572,30 @@ function renderLists() {
   filteredBills.sort(sortFn);
   filteredPayments.sort(sortFn);
 
-  // 3. Render Groups
+  // 3. Filter & Sort Orders
+  const orders = rawData?.orders || [];
+  const filteredOrders = orders.filter(o => {
+    if (!search) return true;
+    const str = `${o.order_number || ''} ${o.bill_reference || ''} ${o.total_amount || ''} ${o.current_stage || ''} ${o.status || ''}`.toLowerCase();
+    return str.includes(search);
+  });
+
+  filteredOrders.sort((a, b) => {
+    if (sort.startsWith('date')) {
+      const valA = new Date(a.order_date || a.created_at).getTime();
+      const valB = new Date(b.order_date || b.created_at).getTime();
+      return sort.endsWith('asc') ? valA - valB : valB - valA;
+    } else {
+      const valA = Number(a.total_amount) || 0;
+      const valB = Number(b.total_amount) || 0;
+      return sort.endsWith('asc') ? valA - valB : valB - valA;
+    }
+  });
+
+  // 4. Render Groups
   renderGroupedList(document.getElementById('billsList'), filteredBills, 'bill');
   renderGroupedList(document.getElementById('paymentsList'), filteredPayments, 'payment');
+  renderOrdersList(document.getElementById('ordersList'), filteredOrders);
 }
 
 function renderGroupedList(container, items, type) {
@@ -1290,4 +1220,61 @@ function populatePrintStatementTable() {
   });
 
   tbody.innerHTML = html;
+}
+
+
+function renderOrdersList(container, orders) {
+  if (!container) return;
+  if (!orders || orders.length === 0) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-secondary); padding: 2rem; font-weight: bold; border: 2px dashed var(--border-color);">━━ NO ORDERS FOUND ━━</div>`;
+    return;
+  }
+
+  let html = '';
+  orders.forEach(order => {
+    const hasInvoice = Boolean(order.bill_reference && String(order.bill_reference).trim());
+    let stageBadge = '';
+    if (hasInvoice) {
+      stageBadge = `<span style="font-size: 8px; font-weight: 900; color: #ffffff; background: #16a34a; padding: 3px 6px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.6px; margin-left: 0.5rem; display: inline-block;">INVOICED: ${order.bill_reference}</span>`;
+    } else if (order.current_stage === 'stage2') {
+      stageBadge = `<span style="font-size: 8px; font-weight: 900; color: #ffffff; background: #2563eb; padding: 3px 6px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.6px; margin-left: 0.5rem; display: inline-block;">PACKING / IN TRANSIT</span>`;
+    } else {
+      stageBadge = `<span style="font-size: 8px; font-weight: 900; color: #ffffff; background: #6b7280; padding: 3px 6px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.6px; margin-left: 0.5rem; display: inline-block;">PENDING DISPATCH</span>`;
+    }
+
+    const itemCount = order.item_count || (order.items ? order.items.length : 0);
+    const itemsList = Array.isArray(order.items) ? order.items : [];
+
+    html += `
+      <div class="record-card" style="flex-direction: column; align-items: stretch; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+          <div class="record-info">
+            <div class="record-title" style="display: flex; align-items: center; flex-wrap: wrap;">
+              📦 ORDER #${order.order_number} ${stageBadge}
+            </div>
+            <div class="record-date" style="margin-top: 3px;">█ ${formatDate(order.order_date || order.created_at)} · ${itemCount} item(s)</div>
+          </div>
+          <div class="record-amount amount-positive">${formatCurrency(order.total_amount)}</div>
+        </div>
+        ${itemsList.length > 0 ? `
+          <div style="margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 6px;">
+            <div style="display: flex; flex-direction: column; gap: 3px;">
+              ${itemsList.map(it => `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-color);">
+                  <span>
+                    <strong>${it.product_name}</strong>
+                    ${(it.pack || it.batch_no) ? `<span style="color: var(--text-secondary);"> (${[it.pack, it.batch_no ? `Batch: ${it.batch_no}` : ''].filter(Boolean).join(' · ')})</span>` : ''}
+                    <span style="color: var(--text-secondary);"> × ${it.quantity}</span>
+                  </span>
+                  <span style="font-weight: 600;">${formatCurrency(it.line_total || (it.quantity * it.unit_price))}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
 }

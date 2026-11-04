@@ -168,6 +168,31 @@ function getBatchYearGap(mfgDate, expiryDate) {
  * Returns <option> HTML for the expiry year picker (1-15 yrs).
  * Pass selected value as string '1'-'15' to pre-select.
  */
+
+/**
+ * Determines the customer portal active batch (unexpired, latest production run).
+ */
+function getPortalActiveBatch(batches) {
+  if (!Array.isArray(batches) || batches.length === 0) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const unexpired = batches.filter(b => {
+    const expVal = b.expiryDate || b.exp_date;
+    if (!expVal) return true;
+    const exp = expVal instanceof Date ? expVal : new Date(expVal);
+    return isNaN(exp.getTime()) || exp >= now;
+  });
+
+  const pool = unexpired.length > 0 ? unexpired : batches;
+  return pool.reduce((latest, b) => {
+    if (!latest) return b;
+    const idA = Number(latest.id) || 0;
+    const idB = Number(b.id) || 0;
+    return idB >= idA ? b : latest;
+  }, null);
+}
+
 function expiryYearOptions(selected = '') {
   let opts = `<option value="">+yrs</option>`;
   for (let i = 1; i <= 15; i++) {
@@ -1827,12 +1852,21 @@ export class ProductListApp extends AppWindow {
                     <span class="batch-count">${variant.batches.length} batch(es)</span>
                   </div>
                   <div class="batches-container">
-                    ${variant.batches.map(batch => `
+                    ${(() => {
+                      const activeBatch = getPortalActiveBatch(variant.batches);
+                      return variant.batches.map(batch => {
+                        const isPortalActive = activeBatch && (
+                          (batch.id && String(batch.id) === String(activeBatch.id)) ||
+                          (batch.batchNo && batch.batchNo === activeBatch.batchNo)
+                        );
+                        return `
                       <div class="batch-card">
                         <div class="batch-row">
                           <span class="batch-label">Batch:</span>
-                          <span class="batch-value">${batch.batchNo}</span>
-                        </div>
+                          <span class="batch-value">${batch.batchNo}${isPortalActive ? ' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : ''}</span>
+                        </div>`;
+                      }).join('');
+                    })()}
                         <div class="batch-row">
                           <span class="batch-label">MRP:</span>
                           <span class="batch-value">₹${batch.mrp.toFixed(2)}</span>
@@ -1854,7 +1888,6 @@ export class ProductListApp extends AppWindow {
                           <button class="batch-delete-btn" style="flex: 1;" data-product-id="${product.id}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}">Remove Batch</button>
                         </div>
                       </div>
-                    `).join('')}
                   </div>
                   <button class="add-batch-btn add-batch-margin" data-product-id="${product.id}" data-pack-size="${variant.packSize}">+ Add Batch</button>
                 </div>
@@ -2419,7 +2452,11 @@ export class ProductListApp extends AppWindow {
                     <div class="edit-batch-card">
                       <div class="edit-batch-grid">
                         <div class="edit-batch-field">
-                          <label class="edit-batch-label">Batch Number *</label>
+                          <label class="edit-batch-label">Batch Number * ${(() => {
+                            const actB = getPortalActiveBatch(variant.batches);
+                            const isAct = actB && ((batch.id && String(batch.id) === String(actB.id)) || (batch.batchNo && batch.batchNo === actB.batchNo));
+                            return isAct ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:4px;vertical-align:middle;" title="Active batch on customer portal"></span>' : '';
+                          })()}</label>
                           <input type="text" value="${batch.batchNo}" class="edit-batch-no edit-batch-input" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">
                         </div>
                         <div class="edit-batch-field">

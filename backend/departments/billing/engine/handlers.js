@@ -2343,9 +2343,61 @@ module.exports = function(db) {
           } catch (_) {}
         }
 
+        const outData = response.data?.raw || response.data || {};
+        try {
+          const rawCust = outData.customer;
+          const customerId = rawCust?.id || rawCust?.customer_id;
+          if (customerId) {
+            const customerOrders = db.prepare(`
+              SELECT 
+                o.id,
+                o.order_number,
+                o.current_stage,
+                o.status,
+                o.order_date,
+                o.total_amount,
+                o.bill_reference,
+                (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) as item_count,
+                (
+                  SELECT json_group_array(
+                    json_object(
+                      'product_name', COALESCE(p.name, 'Item'),
+                      'pack', COALESCE(v.pack_size_value || ' ' || v.pack_size_type, ''),
+                      'batch_no', COALESCE(b.batch_no, ''),
+                      'quantity', oi.quantity,
+                      'unit_price', oi.unit_price,
+                      'line_total', oi.line_total
+                    )
+                  )
+                  FROM order_items oi
+                  LEFT JOIN products p ON oi.product_id = p.id
+                  LEFT JOIN variants v ON oi.variant_id = v.id
+                  LEFT JOIN batches b ON oi.batch_id = b.id
+                  WHERE oi.order_id = o.id
+                ) as items_json
+              FROM orders o
+              WHERE o.customer_id = ?
+              ORDER BY o.id DESC
+              LIMIT 50
+            `).all(customerId);
+
+            outData.orders = customerOrders.map(ord => {
+              let parsedItems = [];
+              try { parsedItems = JSON.parse(ord.items_json || '[]'); } catch (_) {}
+              const { items_json, ...rest } = ord;
+              return { ...rest, items: parsedItems };
+            });
+          } else {
+            outData.orders = [];
+          }
+        } catch (ordErr) {
+          console.error('Failed to load customer orders for public ledger:', ordErr.message);
+          outData.orders = [];
+        }
+
         return res.json({
           success: true,
-          data: response.data?.raw || response.data,
+          data: outData,
           meta: response.meta
         });
       } catch (error) {
@@ -2426,24 +2478,76 @@ module.exports = function(db) {
 
         let catalog = [];
         try {
-          catalog = db.prepare(`
+          const rows = db.prepare(`
             SELECT 
-              p.id, 
-              p.name, 
-              COALESCE(c.name, 'General') as category, 
-              COALESCE(p.classification, 'Non-Gold') as classification, 
-              COALESCE(b.mrp, 0) as mrp, 
-              COALESCE(b.mrp, 0) as price, 
-              COALESCE(v.pack_size_value || ' ' || v.pack_size_type, '1 Unit') as unit,
-              COALESCE(b.units_sold, 0) as units_sold
-            FROM products p 
-            LEFT JOIN categories c ON p.category_id = c.id 
-            LEFT JOIN variants v ON v.product_id = p.id 
-            LEFT JOIN batches b ON b.variant_id = v.id 
-            GROUP BY p.id 
-            ORDER BY p.name ASC 
-            LIMIT 300
+              p.id as product_id,
+              p.name as product_name,
+              COALESCE(c.name, 'General') as category,
+              COALESCE(p.classification, 'Non-Gold') as classification,
+              v.id as variant_id,
+              v.pack_size_value,
+              v.pack_size_type,
+              b.id as batch_id,
+              b.batch_no,
+              b.mrp,
+              b.exp_date,
+              b.units_sold
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN variants v ON v.product_id = p.id
+            LEFT JOIN batches b ON b.id = (
+              SELECT b2.id 
+              FROM batches b2 
+              WHERE b2.variant_id = v.id 
+                AND (b2.exp_date IS NULL OR date(b2.exp_date) >= date('now'))
+              ORDER BY b2.id DESC 
+              LIMIT 1
+            )
+            ORDER BY p.name ASC, v.id ASC
           `).all();
+
+          const productMap = new Map();
+          rows.forEach(r => {
+            if (!productMap.has(r.product_id)) {
+              productMap.set(r.product_id, {
+                id: r.product_id,
+                name: r.product_name,
+                category: r.category,
+                classification: r.classification,
+                variants: []
+              });
+            }
+            const prod = productMap.get(r.product_id);
+            if (r.variant_id) {
+              const packVal = r.pack_size_value ? String(r.pack_size_value).trim() : '';
+              const packType = r.pack_size_type ? String(r.pack_size_type).trim() : '';
+              const unit = (packVal && packType) ? `${packVal} ${packType}` : (packVal || packType || '1 Unit');
+              prod.variants.push({
+                id: r.variant_id,
+                pack_size_value: r.pack_size_value,
+                pack_size_type: r.pack_size_type,
+                unit,
+                batch_id: r.batch_id || null,
+                batch_no: r.batch_no || 'Standard Lot',
+                mrp: Number(r.mrp) || 0,
+                price: Number(r.mrp) || 0,
+                exp_date: r.exp_date || null
+              });
+            }
+          });
+
+          catalog = Array.from(productMap.values()).map(p => {
+            const defVar = p.variants[0] || {};
+            return {
+              ...p,
+              variant_id: defVar.id || null,
+              batch_id: defVar.batch_id || null,
+              batch_no: defVar.batch_no || '',
+              unit: defVar.unit || '1 Unit',
+              mrp: defVar.mrp || 0,
+              price: defVar.price || 0
+            };
+          });
         } catch (e) {
           console.error('Error fetching kiosk catalog:', e);
         }
@@ -2484,8 +2588,10 @@ module.exports = function(db) {
         const discountAmount = Math.max(0, Number(promoDiscount) || 0);
         const totalAmount = Math.max(0, subtotal - discountAmount);
 
-        const randSuffix = Math.floor(1000 + Math.random() * 9000);
-        const orderNumber = `ORD-K-${Date.now().toString(36).toUpperCase()}-${randSuffix}`;
+        // Canonical order number sequence ORD-YY####
+        const ordersCore = require('../../../core/orders/handlers');
+        const generateOrderNumber = ordersCore.generateOrderNumber || (typeof ordersCore === 'function' && ordersCore(db).generateOrderNumber);
+        const orderNumber = typeof generateOrderNumber === 'function' ? generateOrderNumber(db) : `ORD-${new Date().getFullYear().toString().slice(-2)}${Math.floor(1000 + Math.random() * 9000)}`;
 
         const insertOrderStmt = db.prepare(`
           INSERT INTO orders (
@@ -2497,7 +2603,7 @@ module.exports = function(db) {
           )
         `);
 
-        const fullNotes = notes ? `[Self-Ordering Kiosk] ${notes}${discountAmount > 0 ? ` (Rebate: -₹${discountAmount})` : ''}` : `[Self-Ordering Kiosk Order]${discountAmount > 0 ? ` (Rebate: -₹${discountAmount})` : ''}`;
+        const fullNotes = notes ? `[Kiosk] ${notes}${discountAmount > 0 ? ` (Rebate: -₹${discountAmount})` : ''}` : (discountAmount > 0 ? `[Kiosk] Rebate: -₹${discountAmount}` : '');
         const orderResult = insertOrderStmt.run(
           orderNumber,
           customer.id,
@@ -2508,8 +2614,8 @@ module.exports = function(db) {
 
         const insertItemStmt = db.prepare(`
           INSERT INTO order_items (
-            order_id, product_id, quantity, unit_price, line_total
-          ) VALUES (?, ?, ?, ?, ?)
+            order_id, product_id, variant_id, batch_id, quantity, unit_price, line_total
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
         items.forEach(it => {
@@ -2517,63 +2623,108 @@ module.exports = function(db) {
           const unitPrice = Number(it.rate || it.price) || 0;
           const lineTotal = qty * unitPrice;
           const pId = it.productId || it.product_id || null;
-          insertItemStmt.run(orderId, pId, qty, unitPrice, lineTotal);
+          let vId = it.variantId || it.variant_id || null;
+          let bId = it.batchId || it.batch_id || null;
+
+          if (!vId && pId) {
+            const defVar = db.prepare('SELECT id FROM variants WHERE product_id = ? ORDER BY id ASC LIMIT 1').get(pId);
+            if (defVar) vId = defVar.id;
+          }
+
+          if (!bId && vId) {
+            const defBatch = db.prepare(`
+              SELECT id FROM batches 
+              WHERE variant_id = ? AND (exp_date IS NULL OR date(exp_date) >= date('now'))
+              ORDER BY id DESC LIMIT 1
+            `).get(vId);
+            if (defBatch) bId = defBatch.id;
+          }
+
+          insertItemStmt.run(orderId, pId, vId, bId, qty, unitPrice, lineTotal);
         });
 
-        // Send email alert to store owner / admin
+        // Send responsive email alert
         setImmediate(async () => {
           try {
             const { sendEmail } = require('../services/email-reminder-scheduler');
             if (typeof sendEmail === 'function') {
-              const itemsListHtml = items.map(it => `
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                  <td style="padding: 8px;">${it.name || it.product_name}</td>
-                  <td style="padding: 8px; text-align: center;">${it.qty}</td>
-                  <td style="padding: 8px; text-align: right;">₹${(Number(it.rate || it.price) || 0).toLocaleString('en-IN')}</td>
-                  <td style="padding: 8px; text-align: right; font-weight: bold;">₹${((Number(it.qty) || 1) * (Number(it.rate || it.price) || 0)).toLocaleString('en-IN')}</td>
+              const rowsHtml = items.map(it => `
+                <tr>
+                  <td style="padding: 8px 6px; border-bottom: 1px solid #e4e4e7;">
+                    <div style="font-weight: 600; font-size: 13px;">${it.name || it.product_name}</div>
+                    ${(it.unit || it.pack || it.batch_no) ? `<div style="font-size: 11px; color: #71717a;">${[it.unit || it.pack, it.batch_no ? `Batch: ${it.batch_no}` : ''].filter(Boolean).join(' · ')}</div>` : ''}
+                  </td>
+                  <td style="padding: 8px 6px; border-bottom: 1px solid #e4e4e7; text-align: center; font-size: 12px;">${it.qty}</td>
+                  <td style="padding: 8px 6px; border-bottom: 1px solid #e4e4e7; text-align: right; font-size: 12px;">₹${(Number(it.rate || it.price) || 0).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 6px; border-bottom: 1px solid #e4e4e7; text-align: right; font-size: 12px; font-weight: 700;">₹${((Number(it.qty) || 1) * (Number(it.rate || it.price) || 0)).toLocaleString('en-IN')}</td>
                 </tr>
               `).join('');
 
-              const emailSubject = `🚨 New B2B Kiosk Order #${orderNumber} from ${customer.name} (₹${totalAmount.toLocaleString('en-IN')})`;
+              const emailSubject = `Order #${orderNumber} · ${customer.name} (₹${totalAmount.toLocaleString('en-IN')})`;
               const emailHtml = `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 2px solid #000; background: #ffffff;">
-                  <div style="background: #000; color: #fff; padding: 12px 16px; font-weight: 800; font-size: 14px;">
-                    ⚡ NEW SELF-ORDERING KIOSK ORDER
-                  </div>
-                  <div style="padding: 16px;">
-                    <p style="font-size: 14px; margin-top: 0;"><strong>Customer:</strong> ${customer.name} (${customer.phone || 'No phone'})</p>
-                    <p style="font-size: 14px;"><strong>Order Number:</strong> ${orderNumber}</p>
-                    ${notes ? `<p style="font-size: 13px; background: #fef9c3; padding: 8px; border-left: 3px solid #ca8a04;"><strong>Customer Notes:</strong> ${notes}</p>` : ''}
-                    
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px;">
-                      <thead>
-                        <tr style="background: #f3f4f6; border-bottom: 2px solid #000;">
-                          <th style="padding: 8px; text-align: left;">ITEM</th>
-                          <th style="padding: 8px; text-align: center;">QTY</th>
-                          <th style="padding: 8px; text-align: right;">RATE</th>
-                          <th style="padding: 8px; text-align: right;">TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${itemsListHtml}
-                      </tbody>
-                    </table>
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <style>
+                    body { margin: 0; padding: 0; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #18181b; }
+                    .email-wrap { max-width: 580px; margin: 16px auto; background: #ffffff; border: 1.5px solid #000000; box-shadow: 3px 3px 0 #000; }
+                    .email-bar { background: #000000; color: #ffffff; padding: 12px 16px; font-weight: 800; font-size: 13px; letter-spacing: 0.5px; }
+                    .email-body { padding: 16px; }
+                    .meta-row { font-size: 12px; line-height: 1.6; margin-bottom: 12px; border-bottom: 1px solid #e4e4e7; padding-bottom: 10px; }
+                    .item-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+                    .item-table th { background: #f4f4f5; text-align: left; padding: 8px 6px; font-weight: 700; border-bottom: 1.5px solid #000000; }
+                    .total-box { margin-top: 14px; text-align: right; font-size: 14px; font-weight: 900; }
+                    .info-box { margin-top: 16px; padding: 10px 12px; background: #f4f4f5; border: 1px solid #d4d4d8; font-size: 11px; color: #52525b; line-height: 1.4; }
+                    @media only screen and (max-width: 480px) {
+                      .email-wrap { margin: 8px auto; width: 94%; }
+                      .email-body { padding: 12px; }
+                      .item-table th, .item-table td { padding: 6px 4px; font-size: 11px; }
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="email-wrap">
+                    <div class="email-bar">ORDER #${orderNumber}</div>
+                    <div class="email-body">
+                      <div class="meta-row">
+                        <div><strong>Customer:</strong> ${customer.name} (${customer.phone || 'No phone'})</div>
+                        <div><strong>Order Reference:</strong> ${orderNumber}</div>
+                        <div><strong>Date:</strong> ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                        ${notes ? `<div style="margin-top: 6px; padding: 6px 8px; background: #fefce8; border-left: 3px solid #eab308;"><strong>Notes:</strong> ${notes}</div>` : ''}
+                      </div>
 
-                    <div style="margin-top: 14px; text-align: right; font-size: 15px; font-weight: 900;">
-                      GRAND TOTAL: ₹${totalAmount.toLocaleString('en-IN')}
-                    </div>
+                      <table class="item-table">
+                        <thead>
+                          <tr>
+                            <th>ITEM</th>
+                            <th style="text-align: center;">QTY</th>
+                            <th style="text-align: right;">RATE</th>
+                            <th style="text-align: right;">TOTAL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${rowsHtml}
+                        </tbody>
+                      </table>
 
-                    <div style="margin-top: 20px; padding: 12px; background: #f0fdf4; border: 1px solid #16a34a; font-size: 12px; color: #166534;">
-                      ✓ This order has been logged into your Orders database in pending status. Open MacOS Billing to review, approve, and convert to invoice.
+                      <div class="total-box">
+                        GRAND TOTAL: ₹${totalAmount.toLocaleString('en-IN')}
+                      </div>
+
+                      <div class="info-box">
+                        Order received in pending queue. Ready for packing and invoice conversion.
+                      </div>
                     </div>
                   </div>
-                </div>
+                </body>
+                </html>
               `;
 
               await sendEmail(db, {
                 subject: emailSubject,
                 html: emailHtml,
-                text: `New Kiosk Order #${orderNumber} from ${customer.name} for ₹${totalAmount}`
+                text: `Order #${orderNumber} from ${customer.name} for ₹${totalAmount}`
               });
             }
           } catch (emailErr) {
@@ -2585,7 +2736,7 @@ module.exports = function(db) {
           success: true,
           orderNumber,
           totalAmount,
-          message: 'Order placed successfully! The store has been notified and will process your dispatch.'
+          message: 'Order placed. Queued for packing & billing.'
         });
       } catch (err) {
         console.error('Error submitting kiosk order:', err);
