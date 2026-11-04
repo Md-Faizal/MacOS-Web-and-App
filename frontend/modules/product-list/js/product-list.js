@@ -1863,7 +1863,7 @@ export class ProductListApp extends AppWindow {
                           <div class="batch-card">
                             <div class="batch-row">
                               <span class="batch-label">Batch:</span>
-                              <span class="batch-value">${batch.batchNo}${isPortalActive ? ' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : ''}</span>
+                              <span class="batch-value">${isPortalActive ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-right:6px;vertical-align:middle;" title="Active batch on customer portal"></span>' : ''}${batch.batchNo}</span>
                             </div>
                             <div class="batch-row">
                               <span class="batch-label">MRP:</span>
@@ -2453,11 +2453,11 @@ export class ProductListApp extends AppWindow {
                     <div class="edit-batch-card">
                       <div class="edit-batch-grid">
                         <div class="edit-batch-field">
-                          <label class="edit-batch-label">Batch Number * ${(() => {
+                          <label class="edit-batch-label">${(() => {
                             const actB = getPortalActiveBatch(variant.batches);
                             const isAct = actB && ((batch.id && String(batch.id) === String(actB.id)) || (batch.batchNo && batch.batchNo === actB.batchNo));
-                            return isAct ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:4px;vertical-align:middle;" title="Active batch on customer portal"></span>' : '';
-                          })()}</label>
+                            return isAct ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-right:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : '';
+                          })()}Batch Number *</label>
                           <input type="text" value="${batch.batchNo}" class="edit-batch-no edit-batch-input" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">
                         </div>
                         <div class="edit-batch-field">
