@@ -561,71 +561,115 @@ class ContactsApp extends AppWindow {
         
         switch(action) {
           case 'share-ledger':
-               let token = contact.ledger_token || contact.ledgerToken || contact.token;
-               if (!token && contact.id) {
-                 try {
-                   const cRes = await fetch(`${this.apiUrl}/${contact.id}`, { credentials: 'same-origin' });
-                   if (cRes.ok) {
-                     const cJson = await cRes.json();
-                     const cObj = cJson.data || cJson;
-                     token = cObj.ledger_token || cObj.ledgerToken || cObj.token;
-                     if (token) {
-                       contact.ledger_token = token;
-                       contact.ledgerToken = token;
-                       contact.token = token;
-                     }
-                   }
-                 } catch (_) {}
-               }
-               const baseUrl = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
-               const copyUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=manual_share";
-               const waUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=whatsapp";
-               
-               const shareOptions = document.createElement("div");
-               shareOptions.style.cssText = "position: absolute; background: white; border: 1px solid black; padding: 8px; box-shadow: 4px 4px 0 rgba(0,0,0,1); z-index: 100000 !important; font-family: 'Courier New', monospace;";
-               shareOptions.innerHTML = `
-                 <div style="margin-bottom: 8px; font-size: 12px; font-weight: bold;">Share Ledger Link:</div>
-                 <button id="copyLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: white; border: 1px solid black;">📋 Copy Link</button>
-                 <button id="waLinkBtn" style="display: block; width: 100%; margin-bottom: 4px; padding: 6px; font-size: 11px; cursor: pointer; background: #25D366; color: white; border: 1px solid black;">💬 WhatsApp</button>
-                 <button id="viewTrackingShortcutBtn" style="display: block; width: 100%; padding: 6px; font-size: 11px; cursor: pointer; background: #111827; color: white; border: 1px solid black; font-weight: bold;">📡 View Link Activity</button>
-               `;
-               
-               const rect = btn.getBoundingClientRect();
-               shareOptions.style.top = (rect.bottom + window.scrollY + 5) + "px";
-               shareOptions.style.left = (rect.left + window.scrollX) + "px";
-               
-               document.body.appendChild(shareOptions);
-               
-               document.getElementById("copyLinkBtn").onclick = () => {
-                 navigator.clipboard.writeText(copyUrl).then(() => {
-                   this.showNotification("Ledger link copied to clipboard!", "success");
-                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-                 });
-               };
-               
-               document.getElementById("waLinkBtn").onclick = () => {
-                  const msg = encodeURIComponent("Hello! You can view your bills, payments, and ledger balance here: " + waUrl);
-                  window.open("https://wa.me/?text=" + msg, "_blank");
+            e.stopPropagation();
+            e.preventDefault();
+
+            // Clean up any existing share popup first
+            const oldPopup = document.getElementById("shareLedgerPopup");
+            if (oldPopup && document.body.contains(oldPopup)) {
+              document.body.removeChild(oldPopup);
+            }
+
+            let token = contact.ledger_token || contact.ledgerToken || contact.token;
+            if (!token && contact.id) {
+              try {
+                const cRes = await fetch(`${this.apiUrl}/${contact.id}`, { credentials: 'same-origin' });
+                if (cRes.ok) {
+                  const cJson = await cRes.json();
+                  const cObj = cJson.data || cJson;
+                  token = cObj.ledger_token || cObj.ledgerToken || cObj.token;
+                  if (token) {
+                    contact.ledger_token = token;
+                    contact.ledgerToken = token;
+                    contact.token = token;
+                  }
+                }
+              } catch (_) {}
+            }
+            const baseUrl = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
+            const copyUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=manual_share";
+            const waUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=whatsapp";
+            
+            const shareOptions = document.createElement("div");
+            shareOptions.id = "shareLedgerPopup";
+            shareOptions.style.cssText = "position: fixed; background: #ffffff; border: 1px solid #111827; border-radius: 6px; padding: 10px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2); z-index: 2147483646 !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; width: 190px;";
+            shareOptions.innerHTML = `
+              <div style="margin-bottom: 8px; font-size: 11px; font-weight: 700; color: #374151; letter-spacing: 0.5px; text-transform: uppercase;">Share Ledger Link</div>
+              <button id="copyLinkBtn" style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-bottom: 6px; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: #f9fafb; color: #111827; border: 1px solid #d1d5db; border-radius: 4px; transition: background 0.15s;">📋 Copy Link</button>
+              <button id="waLinkBtn" style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-bottom: 6px; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: #25D366; color: white; border: none; border-radius: 4px; transition: opacity 0.15s;">💬 WhatsApp</button>
+              <button id="viewTrackingShortcutBtn" style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: #111827; color: white; border: none; border-radius: 4px; transition: opacity 0.15s;">📡 View Activity</button>
+            `;
+            
+            const rect = btn.getBoundingClientRect();
+            let topPos = rect.bottom + 6;
+            let leftPos = rect.left;
+            
+            if (topPos + 160 > window.innerHeight) {
+              topPos = Math.max(10, rect.top - 165);
+            }
+            if (leftPos + 200 > window.innerWidth) {
+              leftPos = Math.max(10, window.innerWidth - 210);
+            }
+            
+            shareOptions.style.top = topPos + "px";
+            shareOptions.style.left = leftPos + "px";
+            
+            document.body.appendChild(shareOptions);
+            
+            const copyBtn = document.getElementById("copyLinkBtn");
+            if (copyBtn) {
+              copyBtn.onclick = async (ev) => {
+                ev.stopPropagation();
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(copyUrl);
+                  } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = copyUrl;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                  }
+                  this.showNotification("Ledger link copied to clipboard!", "success");
+                } catch (_) {
+                  this.showNotification("Failed to copy link", "error");
+                }
+                if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+              };
+            }
+            
+            const waBtn = document.getElementById("waLinkBtn");
+            if (waBtn) {
+              waBtn.onclick = (ev) => {
+                ev.stopPropagation();
+                const msg = encodeURIComponent("Hello! You can view your bills, payments, and ledger balance here: " + waUrl);
+                window.open("https://wa.me/?text=" + msg, "_blank");
+                if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+              };
+            }
+            
+            const trackShortcut = document.getElementById("viewTrackingShortcutBtn");
+            if (trackShortcut) {
+              trackShortcut.onclick = (ev) => {
+                ev.stopPropagation();
+                if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
+                this.openTrackingModal(contact.id, contact.name);
+              };
+            }
+            
+            setTimeout(() => {
+              const closeFn = (ev) => {
+                if (!shareOptions.contains(ev.target) && ev.target !== btn) {
                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-               };
-               
-               const trackShortcut = document.getElementById("viewTrackingShortcutBtn");
-               if (trackShortcut) {
-                 trackShortcut.onclick = () => {
-                   if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-                   this.openTrackingModal(contact.id, contact.name);
-                 };
-               };
-               
-               setTimeout(() => {
-                 const closeFn = (ev) => {
-                   if (!shareOptions.contains(ev.target)) {
-                     if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
-                     document.removeEventListener('click', closeFn);
-                   }
-                 };
-                 document.addEventListener('click', closeFn);
-               }, 100);
+                  document.removeEventListener('click', closeFn);
+                }
+              };
+              document.addEventListener('click', closeFn);
+            }, 50);
             break;
           case 'share-worker':
             this.openShareContactModal(contact.id, contact.name);
