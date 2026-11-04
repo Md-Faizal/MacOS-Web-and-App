@@ -1906,21 +1906,25 @@
   content: '' !important;
   flex: 1 !important;
   height: 1px !important;
-  background: linear-gradient(to right, rgba(0, 113, 227, 0), rgba(0, 113, 227, 0.3)) !important;
   transition: background 0.2s ease !important;
 }
 
 .products-letter-divider::before {
   margin-right: 12px !important;
+  background: linear-gradient(to right, rgba(0, 113, 227, 0), rgba(0, 113, 227, 0.3)) !important;
 }
 
 .products-letter-divider::after {
   margin-left: 12px !important;
+  background: linear-gradient(to left, rgba(0, 113, 227, 0), rgba(0, 113, 227, 0.3)) !important;
 }
 
-.products-letter-divider:hover::before,
-.products-letter-divider:hover::after {
+.products-letter-divider:hover::before {
   background: linear-gradient(to right, rgba(0, 113, 227, 0), rgba(0, 113, 227, 0.5)) !important;
+}
+
+.products-letter-divider:hover::after {
+  background: linear-gradient(to left, rgba(0, 113, 227, 0), rgba(0, 113, 227, 0.5)) !important;
 }
 
 /* Collapsed state */
