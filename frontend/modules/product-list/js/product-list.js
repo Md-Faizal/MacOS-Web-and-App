@@ -1860,34 +1860,35 @@ export class ProductListApp extends AppWindow {
                           (batch.batchNo && batch.batchNo === activeBatch.batchNo)
                         );
                         return `
-                      <div class="batch-card">
-                        <div class="batch-row">
-                          <span class="batch-label">Batch:</span>
-                          <span class="batch-value">${batch.batchNo}${isPortalActive ? ' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : ''}</span>
-                        </div>`;
+                          <div class="batch-card">
+                            <div class="batch-row">
+                              <span class="batch-label">Batch:</span>
+                              <span class="batch-value">${batch.batchNo}${isPortalActive ? ' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-left:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : ''}</span>
+                            </div>
+                            <div class="batch-row">
+                              <span class="batch-label">MRP:</span>
+                              <span class="batch-value">₹${batch.mrp.toFixed(2)}</span>
+                            </div>
+                            <div class="batch-row">
+                              <span class="batch-label">Mfg Date:</span>
+                              <span class="batch-value">${batch.mfgDate ? new Date(batch.mfgDate).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : 'Not Defined'}</span>
+                            </div>
+                            <div class="batch-row">
+                              <span class="batch-label">Expiry:</span>
+                              <span class="batch-value">${batch.expiryDate ? new Date(batch.expiryDate).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : 'Not Defined'}</span>
+                            </div>
+                            <div class="batch-row">
+                              <span class="batch-label">Units Sold:</span>
+                              <span class="batch-value">${batch.unitsSold}</span>
+                            </div>
+                            <div class="batch-actions" style="display: flex; gap: 4px; margin-top: 8px;">
+                              <button class="batch-action-btn print-batch-qr" style="flex: 1; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer;" data-product-id="${product.id}" data-variant-id="${variant.id ?? ''}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}" data-batch-id="${batch.id ?? ''}" title="Print QR">🖨️ QR</button>
+                              <button class="batch-delete-btn" style="flex: 1;" data-product-id="${product.id}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}">Remove Batch</button>
+                            </div>
+                          </div>
+                        `;
                       }).join('');
                     })()}
-                        <div class="batch-row">
-                          <span class="batch-label">MRP:</span>
-                          <span class="batch-value">₹${batch.mrp.toFixed(2)}</span>
-                        </div>
-                        <div class="batch-row">
-                          <span class="batch-label">Mfg Date:</span>
-                          <span class="batch-value">${batch.mfgDate ? new Date(batch.mfgDate).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : 'Not Defined'}</span>
-                        </div>
-                        <div class="batch-row">
-                          <span class="batch-label">Expiry:</span>
-                          <span class="batch-value">${batch.expiryDate ? new Date(batch.expiryDate).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : 'Not Defined'}</span>
-                        </div>
-                        <div class="batch-row">
-                          <span class="batch-label">Units Sold:</span>
-                          <span class="batch-value">${batch.unitsSold}</span>
-                        </div>
-                        <div class="batch-actions" style="display: flex; gap: 4px; margin-top: 8px;">
-                          <button class="batch-action-btn print-batch-qr" style="flex: 1; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer;" data-product-id="${product.id}" data-variant-id="${variant.id ?? ''}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}" data-batch-id="${batch.id ?? ''}" title="Print QR">🖨️ QR</button>
-                          <button class="batch-delete-btn" style="flex: 1;" data-product-id="${product.id}" data-pack-size="${variant.packSize}" data-batch-no="${batch.batchNo}">Remove Batch</button>
-                        </div>
-                      </div>
                   </div>
                   <button class="add-batch-btn add-batch-margin" data-product-id="${product.id}" data-pack-size="${variant.packSize}">+ Add Batch</button>
                 </div>
