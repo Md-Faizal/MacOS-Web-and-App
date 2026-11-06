@@ -4,7 +4,7 @@ import { clampQcReceivedQuantity, incrementQcReceivedQuantity } from '../../../s
 import { openQrScanner } from '../../../shared/qr-scanner.js';
 import { findBestInvoiceMatchForOrder } from '../../../shared/order-invoice-matcher.mjs';
 
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Orders') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /* 3-Stage Order Management System
    
@@ -68,129 +68,129 @@ const Utils = {
 };
 
 class OrdersView {
-    // Track selected orders for multi-select
-    selectedOrderIds = new Set();
+  // Track selected orders for multi-select
+  selectedOrderIds = new Set();
 
-    saveOrderDraft() {
-      if (!this.currentOrderData || this.isViewMode) return;
-      try {
-        const draft = {
-          currentOrderData: this.currentOrderData,
-          currentStage: this.currentStage,
-          selectedCustomerId: this.selectedCustomerId,
-          timestamp: Date.now()
-        };
-        sessionStorage.setItem('macos_billing_order_draft', JSON.stringify(draft));
-      } catch (_) {}
-    }
+  saveOrderDraft() {
+    if (!this.currentOrderData || this.isViewMode) return;
+    try {
+      const draft = {
+        currentOrderData: this.currentOrderData,
+        currentStage: this.currentStage,
+        selectedCustomerId: this.selectedCustomerId,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem('macos_billing_order_draft', JSON.stringify(draft));
+    } catch (_) { }
+  }
 
-    clearOrderDraft() {
-      try {
-        sessionStorage.removeItem('macos_billing_order_draft');
-      } catch (_) {}
-    }
+  clearOrderDraft() {
+    try {
+      sessionStorage.removeItem('macos_billing_order_draft');
+    } catch (_) { }
+  }
 
-    restoreOrderDraft() {
-      try {
-        const saved = sessionStorage.getItem('macos_billing_order_draft');
-        if (!saved) return false;
-        const draft = JSON.parse(saved);
-        if (!draft || !draft.currentOrderData || !draft.currentOrderData.customer_id) return false;
-        // Expire after 24 hours
-        if (Date.now() - (draft.timestamp || 0) > 24 * 60 * 60 * 1000) {
-          this.clearOrderDraft();
-          return false;
-        }
-        this.currentOrderData = draft.currentOrderData;
-        this.currentStage = draft.currentStage || 'stage1';
-        this.selectedCustomerId = draft.selectedCustomerId || draft.currentOrderData.customer_id;
-        this.currentOrderId = draft.currentOrderData.id;
-        return true;
-      } catch (_) {
+  restoreOrderDraft() {
+    try {
+      const saved = sessionStorage.getItem('macos_billing_order_draft');
+      if (!saved) return false;
+      const draft = JSON.parse(saved);
+      if (!draft || !draft.currentOrderData || !draft.currentOrderData.customer_id) return false;
+      // Expire after 24 hours
+      if (Date.now() - (draft.timestamp || 0) > 24 * 60 * 60 * 1000) {
+        this.clearOrderDraft();
         return false;
       }
+      this.currentOrderData = draft.currentOrderData;
+      this.currentStage = draft.currentStage || 'stage1';
+      this.selectedCustomerId = draft.selectedCustomerId || draft.currentOrderData.customer_id;
+      this.currentOrderId = draft.currentOrderData.id;
+      return true;
+    } catch (_) {
+      return false;
     }
+  }
 
-    unlinkInvoice() {
-      this.selectedOrderInvoice = null;
-      if (this.currentOrderData) {
-        this.currentOrderData.bill_reference = '';
-        this.currentOrderData.auto_matched = false;
-        this.currentOrderData.auto_match_details = null;
-      }
-      const input = document.getElementById('billRefInput');
-      if (input) input.value = '';
-      this.saveOrderDraft();
-      this.renderLinkedInvoiceSummary();
-      this.showNotification('Invoice reference cleared.', 'info');
+  unlinkInvoice() {
+    this.selectedOrderInvoice = null;
+    if (this.currentOrderData) {
+      this.currentOrderData.bill_reference = '';
+      this.currentOrderData.auto_matched = false;
+      this.currentOrderData.auto_match_details = null;
     }
+    const input = document.getElementById('billRefInput');
+    if (input) input.value = '';
+    this.saveOrderDraft();
+    this.renderLinkedInvoiceSummary();
+    this.showNotification('Invoice reference cleared.', 'info');
+  }
 
-    isWorkerUser() {
-      const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role');
-      return role === 'worker';
+  isWorkerUser() {
+    const role = window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role');
+    return role === 'worker';
+  }
+
+  isExcluded(contact) {
+    if (!contact) return false;
+    return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
+  }
+
+  toggleOrderSelection(orderId) {
+    if (!this.selectedOrderIds) this.selectedOrderIds = new Set();
+    if (this.selectedOrderIds.has(orderId)) {
+      this.selectedOrderIds.delete(orderId);
+    } else {
+      this.selectedOrderIds.add(orderId);
     }
+    this.updateMultiSelectUI();
+  }
 
-    isExcluded(contact) {
-      if (!contact) return false;
-      return contact.exclude_from_stats === 1 || contact.exclude_from_stats === '1' || contact.exclude_from_stats === true;
-    }
+  // Utility: Clear selection and update UI
+  clearOrderSelection() {
+    this.selectedOrderIds = new Set();
+    this.updateMultiSelectUI();
+  }
 
-    toggleOrderSelection(orderId) {
-      if (!this.selectedOrderIds) this.selectedOrderIds = new Set();
-      if (this.selectedOrderIds.has(orderId)) {
-        this.selectedOrderIds.delete(orderId);
-      } else {
-        this.selectedOrderIds.add(orderId);
-      }
+  // Utility: Remove deleted order from selection
+  removeOrderFromSelection(orderId) {
+    if (this.selectedOrderIds.has(orderId)) {
+      this.selectedOrderIds.delete(orderId);
       this.updateMultiSelectUI();
     }
+  }
 
-    // Utility: Clear selection and update UI
-    clearOrderSelection() {
-        this.selectedOrderIds = new Set();
-        this.updateMultiSelectUI();
-    }
-
-    // Utility: Remove deleted order from selection
-    removeOrderFromSelection(orderId) {
-        if (this.selectedOrderIds.has(orderId)) {
-            this.selectedOrderIds.delete(orderId);
-            this.updateMultiSelectUI();
-        }
-    }
-
-    updateMultiSelectUI() {
-      // Show/hide View button, update checkboxes only
-      const viewBtn = document.getElementById('multiOrderViewBtn');
-      const newOrderBtn = document.getElementById('newOrderBtn');
-      // In customer view, if more than 1 order, show both buttons side by side if 2+ selected
-      const inCustomerView = !!this.selectedCustomerId && this.customerViewOrders && this.customerViewOrders.length > 1;
-      if (this.selectedOrderIds.size >= 2) {
-        if (viewBtn) {
-          viewBtn.style.display = '';
-        }
-        if (newOrderBtn) {
-          newOrderBtn.style.display = '';
-        }
-      } else {
-        if (viewBtn) viewBtn.style.display = 'none';
-        // Always show newOrderBtn in both views now
-        if (newOrderBtn) newOrderBtn.style.display = '';
-      }
-      // Update checkboxes' checked state in DOM
-      document.querySelectorAll('.order-multiselect-checkbox').forEach(cb => {
-        const oid = cb.getAttribute('data-order-id');
-        cb.checked = this.selectedOrderIds.has(oid);
-      });
-      // UI feedback: Disable/hide View Selected button if fewer than two orders selected
+  updateMultiSelectUI() {
+    // Show/hide View button, update checkboxes only
+    const viewBtn = document.getElementById('multiOrderViewBtn');
+    const newOrderBtn = document.getElementById('newOrderBtn');
+    // In customer view, if more than 1 order, show both buttons side by side if 2+ selected
+    const inCustomerView = !!this.selectedCustomerId && this.customerViewOrders && this.customerViewOrders.length > 1;
+    if (this.selectedOrderIds.size >= 2) {
       if (viewBtn) {
-        viewBtn.disabled = this.selectedOrderIds.size < 2;
-        viewBtn.style.display = this.selectedOrderIds.size < 2 ? 'none' : '';
+        viewBtn.style.display = '';
       }
+      if (newOrderBtn) {
+        newOrderBtn.style.display = '';
+      }
+    } else {
+      if (viewBtn) viewBtn.style.display = 'none';
+      // Always show newOrderBtn in both views now
+      if (newOrderBtn) newOrderBtn.style.display = '';
     }
+    // Update checkboxes' checked state in DOM
+    document.querySelectorAll('.order-multiselect-checkbox').forEach(cb => {
+      const oid = cb.getAttribute('data-order-id');
+      cb.checked = this.selectedOrderIds.has(oid);
+    });
+    // UI feedback: Disable/hide View Selected button if fewer than two orders selected
+    if (viewBtn) {
+      viewBtn.disabled = this.selectedOrderIds.size < 2;
+      viewBtn.style.display = this.selectedOrderIds.size < 2 ? 'none' : '';
+    }
+  }
 
-    // Show condensed view for selected orders
-    showCustomerSelectionModal() {
+  // Show condensed view for selected orders
+  showCustomerSelectionModal() {
     let modalHTML = `
       <div style="padding: 24px; max-width: 500px; width: 90%; background: #ffffff; border-radius: 4px; box-shadow: 0 20px 25px rgba(0,0,0,0.15);">
         <h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px; border-bottom: 2px solid #000000; padding-bottom: 12px;">SELECT CUSTOMER</h2>
@@ -227,9 +227,9 @@ class OrdersView {
     const closeBtn = modalOverlay.querySelector('#closeCustomerModal');
 
     const renderModalList = (filter = '') => {
-      const filtered = this.customers.filter(c => 
+      const filtered = this.customers.filter(c =>
         c.name.toLowerCase().includes(filter.toLowerCase())
-      ).sort((a,b) => a.name.localeCompare(b.name));
+      ).sort((a, b) => a.name.localeCompare(b.name));
 
       if (filtered.length === 0) {
         listContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #999; font-size: 12px; font-family: \'Courier New\', monospace;">No customers found</div>';
@@ -267,105 +267,105 @@ class OrdersView {
     searchInput.focus();
 
     closeBtn.onclick = () => modalOverlay.remove();
-    modalOverlay.onclick = (e) => { if(e.target === modalOverlay) modalOverlay.remove(); };
+    modalOverlay.onclick = (e) => { if (e.target === modalOverlay) modalOverlay.remove(); };
   }
 
   async showCondensedOrdersView() {
-      const selectedOrderIds = Array.from(this.selectedOrderIds);
-      if (selectedOrderIds.length < 2) return;
-      // Fetch all selected orders' full data
-      const orders = [];
-      for (const orderId of selectedOrderIds) {
-        try {
-          const res = await fetch(`/api/billing/orders/${orderId}`);
-          if (res.ok) {
-            const order = await res.json();
-            // Normalize items
-            const items = (order.items || []).map(item => {
-              const product = this.products.find(p => p.id === item.product_id);
-              return {
-                ...item,
-                qty: item.quantity || item.qty,
-                quantity: item.quantity || item.qty,
-                price: item.unit_price || item.price,
-                unit_price: item.unit_price || item.price,
-                product_name: product?.name || item.product_name || `Product ${item.product_id}`,
-                received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0),
-                pack_size_value: item.pack_size_value || '',
-                pack_size_type: item.pack_size_type || ''
-              };
-            });
-            orders.push({ ...order, items });
-          }
-        } catch (e) {
-          // skip failed fetches
-        }
-      }
-      if (orders.length === 0) return;
-
-      // Consolidate all items by product+variant
-      const consolidated = {};
-      for (const order of orders) {
-        for (const item of order.items) {
-          const key = `${item.product_id || item.product_name}__${item.pack_size_value || ''}__${item.pack_size_type || ''}__${item.batch_no || ''}`;
-          if (!consolidated[key]) {
-            consolidated[key] = {
-              product_id: item.product_id,
-              product_name: item.product_name,
+    const selectedOrderIds = Array.from(this.selectedOrderIds);
+    if (selectedOrderIds.length < 2) return;
+    // Fetch all selected orders' full data
+    const orders = [];
+    for (const orderId of selectedOrderIds) {
+      try {
+        const res = await fetch(`/api/billing/orders/${orderId}`);
+        if (res.ok) {
+          const order = await res.json();
+          // Normalize items
+          const items = (order.items || []).map(item => {
+            const product = this.products.find(p => p.id === item.product_id);
+            return {
+              ...item,
+              qty: item.quantity || item.qty,
+              quantity: item.quantity || item.qty,
+              price: item.unit_price || item.price,
+              unit_price: item.unit_price || item.price,
+              product_name: product?.name || item.product_name || `Product ${item.product_id}`,
+              received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0),
               pack_size_value: item.pack_size_value || '',
-              pack_size_type: item.pack_size_type || '',
-              batch_no: item.batch_no || '',
-              qty: 0
+              pack_size_type: item.pack_size_type || ''
             };
-          }
-          consolidated[key].qty += Number(item.qty || item.quantity || 0);
+          });
+          orders.push({ ...order, items });
         }
+      } catch (e) {
+        // skip failed fetches
       }
-      const consolidatedList = Object.values(consolidated);
+    }
+    if (orders.length === 0) return;
 
-      this.selectedOrderIds = new Set();
-      this.updateMultiSelectUI();
+    // Consolidate all items by product+variant
+    const consolidated = {};
+    for (const order of orders) {
+      for (const item of order.items) {
+        const key = `${item.product_id || item.product_name}__${item.pack_size_value || ''}__${item.pack_size_type || ''}__${item.batch_no || ''}`;
+        if (!consolidated[key]) {
+          consolidated[key] = {
+            product_id: item.product_id,
+            product_name: item.product_name,
+            pack_size_value: item.pack_size_value || '',
+            pack_size_type: item.pack_size_type || '',
+            batch_no: item.batch_no || '',
+            qty: 0
+          };
+        }
+        consolidated[key].qty += Number(item.qty || item.quantity || 0);
+      }
+    }
+    const consolidatedList = Object.values(consolidated);
 
-      // Build formatted text for copy button
-      const headerLine = 'PRODUCT NAME--VARIANT--QTY';
-      const contentLines = consolidatedList.map((item, idx) => {
-        const variant = `${item.pack_size_value} ${item.pack_size_type}`.trim();
-        const label = `${idx + 1}.${item.product_name}`;
-        return label + '--' + variant + '--' + item.qty;
+    this.selectedOrderIds = new Set();
+    this.updateMultiSelectUI();
+
+    // Build formatted text for copy button
+    const headerLine = 'PRODUCT NAME--VARIANT--QTY';
+    const contentLines = consolidatedList.map((item, idx) => {
+      const variant = `${item.pack_size_value} ${item.pack_size_type}`.trim();
+      const label = `${idx + 1}.${item.product_name}`;
+      return label + '--' + variant + '--' + item.qty;
+    });
+    const formattedLines = [headerLine, ...contentLines];
+    const formattedItems = formattedLines.join('\n');
+    const escapedItems = formattedItems.replace(/'/g, "\\'").replace(/\n/g, '\\n');
+
+    // Build HTML for all individual orders
+    let individualOrdersHtml = '';
+    orders.forEach((order, oidx) => {
+      const orderNumber = this.generateOrderNumber(order, new Date(order.order_date || order.created_at));
+      const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
+      const items = order.items || [];
+      // Copy text for this order
+      const headerLine = 'PRODUCT NAME--QTY';
+      const contentLines = items.map((item, idx) => {
+        const variantInfo = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+        const label = `${idx + 1}.${item.product_name.trim()}${variantInfo ? ' ' + variantInfo : ''}`;
+        return label + '--' + (item.qty || item.quantity || 0);
       });
       const formattedLines = [headerLine, ...contentLines];
-      const formattedItems = formattedLines.join('\n');
+      const formattedItems = formattedLines.join('\\n');
       const escapedItems = formattedItems.replace(/'/g, "\\'").replace(/\n/g, '\\n');
-
-      // Build HTML for all individual orders
-      let individualOrdersHtml = '';
-      orders.forEach((order, oidx) => {
-        const orderNumber = this.generateOrderNumber(order, new Date(order.order_date || order.created_at));
-        const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
-        const items = order.items || [];
-        // Copy text for this order
-        const headerLine = 'PRODUCT NAME--QTY';
-        const contentLines = items.map((item, idx) => {
-          const variantInfo = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-          const label = `${idx + 1}.${item.product_name.trim()}${variantInfo ? ' ' + variantInfo : ''}`;
-          return label + '--' + (item.qty || item.quantity || 0);
-        });
-        const formattedLines = [headerLine, ...contentLines];
-        const formattedItems = formattedLines.join('\\n');
-        const escapedItems = formattedItems.replace(/'/g, "\\'").replace(/\n/g, '\\n');
-        individualOrdersHtml += `<div class="order-modal-card" style="margin-bottom: 28px; background: #fff; border-radius: 4px; box-shadow: 0 4px 24px #0001; border: 1.5px solid #e0e0e0;">`;
-        individualOrdersHtml += `<div style="padding: 24px;">`;
-        individualOrdersHtml += `<h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">${orderNumber}</h2>`;
-        individualOrdersHtml += `<p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">Customer: ${customerName} | Date: ${order.order_date ? new Date(order.order_date).toLocaleDateString() : ''}</p>`;
-        individualOrdersHtml += `<h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📋 ORDERED ITEMS</h3>`;
-        individualOrdersHtml += `<div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">`;
-        if (items.length === 0) {
-          individualOrdersHtml += '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: Courier New, monospace;">No items in this order</div>';
-        } else {
-          items.forEach((item, idx) => {
-            const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-            const batchDisplay = item.batch_no || 'N/A';
-            individualOrdersHtml += `
+      individualOrdersHtml += `<div class="order-modal-card" style="margin-bottom: 28px; background: #fff; border-radius: 4px; box-shadow: 0 4px 24px #0001; border: 1.5px solid #e0e0e0;">`;
+      individualOrdersHtml += `<div style="padding: 24px;">`;
+      individualOrdersHtml += `<h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">${orderNumber}</h2>`;
+      individualOrdersHtml += `<p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">Customer: ${customerName} | Date: ${order.order_date ? new Date(order.order_date).toLocaleDateString() : ''}</p>`;
+      individualOrdersHtml += `<h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📋 ORDERED ITEMS</h3>`;
+      individualOrdersHtml += `<div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">`;
+      if (items.length === 0) {
+        individualOrdersHtml += '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: Courier New, monospace;">No items in this order</div>';
+      } else {
+        items.forEach((item, idx) => {
+          const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+          const batchDisplay = item.batch_no || 'N/A';
+          individualOrdersHtml += `
               <div style="padding: 12px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; font-family: 'Courier New', monospace;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
                   <div>
@@ -381,45 +381,45 @@ class OrdersView {
                 </div>
               </div>
             `;
-          });
-        }
-        individualOrdersHtml += `</div>`;
-        if (order.order_notes) {
-          individualOrdersHtml += `<div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-bottom: 10px;">
+        });
+      }
+      individualOrdersHtml += `</div>`;
+      if (order.order_notes) {
+        individualOrdersHtml += `<div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-bottom: 10px;">
             <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">📋 STAGE 1 (ORDER) NOTES</div>
             <div style="font-size: 11px; color: #1e293b; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.order_notes)}</div>
           </div>`;
-        }
-        if (order.qc_notes) {
-          individualOrdersHtml += `<div style="padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 3px; margin-bottom: 10px;">
+      }
+      if (order.qc_notes) {
+        individualOrdersHtml += `<div style="padding: 12px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 3px; margin-bottom: 10px;">
             <div style="font-size: 11px; font-weight: 700; color: #d97706; margin-bottom: 6px;">⚠️ STAGE 2 (QC) NOTES</div>
             <div style="font-size: 11px; color: #78350f; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.qc_notes)}</div>
           </div>`;
-        }
-        if (order.delivery_notes) {
-          individualOrdersHtml += `<div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; margin-bottom: 16px;">
+      }
+      if (order.delivery_notes) {
+        individualOrdersHtml += `<div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; margin-bottom: 16px;">
             <div style="font-size: 11px; font-weight: 700; color: #16a34a; margin-bottom: 6px;">🚚 STAGE 3 (DELIVERY) NOTES</div>
             <div style="font-size: 11px; color: #14532d; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word;">${Utils.escapeHtml(order.delivery_notes)}</div>
           </div>`;
-        }
-        individualOrdersHtml += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
-        individualOrdersHtml += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
-        individualOrdersHtml += `</div>`;
-        individualOrdersHtml += `</div></div>`;
-      });
+      }
+      individualOrdersHtml += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
+      individualOrdersHtml += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
+      individualOrdersHtml += `</div>`;
+      individualOrdersHtml += `</div></div>`;
+    });
 
-      // Build modal content (individual orders + consolidated)
-      let content = '';
-      content += `<div style="padding: 24px; max-width: 700px;">`;
-      content += `<h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">Selected Orders & Consolidated List</h2>`;
-      content += `<p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">${orders.length} selected orders</p>`;
-      content += `<div style="margin-bottom: 32px;">${individualOrdersHtml}</div>`;
-      content += `<h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📋 CONSOLIDATED ITEMS</h3>`;
-      content += `<div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">`;
-      if (consolidatedList.length === 0) {
-          content += '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: Courier New, monospace;">No products found in selected orders.</div>';
-      } else {
-        content += `<table style="width:100%; border-collapse:collapse; font-size:12px;">
+    // Build modal content (individual orders + consolidated)
+    let content = '';
+    content += `<div style="padding: 24px; max-width: 700px;">`;
+    content += `<h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">Selected Orders & Consolidated List</h2>`;
+    content += `<p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">${orders.length} selected orders</p>`;
+    content += `<div style="margin-bottom: 32px;">${individualOrdersHtml}</div>`;
+    content += `<h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📋 CONSOLIDATED ITEMS</h3>`;
+    content += `<div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">`;
+    if (consolidatedList.length === 0) {
+      content += '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: Courier New, monospace;">No products found in selected orders.</div>';
+    } else {
+      content += `<table style="width:100%; border-collapse:collapse; font-size:12px;">
           <thead>
             <tr style="background:#f0f0f0;">
               <th style="text-align:left;padding:6px 8px;">Product</th>
@@ -429,18 +429,18 @@ class OrdersView {
           </thead>
           <tbody>${consolidatedList.map(item => `<tr><td style="padding:6px 8px;">${item.product_name}</td><td style="padding:6px 8px; color: #0066cc; font-size: 9px;">${item.pack_size_value} ${item.pack_size_type}</td><td style="padding:6px 8px;text-align:right;">${item.qty}</td></tr>`).join('')}</tbody>
         </table>`;
-      }
-      content += `</div>`;
-      content += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
-      content += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
-      content += `<button onclick="document.getElementById('orderModal').remove(); void 0;" style="padding: 8px 16px; background: #ffffff; color: #000000; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">CLOSE</button>`;
-      content += `</div>`;
-      content += `</div>`;
+    }
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
+    content += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
+    content += `<button onclick="document.getElementById('orderModal').remove(); void 0;" style="padding: 8px 16px; background: #ffffff; color: #000000; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">CLOSE</button>`;
+    content += `</div>`;
+    content += `</div>`;
 
-      // Create and show modal inside the app (like showOrderModal)
-      const modal = document.createElement('div');
-      modal.id = 'orderModal';
-      modal.style.cssText = `
+    // Create and show modal inside the app (like showOrderModal)
+    const modal = document.createElement('div');
+    modal.id = 'orderModal';
+    modal.style.cssText = `
         position: absolute;
         top: 0;
         left: 0;
@@ -453,8 +453,8 @@ class OrdersView {
         z-index: 1000;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', monospace;
       `;
-      const modalContent = document.createElement('div');
-      modalContent.style.cssText = `
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
         background: #ffffff;
         border-radius: 4px;
         max-width: 700px;
@@ -463,48 +463,48 @@ class OrdersView {
         overflow-y: auto;
         box-shadow: 0 20px 25px rgba(0,0,0,0.15);
       `;
-      modalContent.innerHTML = content;
-      modal.appendChild(modalContent);
-      this.viewContainer.appendChild(modal);
-      // Close on background click
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          modal.remove();
-        }
-      });
-    }
+    modalContent.innerHTML = content;
+    modal.appendChild(modalContent);
+    this.viewContainer.appendChild(modal);
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
 
-    // Helper to get the same HTML as showOrderModal (for a single order)
-    _getOrderModalContent(order) {
-      // Copy the logic from showOrderModal, but return the HTML string instead of showing a modal
-      const stage = order.current_stage || 'stage1';
-      const items = order.items || [];
-      const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
-      const orderDate = new Date(order.order_date || order.created_at);
-      const orderNumber = this.generateOrderNumber(order, orderDate);
-      let content = '';
-      if (stage === 'stage2' || stage === 'stage1') {
-        const headerLine = 'PRODUCT NAME--QTY';
-        const contentLines = items.map((item, idx) => {
-          const variantInfo = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-          const label = `${idx + 1}.${item.product_name.trim()}${variantInfo ? ' ' + variantInfo : ''}`;
-          return label + '--' + (item.qty || item.quantity || 0);
-        });
-        const formattedLines = [headerLine, ...contentLines];
-        const formattedItems = formattedLines.join('\n');
-        const escapedItems = formattedItems.replace(/'/g, "\\'").replace(/\n/g, '\\n');
-        content = `
+  // Helper to get the same HTML as showOrderModal (for a single order)
+  _getOrderModalContent(order) {
+    // Copy the logic from showOrderModal, but return the HTML string instead of showing a modal
+    const stage = order.current_stage || 'stage1';
+    const items = order.items || [];
+    const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
+    const orderDate = new Date(order.order_date || order.created_at);
+    const orderNumber = this.generateOrderNumber(order, orderDate);
+    let content = '';
+    if (stage === 'stage2' || stage === 'stage1') {
+      const headerLine = 'PRODUCT NAME--QTY';
+      const contentLines = items.map((item, idx) => {
+        const variantInfo = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+        const label = `${idx + 1}.${item.product_name.trim()}${variantInfo ? ' ' + variantInfo : ''}`;
+        return label + '--' + (item.qty || item.quantity || 0);
+      });
+      const formattedLines = [headerLine, ...contentLines];
+      const formattedItems = formattedLines.join('\n');
+      const escapedItems = formattedItems.replace(/'/g, "\\'").replace(/\n/g, '\\n');
+      content = `
       <div style="padding: 24px;">
         <h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">${orderNumber}</h2>
         <p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">Customer: ${customerName} | Date: ${orderDate.toLocaleDateString()}</p>
         <h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📋 ORDERED ITEMS</h3>
         <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
           ${items.length === 0 ?
-            '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: \'Courier New\', monospace;">No items in this order</div>' :
-            items.map((item, idx) => {
-              const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-              const batchDisplay = item.batch_no || 'N/A';
-              return `
+          '<div style="padding: 20px; text-align: center; color: #999999; font-size: 12px; font-family: \'Courier New\', monospace;">No items in this order</div>' :
+          items.map((item, idx) => {
+            const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+            const batchDisplay = item.batch_no || 'N/A';
+            return `
               <div style="padding: 12px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; font-family: 'Courier New', monospace;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
                   <div>
@@ -520,8 +520,8 @@ class OrdersView {
                 </div>
               </div>
             `;
-            }).join('')
-          }
+          }).join('')
+        }
         </div>
         ${order.order_notes ? `\n          <div style="padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 3px; margin-bottom: 10px;">
             <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; margin-bottom: 6px;">📋 STAGE 1 (ORDER) NOTES</div>
@@ -540,27 +540,27 @@ class OrdersView {
         </div>
       </div>
     `;
-      } else if (stage === 'stage3' || order.status === 'complete') {
-        // Show Stage 3 info (received items, QC, delivery)
-        const receivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) >= 1);
-        const notReceivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) < 1);
-        const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
-        const grandTotal = receivedItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.received_quantity || i.received_qty || 0)), 0);
-        const notReceivedTotal = fullSubtotal - grandTotal;
+    } else if (stage === 'stage3' || order.status === 'complete') {
+      // Show Stage 3 info (received items, QC, delivery)
+      const receivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) >= 1);
+      const notReceivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) < 1);
+      const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
+      const grandTotal = receivedItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.received_quantity || i.received_qty || 0)), 0);
+      const notReceivedTotal = fullSubtotal - grandTotal;
 
-        content = `
+      content = `
           <div style="padding:24px;">
             <h2 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">${orderNumber}</h2>
             <p style="margin: 0 0 20px 0; font-size: 12px; color: #666666; font-weight: 500;">Customer: ${customerName} | Date: ${orderDate.toLocaleDateString()}</p>
             
             <h3 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 900; color: #000000; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #000000; padding-bottom: 8px;">📦 ITEMS RECEIVED</h3>
             <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; min-height: 150px;">
-              ${receivedItems.length === 0 ? 
-                '<div style="padding: 12px; text-align: center; color: #999; font-size: 11px; font-family: Courier New, monospace;">No items received</div>' :
-                receivedItems.map(item => {
-                  const rec = item.received_quantity || item.received_qty || 0;
-                  const price = item.unit_price || item.price || 0;
-                  return `
+              ${receivedItems.length === 0 ?
+          '<div style="padding: 12px; text-align: center; color: #999; font-size: 11px; font-family: Courier New, monospace;">No items received</div>' :
+          receivedItems.map(item => {
+            const rec = item.received_quantity || item.received_qty || 0;
+            const price = item.unit_price || item.price || 0;
+            return `
                     <div style="padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; font-family: 'Courier New', monospace;">
                       <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div>
@@ -575,18 +575,18 @@ class OrdersView {
                       </div>
                     </div>
                   `;
-                }).join('')
-              }
+          }).join('')
+        }
             </div>
 
             ${notReceivedItems.length > 0 ? `
               <h3 style="margin: 24px 0 12px 0; font-size: 13px; font-weight: 900; color: #666666; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 2px solid #eeeeee; padding-bottom: 8px;">🚫 ITEMS NOT RECEIVED</h3>
               <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; opacity: 0.7; min-height: 150px;">
                 ${notReceivedItems.map(item => {
-                  const qty = item.qty || item.quantity || 0;
-                  const price = item.unit_price || item.price || 0;
-                  const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
-                  return `
+          const qty = item.qty || item.quantity || 0;
+          const price = item.unit_price || item.price || 0;
+          const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
+          return `
                     <div style="padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 3px; font-family: 'Courier New', monospace;">
                       <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div>
@@ -602,7 +602,7 @@ class OrdersView {
                       </div>
                     </div>
                   `;
-                }).join('')}
+        }).join('')}
               </div>
             ` : ''}
 
@@ -643,9 +643,9 @@ class OrdersView {
             </div>
           </div>
         `;
-      }
-      return content;
     }
+    return content;
+  }
   constructor(billingApp) {
     this.billingApp = billingApp;
     this.viewContainer = billingApp.viewContainer;
@@ -662,12 +662,12 @@ class OrdersView {
     this.stageSequence = ['stage1', 'stage2', 'stage3'];
     this.ordersColumnMode = 'both';
     this.injectOrdersStyles();
-    
+
     // Polling and sync state
     this.pollingInterval = null;
     this.newlyAddedIds = [];
     this.updatedIds = [];
-    
+
     // Invoice Dropdown State (Stage 3)
     this.allCustomerInvoices = [];
     this.selectedOrderInvoice = null;
@@ -694,7 +694,7 @@ class OrdersView {
         this.stopPolling();
         return;
       }
-      
+
       // Don't sync if user is currently in a complex edit session (Stage 1 form open)
       if (this.currentOrderData && this.currentStage === 'stage1' && !isManual) {
         return;
@@ -702,10 +702,10 @@ class OrdersView {
 
       const res = await fetch('/api/billing/orders');
       if (!res.ok) return;
-      
+
       const data = await res.json();
       const newOrders = Array.isArray(data) ? data : (data.data || []);
-      
+
       this.syncOrders(newOrders, isManual);
     } catch (e) {
       log.warn('Sync failed:', e);
@@ -719,12 +719,12 @@ class OrdersView {
     // 1. Detect changes using a quick snapshot
     const oldSnapshot = JSON.stringify(this.orders.map(o => ({ id: o.id, s: o.status, st: o.current_stage, u: o.updated_at })));
     const newSnapshot = JSON.stringify(newOrders.map(o => ({ id: o.id, s: o.status, st: o.current_stage, u: o.updated_at })));
-    
+
     if (oldSnapshot === newSnapshot && !isImmediate) return;
 
     // 2. Identify what changed for animations
     const oldIds = new Set(this.orders.map(o => String(o.id)));
-    
+
     this.newlyAddedIds = newOrders.filter(o => !oldIds.has(String(o.id))).map(o => String(o.id));
     this.updatedIds = newOrders.filter(o => {
       const old = this.orders.find(oo => String(oo.id) === String(o.id));
@@ -733,7 +733,7 @@ class OrdersView {
 
     // 3. Update orders data
     this.orders = newOrders;
-    
+
     // 4. Update UI
     this.updateStats();
     if (this.selectedCustomerId) {
@@ -742,10 +742,10 @@ class OrdersView {
       this.showAllCustomersView(true);
     }
     this.renderCustomersList();
-    
+
     // Always rerender order cards
     this.rerenderOrderCards();
-    
+
     // 5. Apply animations
     setTimeout(() => this.applySyncAnimations(), 50);
   }
@@ -761,7 +761,7 @@ class OrdersView {
         }
       });
     }
-    
+
     // Animate updated cards
     if (this.updatedIds?.length) {
       this.updatedIds.forEach(id => {
@@ -772,7 +772,7 @@ class OrdersView {
         }
       });
     }
-    
+
     // Animate stats change
     document.querySelectorAll('.orders-stat-value').forEach(el => {
       el.classList.remove('animate-stat-change');
@@ -809,7 +809,7 @@ class OrdersView {
       link.href = '/modules/billing/css/new-order.css';
       // document.head.appendChild(link); /* Disabled for Vite */
     }
-    
+
     // Check if an uncommitted order is actively in progress
     const hasActiveOrder = Boolean(this.currentOrderData && this.currentStage);
 
@@ -826,13 +826,13 @@ class OrdersView {
     if (!this.currentOrderData) {
       this.restoreOrderDraft();
     }
-    
+
     // Calculate stats
     const totalOrders = this.orders.length;
     const pendingOrders = this.orders.filter(o => o.status !== 'complete').length;
     const completedOrders = this.orders.filter(o => o.status === 'complete').length;
     const totalItems = this.orders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
-    
+
     this.viewContainer.innerHTML = `
       <div style="display: flex; flex-direction: column; height: 100%; background: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', monospace;">
         <!-- Combined Top Header with Stats (spans full width) -->
@@ -988,8 +988,8 @@ class OrdersView {
   }
 
   async showAllCustomersView(skipRefresh = false) {
-      this.clearOrderSelection();
-      this.updateMultiSelectUI();
+    this.clearOrderSelection();
+    this.updateMultiSelectUI();
     this.selectedCustomerId = null;
     this.currentStageFilter = null;
     this.currentCustomerViewStageFilter = null;
@@ -1030,43 +1030,43 @@ class OrdersView {
 
     // Check for deep link parameters
     if (this.params && this.params.customerId) {
-        const customerId = this.params.customerId;
-        const customerName = this.params.customerName || 'Customer';
-        
-        log.debug(`🔗 OrdersView: Handling deep link for ${customerName} (${customerId})`);
-        
+      const customerId = this.params.customerId;
+      const customerName = this.params.customerName || 'Customer';
+
+      log.debug(`🔗 OrdersView: Handling deep link for ${customerName} (${customerId})`);
+
+      setTimeout(() => {
+        // Find customer to get the correct name if it was missing
+        const customer = this.customers.find(c => String(c.id) === String(customerId));
+        const finalName = customer ? customer.name : customerName;
+
+        // Mark as selected and show their orders
+        this.selectedCustomerId = customerId;
+        this.showCustomerOrders(customerId, finalName);
+
+        // Update active state in sidebar after a short delay to ensure it's rendered
         setTimeout(() => {
-            // Find customer to get the correct name if it was missing
-            const customer = this.customers.find(c => String(c.id) === String(customerId));
-            const finalName = customer ? customer.name : customerName;
-            
-            // Mark as selected and show their orders
-            this.selectedCustomerId = customerId;
-            this.showCustomerOrders(customerId, finalName);
-            
-            // Update active state in sidebar after a short delay to ensure it's rendered
-            setTimeout(() => {
-                const list = document.getElementById('customersList');
-                if (list) {
-                    list.querySelectorAll('.orders-customer-item').forEach(i => {
-                        i.classList.remove('active');
-                        i.style.background = '#1a1a1a';
-                        i.style.borderColor = '#333333';
-                    });
-                    const item = list.querySelector(`[data-customer-id="${customerId}"]`);
-                    if (item) {
-                        item.classList.add('active');
-                        item.style.background = '#2a2a2a';
-                        item.style.borderColor = '#ffffff';
-                        item.scrollIntoView({ block: 'center' });
-                    }
-                }
-            }, 300);
-            
-            this.params = null; // Clear after use
-        }, 200);
+          const list = document.getElementById('customersList');
+          if (list) {
+            list.querySelectorAll('.orders-customer-item').forEach(i => {
+              i.classList.remove('active');
+              i.style.background = '#1a1a1a';
+              i.style.borderColor = '#333333';
+            });
+            const item = list.querySelector(`[data-customer-id="${customerId}"]`);
+            if (item) {
+              item.classList.add('active');
+              item.style.background = '#2a2a2a';
+              item.style.borderColor = '#ffffff';
+              item.scrollIntoView({ block: 'center' });
+            }
+          }
+        }, 300);
+
+        this.params = null; // Clear after use
+      }, 200);
     }
-}
+  }
 
   setupStageFilterButtons() {
     const stage2Btn = document.getElementById('ordersStage2Btn');
@@ -1096,9 +1096,9 @@ class OrdersView {
 
   filterOrdersByStage(stage) {
     this.currentStageFilter = this.currentStageFilter === stage ? null : stage;
-    
+
     // Filter orders by stage if a stage is selected
-    const ordersToDisplay = this.currentStageFilter 
+    const ordersToDisplay = this.currentStageFilter
       ? this.orders.filter(order => order.current_stage === this.currentStageFilter)
       : this.orders;
 
@@ -1126,7 +1126,7 @@ class OrdersView {
 
     // Highlight active stage based on which view we're in
     const filterState = this.selectedCustomerId ? this.currentCustomerViewStageFilter : this.currentStageFilter;
-    
+
     if (filterState === 'stage2') {
       stage2Btn.style.background = '#000000';
       stage2Btn.style.color = '#ffffff';
@@ -1138,9 +1138,9 @@ class OrdersView {
 
   filterCustomerViewOrdersByStage(stage) {
     this.currentCustomerViewStageFilter = this.currentCustomerViewStageFilter === stage ? null : stage;
-    
+
     // Filter orders by stage if a stage is selected
-    const ordersToDisplay = this.currentCustomerViewStageFilter 
+    const ordersToDisplay = this.currentCustomerViewStageFilter
       ? this.customerViewOrders.filter(order => order.current_stage === this.currentCustomerViewStageFilter)
       : this.customerViewOrders;
 
@@ -1245,8 +1245,8 @@ class OrdersView {
     // Filter and re-render based on date range
     let filteredOrders = [...this.orders];
     const now = new Date();
-    
-    switch(dateRange) {
+
+    switch (dateRange) {
       case 'today':
         filteredOrders = this.orders.filter(o => {
           const orderDate = new Date(o.order_date || o.created_at);
@@ -1263,8 +1263,8 @@ class OrdersView {
       case 'this-month':
         filteredOrders = this.orders.filter(o => {
           const orderDate = new Date(o.order_date || o.created_at);
-          return orderDate.getMonth() === now.getMonth() && 
-                 orderDate.getFullYear() === now.getFullYear();
+          return orderDate.getMonth() === now.getMonth() &&
+            orderDate.getFullYear() === now.getFullYear();
         });
         break;
       case 'last-3':
@@ -1285,7 +1285,7 @@ class OrdersView {
         filteredOrders = [...this.orders];
         break;
     }
-    
+
     // Refresh the customers list with filtered orders
     this.orders = filteredOrders;
     this.updateStats();
@@ -1296,7 +1296,7 @@ class OrdersView {
     const pendingOrders = this.orders.filter(o => o.status !== 'complete').length;
     const completedOrders = this.orders.filter(o => o.status === 'complete').length;
     const totalItems = this.orders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
-    
+
     document.getElementById('ordersTotal').textContent = totalOrders;
     document.getElementById('ordersPending').textContent = pendingOrders;
     document.getElementById('ordersCompleted').textContent = completedOrders;
@@ -1311,10 +1311,10 @@ class OrdersView {
       // Load fresh data from the server
       await this.loadCustomersAndProducts();
       await this.loadOrders();
-      
+
       // Update stats
       this.updateStats();
-      
+
       // Re-render the current view
       if (this.selectedCustomerId) {
         // If a customer is selected, refresh that customer's view
@@ -1327,7 +1327,7 @@ class OrdersView {
         this.renderCustomersList();
         await this.showAllCustomersView(true);
       }
-      
+
       this.rerenderOrderCards();
       log.debug('✓ Orders data refreshed');
     } catch (error) {
@@ -1383,7 +1383,7 @@ class OrdersView {
       if (res.ok) {
         const data = await res.json();
         let orders = normalizeCollection(data);
-        
+
         // Ensure items array exists even if missing
         orders = orders.map(order => {
           if (!order.items) {
@@ -1395,7 +1395,7 @@ class OrdersView {
         if (isWorker && accessibleContactIds) {
           orders = orders.filter(o => accessibleContactIds.has(o.customer_id));
         }
-        
+
         this.orders = orders;
       }
     } catch (error) {
@@ -1410,14 +1410,14 @@ class OrdersView {
     if (!list) return;
     const searchTerm = document.getElementById('customerSearch')?.value.toLowerCase() || '';
     const sortOption = document.getElementById('customerSort')?.value || 'name-asc';
-    
+
     // Filter customers by search
-    let filtered = this.customers.filter(c => 
+    let filtered = this.customers.filter(c =>
       c.name.toLowerCase().includes(searchTerm)
     );
 
     // Sort customers
-    switch(sortOption) {
+    switch (sortOption) {
       case 'name-desc':
         filtered.sort((a, b) => b.name.localeCompare(a.name));
         break;
@@ -1439,7 +1439,7 @@ class OrdersView {
       const pendingCount = this.orders.filter(o => String(o.customer_id) === String(customer.id) && o.status !== 'complete').length;
       const completeCount = this.orders.filter(o => String(o.customer_id) === String(customer.id) && o.status === 'complete').length;
       const isExcluded = this.isExcluded(customer);
-      
+
       // Build status display based on order status
       let statusText = '';
       if (pendingCount > 0) {
@@ -1449,9 +1449,9 @@ class OrdersView {
       } else {
         statusText = 'No Orders';
       }
-      
+
       const statusColor = pendingCount > 0 ? '#facc15' : completeCount > 0 ? '#4ade80' : '#888888';
-      
+
       return `
       <div class="orders-customer-item" data-customer-id="${customer.id}" data-customer-name="${customer.name}" style="padding: 12px 12px; margin: 6px 4px; border-radius: 3px; cursor: pointer; transition: all 0.15s; user-select: none; background: #1a1a1a; border: 1px solid #333333; border-left: 3px solid #333333; flex-shrink: 0;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; gap: 8px;">
@@ -1489,7 +1489,7 @@ class OrdersView {
         item.style.borderColor = '#ffffff';
         item.style.borderLeftColor = '#ffffff';
         item.style.boxShadow = 'inset 0 0 0 1px #ffffff';
-        
+
         const customerId = item.dataset.customerId;
         this.selectedCustomerId = customerId;
         this.refreshOrdersData();
@@ -1527,13 +1527,13 @@ class OrdersView {
   updateCustomerCardStatus(customerId) {
     // Update just the order count and status text for a specific customer card
     // without re-rendering the entire list
-    
+
     // Calculate updated counts for this customer
     const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
     const orderCount = customerOrders.length;
     const pendingCount = customerOrders.filter(o => o.status !== 'complete').length;
     const completeCount = customerOrders.filter(o => o.status === 'complete').length;
-    
+
     // Build updated status display
     let statusText = '';
     if (pendingCount > 0) {
@@ -1543,17 +1543,17 @@ class OrdersView {
     } else {
       statusText = 'No Orders';
     }
-    
+
     const statusColor = pendingCount > 0 ? '#facc15' : completeCount > 0 ? '#4ade80' : '#888888';
-    
+
     // Update the DOM elements directly
     const countBadge = document.querySelector(`.order-count-badge[data-customer-id="${customerId}"]`);
     const statusElement = document.querySelector(`.order-status-text[data-customer-id="${customerId}"]`);
-    
+
     if (countBadge) {
       countBadge.textContent = orderCount;
     }
-    
+
     if (statusElement) {
       statusElement.textContent = `● ${statusText}`;
       statusElement.style.color = statusColor;
@@ -1563,45 +1563,96 @@ class OrdersView {
   async showCustomerOrders(customerId, customerName, skipRefresh = false) {
     this.selectedCustomerId = customerId;
 
+    // Guard: Don't perform work if OrdersView is not the active view
+    if (this.billingApp && this.billingApp.currentView && this.billingApp.currentView !== 'orders') {
+      return;
+    }
+
     // Fetch all orders from the database and filter client-side
     try {
       const res = await fetch('/api/billing/orders');
       if (res.ok) {
         const data = await res.json();
         const allOrders = Array.isArray(data) ? data : (data.data || []);
-        
+
         // Update this.orders with fresh data from database
         this.orders = allOrders;
-        
+
         // Filter orders for this customer
         const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
-        
+
         log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
-        
+
         // Render with fetched orders
         this.renderCustomerOrdersList(customerId, customerName, customerOrders);
       } else {
-        throw new Error('Failed to fetch orders');
+        if (!res.ok) {
+          throw new Error('Failed to fetch orders');
+        }
+        const data = await res.json();
+        const allOrders = Array.isArray(data) ? data : (data.data || []);
+
+        // Update this.orders with fresh data from database
+        this.orders = allOrders;
+
+        // Filter orders for this customer
+        const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
+
+        log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
+
+        // Render with fetched orders
+        this.renderCustomerOrdersList(customerId, customerName, customerOrders);
+      } catch (error) {
+        log.error('Error fetching customer orders:', error);
+        // Fallback to in-memory orders
+        const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
+        this.renderCustomerOrdersList(customerId, customerName, customerOrders);
+        // Fallback to in-memory orders only if network fetch failed
+        if (error && error.message === 'Failed to fetch orders') {
+          try {
+            const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
+            this.renderCustomerOrdersList(customerId, customerName, customerOrders);
+          } catch (renderError) {
+            log.error('Error in fallback customer orders render:', renderError);
+          }
+        }
       }
-    } catch (error) {
-      log.error('Error fetching customer orders:', error);
-      // Fallback to in-memory orders
-      const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
-      this.renderCustomerOrdersList(customerId, customerName, customerOrders);
     }
-  }
 
   renderCustomerOrdersList(customerId, customerName, customerOrders) {
-        this.clearOrderSelection();
-        this.updateMultiSelectUI();
+      this.clearOrderSelection();
+      this.updateMultiSelectUI();
       // Clear selection when switching to a customer
       this.selectedOrderIds = new Set();
       this.updateMultiSelectUI();
-    // Ensure the main content structure exists - restore if stage view replaced it
-    const mainContent = document.getElementById('mainContent');
-    if (!document.getElementById('ordersMainTitle')) {
-      // Structure was replaced, recreate it
-      mainContent.innerHTML = `
+      this.clearOrderSelection();
+      this.updateMultiSelectUI();
+      // Clear selection when switching to a customer
+      this.selectedOrderIds = new Set();
+      this.updateMultiSelectUI();
+
+      // Guard: Don't render if this is not the active visible view in billing
+      if (this.billingApp && this.billingApp.currentView && this.billingApp.currentView !== 'orders') {
+        return;
+      }
+
+      // Ensure the main content structure exists - restore if stage view replaced it
+      const mainContent = document.getElementById('mainContent');
+      let mainContent = this.viewContainer?.querySelector('#mainContent') || document.getElementById('mainContent');
+      if (!mainContent) {
+        if (this.viewContainer) {
+          this.render();
+          mainContent = this.viewContainer?.querySelector('#mainContent') || document.getElementById('mainContent');
+        }
+        if (!mainContent) {
+          log.warn('[OrdersView] Cannot render customer orders list: mainContent element not found in DOM');
+          return;
+        }
+      }
+
+      if (!document.getElementById('ordersMainTitle')) {
+        // Structure was replaced, recreate it
+        mainContent.innerHTML = `
         <!-- Header Section -->
         <div style="padding: 24px 32px; background: #ffffff; border-bottom: 2px solid #000000; flex-shrink: 0;">
           <h1 id="ordersMainTitle" style="margin: 0 0 4px 0; font-size: 28px; font-weight: 900; color: #000000; letter-spacing: -0.5px;">Customer Orders</h1>
@@ -1650,179 +1701,183 @@ class OrdersView {
           </div>
         </div>
       `;
+      }
+
+      // Calculate metrics for this customer
+      const totalOrders = customerOrders.length;
+      const totalItems = customerOrders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
+      const pendingOrders = customerOrders.filter(o => o.status !== 'complete').length;
+      const completedOrders = customerOrders.filter(o => o.status === 'complete').length;
+
+      // Update header
+      document.getElementById('ordersMainTitle').textContent = customerName;
+      document.getElementById('ordersMainMetrics').textContent = `Total Orders: ${totalOrders} | Pending: ${pendingOrders} | Completed: ${completedOrders} | Items: ${totalItems}`;
+      const titleEl = document.getElementById('ordersMainTitle');
+      if (titleEl) titleEl.textContent = customerName;
+      const metricsEl = document.getElementById('ordersMainMetrics');
+      if (metricsEl) metricsEl.textContent = `Total Orders: ${totalOrders} | Pending: ${pendingOrders} | Completed: ${completedOrders} | Items: ${totalItems}`;
+
+      // Setup state before rendering
+      this.customerViewOrders = customerOrders;
+      this.currentCustomerViewStageFilter = null;
+
+      // Update all columns (pending, completed, and mobile unified stream)
+      const pendingOrdersList = customerOrders.filter(o => o.status !== 'complete');
+      const completedOrdersList = customerOrders.filter(o => o.status === 'complete');
+      this.updateAllOrdersContainers(pendingOrdersList, completedOrdersList, true);
+
+      // Update button states via multi-select UI logic
+      this.updateMultiSelectUI();
+      const newOrderBtn = document.getElementById('newOrderBtn');
+      if (newOrderBtn) {
+        newOrderBtn.onclick = () => this.createNewOrder(customerId, customerName);
+      }
+
+      // Setup multi-select view button event
+      const viewBtn = document.getElementById('multiOrderViewBtn');
+      if (viewBtn) {
+        viewBtn.onclick = () => this.showCondensedOrdersView();
+      }
+
+      // Always re-bind stage filter buttons for customer view
+      this.setupStageFilterButtons();
+      // Update button states
+      this.updateStageButtonStates();
     }
 
-    // Calculate metrics for this customer
-    const totalOrders = customerOrders.length;
-    const totalItems = customerOrders.reduce((sum, order) => sum + (order.items?.length || 0), 0);
-    const pendingOrders = customerOrders.filter(o => o.status !== 'complete').length;
-    const completedOrders = customerOrders.filter(o => o.status === 'complete').length;
-    
-    // Update header
-    document.getElementById('ordersMainTitle').textContent = customerName;
-    document.getElementById('ordersMainMetrics').textContent = `Total Orders: ${totalOrders} | Pending: ${pendingOrders} | Completed: ${completedOrders} | Items: ${totalItems}`;
-    
-    // Setup state before rendering
-    this.customerViewOrders = customerOrders;
-    this.currentCustomerViewStageFilter = null;
-    
-    // Update all columns (pending, completed, and mobile unified stream)
-    const pendingOrdersList = customerOrders.filter(o => o.status !== 'complete');
-    const completedOrdersList = customerOrders.filter(o => o.status === 'complete');
-    this.updateAllOrdersContainers(pendingOrdersList, completedOrdersList, true);
-    
-    // Update button states via multi-select UI logic
-    this.updateMultiSelectUI();
-    const newOrderBtn = document.getElementById('newOrderBtn');
-    if (newOrderBtn) {
-      newOrderBtn.onclick = () => this.createNewOrder(customerId, customerName);
-    }
-    
-    // Setup multi-select view button event
-    const viewBtn = document.getElementById('multiOrderViewBtn');
-    if (viewBtn) {
-      viewBtn.onclick = () => this.showCondensedOrdersView();
-    }
+    attachOrderRecordListeners() {
+      document.querySelectorAll('.orders-order-record').forEach(record => {
+        record.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const orderId = record.dataset.orderId;
+          const detailsDiv = record.querySelector('div[id^="details-"]');
+          if (!detailsDiv) return;
+          const isExpanded = detailsDiv.style.display !== 'none';
 
-    // Always re-bind stage filter buttons for customer view
-    this.setupStageFilterButtons();
-    // Update button states
-    this.updateStageButtonStates();
-  }
+          // Collapse all other records
+          document.querySelectorAll('.orders-order-record').forEach(r => {
+            const dDiv = r.querySelector('div[id^="details-"]');
+            if (dDiv) {
+              dDiv.style.display = 'none';
+            }
+            r.style.background = '#fafafa';
+            r.style.borderColor = '#666666';
+            r.style.boxShadow = 'none';
+          });
 
-  attachOrderRecordListeners() {
-    document.querySelectorAll('.orders-order-record').forEach(record => {
-      record.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const orderId = record.dataset.orderId;
-        const detailsDiv = record.querySelector('div[id^="details-"]');
-        if (!detailsDiv) return;
-        const isExpanded = detailsDiv.style.display !== 'none';
-
-        // Collapse all other records
-        document.querySelectorAll('.orders-order-record').forEach(r => {
-          const dDiv = r.querySelector('div[id^="details-"]');
-          if (dDiv) {
-            dDiv.style.display = 'none';
-          }
-          r.style.background = '#fafafa';
-          r.style.borderColor = '#666666';
-          r.style.boxShadow = 'none';
-        });
-
-        // Toggle current record
-        if (isExpanded) {
-          detailsDiv.style.display = 'none';
-          record.style.background = '#fafafa';
-          record.style.borderColor = '#666666';
-          record.style.boxShadow = 'none';
-        } else {
-          detailsDiv.innerHTML = `
+          // Toggle current record
+          if (isExpanded) {
+            detailsDiv.style.display = 'none';
+            record.style.background = '#fafafa';
+            record.style.borderColor = '#666666';
+            record.style.boxShadow = 'none';
+          } else {
+            detailsDiv.innerHTML = `
             <div style="display: flex; gap: 4px; flex-wrap: wrap;">
               <button onclick="window.currentOrdersView.viewOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #000000; color: #ffffff; border: 1px solid #000000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">◆ VIEW</button>
               <button onclick="window.currentOrdersView.editOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #ffffff; color: #000000; border: 1px solid #000000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">✎ EDIT</button>
               <button onclick="window.currentOrdersView.deleteOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #ff4444; color: #ffffff; border: 1px solid #cc0000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">✕ DELETE</button>
             </div>
           `;
-          detailsDiv.style.display = 'block';
-          record.style.background = '#e8e8e8';
-          record.style.borderColor = '#000000';
-          record.style.boxShadow = 'inset 0 0 0 1px #000000';
-        }
+            detailsDiv.style.display = 'block';
+            record.style.background = '#e8e8e8';
+            record.style.borderColor = '#000000';
+            record.style.boxShadow = 'inset 0 0 0 1px #000000';
+          }
+        });
       });
-    });
-  }
-
-  groupOrdersByMonth(orders) {
-    const grouped = {};
-    orders.forEach(order => {
-      const date = new Date(order.order_date || order.created_at);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthYear = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-      if (!grouped[key]) grouped[key] = { monthYear, orders: [] };
-      grouped[key].orders.push(order);
-    });
-    return grouped;
-  }
-
-  renderOrdersGroupedByMonth(orders, inCustomerView = false, prefix = '') {
-    if (orders.length === 0) {
-      return '';
     }
 
-    const grouped = this.groupOrdersByMonth(orders);
-    const sortedKeys = Object.keys(grouped).sort().reverse();
+    groupOrdersByMonth(orders) {
+      const grouped = {};
+      orders.forEach(order => {
+        const date = new Date(order.order_date || order.created_at);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthYear = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+        if (!grouped[key]) grouped[key] = { monthYear, orders: [] };
+        grouped[key].orders.push(order);
+      });
+      return grouped;
+    }
 
-    return sortedKeys.map(key => {
-      const group = grouped[key];
-      return `
+    renderOrdersGroupedByMonth(orders, inCustomerView = false, prefix = '') {
+      if (orders.length === 0) {
+        return '';
+      }
+
+      const grouped = this.groupOrdersByMonth(orders);
+      const sortedKeys = Object.keys(grouped).sort().reverse();
+
+      return sortedKeys.map(key => {
+        const group = grouped[key];
+        return `
         <div style="margin-bottom: 12px;">
           <div style="padding: 8px 12px; background: #000000; font-weight: 700; font-size: 11px; color: #ffffff; border-radius: 2px; margin-bottom: 8px; font-family: 'Courier New', monospace; letter-spacing: 0.3px; text-transform: uppercase;">█ ${group.monthYear}</div>
           ${group.orders.map(order => this.renderOrderCard(order, inCustomerView, prefix)).join('')}
         </div>
       `;
-    }).join('');
-  }
-
-  // Utility: Re-render all order cards (call after any order count change or view switch)
-  rerenderOrderCards() {
-    // Example: re-render pending and completed containers
-    if (this.selectedCustomerId) {
-      // Customer view
-      const customer = this.customers.find(c => String(c.id) === String(this.selectedCustomerId));
-      const customerName = customer ? customer.name : 'Unknown';
-      this.showCustomerOrders(this.selectedCustomerId, customerName, true);
-    } else {
-      // All customers view
-      this.showAllCustomersView();
+      }).join('');
     }
-  }
 
-  renderOrderCard(order, inCustomerView, prefix = '') {
-    const orderId = order.id;
-    const date = new Date(order.order_date || order.created_at);
-    const itemCount = order.items?.length || 0;
-    const stage = order.current_stage || ORDER_CONSTANTS.STAGES.CREATE;
-    const stageName = stage === ORDER_CONSTANTS.STAGES.CREATE ? 'CREATE' : (stage === ORDER_CONSTANTS.STAGES.QC ? 'QC' : 'DELIVERY');
-    const stageSym = stage === ORDER_CONSTANTS.STAGES.CREATE ? '📋' : (stage === ORDER_CONSTANTS.STAGES.QC ? '📦' : '🚚');
-    const customerId = order.customer_id;
-    const customerName = order.customer_name || this.customers.find(c => c.id === customerId)?.name || 'Unknown';
-    const orderNumber = this.generateOrderNumber(order, date);
-    const checked = this.selectedOrderIds?.has?.(orderId) ? 'checked' : '';
-    // Show/hide tickbox based on view and order count
-    let showCheckbox = false;
-    if (this.selectedCustomerId && this.customerViewOrders) {
-      // Individual customer view
-      if (this.customerViewOrders.length > 1) {
-        showCheckbox = true;
-      }
-    } else {
-      // All customers view
-      if (this.orders && this.orders.length > 1) {
-        showCheckbox = true;
+    // Utility: Re-render all order cards (call after any order count change or view switch)
+    rerenderOrderCards() {
+      // Example: re-render pending and completed containers
+      if (this.selectedCustomerId) {
+        // Customer view
+        const customer = this.customers.find(c => String(c.id) === String(this.selectedCustomerId));
+        const customerName = customer ? customer.name : 'Unknown';
+        this.showCustomerOrders(this.selectedCustomerId, customerName, true);
+      } else {
+        // All customers view
+        this.showAllCustomersView();
       }
     }
-    const customer = this.customers?.find?.(c => String(c.id) === String(customerId));
-    const isCustExcluded = this.isExcluded(customer);
-    const orderObj = this.orders?.find?.(o => String(o.id) === String(orderId)) || order;
-    const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge && orderObj)
-      ? window.renderWorkerBadge(orderObj, { compact: true })
-      : '';
 
-    const auditInfo = JSON.stringify({
-      type: 'Order',
-      id: orderId,
-      name: `Order ${orderNumber} (${customerName})`,
-      created_by_role: orderObj?.created_by_role || order.created_by_role,
-      created_by_name: orderObj?.created_by_name || order.created_by_name,
-      last_edited_by_role: orderObj?.last_edited_by_role || order.last_edited_by_role,
-      last_edited_by_name: orderObj?.last_edited_by_name || order.last_edited_by_name,
-      date: order.order_date || order.created_at,
-      created_at: order.created_at,
-      updated_at: order.updated_at
-    });
+    renderOrderCard(order, inCustomerView, prefix = '') {
+      const orderId = order.id;
+      const date = new Date(order.order_date || order.created_at);
+      const itemCount = order.items?.length || 0;
+      const stage = order.current_stage || ORDER_CONSTANTS.STAGES.CREATE;
+      const stageName = stage === ORDER_CONSTANTS.STAGES.CREATE ? 'CREATE' : (stage === ORDER_CONSTANTS.STAGES.QC ? 'QC' : 'DELIVERY');
+      const stageSym = stage === ORDER_CONSTANTS.STAGES.CREATE ? '📋' : (stage === ORDER_CONSTANTS.STAGES.QC ? '📦' : '🚚');
+      const customerId = order.customer_id;
+      const customerName = order.customer_name || this.customers.find(c => c.id === customerId)?.name || 'Unknown';
+      const orderNumber = this.generateOrderNumber(order, date);
+      const checked = this.selectedOrderIds?.has?.(orderId) ? 'checked' : '';
+      // Show/hide tickbox based on view and order count
+      let showCheckbox = false;
+      if (this.selectedCustomerId && this.customerViewOrders) {
+        // Individual customer view
+        if (this.customerViewOrders.length > 1) {
+          showCheckbox = true;
+        }
+      } else {
+        // All customers view
+        if (this.orders && this.orders.length > 1) {
+          showCheckbox = true;
+        }
+      }
+      const customer = this.customers?.find?.(c => String(c.id) === String(customerId));
+      const isCustExcluded = this.isExcluded(customer);
+      const orderObj = this.orders?.find?.(o => String(o.id) === String(orderId)) || order;
+      const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge && orderObj)
+        ? window.renderWorkerBadge(orderObj, { compact: true })
+        : '';
 
-    return `
+      const auditInfo = JSON.stringify({
+        type: 'Order',
+        id: orderId,
+        name: `Order ${orderNumber} (${customerName})`,
+        created_by_role: orderObj?.created_by_role || order.created_by_role,
+        created_by_name: orderObj?.created_by_name || order.created_by_name,
+        last_edited_by_role: orderObj?.last_edited_by_role || order.last_edited_by_role,
+        last_edited_by_name: orderObj?.last_edited_by_name || order.last_edited_by_name,
+        date: order.order_date || order.created_at,
+        created_at: order.created_at,
+        updated_at: order.updated_at
+      });
+
+      return `
       <div class="orders-order-record" data-order-id="${orderId}" data-total-items="${itemCount}" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}' style="padding: 12px; background: #fafafa; border: 2px solid #666666; border-radius: 2px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; font-family: 'Courier New', monospace; position: relative;">
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
           <div style="font-weight: 700; color: #000000; font-size: 12px; letter-spacing: 0.3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -1842,241 +1897,241 @@ class OrdersView {
         <div id="details-${prefix}${orderId}" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #cccccc;"></div>
       </div>
     `;
-  }
+    }
 
-  generateOrderNumber(order, orderDate) {
-    const year = orderDate.getFullYear();
-    const yrShort = String(year).slice(-2);
-    
-    // Get all orders in the same calendar year (global uniqueness)
-    const ordersInYear = this.orders.filter(o => {
-      const oDate = new Date(o.order_date || o.created_at);
-      return oDate.getFullYear() === year;
-    });
-    
-    // Find the serial number for this order
-    const existingIndex = ordersInYear.findIndex(o => String(o.id) === String(order.id));
-    const serialNumber = existingIndex >= 0 ? existingIndex + 1 : ordersInYear.length + 1;
-    const serialNumberFormatted = String(serialNumber).padStart(4, '0'); // Pad to 4 digits
-    
-    return `ORD-${yrShort}${serialNumberFormatted}`;
-  }
+    generateOrderNumber(order, orderDate) {
+      const year = orderDate.getFullYear();
+      const yrShort = String(year).slice(-2);
+
+      // Get all orders in the same calendar year (global uniqueness)
+      const ordersInYear = this.orders.filter(o => {
+        const oDate = new Date(o.order_date || o.created_at);
+        return oDate.getFullYear() === year;
+      });
+
+      // Find the serial number for this order
+      const existingIndex = ordersInYear.findIndex(o => String(o.id) === String(order.id));
+      const serialNumber = existingIndex >= 0 ? existingIndex + 1 : ordersInYear.length + 1;
+      const serialNumberFormatted = String(serialNumber).padStart(4, '0'); // Pad to 4 digits
+
+      return `ORD-${yrShort}${serialNumberFormatted}`;
+    }
 
   async createNewOrder(customerId, customerName) {
-    this.qrScanHistory = [];
-    this.selectedOrderInvoice = null;
-    this.allCustomerInvoices = [];
-    const orderId = 'ORD-' + Date.now();
-    const orderDate = new Date();
-    let orderNumber = `ORD-${String(orderDate.getFullYear()).slice(-2)}xxxx`; // Fallback placeholder
-    
-    try {
-      const res = await fetch(`/api/billing/orders/next-number?order_date=${orderDate.toISOString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.order_number) {
-          orderNumber = data.order_number;
-        }
-      }
-    } catch (error) {
-      log.error('Error fetching next order number:', error);
-      // Fallback: Generate locally if API fails, though backend will also generate it on save
-      const tempOrder = { id: orderId, order_date: orderDate.toISOString() };
-      orderNumber = this.generateOrderNumber(tempOrder, orderDate);
-    }
-    
-    this.currentOrderData = {
-      id: orderId,
-      order_number: orderNumber,
-      customer_id: customerId,
-      customer_name: customerName,
-      current_stage: 'stage1',
-      order_date: orderDate.toISOString(),
-      items: [],
-      order_notes: '',
-      qc_date: null,
-      qc_notes: '',
-      delivery_notes: '',
-      delivery_date: null,
-      bill_reference: '',
-      created_at: orderDate.toISOString(),
-      updated_at: orderDate.toISOString()
-    };
-    this.currentOrderId = orderId;
-    this.currentStage = 'stage1';
-    this.selectedOrderIds = new Set();
-    this.lastSavedPayload = null;
-    this.updateMultiSelectUI();
-    this.saveOrderDraft();
-    this.renderCurrentStage();
-  }
-
-  loadOrder(orderId) {
-    const order = this.orders.find(o => String(o.id) === String(orderId));
-    if (order) {
       this.qrScanHistory = [];
       this.selectedOrderInvoice = null;
       this.allCustomerInvoices = [];
-      this.currentOrderData = { ...order };
-      this.currentOrderId = String(orderId);
-      this.currentStage = order.current_stage || 'stage1';
+      const orderId = 'ORD-' + Date.now();
+      const orderDate = new Date();
+      let orderNumber = `ORD-${String(orderDate.getFullYear()).slice(-2)}xxxx`; // Fallback placeholder
+
+      try {
+        const res = await fetch(`/api/billing/orders/next-number?order_date=${orderDate.toISOString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.order_number) {
+            orderNumber = data.order_number;
+          }
+        }
+      } catch (error) {
+        log.error('Error fetching next order number:', error);
+        // Fallback: Generate locally if API fails, though backend will also generate it on save
+        const tempOrder = { id: orderId, order_date: orderDate.toISOString() };
+        orderNumber = this.generateOrderNumber(tempOrder, orderDate);
+      }
+
+      this.currentOrderData = {
+        id: orderId,
+        order_number: orderNumber,
+        customer_id: customerId,
+        customer_name: customerName,
+        current_stage: 'stage1',
+        order_date: orderDate.toISOString(),
+        items: [],
+        order_notes: '',
+        qc_date: null,
+        qc_notes: '',
+        delivery_notes: '',
+        delivery_date: null,
+        bill_reference: '',
+        created_at: orderDate.toISOString(),
+        updated_at: orderDate.toISOString()
+      };
+      this.currentOrderId = orderId;
+      this.currentStage = 'stage1';
+      this.selectedOrderIds = new Set();
+      this.lastSavedPayload = null;
+      this.updateMultiSelectUI();
+      this.saveOrderDraft();
       this.renderCurrentStage();
     }
-  }
 
-  viewOrder(orderId) {
-    const order = this.orders.find(o => String(o.id) === String(orderId));
-    if (order) {
-      // Fetch full order data and show modal
-      this.fetchAndViewOrder(orderId);
-    }
-  }
-
-  editOrder(orderId) {
-    const order = this.orders.find(o => String(o.id) === String(orderId));
-    if (order) {
-      // Fetch full order data with items from API for editing
-      this.fetchAndEditOrder(orderId);
-    }
-  }
-
-  async fetchAndViewOrder(orderId) {
-    try {
-      const res = await fetch(`/api/billing/orders/${orderId}`);
-      if (res.ok) {
-        const order = await res.json();
-        
-        // Normalize items
-        const items = (order.items || []).map(item => {
-          const product = this.products.find(p => p.id === item.product_id);
-          return {
-            ...item,
-            qty: item.quantity || item.qty,
-            quantity: item.quantity || item.qty,
-            price: item.unit_price || item.price,
-            unit_price: item.unit_price || item.price,
-            product_name: product?.name || item.product_name || `Product ${item.product_id}`,
-            received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0)
-          };
-        });
-        
-        this.showOrderModal({...order, items});
-      } else {
-        this.showNotification('Failed to load order', 'error');
-      }
-    } catch (error) {
-      log.error('Error fetching order:', error);
-      this.showNotification('Error loading order', 'error');
-    }
-  }
-
-  async fetchAndEditOrder(orderId) {
-    try {
-      const res = await fetch(`/api/billing/orders/${orderId}`);
-      if (res.ok) {
-        const order = await res.json();
+    loadOrder(orderId) {
+      const order = this.orders.find(o => String(o.id) === String(orderId));
+      if (order) {
         this.qrScanHistory = [];
         this.selectedOrderInvoice = null;
         this.allCustomerInvoices = [];
-        
-        // Normalize items to use consistent property names (qty, price)
-        const items = (order.items || []).map(item => {
-          // Look up product name from products array
-          const product = this.products.find(p => p.id === item.product_id);
-          
-          return {
-            ...item,
-            qty: item.quantity || item.qty,
-            quantity: item.quantity || item.qty,
-            price: item.unit_price || item.price,
-            unit_price: item.unit_price || item.price,
-            product_name: product?.name || item.product_name || `Product ${item.product_id}`,
-            received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0)
-          };
-        });
-        
-        this.currentOrderData = {
-          ...order,
-          items: items
-        };
+        this.currentOrderData = { ...order };
         this.currentOrderId = String(orderId);
         this.currentStage = order.current_stage || 'stage1';
-        this.isViewMode = false;
-        this.selectedOrderIds = new Set();
-        this.lastSavedPayload = null;
-        this.updateMultiSelectUI();
         this.renderCurrentStage();
-      } else {
-        this.showNotification('Failed to load order', 'error');
       }
-    } catch (error) {
-      log.error('Error fetching order:', error);
-      this.showNotification('Error loading order', 'error');
     }
-  }
 
-  showOrderModal(order) {
-    this.renderOrderViewModal(order);
-  }
+    viewOrder(orderId) {
+      const order = this.orders.find(o => String(o.id) === String(orderId));
+      if (order) {
+        // Fetch full order data and show modal
+        this.fetchAndViewOrder(orderId);
+      }
+    }
 
-  createBaseElement(tag, styles = {}, textContent = '') {
-    const el = document.createElement(tag);
-    Object.assign(el.style, styles);
-    if (textContent) el.textContent = textContent;
-    return el;
-  }
+    editOrder(orderId) {
+      const order = this.orders.find(o => String(o.id) === String(orderId));
+      if (order) {
+        // Fetch full order data with items from API for editing
+        this.fetchAndEditOrder(orderId);
+      }
+    }
 
-  renderOrderViewModal(order) {
-    const stage = order.current_stage || ORDER_CONSTANTS.STAGES.CREATE;
-    const items = order.items || [];
-    const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
-    const orderDate = new Date(order.order_date || order.created_at);
-    const orderNumber = this.generateOrderNumber(order, orderDate);
+  async fetchAndViewOrder(orderId) {
+      try {
+        const res = await fetch(`/api/billing/orders/${orderId}`);
+        if (res.ok) {
+          const order = await res.json();
 
-    // Create Modal Overlay
-    const modal = this.createBaseElement('div', {
-      position: 'absolute', top: '0', left: '0', right: '0', bottom: '0',
-      background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: '1000', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', monospace"
-    });
-    modal.id = 'orderModal';
+          // Normalize items
+          const items = (order.items || []).map(item => {
+            const product = this.products.find(p => p.id === item.product_id);
+            return {
+              ...item,
+              qty: item.quantity || item.qty,
+              quantity: item.quantity || item.qty,
+              price: item.unit_price || item.price,
+              unit_price: item.unit_price || item.price,
+              product_name: product?.name || item.product_name || `Product ${item.product_id}`,
+              received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0)
+            };
+          });
 
-    // Create Modal Content panel
-    const modalContent = this.createBaseElement('div', {
-      background: '#ffffff', borderRadius: '4px', maxWidth: '480px', width: '90%', maxHeight: '85%',
-      overflowY: 'auto', boxShadow: '0 20px 25px rgba(0,0,0,0.15)', padding: '24px'
-    });
+          this.showOrderModal({ ...order, items });
+        } else {
+          this.showNotification('Failed to load order', 'error');
+        }
+      } catch (error) {
+        log.error('Error fetching order:', error);
+        this.showNotification('Error loading order', 'error');
+      }
+    }
 
-    // 1. Header
-    const workerBadgeModal = (!this.isWorkerUser() && window.renderWorkerBadge)
-      ? window.renderWorkerBadge(order)
-      : '';
-    const headerTitle = this.createBaseElement('h2', { margin: '0 0 16px 0', fontSize: '18px', fontWeight: '900', color: '#000', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' });
-    headerTitle.innerHTML = `<span>${orderNumber}</span> ${workerBadgeModal}`;
-    const deliveryInfo = order.delivery_date ? ` | Delivery: ${Utils.formatDate(new Date(order.delivery_date))}` : ' | Not Delivered';
-    const headerSub = this.createBaseElement('p', { margin: '0 0 20px 0', fontSize: '12px', color: '#666', fontWeight: '500' }, `Customer: ${customerName} | Order Date: ${Utils.formatDate(orderDate)}${deliveryInfo}`);
-    modalContent.append(headerTitle, headerSub);
+  async fetchAndEditOrder(orderId) {
+      try {
+        const res = await fetch(`/api/billing/orders/${orderId}`);
+        if (res.ok) {
+          const order = await res.json();
+          this.qrScanHistory = [];
+          this.selectedOrderInvoice = null;
+          this.allCustomerInvoices = [];
 
-    // 2. Items Section
-    const itemsTitleText = (stage === ORDER_CONSTANTS.STAGES.DELIVERY || order.status === 'complete') ? '📦 FINAL DISPATCH ITEMS' : (stage === ORDER_CONSTANTS.STAGES.QC ? '📦 QC / PICKING ITEMS' : '📋 ORDERED ITEMS');
-    const itemsTitle = this.createBaseElement('h3', { margin: '0 0 12px 0', fontSize: '13px', fontWeight: '900', color: '#000', textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: '2px solid #000', paddingBottom: '8px' }, itemsTitleText);
-    modalContent.appendChild(itemsTitle);
+          // Normalize items to use consistent property names (qty, price)
+          const items = (order.items || []).map(item => {
+            // Look up product name from products array
+            const product = this.products.find(p => p.id === item.product_id);
 
-    const itemsContainer = this.createBaseElement('div', { display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' });
-    
-    if (items.length === 0) {
-      itemsContainer.appendChild(this.createBaseElement('div', { padding: '20px', textAlign: 'center', color: '#999', fontSize: '12px', fontFamily: "'Courier New', monospace" }, 'No items in this order'));
-    } else {
-      if (stage === ORDER_CONSTANTS.STAGES.DELIVERY || stage === ORDER_CONSTANTS.STAGES.QC || order.status === 'complete') {
-        // Simplified lists for Stage 3/Complete
-        const receivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) >= 1);
-        const notReceivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) < 1);
-        const subtotal = receivedItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.received_quantity || i.received_qty || 0)), 0);
+            return {
+              ...item,
+              qty: item.quantity || item.qty,
+              quantity: item.quantity || item.qty,
+              price: item.unit_price || item.price,
+              unit_price: item.unit_price || item.price,
+              product_name: product?.name || item.product_name || `Product ${item.product_id}`,
+              received_quantity: (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty || 0)
+            };
+          });
 
-        // Enhanced Table for Stage 2 & 3
-        const tableContainer = this.createBaseElement('div', { minHeight: '150px', marginBottom: '20px' });
-        const table = this.createBaseElement('table', { width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: "'Courier New', monospace" });
-        table.innerHTML = `
+          this.currentOrderData = {
+            ...order,
+            items: items
+          };
+          this.currentOrderId = String(orderId);
+          this.currentStage = order.current_stage || 'stage1';
+          this.isViewMode = false;
+          this.selectedOrderIds = new Set();
+          this.lastSavedPayload = null;
+          this.updateMultiSelectUI();
+          this.renderCurrentStage();
+        } else {
+          this.showNotification('Failed to load order', 'error');
+        }
+      } catch (error) {
+        log.error('Error fetching order:', error);
+        this.showNotification('Error loading order', 'error');
+      }
+    }
+
+    showOrderModal(order) {
+      this.renderOrderViewModal(order);
+    }
+
+    createBaseElement(tag, styles = {}, textContent = '') {
+      const el = document.createElement(tag);
+      Object.assign(el.style, styles);
+      if (textContent) el.textContent = textContent;
+      return el;
+    }
+
+    renderOrderViewModal(order) {
+      const stage = order.current_stage || ORDER_CONSTANTS.STAGES.CREATE;
+      const items = order.items || [];
+      const customerName = order.customer_name || this.customers.find(c => c.id === order.customer_id)?.name || 'Unknown';
+      const orderDate = new Date(order.order_date || order.created_at);
+      const orderNumber = this.generateOrderNumber(order, orderDate);
+
+      // Create Modal Overlay
+      const modal = this.createBaseElement('div', {
+        position: 'absolute', top: '0', left: '0', right: '0', bottom: '0',
+        background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: '1000', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', monospace"
+      });
+      modal.id = 'orderModal';
+
+      // Create Modal Content panel
+      const modalContent = this.createBaseElement('div', {
+        background: '#ffffff', borderRadius: '4px', maxWidth: '480px', width: '90%', maxHeight: '85%',
+        overflowY: 'auto', boxShadow: '0 20px 25px rgba(0,0,0,0.15)', padding: '24px'
+      });
+
+      // 1. Header
+      const workerBadgeModal = (!this.isWorkerUser() && window.renderWorkerBadge)
+        ? window.renderWorkerBadge(order)
+        : '';
+      const headerTitle = this.createBaseElement('h2', { margin: '0 0 16px 0', fontSize: '18px', fontWeight: '900', color: '#000', letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' });
+      headerTitle.innerHTML = `<span>${orderNumber}</span> ${workerBadgeModal}`;
+      const deliveryInfo = order.delivery_date ? ` | Delivery: ${Utils.formatDate(new Date(order.delivery_date))}` : ' | Not Delivered';
+      const headerSub = this.createBaseElement('p', { margin: '0 0 20px 0', fontSize: '12px', color: '#666', fontWeight: '500' }, `Customer: ${customerName} | Order Date: ${Utils.formatDate(orderDate)}${deliveryInfo}`);
+      modalContent.append(headerTitle, headerSub);
+
+      // 2. Items Section
+      const itemsTitleText = (stage === ORDER_CONSTANTS.STAGES.DELIVERY || order.status === 'complete') ? '📦 FINAL DISPATCH ITEMS' : (stage === ORDER_CONSTANTS.STAGES.QC ? '📦 QC / PICKING ITEMS' : '📋 ORDERED ITEMS');
+      const itemsTitle = this.createBaseElement('h3', { margin: '0 0 12px 0', fontSize: '13px', fontWeight: '900', color: '#000', textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: '2px solid #000', paddingBottom: '8px' }, itemsTitleText);
+      modalContent.appendChild(itemsTitle);
+
+      const itemsContainer = this.createBaseElement('div', { display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' });
+
+      if (items.length === 0) {
+        itemsContainer.appendChild(this.createBaseElement('div', { padding: '20px', textAlign: 'center', color: '#999', fontSize: '12px', fontFamily: "'Courier New', monospace" }, 'No items in this order'));
+      } else {
+        if (stage === ORDER_CONSTANTS.STAGES.DELIVERY || stage === ORDER_CONSTANTS.STAGES.QC || order.status === 'complete') {
+          // Simplified lists for Stage 3/Complete
+          const receivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) >= 1);
+          const notReceivedItems = items.filter(i => (i.received_quantity || i.received_qty || 0) < 1);
+          const subtotal = receivedItems.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.received_quantity || i.received_qty || 0)), 0);
+
+          // Enhanced Table for Stage 2 & 3
+          const tableContainer = this.createBaseElement('div', { minHeight: '150px', marginBottom: '20px' });
+          const table = this.createBaseElement('table', { width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: "'Courier New', monospace" });
+          table.innerHTML = `
           <thead>
             <tr style="border-bottom: 2px solid #000; text-align: left;">
               <th style="padding: 8px 4px;">ITEM</th>
@@ -2086,12 +2141,12 @@ class OrdersView {
           </thead>
           <tbody>
             ${receivedItems.map(item => {
-              const qty = item.qty || item.quantity || 0;
-              const rec = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : 0;
-              const price = item.unit_price || item.price || 0;
-              const lineTotal = price * rec;
-              const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
-              return `
+            const qty = item.qty || item.quantity || 0;
+            const rec = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : 0;
+            const price = item.unit_price || item.price || 0;
+            const lineTotal = price * rec;
+            const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
+            return `
                 <tr style="border-bottom: 1px solid #eee;">
                   <td style="padding: 8px 4px;">
                     <div style="font-weight: 700;">${item.product_name}</div>
@@ -2103,22 +2158,22 @@ class OrdersView {
                   <td style="padding: 8px 4px; text-align: right; font-weight: 700; vertical-align: middle;">₹${lineTotal.toFixed(2)}</td>
                 </tr>
               `;
-            }).join('') || '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #999;">No items received</td></tr>'}
+          }).join('') || '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #999;">No items received</td></tr>'}
           </tbody>
         `;
-        tableContainer.appendChild(table);
-        itemsContainer.appendChild(tableContainer);
+          tableContainer.appendChild(table);
+          itemsContainer.appendChild(tableContainer);
 
-        if (notReceivedItems.length > 0) {
-          const notRecTitle = this.createBaseElement('h4', { margin: '20px 0 8px 0', fontSize: '11px', fontWeight: '900', color: '#666', borderBottom: '1px solid #eee', paddingBottom: '4px' }, '🚫 ITEMS NOT RECEIVED');
-          const notRecList = this.createBaseElement('div', { display: 'flex', flexDirection: 'column', gap: '8px', opacity: '0.7', minHeight: '150px' });
-          notReceivedItems.forEach(item => {
-            const qty = item.qty || item.quantity || 0;
-            const price = item.unit_price || item.price || 0;
-            const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
-            
-            const card = this.createBaseElement('div', { padding: '10px', background: '#fff', border: '1px solid #eee', borderRadius: '3px', fontFamily: "'Courier New', monospace" });
-            card.innerHTML = `
+          if (notReceivedItems.length > 0) {
+            const notRecTitle = this.createBaseElement('h4', { margin: '20px 0 8px 0', fontSize: '11px', fontWeight: '900', color: '#666', borderBottom: '1px solid #eee', paddingBottom: '4px' }, '🚫 ITEMS NOT RECEIVED');
+            const notRecList = this.createBaseElement('div', { display: 'flex', flexDirection: 'column', gap: '8px', opacity: '0.7', minHeight: '150px' });
+            notReceivedItems.forEach(item => {
+              const qty = item.qty || item.quantity || 0;
+              const price = item.unit_price || item.price || 0;
+              const variantDisplay = item.pack_size_value ? `${item.pack_size_value}${item.pack_size_type || ''}` : '';
+
+              const card = this.createBaseElement('div', { padding: '10px', background: '#fff', border: '1px solid #eee', borderRadius: '3px', fontFamily: "'Courier New', monospace" });
+              card.innerHTML = `
               <div style="display: flex; justify-content: space-between; align-items: start;">
                 <div>
                   <div style="font-weight: 700; font-size: 11px; color: #888;">${item.product_name}</div>
@@ -2132,20 +2187,20 @@ class OrdersView {
                 <span>₹0.00</span>
               </div>
             `;
-            notRecList.appendChild(card);
+              notRecList.appendChild(card);
+            });
+            itemsContainer.appendChild(notRecTitle);
+            itemsContainer.appendChild(notRecList);
+          }
+
+          const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
+          const notReceivedTotal = fullSubtotal - subtotal;
+
+          const totalBox = this.createBaseElement('div', {
+            marginTop: '12px', padding: '16px', background: '#f9f9f9', color: '#000',
+            border: '1px solid #ddd', borderRadius: '2px'
           });
-          itemsContainer.appendChild(notRecTitle);
-          itemsContainer.appendChild(notRecList);
-        }
-
-        const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
-        const notReceivedTotal = fullSubtotal - subtotal;
-
-        const totalBox = this.createBaseElement('div', { 
-          marginTop: '12px', padding: '16px', background: '#f9f9f9', color: '#000', 
-          border: '1px solid #ddd', borderRadius: '2px' 
-        });
-        totalBox.innerHTML = `
+          totalBox.innerHTML = `
           <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:10px; color:#666;">
             <span>SUBTOTAL (ORDERED)</span><span>₹${fullSubtotal.toFixed(2)}</span>
           </div>
@@ -2156,16 +2211,16 @@ class OrdersView {
             <span>GRAND TOTAL</span><span>₹${subtotal.toFixed(2)}</span>
           </div>
         `;
-        itemsContainer.appendChild(totalBox);
-      } else {
-        // Traditional cards for Stage 1/2
-        items.forEach((item, idx) => {
-          const itemBox = this.createBaseElement('div', { padding: '12px', background: '#f9f9f9', border: '1px solid #ddd', borderRadius: '3px', fontFamily: "'Courier New', monospace" });
-          const variantDisplay = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-          const batchDisplay = item.batch_no || 'N/A';
-          const qty = item.qty || item.quantity || 0;
-          const price = item.unit_price || item.price || 0;
-          itemBox.innerHTML = `
+          itemsContainer.appendChild(totalBox);
+        } else {
+          // Traditional cards for Stage 1/2
+          items.forEach((item, idx) => {
+            const itemBox = this.createBaseElement('div', { padding: '12px', background: '#f9f9f9', border: '1px solid #ddd', borderRadius: '3px', fontFamily: "'Courier New', monospace" });
+            const variantDisplay = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+            const batchDisplay = item.batch_no || 'N/A';
+            const qty = item.qty || item.quantity || 0;
+            const price = item.unit_price || item.price || 0;
+            itemBox.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
               <div>
                 <div style="font-weight: 700; color: #000000; font-size: 12px;">${item.product_name}</div>
@@ -2179,35 +2234,35 @@ class OrdersView {
               <span>Total: ₹${(price * qty).toFixed(2)}</span>
             </div>
           `;
-          itemsContainer.appendChild(itemBox);
-        });
+            itemsContainer.appendChild(itemBox);
+          });
+        }
       }
-    }
-    modalContent.appendChild(itemsContainer);
+      modalContent.appendChild(itemsContainer);
 
-    // 3. Notes Section
-    const createNoteBox = (title, contentText, bg, border, color) => {
-      const box = this.createBaseElement('div', { padding: '12px', background: bg, border: `1px solid ${border}`, borderRadius: '3px', marginBottom: '16px' });
-      const t = this.createBaseElement('div', { fontSize: '11px', fontWeight: '700', color: color, marginBottom: '6px' }, title);
-      const c = this.createBaseElement('div', { fontSize: '11px', color: '#333', fontFamily: "'Courier New', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }, contentText);
-      box.append(t, c);
-      return box;
-    };
+      // 3. Notes Section
+      const createNoteBox = (title, contentText, bg, border, color) => {
+        const box = this.createBaseElement('div', { padding: '12px', background: bg, border: `1px solid ${border}`, borderRadius: '3px', marginBottom: '16px' });
+        const t = this.createBaseElement('div', { fontSize: '11px', fontWeight: '700', color: color, marginBottom: '6px' }, title);
+        const c = this.createBaseElement('div', { fontSize: '11px', color: '#333', fontFamily: "'Courier New', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-word' }, contentText);
+        box.append(t, c);
+        return box;
+      };
 
-    if (order.order_notes) modalContent.appendChild(createNoteBox('📋 STAGE 1 (ORDER) NOTES', order.order_notes, '#eff6ff', '#bfdbfe', '#1d4ed8'));
-    if (order.qc_notes) modalContent.appendChild(createNoteBox('⚠️ STAGE 2 (QC) NOTES', order.qc_notes, '#fef3c7', '#fde68a', '#d97706'));
-    if (order.delivery_notes) modalContent.appendChild(createNoteBox('🚚 STAGE 3 (DELIVERY) NOTES', order.delivery_notes, '#f0fdf4', '#bbf7d0', '#16a34a'));
+      if (order.order_notes) modalContent.appendChild(createNoteBox('📋 STAGE 1 (ORDER) NOTES', order.order_notes, '#eff6ff', '#bfdbfe', '#1d4ed8'));
+      if (order.qc_notes) modalContent.appendChild(createNoteBox('⚠️ STAGE 2 (QC) NOTES', order.qc_notes, '#fef3c7', '#fde68a', '#d97706'));
+      if (order.delivery_notes) modalContent.appendChild(createNoteBox('🚚 STAGE 3 (DELIVERY) NOTES', order.delivery_notes, '#f0fdf4', '#bbf7d0', '#16a34a'));
 
-    if (stage === ORDER_CONSTANTS.STAGES.DELIVERY || order.status === 'complete') {
-      if (order.qc_date) {
-         const dBox = this.createBaseElement('div', { padding: '12px', background: '#f5f3ff', border: '1px solid #d8b4fe', borderRadius: '3px', marginBottom: '20px' });
-         dBox.innerHTML = `<div style="font-size: 11px; font-weight: 600; color: #9333ea; margin-bottom: 4px;">📅 QC DATE</div><div style="font-size: 12px; font-weight: 700; color: #000; font-family: 'Courier New', monospace;">${Utils.formatDate(order.qc_date)}</div>`;
-         modalContent.appendChild(dBox);
-      }
+      if (stage === ORDER_CONSTANTS.STAGES.DELIVERY || order.status === 'complete') {
+        if (order.qc_date) {
+          const dBox = this.createBaseElement('div', { padding: '12px', background: '#f5f3ff', border: '1px solid #d8b4fe', borderRadius: '3px', marginBottom: '20px' });
+          dBox.innerHTML = `<div style="font-size: 11px; font-weight: 600; color: #9333ea; margin-bottom: 4px;">📅 QC DATE</div><div style="font-size: 12px; font-weight: 700; color: #000; font-family: 'Courier New', monospace;">${Utils.formatDate(order.qc_date)}</div>`;
+          modalContent.appendChild(dBox);
+        }
 
-      const delTitle = this.createBaseElement('h3', { margin: '20px 0 12px 0', fontSize: '13px', fontWeight: '900', color: '#000', textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: '2px solid #000', paddingBottom: '8px' }, '🚚 DELIVERY DETAILS');
-      const delBox = this.createBaseElement('div', { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' });
-      delBox.innerHTML = `
+        const delTitle = this.createBaseElement('h3', { margin: '20px 0 12px 0', fontSize: '13px', fontWeight: '900', color: '#000', textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: '2px solid #000', paddingBottom: '8px' }, '🚚 DELIVERY DETAILS');
+        const delBox = this.createBaseElement('div', { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' });
+        delBox.innerHTML = `
         <div style="padding: 12px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 3px;">
           <div style="font-size: 10px; color: #16a34a; font-weight: 600; margin-bottom: 4px;">DELIVERY DATE</div>
           <div style="font-size: 12px; font-weight: 700; color: #000000; font-family: 'Courier New', monospace;">${order.delivery_date ? Utils.formatDate(order.delivery_date) : 'Not set'}</div>
@@ -2217,66 +2272,66 @@ class OrdersView {
           <div style="font-size: 12px; font-weight: 700; color: #000000; font-family: 'Courier New', monospace;">${order.bill_reference || 'Not linked'}</div>
         </div>
       `;
-      modalContent.append(delTitle, delBox);
+        modalContent.append(delTitle, delBox);
+      }
+
+      // 4. Footer Buttons
+      const footer = this.createBaseElement('div', { display: 'flex', justifyContent: 'flex-end', gap: '8px' });
+
+      if (stage !== ORDER_CONSTANTS.STAGES.DELIVERY) {
+        const copyBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#0066cc', color: '#fff', border: '2px solid #0066cc', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, '📋 COPY ITEMS');
+        copyBtn.onclick = () => {
+          const contentLines = items.map((item, idx) => {
+            const v = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+            return `${idx + 1}.${item.product_name.trim()}${v ? ' ' + v : ''}--${item.qty || item.quantity || 0}`;
+          });
+          const formattedItems = ['PRODUCT NAME--QTY', ...contentLines].join('\n');
+          navigator.clipboard.writeText(formattedItems).then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null);
+        };
+        footer.appendChild(copyBtn);
+      }
+
+      const closeBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, 'CLOSE');
+      closeBtn.onclick = () => modal.remove();
+      footer.appendChild(closeBtn);
+
+      modalContent.appendChild(footer);
+      modal.appendChild(modalContent);
+      this.viewContainer.appendChild(modal);
+
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
     }
 
-    // 4. Footer Buttons
-    const footer = this.createBaseElement('div', { display: 'flex', justifyContent: 'flex-end', gap: '8px' });
-    
-    if (stage !== ORDER_CONSTANTS.STAGES.DELIVERY) {
-      const copyBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#0066cc', color: '#fff', border: '2px solid #0066cc', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, '📋 COPY ITEMS');
-      copyBtn.onclick = () => {
-        const contentLines = items.map((item, idx) => {
-          const v = item.pack_size_value ? ` ${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-          return `${idx + 1}.${item.product_name.trim()}${v ? ' ' + v : ''}--${item.qty || item.quantity || 0}`;
-        });
-        const formattedItems = ['PRODUCT NAME--QTY', ...contentLines].join('\n');
-        navigator.clipboard.writeText(formattedItems).then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null);
-      };
-      footer.appendChild(copyBtn);
+    canAccessStage(stage) {
+      if (stage === ORDER_CONSTANTS.STAGES.CREATE) return true;
+
+      if (stage === ORDER_CONSTANTS.STAGES.QC) {
+        return this.currentOrderData.items && this.currentOrderData.items.length > 0;
+      }
+
+      if (stage === ORDER_CONSTANTS.STAGES.DELIVERY) {
+        // Stage 3 requires QC date and checked items
+        return !!this.currentOrderData.qc_date;
+      }
+
+      return false;
     }
 
-    const closeBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#fff', color: '#000', border: '2px solid #000', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, 'CLOSE');
-    closeBtn.onclick = () => modal.remove();
-    footer.appendChild(closeBtn);
+    renderCurrentStage() {
+      const content = document.getElementById('mainContent');
 
-    modalContent.appendChild(footer);
-    modal.appendChild(modalContent);
-    this.viewContainer.appendChild(modal);
+      if (!this.currentOrderData) {
+        content.innerHTML = '<div style="padding:20px; color:#999;">Select or create an order</div>';
+        return;
+      }
 
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) modal.remove();
-    });
-  }
+      const canQC = this.canAccessStage(ORDER_CONSTANTS.STAGES.QC);
+      const canDelivery = this.canAccessStage(ORDER_CONSTANTS.STAGES.DELIVERY);
 
-  canAccessStage(stage) {
-    if (stage === ORDER_CONSTANTS.STAGES.CREATE) return true;
-    
-    if (stage === ORDER_CONSTANTS.STAGES.QC) {
-      return this.currentOrderData.items && this.currentOrderData.items.length > 0;
-    }
-    
-    if (stage === ORDER_CONSTANTS.STAGES.DELIVERY) {
-      // Stage 3 requires QC date and checked items
-      return !!this.currentOrderData.qc_date;
-    }
-    
-    return false;
-  }
-
-  renderCurrentStage() {
-    const content = document.getElementById('mainContent');
-    
-    if (!this.currentOrderData) {
-      content.innerHTML = '<div style="padding:20px; color:#999;">Select or create an order</div>';
-      return;
-    }
-
-    const canQC = this.canAccessStage(ORDER_CONSTANTS.STAGES.QC);
-    const canDelivery = this.canAccessStage(ORDER_CONSTANTS.STAGES.DELIVERY);
-
-    // Show stage indicator
-    let stageHTML = `
+      // Show stage indicator
+      let stageHTML = `
       <div class="stage-indicator" style="display:flex; flex-wrap:wrap; gap:8px; padding:12px; background:#f5f5f5; border-bottom:1px solid #ddd; margin-bottom:20px;">
         <button class="stage-btn" data-stage="${ORDER_CONSTANTS.STAGES.CREATE}" style="padding:8px 12px; background:${this.currentStage === ORDER_CONSTANTS.STAGES.CREATE ? '#0066cc' : '#ddd'};color:${this.currentStage === ORDER_CONSTANTS.STAGES.CREATE ? '#fff' : '#666'}; border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600; flex:1; min-width:120px;">📋 STAGE 1: CREATE</button>
         <button class="stage-btn" data-stage="${ORDER_CONSTANTS.STAGES.QC}" ${canQC ? '' : 'disabled'} style="padding:8px 12px; background:${this.currentStage === ORDER_CONSTANTS.STAGES.QC ? '#ff9900' : (canQC ? '#ddd' : '#eeeeee')};color:${this.currentStage === ORDER_CONSTANTS.STAGES.QC ? '#fff' : (canQC ? '#666' : '#aaaaaa')}; border:none; border-radius:4px; cursor:${canQC ? 'pointer' : 'not-allowed'}; font-size:11px; font-weight:600; flex:1; min-width:120px;">📦 STAGE 2: QC</button>
@@ -2284,142 +2339,142 @@ class OrdersView {
       </div>
     `;
 
-    content.innerHTML = stageHTML + `<div id="stageContent" style="margin:0 20px; flex:1; overflow-y:auto; display:flex; flex-direction:column; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar"></div>`;
+      content.innerHTML = stageHTML + `<div id="stageContent" style="margin:0 20px; flex:1; overflow-y:auto; display:flex; flex-direction:column; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar"></div>`;
 
-    document.querySelectorAll('.stage-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const targetStage = btn.dataset.stage;
-        if (targetStage === this.currentStage) return;
-        
-        // Save current stage data before switching
-        const saved = await this.saveCurrentStageState(true, targetStage);
-        if (!saved) return; // Validation failed, don't switch
-        
-        this.currentStage = targetStage;
-        this.renderCurrentStage();
+      document.querySelectorAll('.stage-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const targetStage = btn.dataset.stage;
+          if (targetStage === this.currentStage) return;
+
+          // Save current stage data before switching
+          const saved = await this.saveCurrentStageState(true, targetStage);
+          if (!saved) return; // Validation failed, don't switch
+
+          this.currentStage = targetStage;
+          this.renderCurrentStage();
+        });
       });
-    });
 
-    switch(this.currentStage) {
-      case 'stage1':
-        this.renderStage1();
-        break;
-      case 'stage2':
-        this.renderStage2();
-        break;
-      case 'stage3':
-        this.renderStage3();
-        break;
+      switch (this.currentStage) {
+        case 'stage1':
+          this.renderStage1();
+          break;
+        case 'stage2':
+          this.renderStage2();
+          break;
+        case 'stage3':
+          this.renderStage3();
+          break;
+      }
     }
-  }
 
-  attachProductToNotes(targetInputId, item, noteField = 'order_notes', extraTag = '') {
-    const textarea = document.getElementById(targetInputId);
-    if (!textarea) return;
+    attachProductToNotes(targetInputId, item, noteField = 'order_notes', extraTag = '') {
+      const textarea = document.getElementById(targetInputId);
+      if (!textarea) return;
 
-    const productName = item.product_name || item.name || 'Product';
-    const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : (item.variant_name || '');
-    const batchDisplay = item.batch_no || item.batchNo || '';
+      const productName = item.product_name || item.name || 'Product';
+      const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : (item.variant_name || '');
+      const batchDisplay = item.batch_no || item.batchNo || '';
 
-    const details = [];
-    if (variantDisplay) details.push(variantDisplay);
-    if (batchDisplay && batchDisplay !== 'N/A') details.push(`Batch: ${batchDisplay}`);
-    if (extraTag) details.push(extraTag);
+      const details = [];
+      if (variantDisplay) details.push(variantDisplay);
+      if (batchDisplay && batchDisplay !== 'N/A') details.push(`Batch: ${batchDisplay}`);
+      if (extraTag) details.push(extraTag);
 
-    const detailSuffix = details.length ? ` (${details.join(', ')})` : '';
-    const line = `- ${productName}${detailSuffix}: `;
+      const detailSuffix = details.length ? ` (${details.join(', ')})` : '';
+      const line = `- ${productName}${detailSuffix}: `;
 
-    let currentVal = textarea.value || '';
-    if (currentVal && !currentVal.endsWith('\n')) {
-      currentVal += '\n';
+      let currentVal = textarea.value || '';
+      if (currentVal && !currentVal.endsWith('\n')) {
+        currentVal += '\n';
+      }
+      currentVal += line;
+      textarea.value = currentVal;
+
+      if (noteField && this.currentOrderData) {
+        this.currentOrderData[noteField] = currentVal;
+      }
+      this.saveOrderDraft();
+
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      textarea.scrollTop = textarea.scrollHeight;
+      try {
+        textarea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (_) { }
+
+      this.showNotification(`Added "${productName}" to notes`, 'info');
     }
-    currentVal += line;
-    textarea.value = currentVal;
 
-    if (noteField && this.currentOrderData) {
-      this.currentOrderData[noteField] = currentVal;
+    bindOrderItemQuickActions(container) {
+      container.querySelectorAll('.order-item-batch').forEach(batch => {
+        batch.addEventListener('dblclick', () => {
+          this.changeOrderItemBatch(Number(batch.dataset.idx));
+        });
+      });
+      container.querySelectorAll('.order-item-variant').forEach(variant => {
+        variant.addEventListener('dblclick', () => {
+          this.changeOrderItemVariant(Number(variant.dataset.idx));
+        });
+      });
+      container.querySelectorAll('.order-item-product-name').forEach(productName => {
+        productName.addEventListener('dblclick', () => {
+          const item = this.currentOrderData?.items?.[Number(productName.dataset.idx)];
+          if (item) this.openOrderItemProduct(item);
+        });
+      });
     }
-    this.saveOrderDraft();
-
-    textarea.focus();
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    textarea.scrollTop = textarea.scrollHeight;
-    try {
-      textarea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } catch (_) {}
-
-    this.showNotification(`Added "${productName}" to notes`, 'info');
-  }
-
-  bindOrderItemQuickActions(container) {
-    container.querySelectorAll('.order-item-batch').forEach(batch => {
-      batch.addEventListener('dblclick', () => {
-        this.changeOrderItemBatch(Number(batch.dataset.idx));
-      });
-    });
-    container.querySelectorAll('.order-item-variant').forEach(variant => {
-      variant.addEventListener('dblclick', () => {
-        this.changeOrderItemVariant(Number(variant.dataset.idx));
-      });
-    });
-    container.querySelectorAll('.order-item-product-name').forEach(productName => {
-      productName.addEventListener('dblclick', () => {
-        const item = this.currentOrderData?.items?.[Number(productName.dataset.idx)];
-        if (item) this.openOrderItemProduct(item);
-      });
-    });
-  }
 
   async changeOrderItemBatch(index) {
-    const item = this.currentOrderData?.items?.[index];
-    if (!item) return;
+      const item = this.currentOrderData?.items?.[index];
+      if (!item) return;
 
-    const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
-    if (!product) {
-      this.showNotification('Product is not available in the loaded catalog', 'warning');
-      return;
+      const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
+      if (!product) {
+        this.showNotification('Product is not available in the loaded catalog', 'warning');
+        return;
+      }
+      this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: false });
     }
-    this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: false });
-  }
 
   async changeOrderItemVariant(index) {
-    const item = this.currentOrderData?.items?.[index];
-    if (!item) return;
+      const item = this.currentOrderData?.items?.[index];
+      if (!item) return;
 
-    const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
-    if (!product) {
-      this.showNotification('Product is not available in the loaded catalog', 'warning');
-      return;
+      const product = this.products.find(candidate => String(candidate.id) === String(item.product_id));
+      if (!product) {
+        this.showNotification('Product is not available in the loaded catalog', 'warning');
+        return;
+      }
+      if (!Array.isArray(product.variants) || product.variants.length < 2) {
+        this.showNotification('There are no other variants for this product', 'info');
+        return;
+      }
+      this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: true });
     }
-    if (!Array.isArray(product.variants) || product.variants.length < 2) {
-      this.showNotification('There are no other variants for this product', 'info');
-      return;
+
+    openOrderItemProduct(item) {
+      if (!window.AppWindow || !window.ProductListApp) {
+        this.showNotification('Product List is not available right now', 'error');
+        return;
+      }
+      window.AppWindow.launchApp('products', window.ProductListApp, 'productAppContainer', {
+        setAppState: window.setAppState,
+        recentAppKey: 'recentAppUsed',
+        params: { productId: item.product_id, action: 'view' }
+      });
     }
-    this.showVariantBatchSelectionModal(product, { itemIndex: index, allowVariantChange: true });
-  }
 
-  openOrderItemProduct(item) {
-    if (!window.AppWindow || !window.ProductListApp) {
-      this.showNotification('Product List is not available right now', 'error');
-      return;
-    }
-    window.AppWindow.launchApp('products', window.ProductListApp, 'productAppContainer', {
-      setAppState: window.setAppState,
-      recentAppKey: 'recentAppUsed',
-      params: { productId: item.product_id, action: 'view' }
-    });
-  }
+    // ===== STAGE 1: CREATE ORDER =====
+    renderStage1() {
+      const container = document.getElementById('stageContent');
+      if (!container) return;
 
-  // ===== STAGE 1: CREATE ORDER =====
-  renderStage1() {
-    const container = document.getElementById('stageContent');
-    if (!container) return;
+      // Get customer name with fallback lookup
+      const customer = this.customers.find(c => c.id === this.currentOrderData.customer_id);
+      const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
 
-    // Get customer name with fallback lookup
-    const customer = this.customers.find(c => c.id === this.currentOrderData.customer_id);
-    const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
-
-    container.innerHTML = `
+      container.innerHTML = `
       <div style="display:flex; flex-direction:column; height:100%;">
         <div style="flex:1; overflow-y:auto; padding:0; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar">
           <div>
@@ -2474,186 +2529,186 @@ class OrdersView {
       </div>
     `;
 
-    this.bindStage1Events();
-    this.renderStage1SearchResults();
-    this.renderStage1Recommendations();
-    this.renderStage1Items();
+      this.bindStage1Events();
+      this.renderStage1SearchResults();
+      this.renderStage1Recommendations();
+      this.renderStage1Items();
 
-    // Bind order date selector to update currentOrderData
-    const orderDateInput = document.getElementById('orderDate');
-    if (orderDateInput) {
-      orderDateInput.addEventListener('change', (e) => {
-        this.currentOrderData.order_date = e.target.value;
+      // Bind order date selector to update currentOrderData
+      const orderDateInput = document.getElementById('orderDate');
+      if (orderDateInput) {
+        orderDateInput.addEventListener('change', (e) => {
+          this.currentOrderData.order_date = e.target.value;
+          this.saveOrderDraft();
+        });
+      }
+    }
+
+    bindStage1Events() {
+      // Populate datalist with all products
+      this.populateProductsList();
+
+      // Exit button
+      const exitBtn = document.getElementById('exitStageBtn');
+      exitBtn?.addEventListener('click', async () => {
+        // Save data before exiting
+        await this.saveCurrentStageState(true);
+        this.selectedCustomerId = this.currentOrderData.customer_id;
+        this.refreshOrdersData();
+      });
+
+      const searchInput = document.getElementById('productSearch');
+
+      const addBtn = document.getElementById('addProductBtn');
+      addBtn?.addEventListener('click', () => {
+        const productName = searchInput?.value.trim();
+        const product = this.products.find(p => p.name.toLowerCase() === productName.toLowerCase());
+        if (product) {
+          this.handleAddProduct(product);
+          searchInput.value = '';
+        } else {
+          this.showNotification('Product not found', 'error');
+        }
+      });
+
+      const qrScanBtn = document.getElementById('stage1QrScanBtn');
+      qrScanBtn?.addEventListener('click', () => {
+        openQrScanner({
+          title: 'Scan product or batch QR',
+          history: this.qrScanHistory,
+          onScan: value => this.addCatalogQrToOrder(value)
+        });
+      });
+
+      const notesArea = document.getElementById('orderNotes');
+      notesArea?.addEventListener('input', (e) => {
+        this.currentOrderData.order_notes = e.target.value;
         this.saveOrderDraft();
       });
-    }
-  }
-
-  bindStage1Events() {
-    // Populate datalist with all products
-    this.populateProductsList();
-
-    // Exit button
-    const exitBtn = document.getElementById('exitStageBtn');
-    exitBtn?.addEventListener('click', async () => {
-      // Save data before exiting
-      await this.saveCurrentStageState(true);
-      this.selectedCustomerId = this.currentOrderData.customer_id;
-      this.refreshOrdersData();
-    });
-
-    const searchInput = document.getElementById('productSearch');
-
-    const addBtn = document.getElementById('addProductBtn');
-    addBtn?.addEventListener('click', () => {
-      const productName = searchInput?.value.trim();
-      const product = this.products.find(p => p.name.toLowerCase() === productName.toLowerCase());
-      if (product) {
-        this.handleAddProduct(product);
-        searchInput.value = '';
-      } else {
-        this.showNotification('Product not found', 'error');
-      }
-    });
-
-    const qrScanBtn = document.getElementById('stage1QrScanBtn');
-    qrScanBtn?.addEventListener('click', () => {
-      openQrScanner({
-        title: 'Scan product or batch QR',
-        history: this.qrScanHistory,
-        onScan: value => this.addCatalogQrToOrder(value)
+      notesArea?.addEventListener('change', (e) => {
+        this.currentOrderData.order_notes = e.target.value;
+        this.saveOrderDraft();
       });
-    });
 
-    const notesArea = document.getElementById('orderNotes');
-    notesArea?.addEventListener('input', (e) => {
-      this.currentOrderData.order_notes = e.target.value;
-      this.saveOrderDraft();
-    });
-    notesArea?.addEventListener('change', (e) => {
-      this.currentOrderData.order_notes = e.target.value;
-      this.saveOrderDraft();
-    });
+      const completeBtn = document.getElementById('completeStage1Btn');
+      completeBtn?.addEventListener('click', async () => {
+        const saved = await this.saveCurrentStageState(true);
+        if (!saved) return;
 
-    const completeBtn = document.getElementById('completeStage1Btn');
-    completeBtn?.addEventListener('click', async () => {
-      const saved = await this.saveCurrentStageState(true);
-      if (!saved) return;
-      
-      this.currentOrderData.current_stage = 'stage2';
-      await this.saveOrder(true);
-      this.currentStage = 'stage2';
-      this.renderCurrentStage();
-      this.showNotification('✓ Stage 1 complete', 'success');
-    });
-  }
+        this.currentOrderData.current_stage = 'stage2';
+        await this.saveOrder(true);
+        this.currentStage = 'stage2';
+        this.renderCurrentStage();
+        this.showNotification('✓ Stage 1 complete', 'success');
+      });
+    }
 
   async addCatalogQrToOrder(value) {
-    if (!this.products.length) await this.loadCustomersAndProducts();
+      if (!this.products.length) await this.loadCustomersAndProducts();
 
-    const { match, reason } = diagnoseCatalogQr(this.products, value);
-    if (!match) {
-      const message = catalogQrFailureMessage(reason);
-      this.showNotification(message, 'warning');
-      return { success: false, message };
-    }
+      const { match, reason } = diagnoseCatalogQr(this.products, value);
+      if (!match) {
+        const message = catalogQrFailureMessage(reason);
+        this.showNotification(message, 'warning');
+        return { success: false, message };
+      }
 
-    if (match.type === 'batch') {
-      const added = this.addProductToOrder(match.product, match.variant?.id, match.batch.id);
+      if (match.type === 'batch') {
+        const added = this.addProductToOrder(match.product, match.variant?.id, match.batch.id);
+        return {
+          success: true,
+          label: `${match.product.name} · ${match.batch.batch_no || match.batch.batchNo || ''}`,
+          historyKey: JSON.stringify(['order', match.product.id, match.variant?.id ?? null, match.batch.id]),
+          message: `Added ${match.product.name}. Scan another label or undo this item.`,
+          ...added
+        };
+      }
+
+      const product = match.product;
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const nestedBatches = variants.flatMap(variant =>
+        (Array.isArray(variant.batches) ? variant.batches : []).map(batch => ({ variant, batch }))
+      );
+      const catalogBatches = nestedBatches.length
+        ? nestedBatches
+        : (Array.isArray(product.batches) ? product.batches : []);
+
+      if (variants.length > 1 || catalogBatches.length > 1) {
+        this.handleAddProduct(product);
+        return { success: true, message: 'Choose the product pack or batch to add it.', close: true };
+      }
+
+      const variant = variants[0] || null;
+      const batch = variant?.batches?.[0] || product.batches?.[0] || null;
+      const added = this.addProductToOrder(product, variant?.id, batch?.id);
       return {
         success: true,
-        label: `${match.product.name} · ${match.batch.batch_no || match.batch.batchNo || ''}`,
-        historyKey: JSON.stringify(['order', match.product.id, match.variant?.id ?? null, match.batch.id]),
-        message: `Added ${match.product.name}. Scan another label or undo this item.`,
+        label: `${product.name}${batch?.batch_no ? ` · ${batch.batch_no}` : ''}`,
+        historyKey: JSON.stringify(['order', product.id, variant?.id ?? null, batch?.id ?? null]),
+        message: `Added ${product.name}. Scan another label or undo this item.`,
         ...added
       };
     }
 
-    const product = match.product;
-    const variants = Array.isArray(product.variants) ? product.variants : [];
-    const nestedBatches = variants.flatMap(variant =>
-      (Array.isArray(variant.batches) ? variant.batches : []).map(batch => ({ variant, batch }))
-    );
-    const catalogBatches = nestedBatches.length
-      ? nestedBatches
-      : (Array.isArray(product.batches) ? product.batches : []);
+    handleAddProduct(product) {
+      // Check if product has variants or batches that require selection
+      const hasMultipleVariants = product.variants && Array.isArray(product.variants) && product.variants.length > 1;
+      const hasMultipleBatches = (Array.isArray(product.batches) && product.batches.length > 1) ||
+        product.variants?.some(variant => variant.batches?.length > 1);
 
-    if (variants.length > 1 || catalogBatches.length > 1) {
-      this.handleAddProduct(product);
-      return { success: true, message: 'Choose the product pack or batch to add it.', close: true };
+      // If product has multiple variants or batches, show selection modal
+      if (hasMultipleVariants || hasMultipleBatches) {
+        this.showVariantBatchSelectionModal(product);
+      } else {
+        // Otherwise, add directly with default values
+        this.addProductToOrder(product,
+          product.variants?.[0]?.id,
+          product.batches?.[0]?.id
+        );
+      }
     }
 
-    const variant = variants[0] || null;
-    const batch = variant?.batches?.[0] || product.batches?.[0] || null;
-    const added = this.addProductToOrder(product, variant?.id, batch?.id);
-    return {
-      success: true,
-      label: `${product.name}${batch?.batch_no ? ` · ${batch.batch_no}` : ''}`,
-      historyKey: JSON.stringify(['order', product.id, variant?.id ?? null, batch?.id ?? null]),
-      message: `Added ${product.name}. Scan another label or undo this item.`,
-      ...added
-    };
-  }
-
-  handleAddProduct(product) {
-    // Check if product has variants or batches that require selection
-    const hasMultipleVariants = product.variants && Array.isArray(product.variants) && product.variants.length > 1;
-    const hasMultipleBatches = (Array.isArray(product.batches) && product.batches.length > 1) ||
-      product.variants?.some(variant => variant.batches?.length > 1);
-    
-    // If product has multiple variants or batches, show selection modal
-    if (hasMultipleVariants || hasMultipleBatches) {
-      this.showVariantBatchSelectionModal(product);
-    } else {
-      // Otherwise, add directly with default values
-      this.addProductToOrder(product, 
-        product.variants?.[0]?.id, 
-        product.batches?.[0]?.id
-      );
-    }
-  }
-
-  showVariantBatchSelectionModal(product, options = {}) {
-    const variants = product.variants || [];
-    const batches = product.batches || [];
-    const item = Number.isInteger(options.itemIndex) ? this.currentOrderData?.items?.[options.itemIndex] : null;
-    const editing = Boolean(item);
-    const allowVariantChange = options.allowVariantChange !== false;
-    const currentVariantIndex = variants.findIndex(variant =>
-      item?.variant_id != null
-        ? String(variant.id) === String(item.variant_id)
-        : String(variant.pack_size_value || '') === String(item?.pack_size_value || '') &&
+    showVariantBatchSelectionModal(product, options = {}) {
+      const variants = product.variants || [];
+      const batches = product.batches || [];
+      const item = Number.isInteger(options.itemIndex) ? this.currentOrderData?.items?.[options.itemIndex] : null;
+      const editing = Boolean(item);
+      const allowVariantChange = options.allowVariantChange !== false;
+      const currentVariantIndex = variants.findIndex(variant =>
+        item?.variant_id != null
+          ? String(variant.id) === String(item.variant_id)
+          : String(variant.pack_size_value || '') === String(item?.pack_size_value || '') &&
           String(variant.pack_size_type || '') === String(item?.pack_size_type || '')
-    );
-    const initialVariantIndex = variants.length
-      ? (currentVariantIndex >= 0 ? currentVariantIndex : (variants.length === 1 ? 0 : -1))
-      : 0;
-    const showVariantSelect = variants.length > 1 && (!editing || allowVariantChange);
-    const getBatchesForVariant = variantIndex => {
-      const variant = variants[variantIndex];
-      if (Array.isArray(variant?.batches) && variant.batches.length) return variant.batches;
-      return batches.filter(batch => batch.variant_id == null || String(batch.variant_id) === String(variant?.id));
-    };
-    const formatExpiry = value => {
-      if (!value) return 'N/A';
-      const parsedDate = new Date(value);
-      return Number.isNaN(parsedDate.getTime())
-        ? String(value)
-        : parsedDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-    };
-    const getVariantLabel = variant => `${variant.pack_size_value || variant.packSize || 'Variant'} ${variant.pack_size_type || ''}`.trim();
-    
-    let modalHTML = `
+      );
+      const initialVariantIndex = variants.length
+        ? (currentVariantIndex >= 0 ? currentVariantIndex : (variants.length === 1 ? 0 : -1))
+        : 0;
+      const showVariantSelect = variants.length > 1 && (!editing || allowVariantChange);
+      const getBatchesForVariant = variantIndex => {
+        const variant = variants[variantIndex];
+        if (Array.isArray(variant?.batches) && variant.batches.length) return variant.batches;
+        return batches.filter(batch => batch.variant_id == null || String(batch.variant_id) === String(variant?.id));
+      };
+      const formatExpiry = value => {
+        if (!value) return 'N/A';
+        const parsedDate = new Date(value);
+        return Number.isNaN(parsedDate.getTime())
+          ? String(value)
+          : parsedDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+      const getVariantLabel = variant => `${variant.pack_size_value || variant.packSize || 'Variant'} ${variant.pack_size_type || ''}`.trim();
+
+      let modalHTML = `
       <div style="padding: 24px;">
         <h2 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 900; color: #000000;">${editing ? 'UPDATE ORDER ITEM' : 'SELECT OPTIONS'}</h2>
         <p style="margin: 0 0 20px 0; font-size: 12px; color: #666666;">Product: ${Utils.escapeHtml(product.name)}</p>
         
         <div style="display: flex; flex-direction: column; gap: 16px;">
     `;
-    
-    // Add variant selector if multiple variants exist
-    if (showVariantSelect) {
-      modalHTML += `
+
+      // Add variant selector if multiple variants exist
+      if (showVariantSelect) {
+        modalHTML += `
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: #000000; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">📦 SELECT VARIANT</label>
           <select id="variantSelect" style="width: 100%; padding: 10px 12px; border: 1px solid #333333; border-radius: 2px; font-size: 11px; font-family: 'Courier New', monospace; background: #ffffff; color: #000000;">
@@ -2664,12 +2719,12 @@ class OrdersView {
           </select>
         </div>
       `;
-    } else if (variants.length) {
-      modalHTML += `<input type="hidden" id="variantSelect" value="${initialVariantIndex >= 0 ? initialVariantIndex : 0}" />`;
-    }
-    
-    // Add batch selector container (will be populated dynamically)
-    modalHTML += `
+      } else if (variants.length) {
+        modalHTML += `<input type="hidden" id="variantSelect" value="${initialVariantIndex >= 0 ? initialVariantIndex : 0}" />`;
+      }
+
+      // Add batch selector container (will be populated dynamically)
+      modalHTML += `
       <div id="batchContainer">
         <div>
           <label style="display: block; font-size: 11px; font-weight: 700; color: #000000; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">🏷️ SELECT BATCH</label>
@@ -2679,8 +2734,8 @@ class OrdersView {
         </div>
       </div>
     `;
-    
-    modalHTML += `
+
+      modalHTML += `
         </div>
         
         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
@@ -2689,11 +2744,11 @@ class OrdersView {
         </div>
       </div>
     `;
-    
-    // Create modal overlay
-    const modal = document.createElement('div');
-    modal.id = 'variantBatchModal';
-    modal.style.cssText = `
+
+      // Create modal overlay
+      const modal = document.createElement('div');
+      modal.id = 'variantBatchModal';
+      modal.style.cssText = `
       position: absolute;
       top: 0;
       left: 0;
@@ -2706,268 +2761,268 @@ class OrdersView {
       z-index: 2000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Courier New', monospace;
     `;
-    
-    const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
+
+      const modalContent = document.createElement('div');
+      modalContent.style.cssText = `
       background: #ffffff;
       border-radius: 4px;
       max-width: 400px;
       width: 90%;
       box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
     `;
-    modalContent.innerHTML = modalHTML;
-    
-    modal.appendChild(modalContent);
-    this.viewContainer.appendChild(modal);
-    
-    // Event handlers
-    const variantSelect = modal.querySelector('#variantSelect');
-    const batchSelect = modal.querySelector('#batchSelect');
-    const cancelBtn = modal.querySelector('#cancelSelectBtn');
-    const confirmBtn = modal.querySelector('#confirmSelectBtn');
-    
-    // Handle variant selection change and populate batches dynamically
-    const updateBatchOptions = variantIndex => {
-      const rawVariantIndex = variantSelect?.value;
-      if (variantSelect && rawVariantIndex === '') {
+      modalContent.innerHTML = modalHTML;
+
+      modal.appendChild(modalContent);
+      this.viewContainer.appendChild(modal);
+
+      // Event handlers
+      const variantSelect = modal.querySelector('#variantSelect');
+      const batchSelect = modal.querySelector('#batchSelect');
+      const cancelBtn = modal.querySelector('#cancelSelectBtn');
+      const confirmBtn = modal.querySelector('#confirmSelectBtn');
+
+      // Handle variant selection change and populate batches dynamically
+      const updateBatchOptions = variantIndex => {
+        const rawVariantIndex = variantSelect?.value;
+        if (variantSelect && rawVariantIndex === '') {
+          batchSelect.innerHTML = '<option value="">-- Select a variant first --</option>';
+          batchSelect.disabled = true;
+          confirmBtn.disabled = true;
+          return;
+        }
+        const resolvedVariantIndex = Number.isInteger(variantIndex) ? variantIndex : Number(rawVariantIndex ?? initialVariantIndex);
+        const filteredBatches = getBatchesForVariant(resolvedVariantIndex);
+        const preferredBatchIndex = editing && resolvedVariantIndex === currentVariantIndex
+          ? filteredBatches.findIndex(batch => String(batch.id) === String(item.batch_id))
+          : -1;
+        batchSelect.innerHTML = filteredBatches.length
+          ? filteredBatches.map((batch, index) => {
+            const batchNo = batch.batch_no || batch.batchNo || `Batch ${index + 1}`;
+            const batchId = batch.id ?? index;
+            return `<option value="${index}" ${index === (preferredBatchIndex >= 0 ? preferredBatchIndex : 0) ? 'selected' : ''}>${Utils.escapeHtml(batchNo)} · Exp ${Utils.escapeHtml(formatExpiry(batch.exp_date || batch.expiryDate))} · MRP ₹${Number(batch.mrp || 0).toFixed(2)}</option>`;
+          }).join('')
+          : '<option value="">No batches available</option>';
+        batchSelect.disabled = filteredBatches.length === 0;
+        confirmBtn.disabled = !filteredBatches.length;
+      };
+
+      // Initial setup - if single variant, populate batches
+      if (initialVariantIndex >= 0) {
+        if (variantSelect) variantSelect.value = String(initialVariantIndex);
+        updateBatchOptions(initialVariantIndex);
+      } else {
         batchSelect.innerHTML = '<option value="">-- Select a variant first --</option>';
         batchSelect.disabled = true;
         confirmBtn.disabled = true;
-        return;
       }
-      const resolvedVariantIndex = Number.isInteger(variantIndex) ? variantIndex : Number(rawVariantIndex ?? initialVariantIndex);
-      const filteredBatches = getBatchesForVariant(resolvedVariantIndex);
-      const preferredBatchIndex = editing && resolvedVariantIndex === currentVariantIndex
-        ? filteredBatches.findIndex(batch => String(batch.id) === String(item.batch_id))
-        : -1;
-      batchSelect.innerHTML = filteredBatches.length
-        ? filteredBatches.map((batch, index) => {
-          const batchNo = batch.batch_no || batch.batchNo || `Batch ${index + 1}`;
-          const batchId = batch.id ?? index;
-          return `<option value="${index}" ${index === (preferredBatchIndex >= 0 ? preferredBatchIndex : 0) ? 'selected' : ''}>${Utils.escapeHtml(batchNo)} · Exp ${Utils.escapeHtml(formatExpiry(batch.exp_date || batch.expiryDate))} · MRP ₹${Number(batch.mrp || 0).toFixed(2)}</option>`;
-        }).join('')
-        : '<option value="">No batches available</option>';
-      batchSelect.disabled = filteredBatches.length === 0;
-      confirmBtn.disabled = !filteredBatches.length;
-    };
-    
-    // Initial setup - if single variant, populate batches
-    if (initialVariantIndex >= 0) {
-      if (variantSelect) variantSelect.value = String(initialVariantIndex);
-      updateBatchOptions(initialVariantIndex);
-    } else {
-      batchSelect.innerHTML = '<option value="">-- Select a variant first --</option>';
-      batchSelect.disabled = true;
-      confirmBtn.disabled = true;
-    }
-    
-    // Listen to variant changes
-    if (variantSelect && variantSelect.tagName === 'SELECT') {
-      variantSelect.addEventListener('change', () => {
-        updateBatchOptions(Number(variantSelect.value));
+
+      // Listen to variant changes
+      if (variantSelect && variantSelect.tagName === 'SELECT') {
+        variantSelect.addEventListener('change', () => {
+          updateBatchOptions(Number(variantSelect.value));
+        });
+      }
+
+      cancelBtn?.addEventListener('click', () => {
+        modal.remove();
       });
-    }
-    
-    cancelBtn?.addEventListener('click', () => {
-      modal.remove();
-    });
-    
-    confirmBtn?.addEventListener('click', async () => {
-      const variantIndex = variantSelect ? Number(variantSelect.value) : initialVariantIndex;
-      const selectedVariant = variants[variantIndex] || null;
-      const selectedBatches = getBatchesForVariant(variantIndex);
-      const selectedBatch = selectedBatches[Number(batchSelect.value)] || null;
 
-      if ((variants.length && !selectedVariant) || !selectedBatch) {
-        this.showNotification('Please select variant and batch', 'error');
-        return;
-      }
+      confirmBtn?.addEventListener('click', async () => {
+        const variantIndex = variantSelect ? Number(variantSelect.value) : initialVariantIndex;
+        const selectedVariant = variants[variantIndex] || null;
+        const selectedBatches = getBatchesForVariant(variantIndex);
+        const selectedBatch = selectedBatches[Number(batchSelect.value)] || null;
 
-      if (editing) {
-        const selectedVariantLabel = selectedVariant ? getVariantLabel(selectedVariant) : '';
-        const selectedBatchNo = selectedBatch.batch_no || selectedBatch.batchNo || '';
-        const currentVariantLabel = `${item.pack_size_value || ''} ${item.pack_size_type || ''}`.trim();
-        const unchanged = String(selectedVariant?.id ?? '') === String(item.variant_id ?? '') &&
-          selectedVariantLabel === currentVariantLabel &&
-          String(selectedBatch.id ?? '') === String(item.batch_id ?? '') &&
-          selectedBatchNo === String(item.batch_no || '');
-        if (unchanged) {
-          modal.remove();
+        if ((variants.length && !selectedVariant) || !selectedBatch) {
+          this.showNotification('Please select variant and batch', 'error');
           return;
         }
-        const changeDescription = options.allowVariantChange === false
-          ? `batch from ${item.batch_no || 'N/A'} to ${selectedBatchNo}`
-          : `variant/batch from ${currentVariantLabel || 'current variant'} / ${item.batch_no || 'N/A'} to ${selectedVariantLabel} / ${selectedBatchNo}`;
-        if (!confirm(`Change ${item.product_name || product.name} ${changeDescription}?`)) return;
 
-        item.variant_id = selectedVariant?.id ?? null;
-        item.pack_size_value = selectedVariant?.pack_size_value ?? selectedVariant?.packSizeValue ?? item.pack_size_value ?? '';
-        item.pack_size_type = selectedVariant?.pack_size_type ?? selectedVariant?.packSizeType ?? item.pack_size_type ?? '';
-        item.batch_id = selectedBatch.id ?? null;
-        item.batch_no = selectedBatch.batch_no || selectedBatch.batchNo || '';
-        item.mrp = Number(selectedBatch.mrp || 0);
-        item.price = item.mrp;
-        item.unit_price = item.mrp;
-        this.saveOrderDraft();
+        if (editing) {
+          const selectedVariantLabel = selectedVariant ? getVariantLabel(selectedVariant) : '';
+          const selectedBatchNo = selectedBatch.batch_no || selectedBatch.batchNo || '';
+          const currentVariantLabel = `${item.pack_size_value || ''} ${item.pack_size_type || ''}`.trim();
+          const unchanged = String(selectedVariant?.id ?? '') === String(item.variant_id ?? '') &&
+            selectedVariantLabel === currentVariantLabel &&
+            String(selectedBatch.id ?? '') === String(item.batch_id ?? '') &&
+            selectedBatchNo === String(item.batch_no || '');
+          if (unchanged) {
+            modal.remove();
+            return;
+          }
+          const changeDescription = options.allowVariantChange === false
+            ? `batch from ${item.batch_no || 'N/A'} to ${selectedBatchNo}`
+            : `variant/batch from ${currentVariantLabel || 'current variant'} / ${item.batch_no || 'N/A'} to ${selectedVariantLabel} / ${selectedBatchNo}`;
+          if (!confirm(`Change ${item.product_name || product.name} ${changeDescription}?`)) return;
+
+          item.variant_id = selectedVariant?.id ?? null;
+          item.pack_size_value = selectedVariant?.pack_size_value ?? selectedVariant?.packSizeValue ?? item.pack_size_value ?? '';
+          item.pack_size_type = selectedVariant?.pack_size_type ?? selectedVariant?.packSizeType ?? item.pack_size_type ?? '';
+          item.batch_id = selectedBatch.id ?? null;
+          item.batch_no = selectedBatch.batch_no || selectedBatch.batchNo || '';
+          item.mrp = Number(selectedBatch.mrp || 0);
+          item.price = item.mrp;
+          item.unit_price = item.mrp;
+          this.saveOrderDraft();
+          modal.remove();
+          await this.saveOrder(true);
+          this.renderCurrentStage();
+          this.showNotification(options.allowVariantChange === false ? 'Batch updated' : `Variant updated to ${selectedVariantLabel}`, 'success');
+          return;
+        }
+
+        this.addProductToOrder(product, selectedVariant?.id, selectedBatch.id);
         modal.remove();
-        await this.saveOrder(true);
-        this.renderCurrentStage();
-        this.showNotification(options.allowVariantChange === false ? 'Batch updated' : `Variant updated to ${selectedVariantLabel}`, 'success');
+      });
+
+      // Close on background click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+    }
+
+    addProductToOrder(product, variantId, batchId) {
+      // Get variant and batch details from product
+      const variant = variantId ? product.variants?.find(v => v.id === variantId) : product.variants?.[0];
+      const batch = batchId
+        ? (product.batches?.find(b => String(b.id) === String(batchId)) || variant?.batches?.find(b => String(b.id) === String(batchId)))
+        : (variant?.batches?.[0] || product.batches?.[0]);
+
+      // Get price from batch MRP
+      const price = batch?.mrp || variant?.price || product.mrp || 0;
+
+      // Check if product already exists in order
+      const finalVariantId = variantId || variant?.id || null;
+      const finalBatchId = batchId || batch?.id || null;
+
+      const existing = this.currentOrderData.items.find(i =>
+        i.product_id === product.id &&
+        i.variant_id === finalVariantId &&
+        i.batch_id === finalBatchId
+      );
+
+      if (existing) {
+        existing.qty++;
+        this.showNotification(`✓ ${product.name} quantity increased`, 'success');
+        this.renderStage1Items();
+        return this.createOrderQuantityControls(existing);
+      } else {
+        const item = {
+          product_id: product.id,
+          product_name: product.name,
+          variant_id: finalVariantId,
+          batch_id: finalBatchId,
+          pack_size_value: variant?.pack_size_value,
+          pack_size_type: variant?.pack_size_type,
+          batch_no: batch?.batch_no,
+          mrp: batch?.mrp || price,
+          price: price,
+          qty: 1
+        };
+        this.currentOrderData.items.push(item);
+        this.showNotification(`✓ ${product.name} added`, 'success');
+        this.renderStage1Items();
+        return this.createOrderQuantityControls(item);
+      }
+    }
+
+    createOrderQuantityControls(item) {
+      const items = this.currentOrderData.items;
+      const originalIndex = Math.max(0, items.indexOf(item));
+      const adjustQuantity = delta => {
+        let index = items.indexOf(item);
+        const currentQuantity = index < 0 ? 0 : Math.max(0, Number(item.qty) || 0);
+        const nextQuantity = Math.max(0, currentQuantity + delta);
+        if (delta < 0 && index < 0) return false;
+        if (delta > 0 && index < 0) {
+          items.splice(Math.min(originalIndex, items.length), 0, item);
+          index = items.indexOf(item);
+        }
+        if (nextQuantity === 0) {
+          if (index >= 0) items.splice(index, 1);
+        } else {
+          item.qty = nextQuantity;
+        }
+        this.renderStage1Items();
+        return true;
+      };
+
+      return {
+        getQuantity: () => items.includes(item) ? Math.max(0, Number(item.qty) || 0) : 0,
+        minQuantity: 0,
+        adjustQuantity,
+        undo: () => adjustQuantity(-1)
+      };
+    }
+
+    populateProductsList() {
+      const datalist = document.getElementById('productsList');
+      if (!datalist) return;
+
+      datalist.innerHTML = '';
+
+      this.products.forEach(product => {
+        if (product && product.name) {
+          const option = document.createElement('option');
+          option.value = product.name;
+          datalist.appendChild(option);
+        }
+      });
+    }
+
+    renderStage1SearchResults() {
+      const container = document.getElementById('searchResults');
+      if (!container) return;
+
+      const rawInput = document.getElementById('productSearch')?.value || '';
+      const searchTerm = rawInput.toLowerCase().trim();
+
+      // If no search term, show all products
+      // If search term exists, sort matching products first, then non-matching
+      let displayProducts = this.products;
+      let matchedIdSet = new Set();
+
+      if (searchTerm) {
+        let matching = [];
+        let nonMatching = [];
+
+        // Fast-Path: Rust WebAssembly typo-tolerant fuzzy search
+        if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
+          try {
+            matching = window.SuiteCoreBridge.searchCatalog(rawInput, this.products, {
+              min_score: 25.0,
+              limit: this.products.length
+            });
+            matchedIdSet = new Set(matching.map(m => String(m.id)));
+            nonMatching = this.products.filter(p => !matchedIdSet.has(String(p.id)));
+          } catch (err) {
+            log.warn('[NewOrder] WASM fuzzy search fallback:', err);
+          }
+        }
+
+        if (!matching.length) {
+          matching = this.products.filter(p =>
+            p.name.toLowerCase().includes(searchTerm)
+          );
+          matchedIdSet = new Set(matching.map(m => String(m.id)));
+          nonMatching = this.products.filter(p =>
+            !p.name.toLowerCase().includes(searchTerm)
+          );
+        }
+        displayProducts = [...matching, ...nonMatching];
+      }
+
+      if (!displayProducts.length) {
+        container.innerHTML = '<div style="padding:12px; color:#999; font-size:11px;">No products available</div>';
         return;
       }
 
-      this.addProductToOrder(product, selectedVariant?.id, selectedBatch.id);
-      modal.remove();
-    });
-    
-    // Close on background click
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.remove();
-      }
-    });
-  }
-
-  addProductToOrder(product, variantId, batchId) {
-    // Get variant and batch details from product
-    const variant = variantId ? product.variants?.find(v => v.id === variantId) : product.variants?.[0];
-    const batch = batchId
-      ? (product.batches?.find(b => String(b.id) === String(batchId)) || variant?.batches?.find(b => String(b.id) === String(batchId)))
-      : (variant?.batches?.[0] || product.batches?.[0]);
-    
-    // Get price from batch MRP
-    const price = batch?.mrp || variant?.price || product.mrp || 0;
-    
-    // Check if product already exists in order
-    const finalVariantId = variantId || variant?.id || null;
-    const finalBatchId = batchId || batch?.id || null;
-    
-    const existing = this.currentOrderData.items.find(i => 
-      i.product_id === product.id && 
-      i.variant_id === finalVariantId && 
-      i.batch_id === finalBatchId
-    );
-    
-    if (existing) {
-      existing.qty++;
-      this.showNotification(`✓ ${product.name} quantity increased`, 'success');
-      this.renderStage1Items();
-      return this.createOrderQuantityControls(existing);
-    } else {
-      const item = {
-        product_id: product.id,
-        product_name: product.name,
-        variant_id: finalVariantId,
-        batch_id: finalBatchId,
-        pack_size_value: variant?.pack_size_value,
-        pack_size_type: variant?.pack_size_type,
-        batch_no: batch?.batch_no,
-        mrp: batch?.mrp || price,
-        price: price,
-        qty: 1
-      };
-      this.currentOrderData.items.push(item);
-      this.showNotification(`✓ ${product.name} added`, 'success');
-      this.renderStage1Items();
-      return this.createOrderQuantityControls(item);
-    }
-  }
-
-  createOrderQuantityControls(item) {
-    const items = this.currentOrderData.items;
-    const originalIndex = Math.max(0, items.indexOf(item));
-    const adjustQuantity = delta => {
-      let index = items.indexOf(item);
-      const currentQuantity = index < 0 ? 0 : Math.max(0, Number(item.qty) || 0);
-      const nextQuantity = Math.max(0, currentQuantity + delta);
-      if (delta < 0 && index < 0) return false;
-      if (delta > 0 && index < 0) {
-        items.splice(Math.min(originalIndex, items.length), 0, item);
-        index = items.indexOf(item);
-      }
-      if (nextQuantity === 0) {
-        if (index >= 0) items.splice(index, 1);
-      } else {
-        item.qty = nextQuantity;
-      }
-      this.renderStage1Items();
-      return true;
-    };
-
-    return {
-      getQuantity: () => items.includes(item) ? Math.max(0, Number(item.qty) || 0) : 0,
-      minQuantity: 0,
-      adjustQuantity,
-      undo: () => adjustQuantity(-1)
-    };
-  }
-
-  populateProductsList() {
-    const datalist = document.getElementById('productsList');
-    if (!datalist) return;
-
-    datalist.innerHTML = '';
-    
-    this.products.forEach(product => {
-      if (product && product.name) {
-        const option = document.createElement('option');
-        option.value = product.name;
-        datalist.appendChild(option);
-      }
-    });
-  }
-
-  renderStage1SearchResults() {
-    const container = document.getElementById('searchResults');
-    if (!container) return;
-
-    const rawInput = document.getElementById('productSearch')?.value || '';
-    const searchTerm = rawInput.toLowerCase().trim();
-    
-    // If no search term, show all products
-    // If search term exists, sort matching products first, then non-matching
-    let displayProducts = this.products;
-    let matchedIdSet = new Set();
-    
-    if (searchTerm) {
-      let matching = [];
-      let nonMatching = [];
-
-      // Fast-Path: Rust WebAssembly typo-tolerant fuzzy search
-      if (typeof window !== 'undefined' && window.SuiteCoreBridge && window.SuiteCoreBridge.isWasmLoaded()) {
-        try {
-          matching = window.SuiteCoreBridge.searchCatalog(rawInput, this.products, {
-            min_score: 25.0,
-            limit: this.products.length
-          });
-          matchedIdSet = new Set(matching.map(m => String(m.id)));
-          nonMatching = this.products.filter(p => !matchedIdSet.has(String(p.id)));
-        } catch (err) {
-          log.warn('[NewOrder] WASM fuzzy search fallback:', err);
-        }
-      }
-
-      if (!matching.length) {
-        matching = this.products.filter(p => 
-          p.name.toLowerCase().includes(searchTerm)
-        );
-        matchedIdSet = new Set(matching.map(m => String(m.id)));
-        nonMatching = this.products.filter(p => 
-          !p.name.toLowerCase().includes(searchTerm)
-        );
-      }
-      displayProducts = [...matching, ...nonMatching];
-    }
-
-    if (!displayProducts.length) {
-      container.innerHTML = '<div style="padding:12px; color:#999; font-size:11px;">No products available</div>';
-      return;
-    }
-
-    container.innerHTML = displayProducts.map(p => {
-      const isMatching = !searchTerm || matchedIdSet.has(String(p.id)) || p.name.toLowerCase().includes(searchTerm);
-      const highlightStyle = isMatching && searchTerm ? 'background-color:#fff3cd; font-weight:600;' : '';
-      return `
+      container.innerHTML = displayProducts.map(p => {
+        const isMatching = !searchTerm || matchedIdSet.has(String(p.id)) || p.name.toLowerCase().includes(searchTerm);
+        const highlightStyle = isMatching && searchTerm ? 'background-color:#fff3cd; font-weight:600;' : '';
+        return `
         <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; cursor:pointer; ${highlightStyle}" class="search-product" data-product-id="${p.id}">
           <div style="flex:1;">
             <div style="font-weight:600; color:#333;">${p.name}</div>
@@ -2979,125 +3034,125 @@ class OrdersView {
           </div>
         </div>
       `;
-    }).join('');
+      }).join('');
 
-    container.querySelectorAll('.search-product').forEach((item) => {
-      const addBtn = item.querySelector('.search-add-btn');
-      addBtn?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const productId = item.dataset.productId;
-        const product = this.products.find(p => p.id == productId);
-        if (product) {
-          const existing = this.currentOrderData.items.find(i => i.product_id === product.id);
-          if (existing) {
-            existing.qty++;
-          } else {
-            this.currentOrderData.items.push({
-              product_id: product.id,
-              product_name: product.name,
-              price: product.mrp || 0,
-              qty: 1
-            });
+      container.querySelectorAll('.search-product').forEach((item) => {
+        const addBtn = item.querySelector('.search-add-btn');
+        addBtn?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const productId = item.dataset.productId;
+          const product = this.products.find(p => p.id == productId);
+          if (product) {
+            const existing = this.currentOrderData.items.find(i => i.product_id === product.id);
+            if (existing) {
+              existing.qty++;
+            } else {
+              this.currentOrderData.items.push({
+                product_id: product.id,
+                product_name: product.name,
+                price: product.mrp || 0,
+                qty: 1
+              });
+            }
+            this.renderStage1Items();
+            document.getElementById('productSearch').value = '';
+            this.renderStage1SearchResults();
           }
-          this.renderStage1Items();
-          document.getElementById('productSearch').value = '';
-          this.renderStage1SearchResults();
-        }
+        });
+
+        const noteBtn = item.querySelector('.search-note-btn');
+        noteBtn?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const productId = item.dataset.productId;
+          const product = this.products.find(p => p.id == productId);
+          if (product) {
+            this.attachProductToNotes('orderNotes', product, 'order_notes');
+          }
+        });
       });
-
-      const noteBtn = item.querySelector('.search-note-btn');
-      noteBtn?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const productId = item.dataset.productId;
-        const product = this.products.find(p => p.id == productId);
-        if (product) {
-          this.attachProductToNotes('orderNotes', product, 'order_notes');
-        }
-      });
-    });
-  }
-
-  renderStage1Recommendations() {
-    const container = document.getElementById('recommendations');
-    if (!container) return;
-
-    container.innerHTML = '<div style="color:#999; font-size:11px;">Loading recommendations...</div>';
-
-    // Get reliable customer name for history lookup
-    const customer = this.customers.find(c => c.id === this.currentOrderData.customer_id);
-    const customerName = customer?.name || this.currentOrderData.customer_name;
-
-    if (!customerName || customerName === 'Unknown') {
-      container.innerHTML = '<div style="color:#999; font-size:11px;">Select a customer to see recommendations</div>';
-      return;
     }
 
-    this.getCustomerBillItems(customerName).then(billItems => {
-      const updatedContainer = document.getElementById('recommendations');
-      if (!updatedContainer) return;
+    renderStage1Recommendations() {
+      const container = document.getElementById('recommendations');
+      if (!container) return;
 
-      if (!billItems || !billItems.length) {
-        updatedContainer.innerHTML = '<div style="color:#999; font-size:11px;">No purchase history</div>';
+      container.innerHTML = '<div style="color:#999; font-size:11px;">Loading recommendations...</div>';
+
+      // Get reliable customer name for history lookup
+      const customer = this.customers.find(c => c.id === this.currentOrderData.customer_id);
+      const customerName = customer?.name || this.currentOrderData.customer_name;
+
+      if (!customerName || customerName === 'Unknown') {
+        container.innerHTML = '<div style="color:#999; font-size:11px;">Select a customer to see recommendations</div>';
         return;
       }
 
-      const patterns = this.analyzePurchasePatterns(billItems);
-      if (!patterns.length) {
-        updatedContainer.innerHTML = '<div style="color:#999; font-size:11px;">No recommendations</div>';
-        return;
-      }
+      this.getCustomerBillItems(customerName).then(billItems => {
+        const updatedContainer = document.getElementById('recommendations');
+        if (!updatedContainer) return;
 
-      updatedContainer.innerHTML = patterns.map(p => `
+        if (!billItems || !billItems.length) {
+          updatedContainer.innerHTML = '<div style="color:#999; font-size:11px;">No purchase history</div>';
+          return;
+        }
+
+        const patterns = this.analyzePurchasePatterns(billItems);
+        if (!patterns.length) {
+          updatedContainer.innerHTML = '<div style="color:#999; font-size:11px;">No recommendations</div>';
+          return;
+        }
+
+        updatedContainer.innerHTML = patterns.map(p => `
         <div style="padding:10px; border-bottom:1px solid #d0e8ff; cursor:pointer; background:#fff; margin-bottom:4px; border-radius:2px;" class="recommend-product" data-product-id="${p.productId}" data-product-name="${p.name}">
           <div style="font-weight:600; color:#0066cc;">${p.name}</div>
           <div style="font-size:10px; color:#666;">Bought ${p.frequency}x · Last ${p.daysSinceLast}d ago</div>
         </div>
       `).join('');
 
-      updatedContainer.querySelectorAll('.recommend-product').forEach(item => {
-        item.addEventListener('click', () => {
-          const productId = item.dataset.productId;
-          const productName = item.dataset.productName;
-          const product = this.products.find(p => p.id == productId);
-          if (product) {
-            this.handleAddProduct(product);
-          }
+        updatedContainer.querySelectorAll('.recommend-product').forEach(item => {
+          item.addEventListener('click', () => {
+            const productId = item.dataset.productId;
+            const productName = item.dataset.productName;
+            const product = this.products.find(p => p.id == productId);
+            if (product) {
+              this.handleAddProduct(product);
+            }
+          });
         });
+      }).catch(err => {
+        log.error('Error loading recommendations:', err);
+        const container = document.getElementById('recommendations');
+        if (container) container.innerHTML = '<div style="color:#c00; font-size:11px;">Error loading</div>';
       });
-    }).catch(err => {
-      log.error('Error loading recommendations:', err);
-      const container = document.getElementById('recommendations');
-      if (container) container.innerHTML = '<div style="color:#c00; font-size:11px;">Error loading</div>';
-    });
-  }
-
-  renderStage1Items() {
-    const container = document.getElementById('orderItems');
-    if (!container) return;
-
-    if (!this.currentOrderData.items || !this.currentOrderData.items.length) {
-      container.innerHTML = '<div style="color:#999; font-size:11px;">No items added</div>';
-      this.saveOrderDraft();
-      return;
     }
 
-    const total = this.currentOrderData.items.reduce((s, i) => {
-      const price = i.price || i.unit_price || 0;
-      const qty = i.qty || i.quantity || 0;
-      return s + (price * qty);
-    }, 0);
-    this.currentOrderData.total_amount = total;
-    this.saveOrderDraft();
+    renderStage1Items() {
+      const container = document.getElementById('orderItems');
+      if (!container) return;
 
-    container.innerHTML = `
+      if (!this.currentOrderData.items || !this.currentOrderData.items.length) {
+        container.innerHTML = '<div style="color:#999; font-size:11px;">No items added</div>';
+        this.saveOrderDraft();
+        return;
+      }
+
+      const total = this.currentOrderData.items.reduce((s, i) => {
+        const price = i.price || i.unit_price || 0;
+        const qty = i.qty || i.quantity || 0;
+        return s + (price * qty);
+      }, 0);
+      this.currentOrderData.total_amount = total;
+      this.saveOrderDraft();
+
+      container.innerHTML = `
       <div style="font-size:11px;">
         ${this.currentOrderData.items.map((item, idx) => {
-          const price = item.price || item.unit_price || 0;
-          const qty = item.qty || item.quantity || 0;
-          const itemTotal = price * qty;
-          const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-          const batchDisplay = item.batch_no || 'N/A';
-          return `
+        const price = item.price || item.unit_price || 0;
+        const qty = item.qty || item.quantity || 0;
+        const itemTotal = price * qty;
+        const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+        const batchDisplay = item.batch_no || 'N/A';
+        return `
           <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <div style="flex:1; min-width:140px;">
               <div class="order-item-product-name" data-idx="${idx}" title="Double-click to open in Product List" style="font-weight:600; word-break:break-word; line-height:1.3; cursor:pointer;">${Utils.escapeHtml(item.product_name || 'Unknown')}</div>
@@ -3121,78 +3176,78 @@ class OrdersView {
             </div>
           </div>
         `;
-        }).join('')}
+      }).join('')}
         <div style="padding:10px; background:#f0f0f0; border-top:2px solid #333; margin-top:8px; font-weight:600; text-align:right;">
           TOTAL: ₹${total.toFixed(2)}
         </div>
       </div>
     `;
 
-    // Event handlers
-    this.bindOrderItemQuickActions(container);
-    container.querySelectorAll('.item-note-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData.items[idx];
-        if (item) {
-          this.attachProductToNotes('orderNotes', item, 'order_notes');
-        }
+      // Event handlers
+      this.bindOrderItemQuickActions(container);
+      container.querySelectorAll('.item-note-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData.items[idx];
+          if (item) {
+            this.attachProductToNotes('orderNotes', item, 'order_notes');
+          }
+        });
       });
-    });
 
-    container.querySelectorAll('.qty-plus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData.items[idx];
-        if ('qty' in item) item.qty++;
-        else item.quantity++;
-        this.renderStage1Items();
-      });
-    });
-
-    container.querySelectorAll('.qty-minus').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData.items[idx];
-        const current = item.qty || item.quantity || 0;
-        if (current > 1) {
-          if ('qty' in item) item.qty--;
-          else item.quantity--;
+      container.querySelectorAll('.qty-plus').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData.items[idx];
+          if ('qty' in item) item.qty++;
+          else item.quantity++;
           this.renderStage1Items();
-        }
+        });
       });
-    });
 
-    container.querySelectorAll('.qty-input').forEach(input => {
-      input.addEventListener('change', () => {
-        const idx = parseInt(input.dataset.idx);
-        const val = parseInt(input.value) || 1;
-        const item = this.currentOrderData.items[idx];
-        if ('qty' in item) item.qty = Math.max(1, val);
-        else item.quantity = Math.max(1, val);
-        this.renderStage1Items();
+      container.querySelectorAll('.qty-minus').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData.items[idx];
+          const current = item.qty || item.quantity || 0;
+          if (current > 1) {
+            if ('qty' in item) item.qty--;
+            else item.quantity--;
+            this.renderStage1Items();
+          }
+        });
       });
-    });
 
-    container.querySelectorAll('.delete-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        this.currentOrderData.items.splice(idx, 1);
-        this.renderStage1Items();
+      container.querySelectorAll('.qty-input').forEach(input => {
+        input.addEventListener('change', () => {
+          const idx = parseInt(input.dataset.idx);
+          const val = parseInt(input.value) || 1;
+          const item = this.currentOrderData.items[idx];
+          if ('qty' in item) item.qty = Math.max(1, val);
+          else item.quantity = Math.max(1, val);
+          this.renderStage1Items();
+        });
       });
-    });
-  }
 
-  // ===== STAGE 2: QC & RECEIVE =====
-  renderStage2() {
-    const container = document.getElementById('stageContent');
-    if (!container) return;
+      container.querySelectorAll('.delete-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          this.currentOrderData.items.splice(idx, 1);
+          this.renderStage1Items();
+        });
+      });
+    }
 
-    // Ensure items array exists
-    const items = this.currentOrderData.items || [];
-    const subtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.quantity || i.qty || 0)), 0);
+    // ===== STAGE 2: QC & RECEIVE =====
+    renderStage2() {
+      const container = document.getElementById('stageContent');
+      if (!container) return;
 
-    container.innerHTML = `
+      // Ensure items array exists
+      const items = this.currentOrderData.items || [];
+      const subtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.quantity || i.qty || 0)), 0);
+
+      container.innerHTML = `
       <div style="display:flex; flex-direction:column; height:100%;">
         <div style="flex:1; overflow-y:auto; padding:0; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar">
           <div>
@@ -3210,11 +3265,11 @@ class OrdersView {
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">CHECKLIST</h4>
                 <div style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f9f9f9; max-height:400px; overflow-y:auto;">
                   ${items.map((item, idx) => {
-                    const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-                    const batchDisplay = item.batch_no || 'N/A';
-                    const expectedQuantity = Number(item.qty ?? item.quantity ?? 0);
-                    const receivedQuantity = Number(item.received_quantity ?? 0);
-                    return `
+        const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+        const batchDisplay = item.batch_no || 'N/A';
+        const expectedQuantity = Number(item.qty ?? item.quantity ?? 0);
+        const receivedQuantity = Number(item.received_quantity ?? 0);
+        return `
                     <div style="padding:10px; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:flex-start;">
                       <input type="checkbox" class="item-check" data-idx="${idx}" ${expectedQuantity > 0 && receivedQuantity >= expectedQuantity ? 'checked' : ''} style="margin-top:4px; flex-shrink:0;" />
                       <div style="flex:1; min-width:0;">
@@ -3237,7 +3292,7 @@ class OrdersView {
                       </div>
                     </div>
                   `;
-                  }).join('')}
+      }).join('')}
                 </div>
               </div>
 
@@ -3275,598 +3330,598 @@ class OrdersView {
       </div>
     `;
 
-    // Smart checklist logic
-    this.bindOrderItemQuickActions(container);
-    container.querySelectorAll('.expected-qty-display').forEach(display => {
-      display.addEventListener('dblclick', () => {
-        const index = Number(display.dataset.idx);
-        const item = this.currentOrderData.items[index];
-        if (!item) return;
+      // Smart checklist logic
+      this.bindOrderItemQuickActions(container);
+      container.querySelectorAll('.expected-qty-display').forEach(display => {
+        display.addEventListener('dblclick', () => {
+          const index = Number(display.dataset.idx);
+          const item = this.currentOrderData.items[index];
+          if (!item) return;
 
-        const currentExpected = Number(item.qty ?? item.quantity ?? 0);
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.min = '1';
-        input.step = 'any';
-        input.value = String(currentExpected);
-        input.setAttribute('aria-label', `Expected quantity for ${item.product_name || 'item'}`);
-        input.style.cssText = 'width:64px;box-sizing:border-box;padding:3px;border:1px solid #555;border-radius:2px;';
-        display.replaceWith(input);
-        input.focus();
-        input.select();
+          const currentExpected = Number(item.qty ?? item.quantity ?? 0);
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.min = '1';
+          input.step = 'any';
+          input.value = String(currentExpected);
+          input.setAttribute('aria-label', `Expected quantity for ${item.product_name || 'item'}`);
+          input.style.cssText = 'width:64px;box-sizing:border-box;padding:3px;border:1px solid #555;border-radius:2px;';
+          display.replaceWith(input);
+          input.focus();
+          input.select();
 
-        const restoreDisplay = () => {
-          if (input.isConnected) input.replaceWith(display);
-        };
-        input.addEventListener('keydown', event => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            input.blur();
-          } else if (event.key === 'Escape') {
-            event.preventDefault();
-            input.value = String(currentExpected);
-            restoreDisplay();
+          const restoreDisplay = () => {
+            if (input.isConnected) input.replaceWith(display);
+          };
+          input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              input.blur();
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              input.value = String(currentExpected);
+              restoreDisplay();
+            }
+          });
+          input.addEventListener('blur', restoreDisplay, { once: true });
+          input.addEventListener('change', async () => {
+            const nextExpected = Number(input.value);
+            if (!Number.isFinite(nextExpected) || nextExpected < 1) {
+              this.showNotification('Expected quantity must be at least 1', 'warning');
+              input.value = String(currentExpected);
+              return;
+            }
+            if (nextExpected === currentExpected) return;
+
+            const itemName = item.product_name || 'this item';
+            if (!confirm(`Change expected quantity for ${itemName} from ${currentExpected} to ${nextExpected}?`)) {
+              input.value = String(currentExpected);
+              return;
+            }
+
+            const currentReceived = Number(item.received_quantity ?? item.received_qty ?? 0);
+            item.qty = nextExpected;
+            item.quantity = nextExpected;
+            item.received_quantity = clampQcReceivedQuantity(currentReceived, nextExpected);
+            const checklist = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
+            checklist[index] = item.received_quantity >= nextExpected;
+            this.saveOrderDraft();
+            await this.saveOrder(true);
+            this.renderCurrentStage();
+            this.showNotification(`Expected quantity updated for ${itemName}`, 'success');
+          });
+        });
+      });
+      container.querySelectorAll('.item-check').forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+          const idx = parseInt(checkbox.dataset.idx);
+          const item = this.currentOrderData.items[idx];
+          const expectedQuantity = Number(item?.qty ?? item?.quantity ?? 0);
+          this.setQcReceivedQuantity(container, idx, checkbox.checked ? expectedQuantity : 0);
+        });
+      });
+
+      container.querySelectorAll('.received-qty').forEach(input => {
+        input.addEventListener('input', () => {
+          const idx = parseInt(input.dataset.idx);
+          this.setQcReceivedQuantity(container, idx, input.value);
+        });
+      });
+
+      const qcNotesArea = document.getElementById('qcNotes');
+      qcNotesArea?.addEventListener('input', (e) => {
+        this.currentOrderData.qc_notes = e.target.value;
+        this.saveOrderDraft();
+      });
+      qcNotesArea?.addEventListener('change', (e) => {
+        this.currentOrderData.qc_notes = e.target.value;
+        this.saveOrderDraft();
+      });
+
+      container.querySelectorAll('.stage2-item-note-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData?.items?.[idx];
+          if (item) {
+            this.attachProductToNotes('qcNotes', item, 'qc_notes');
           }
         });
-        input.addEventListener('blur', restoreDisplay, { once: true });
-        input.addEventListener('change', async () => {
-          const nextExpected = Number(input.value);
-          if (!Number.isFinite(nextExpected) || nextExpected < 1) {
-            this.showNotification('Expected quantity must be at least 1', 'warning');
-            input.value = String(currentExpected);
-            return;
-          }
-          if (nextExpected === currentExpected) return;
+      });
 
-          const itemName = item.product_name || 'this item';
-          if (!confirm(`Change expected quantity for ${itemName} from ${currentExpected} to ${nextExpected}?`)) {
-            input.value = String(currentExpected);
-            return;
-          }
-
-          const currentReceived = Number(item.received_quantity ?? item.received_qty ?? 0);
-          item.qty = nextExpected;
-          item.quantity = nextExpected;
-          item.received_quantity = clampQcReceivedQuantity(currentReceived, nextExpected);
-          const checklist = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
-          checklist[index] = item.received_quantity >= nextExpected;
-          this.saveOrderDraft();
-          await this.saveOrder(true);
-          this.renderCurrentStage();
-          this.showNotification(`Expected quantity updated for ${itemName}`, 'success');
+      document.getElementById('stage2QrQCBtn')?.addEventListener('click', () => {
+        openQrScanner({
+          title: 'Scan QR to verify QC item',
+          history: this.qrScanHistory,
+          onScan: value => this.markQcItemFromQr(value, container)
         });
       });
-    });
-    container.querySelectorAll('.item-check').forEach(checkbox => {
-      checkbox.addEventListener('change', () => {
-        const idx = parseInt(checkbox.dataset.idx);
-        const item = this.currentOrderData.items[idx];
-        const expectedQuantity = Number(item?.qty ?? item?.quantity ?? 0);
-        this.setQcReceivedQuantity(container, idx, checkbox.checked ? expectedQuantity : 0);
-      });
-    });
 
-    container.querySelectorAll('.received-qty').forEach(input => {
-      input.addEventListener('input', () => {
-        const idx = parseInt(input.dataset.idx);
-        this.setQcReceivedQuantity(container, idx, input.value);
+      document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
+        await this.saveCurrentStageState(true);
+        this.selectedCustomerId = this.currentOrderData.customer_id;
+        this.refreshOrdersData();
+        this.rerenderOrderCards();
       });
-    });
 
-    const qcNotesArea = document.getElementById('qcNotes');
-    qcNotesArea?.addEventListener('input', (e) => {
-      this.currentOrderData.qc_notes = e.target.value;
+      document.getElementById('completeStage2Btn')?.addEventListener('click', async () => {
+        const saved = await this.saveCurrentStageState(true, ORDER_CONSTANTS.STAGES.DELIVERY);
+        if (!saved) return;
+
+        this.currentOrderData.current_stage = 'stage3';
+        await this.saveOrder(true);
+        this.currentStage = 'stage3';
+        this.renderCurrentStage();
+        this.showNotification('✓ Stage 2 complete', 'success');
+      });
+
+      document.getElementById('backStage1Btn')?.addEventListener('click', async () => {
+        await this.saveCurrentStageState(true);
+        this.currentOrderData.current_stage = 'stage1';
+        await this.saveOrder(true);
+        this.currentStage = 'stage1';
+        this.renderCurrentStage();
+        this.showNotification('✓ Changes saved', 'success');
+      });
+    }
+
+    setQcReceivedQuantity(container, index, value) {
+      const item = this.currentOrderData?.items?.[index];
+      const input = container.querySelector(`.received-qty[data-idx="${index}"]`);
+      const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
+      if (!item || !input || !checkbox) return null;
+
+      const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+      const received = clampQcReceivedQuantity(value, expected);
+      input.max = String(expected);
+      input.value = String(received);
+      item.received_quantity = received;
+      checkbox.checked = expected > 0 && received >= expected;
+      const checklistItems = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
+      checklistItems[index] = checkbox.checked;
+      const count = container.querySelector(`[data-received-count="${index}"]`);
+      if (count) count.textContent = String(received);
       this.saveOrderDraft();
-    });
-    qcNotesArea?.addEventListener('change', (e) => {
-      this.currentOrderData.qc_notes = e.target.value;
-      this.saveOrderDraft();
-    });
-
-    container.querySelectorAll('.stage2-item-note-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData?.items?.[idx];
-        if (item) {
-          this.attachProductToNotes('qcNotes', item, 'qc_notes');
-        }
-      });
-    });
-
-    document.getElementById('stage2QrQCBtn')?.addEventListener('click', () => {
-      openQrScanner({
-        title: 'Scan QR to verify QC item',
-        history: this.qrScanHistory,
-        onScan: value => this.markQcItemFromQr(value, container)
-      });
-    });
-
-    document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
-      await this.saveCurrentStageState(true);
-      this.selectedCustomerId = this.currentOrderData.customer_id;
-      this.refreshOrdersData();
-      this.rerenderOrderCards();
-    });
-
-    document.getElementById('completeStage2Btn')?.addEventListener('click', async () => {
-      const saved = await this.saveCurrentStageState(true, ORDER_CONSTANTS.STAGES.DELIVERY);
-      if (!saved) return;
-      
-      this.currentOrderData.current_stage = 'stage3';
-      await this.saveOrder(true);
-      this.currentStage = 'stage3';
-      this.renderCurrentStage();
-      this.showNotification('✓ Stage 2 complete', 'success');
-    });
-
-    document.getElementById('backStage1Btn')?.addEventListener('click', async () => {
-      await this.saveCurrentStageState(true);
-      this.currentOrderData.current_stage = 'stage1';
-      await this.saveOrder(true);
-      this.currentStage = 'stage1';
-      this.renderCurrentStage();
-      this.showNotification('✓ Changes saved', 'success');
-    });
-  }
-
-  setQcReceivedQuantity(container, index, value) {
-    const item = this.currentOrderData?.items?.[index];
-    const input = container.querySelector(`.received-qty[data-idx="${index}"]`);
-    const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
-    if (!item || !input || !checkbox) return null;
-
-    const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
-    const received = clampQcReceivedQuantity(value, expected);
-    input.max = String(expected);
-    input.value = String(received);
-    item.received_quantity = received;
-    checkbox.checked = expected > 0 && received >= expected;
-    const checklistItems = this.currentOrderData.checklist_items || (this.currentOrderData.checklist_items = {});
-    checklistItems[index] = checkbox.checked;
-    const count = container.querySelector(`[data-received-count="${index}"]`);
-    if (count) count.textContent = String(received);
-    this.saveOrderDraft();
-    return { expected, received, complete: checkbox.checked };
-  }
+      return { expected, received, complete: checkbox.checked };
+    }
 
   async markQcItemFromQr(value, container) {
-    if (!this.products.length) await this.loadCustomersAndProducts();
+      if (!this.products.length) await this.loadCustomersAndProducts();
 
-    const { match, reason } = diagnoseCatalogQr(this.products, value);
-    if (!match) {
-      return { success: false, message: catalogQrFailureMessage(reason) };
-    }
+      const { match, reason } = diagnoseCatalogQr(this.products, value);
+      if (!match) {
+        return { success: false, message: catalogQrFailureMessage(reason) };
+      }
 
-    const orderItems = this.currentOrderData.items || [];
-    const productId = match.product?.id;
-    let matchingIndexes = orderItems
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => productId != null && String(item.product_id) === String(productId));
-
-    if (!matchingIndexes.length) {
-      const productName = String(match.product?.name || '').trim().toLowerCase();
-      matchingIndexes = orderItems
+      const orderItems = this.currentOrderData.items || [];
+      const productId = match.product?.id;
+      let matchingIndexes = orderItems
         .map((item, index) => ({ item, index }))
-        .filter(({ item }) => productName && String(item.product_name || '').trim().toLowerCase() === productName);
-    }
+        .filter(({ item }) => productId != null && String(item.product_id) === String(productId));
 
-    if (match.type === 'batch') {
-      const batchId = match.batch?.id;
-      const variantId = match.variant?.id;
-      matchingIndexes = matchingIndexes.filter(({ item }) => {
-        if (variantId != null && item.variant_id != null && String(item.variant_id) !== String(variantId)) return false;
-        if (batchId != null && item.batch_id != null) return String(item.batch_id) === String(batchId);
-        const batchNo = String(match.batch?.batch_no ?? match.batch?.batchNo ?? '').trim().toLowerCase();
-        return batchNo && batchNo === String(item.batch_no || '').trim().toLowerCase();
-      });
-    }
+      if (!matchingIndexes.length) {
+        const productName = String(match.product?.name || '').trim().toLowerCase();
+        matchingIndexes = orderItems
+          .map((item, index) => ({ item, index }))
+          .filter(({ item }) => productName && String(item.product_name || '').trim().toLowerCase() === productName);
+      }
 
-    if (matchingIndexes.length === 0) {
-      const batchSuffix = match.type === 'batch'
-        ? ` (batch ${match.batch?.batch_no ?? match.batch?.batchNo ?? ''})`
-        : '';
+      if (match.type === 'batch') {
+        const batchId = match.batch?.id;
+        const variantId = match.variant?.id;
+        matchingIndexes = matchingIndexes.filter(({ item }) => {
+          if (variantId != null && item.variant_id != null && String(item.variant_id) !== String(variantId)) return false;
+          if (batchId != null && item.batch_id != null) return String(item.batch_id) === String(batchId);
+          const batchNo = String(match.batch?.batch_no ?? match.batch?.batchNo ?? '').trim().toLowerCase();
+          return batchNo && batchNo === String(item.batch_no || '').trim().toLowerCase();
+        });
+      }
+
+      if (matchingIndexes.length === 0) {
+        const batchSuffix = match.type === 'batch'
+          ? ` (batch ${match.batch?.batch_no ?? match.batch?.batchNo ?? ''})`
+          : '';
+        return {
+          success: false,
+          message: `${match.product?.name || 'Scanned product'}${batchSuffix} is not in this order's QC checklist.`
+        };
+      }
+      if (matchingIndexes.length > 1) {
+        const lineIdentities = new Set(matchingIndexes.map(({ item }) =>
+          `${item.variant_id ?? `${item.pack_size_value || ''}:${item.pack_size_type || ''}`}|${item.batch_id ?? String(item.batch_no || '').trim().toLowerCase()}`
+        ));
+        if (match.type !== 'batch' && lineIdentities.size > 1) {
+          return {
+            success: false,
+            message: 'This product has multiple variants or batches in the order. Scan its batch QR to identify the correct QC line.'
+          };
+        }
+        const incompleteItems = matchingIndexes.filter(({ item }) =>
+          Number(item.received_quantity || 0) < Number(item.qty ?? item.quantity ?? 0)
+        );
+        if (incompleteItems.length > 0) matchingIndexes = incompleteItems.slice(0, 1);
+        else {
+          return {
+            success: false,
+            message: 'This product appears more than once in the order. Scan its batch QR to identify the correct QC line.'
+          };
+        }
+      }
+
+      const { item, index } = matchingIndexes[0];
+      const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
+      const qtyInput = container.querySelector(`.received-qty[data-idx="${index}"]`);
+      if (!checkbox || !qtyInput) {
+        return { success: false, message: 'The matching QC checklist item is not available. Refresh the order and try again.' };
+      }
+
+      const expectedQuantity = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+      const currentQuantity = Math.max(0, Number(qtyInput.value || item.received_quantity || 0) || 0);
+      if (expectedQuantity <= 0) {
+        return { success: false, message: 'This order line has no expected quantity to receive.' };
+      }
+      if (currentQuantity >= expectedQuantity) {
+        return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
+      }
+      const nextQuantity = incrementQcReceivedQuantity(currentQuantity, expectedQuantity);
+      if (nextQuantity === null) {
+        return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
+      }
+      this.setQcReceivedQuantity(container, index, nextQuantity);
+
+      const productLabel = item.product_name || match.product.name || 'Product';
+      const batchLabel = item.batch_no || (match.type === 'batch' ? match.batch?.batch_no ?? match.batch?.batchNo : '');
+      const label = `QC · ${productLabel}${batchLabel ? ` · ${batchLabel}` : ''}`;
       return {
-        success: false,
-        message: `${match.product?.name || 'Scanned product'}${batchSuffix} is not in this order's QC checklist.`
+        success: true,
+        label,
+        historyKey: JSON.stringify(['order-qc', item.product_id, item.variant_id ?? null, item.batch_id ?? null]),
+        message: `QC received ${nextQuantity}/${expectedQuantity} ${productLabel}.`,
+        getQuantity: () => Math.max(0, Number(item.received_quantity) || 0),
+        getExpectedQuantity: () => Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0),
+        minQuantity: 0,
+        adjustQuantity: delta => {
+          if (!this.currentOrderData.items.includes(item)) return false;
+          const current = Math.max(0, Number(item.received_quantity) || 0);
+          const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
+          const next = Math.min(expected, Math.max(0, current + delta));
+          return this.setQcReceivedQuantity(container, index, next) !== null;
+        },
+        undo: () => {
+          if (!this.currentOrderData.items.includes(item)) return false;
+          const current = Math.max(0, Number(item.received_quantity) || 0);
+          return this.setQcReceivedQuantity(container, index, Math.max(0, current - 1)) !== null;
+        }
       };
     }
-    if (matchingIndexes.length > 1) {
-      const lineIdentities = new Set(matchingIndexes.map(({ item }) =>
-        `${item.variant_id ?? `${item.pack_size_value || ''}:${item.pack_size_type || ''}`}|${item.batch_id ?? String(item.batch_no || '').trim().toLowerCase()}`
-      ));
-      if (match.type !== 'batch' && lineIdentities.size > 1) {
-        return {
-          success: false,
-          message: 'This product has multiple variants or batches in the order. Scan its batch QR to identify the correct QC line.'
-        };
-      }
-      const incompleteItems = matchingIndexes.filter(({ item }) =>
-        Number(item.received_quantity || 0) < Number(item.qty ?? item.quantity ?? 0)
-      );
-      if (incompleteItems.length > 0) matchingIndexes = incompleteItems.slice(0, 1);
-      else {
-        return {
-          success: false,
-          message: 'This product appears more than once in the order. Scan its batch QR to identify the correct QC line.'
-        };
-      }
-    }
-
-    const { item, index } = matchingIndexes[0];
-    const checkbox = container.querySelector(`.item-check[data-idx="${index}"]`);
-    const qtyInput = container.querySelector(`.received-qty[data-idx="${index}"]`);
-    if (!checkbox || !qtyInput) {
-      return { success: false, message: 'The matching QC checklist item is not available. Refresh the order and try again.' };
-    }
-
-    const expectedQuantity = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
-    const currentQuantity = Math.max(0, Number(qtyInput.value || item.received_quantity || 0) || 0);
-    if (expectedQuantity <= 0) {
-      return { success: false, message: 'This order line has no expected quantity to receive.' };
-    }
-    if (currentQuantity >= expectedQuantity) {
-      return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
-    }
-    const nextQuantity = incrementQcReceivedQuantity(currentQuantity, expectedQuantity);
-    if (nextQuantity === null) {
-      return { success: false, message: `${item.product_name || 'This item'} is already at its expected received quantity (${expectedQuantity}).` };
-    }
-    this.setQcReceivedQuantity(container, index, nextQuantity);
-
-    const productLabel = item.product_name || match.product.name || 'Product';
-    const batchLabel = item.batch_no || (match.type === 'batch' ? match.batch?.batch_no ?? match.batch?.batchNo : '');
-    const label = `QC · ${productLabel}${batchLabel ? ` · ${batchLabel}` : ''}`;
-    return {
-      success: true,
-      label,
-      historyKey: JSON.stringify(['order-qc', item.product_id, item.variant_id ?? null, item.batch_id ?? null]),
-      message: `QC received ${nextQuantity}/${expectedQuantity} ${productLabel}.`,
-      getQuantity: () => Math.max(0, Number(item.received_quantity) || 0),
-      getExpectedQuantity: () => Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0),
-      minQuantity: 0,
-      adjustQuantity: delta => {
-        if (!this.currentOrderData.items.includes(item)) return false;
-        const current = Math.max(0, Number(item.received_quantity) || 0);
-        const expected = Math.max(0, Number(item.qty ?? item.quantity ?? 0) || 0);
-        const next = Math.min(expected, Math.max(0, current + delta));
-        return this.setQcReceivedQuantity(container, index, next) !== null;
-      },
-      undo: () => {
-        if (!this.currentOrderData.items.includes(item)) return false;
-        const current = Math.max(0, Number(item.received_quantity) || 0);
-        return this.setQcReceivedQuantity(container, index, Math.max(0, current - 1)) !== null;
-      }
-    };
-  }
 
   // ===== STAGE 3: DELIVERY & BILL =====
   async getCustomerInvoices(customerId) {
-    try {
-      const res = await fetch(`/api/billing?customer_id=${encodeURIComponent(customerId)}`);
-      if (!res.ok) throw new Error(`Unable to load customer invoices (${res.status}).`);
-      const data = await res.json();
-      if (!Array.isArray(data?.data)) throw new Error('The customer invoice list returned an invalid response.');
-      return data.data.sort((a, b) => new Date(b.created_at || b.bill_date || 0) - new Date(a.created_at || a.bill_date || 0));
-    } catch (error) {
-      log.error('Error fetching invoices:', error);
-      throw error;
-    }
-  }
-
-  // --- INVOICE SEARCH DROPDOWN LOGIC ---
-  handleInvoiceSearchInput(query) {
-    if (!query || query.trim().length < 1) {
-      this.renderInvoiceDropdown(this.allCustomerInvoices); // Show all if empty
-      return;
+      try {
+        const res = await fetch(`/api/billing?customer_id=${encodeURIComponent(customerId)}`);
+        if (!res.ok) throw new Error(`Unable to load customer invoices (${res.status}).`);
+        const data = await res.json();
+        if (!Array.isArray(data?.data)) throw new Error('The customer invoice list returned an invalid response.');
+        return data.data.sort((a, b) => new Date(b.created_at || b.bill_date || 0) - new Date(a.created_at || a.bill_date || 0));
+      } catch (error) {
+        log.error('Error fetching invoices:', error);
+        throw error;
+      }
     }
 
-    const filtered = this.allCustomerInvoices.filter(inv => {
-      const invNo = String(inv.invoice_no || inv.id || '').toLowerCase();
-      const amount = String(inv.total_amount || '').toLowerCase();
-      return invNo.includes(query.toLowerCase()) || amount.includes(query.toLowerCase());
-    });
-
-    this.renderInvoiceDropdown(filtered);
-  }
-
-  renderInvoiceDropdown(invoices) {
-    const dropdown = document.getElementById('invoiceDropdown');
-    if (!dropdown) return;
-
-    if (!Array.isArray(invoices) || invoices.length === 0) {
-      dropdown.innerHTML = '<div class="search-dropdown-empty">No invoices found</div>';
-      dropdown.style.display = 'block';
-      this.isInvoiceDropdownOpen = true;
-      this.invoiceSelectedIndex = -1;
-      return;
-    }
-
-    this.isInvoiceDropdownOpen = true;
-    this.invoiceSelectedIndex = -1;
-    this.filteredInvoices = invoices;
-
-    const input = document.getElementById('billRefInput');
-    if (!input) return;
-
-    // Get customer name for the Title
-    const customer = this.customers?.find(c => c.id === this.currentOrderData?.customer_id);
-    const customerName = customer?.name || this.currentOrderData?.customer_name || 'Customer';
-
-    let html = '';
-    let lastMonthYear = '';
-
-    invoices.forEach((inv, idx) => {
-      const invNo = inv.invoice_no || inv.id;
-      const date = inv.bill_date || inv.created_at;
-      const amount = parseFloat(inv.total_amount || 0).toFixed(2);
-      const currentMonthYear = Utils.formatMonthYear(date);
-
-      if (currentMonthYear !== lastMonthYear) {
-        html += `<div class="dropdown-month-header">${currentMonthYear}</div>`;
-        lastMonthYear = currentMonthYear;
+    // --- INVOICE SEARCH DROPDOWN LOGIC ---
+    handleInvoiceSearchInput(query) {
+      if (!query || query.trim().length < 1) {
+        this.renderInvoiceDropdown(this.allCustomerInvoices); // Show all if empty
+        return;
       }
 
-      html += `
+      const filtered = this.allCustomerInvoices.filter(inv => {
+        const invNo = String(inv.invoice_no || inv.id || '').toLowerCase();
+        const amount = String(inv.total_amount || '').toLowerCase();
+        return invNo.includes(query.toLowerCase()) || amount.includes(query.toLowerCase());
+      });
+
+      this.renderInvoiceDropdown(filtered);
+    }
+
+    renderInvoiceDropdown(invoices) {
+      const dropdown = document.getElementById('invoiceDropdown');
+      if (!dropdown) return;
+
+      if (!Array.isArray(invoices) || invoices.length === 0) {
+        dropdown.innerHTML = '<div class="search-dropdown-empty">No invoices found</div>';
+        dropdown.style.display = 'block';
+        this.isInvoiceDropdownOpen = true;
+        this.invoiceSelectedIndex = -1;
+        return;
+      }
+
+      this.isInvoiceDropdownOpen = true;
+      this.invoiceSelectedIndex = -1;
+      this.filteredInvoices = invoices;
+
+      const input = document.getElementById('billRefInput');
+      if (!input) return;
+
+      // Get customer name for the Title
+      const customer = this.customers?.find(c => c.id === this.currentOrderData?.customer_id);
+      const customerName = customer?.name || this.currentOrderData?.customer_name || 'Customer';
+
+      let html = '';
+      let lastMonthYear = '';
+
+      invoices.forEach((inv, idx) => {
+        const invNo = inv.invoice_no || inv.id;
+        const date = inv.bill_date || inv.created_at;
+        const amount = parseFloat(inv.total_amount || 0).toFixed(2);
+        const currentMonthYear = Utils.formatMonthYear(date);
+
+        if (currentMonthYear !== lastMonthYear) {
+          html += `<div class="dropdown-month-header">${currentMonthYear}</div>`;
+          lastMonthYear = currentMonthYear;
+        }
+
+        html += `
         <div class="dropdown-item" data-index="${idx}">
           <div class="item-title">${Utils.formatDate(date)}</div>
           <div class="item-subtitle">Invoice: ${invNo} | ₹${amount}</div>
         </div>
       `;
-    });
-
-    dropdown.innerHTML = html;
-    dropdown.style.display = 'block';
-
-    // Position is now handled by CSS (absolute)
-
-    // Add click listeners to items
-    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
-      item.addEventListener('mousedown', (e) => {
-        const index = parseInt(item.getAttribute('data-index'));
-        this.selectInvoiceFromDropdown(this.filteredInvoices[index]);
       });
-    });
-  }
 
-  handleInvoiceSearchKeydown(e) {
-    if (!this.isInvoiceDropdownOpen) {
-      if (e.key === 'ArrowDown') {
-        this.renderInvoiceDropdown(this.allCustomerInvoices);
-      }
-      return;
-    }
+      dropdown.innerHTML = html;
+      dropdown.style.display = 'block';
 
-    const dropdown = document.getElementById('invoiceDropdown');
-    const items = dropdown.querySelectorAll('.dropdown-item');
-    if (items.length === 0) return;
+      // Position is now handled by CSS (absolute)
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      this.invoiceSelectedIndex = Math.min(this.invoiceSelectedIndex + 1, items.length - 1);
-      this.updateInvoiceDropdownSelection(items);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      this.invoiceSelectedIndex = Math.max(this.invoiceSelectedIndex - 1, 0);
-      this.updateInvoiceDropdownSelection(items);
-    } else if (e.key === 'Enter') {
-      if (this.invoiceSelectedIndex >= 0) {
-        e.preventDefault();
-        this.selectInvoiceFromDropdown(this.filteredInvoices[this.invoiceSelectedIndex]);
-      }
-    } else if (e.key === 'Escape') {
-      this.hideInvoiceDropdown();
-    }
-  }
-
-  updateInvoiceDropdownSelection(items) {
-    items.forEach((item, idx) => {
-      if (idx === this.invoiceSelectedIndex) {
-        item.classList.add('selected');
-        item.scrollIntoView({ block: 'nearest' });
-      } else {
-        item.classList.remove('selected');
-      }
-    });
-  }
-
-  selectInvoiceFromDropdown(invoice) {
-    const input = document.getElementById('billRefInput');
-    const invNo = invoice.invoice_no || invoice.id;
-    if (input) {
-      input.value = invNo;
-    }
-    this.currentOrderData.bill_reference = invNo;
-    this.currentOrderData.auto_matched = false;
-    this.currentOrderData.auto_match_details = null;
-    this.selectedOrderInvoice = invoice;
-    this.saveOrderDraft();
-    this.renderLinkedInvoiceSummary();
-    this.hideInvoiceDropdown();
-  }
-
-  autoMatchOrderInvoice(orderData, invoices) {
-    return findBestInvoiceMatchForOrder(orderData, invoices, this.orders);
-  }
-
-  renderLinkedInvoiceSummary() {
-    const summary = document.getElementById('linkedInvoiceSummary');
-    if (!summary) return;
-    summary.replaceChildren();
-    const invoice = this.selectedOrderInvoice;
-
-    if (!invoice) {
-      if (this.currentOrderData?.bill_reference) {
-        const textSpan = document.createElement('span');
-        textSpan.style.display = 'inline-flex';
-        textSpan.style.alignItems = 'center';
-        textSpan.style.gap = '6px';
-        textSpan.innerHTML = `<strong>Linked reference:</strong> <code style="background:#e2e8f0; padding:2px 6px; border-radius:3px; font-weight:600;">${Utils.escapeHtml(this.currentOrderData.bill_reference)}</code>`;
-        summary.appendChild(textSpan);
-
-        const clearBtn = document.createElement('button');
-        clearBtn.type = 'button';
-        clearBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#475569;';
-        clearBtn.textContent = '✕ Unlink';
-        clearBtn.addEventListener('click', () => {
-          this.unlinkInvoice();
+      // Add click listeners to items
+      dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+        item.addEventListener('mousedown', (e) => {
+          const index = parseInt(item.getAttribute('data-index'));
+          this.selectInvoiceFromDropdown(this.filteredInvoices[index]);
         });
-        summary.appendChild(clearBtn);
-      } else {
-        summary.innerHTML = '<span style="color:#64748b; font-size:11px;">ℹ️ No invoice linked yet. Search invoice #, scan QR, or matching invoices will pre-link automatically.</span>';
-      }
-      return;
+      });
     }
 
-    const infoContainer = document.createElement('div');
-    infoContainer.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;';
-
-    if (this.currentOrderData?.auto_matched) {
-      const autoBadge = document.createElement('span');
-      autoBadge.style.cssText = 'display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;';
-      const reasonText = this.currentOrderData.auto_match_details?.reasons?.length ? ` (${this.currentOrderData.auto_match_details.reasons[0]})` : '';
-      autoBadge.innerHTML = `⚡ AUTO-MATCHED${reasonText}`;
-      infoContainer.appendChild(autoBadge);
-    }
-
-    const label = document.createElement('span');
-    const number = invoice.invoice_no || invoice.id;
-    const amount = Number(invoice.grand_total ?? invoice.total_amount ?? invoice.amount ?? 0);
-    label.innerHTML = `<strong>Invoice:</strong> ${number} · <strong>${new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR'
-    }).format(amount)}</strong>`;
-    infoContainer.appendChild(label);
-    summary.appendChild(infoContainer);
-
-    const actionContainer = document.createElement('div');
-    actionContainer.style.cssText = 'display:flex; align-items:center; gap:8px;';
-
-    const exportButton = document.createElement('button');
-    exportButton.type = 'button';
-    exportButton.textContent = 'Export invoice PDF';
-    exportButton.style.cssText = 'padding:4px 10px; font-size:11px; background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#1e293b;';
-    exportButton.addEventListener('click', () => {
-      if (!this.billingApp?.exportBill) {
-        this.showNotification('Invoice PDF export is unavailable in this view.', 'error');
+    handleInvoiceSearchKeydown(e) {
+      if (!this.isInvoiceDropdownOpen) {
+        if (e.key === 'ArrowDown') {
+          this.renderInvoiceDropdown(this.allCustomerInvoices);
+        }
         return;
       }
-      this.billingApp.exportBill(number);
-    });
-    actionContainer.appendChild(exportButton);
 
-    const unlinkBtn = document.createElement('button');
-    unlinkBtn.type = 'button';
-    unlinkBtn.textContent = '✕ Unlink';
-    unlinkBtn.title = 'Clear linked invoice';
-    unlinkBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; cursor:pointer; font-weight:600; color:#dc2626;';
-    unlinkBtn.addEventListener('click', () => {
-      this.unlinkInvoice();
-    });
-    actionContainer.appendChild(unlinkBtn);
+      const dropdown = document.getElementById('invoiceDropdown');
+      const items = dropdown.querySelectorAll('.dropdown-item');
+      if (items.length === 0) return;
 
-    summary.appendChild(actionContainer);
-  }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.invoiceSelectedIndex = Math.min(this.invoiceSelectedIndex + 1, items.length - 1);
+        this.updateInvoiceDropdownSelection(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.invoiceSelectedIndex = Math.max(this.invoiceSelectedIndex - 1, 0);
+        this.updateInvoiceDropdownSelection(items);
+      } else if (e.key === 'Enter') {
+        if (this.invoiceSelectedIndex >= 0) {
+          e.preventDefault();
+          this.selectInvoiceFromDropdown(this.filteredInvoices[this.invoiceSelectedIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        this.hideInvoiceDropdown();
+      }
+    }
+
+    updateInvoiceDropdownSelection(items) {
+      items.forEach((item, idx) => {
+        if (idx === this.invoiceSelectedIndex) {
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.classList.remove('selected');
+        }
+      });
+    }
+
+    selectInvoiceFromDropdown(invoice) {
+      const input = document.getElementById('billRefInput');
+      const invNo = invoice.invoice_no || invoice.id;
+      if (input) {
+        input.value = invNo;
+      }
+      this.currentOrderData.bill_reference = invNo;
+      this.currentOrderData.auto_matched = false;
+      this.currentOrderData.auto_match_details = null;
+      this.selectedOrderInvoice = invoice;
+      this.saveOrderDraft();
+      this.renderLinkedInvoiceSummary();
+      this.hideInvoiceDropdown();
+    }
+
+    autoMatchOrderInvoice(orderData, invoices) {
+      return findBestInvoiceMatchForOrder(orderData, invoices, this.orders);
+    }
+
+    renderLinkedInvoiceSummary() {
+      const summary = document.getElementById('linkedInvoiceSummary');
+      if (!summary) return;
+      summary.replaceChildren();
+      const invoice = this.selectedOrderInvoice;
+
+      if (!invoice) {
+        if (this.currentOrderData?.bill_reference) {
+          const textSpan = document.createElement('span');
+          textSpan.style.display = 'inline-flex';
+          textSpan.style.alignItems = 'center';
+          textSpan.style.gap = '6px';
+          textSpan.innerHTML = `<strong>Linked reference:</strong> <code style="background:#e2e8f0; padding:2px 6px; border-radius:3px; font-weight:600;">${Utils.escapeHtml(this.currentOrderData.bill_reference)}</code>`;
+          summary.appendChild(textSpan);
+
+          const clearBtn = document.createElement('button');
+          clearBtn.type = 'button';
+          clearBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#475569;';
+          clearBtn.textContent = '✕ Unlink';
+          clearBtn.addEventListener('click', () => {
+            this.unlinkInvoice();
+          });
+          summary.appendChild(clearBtn);
+        } else {
+          summary.innerHTML = '<span style="color:#64748b; font-size:11px;">ℹ️ No invoice linked yet. Search invoice #, scan QR, or matching invoices will pre-link automatically.</span>';
+        }
+        return;
+      }
+
+      const infoContainer = document.createElement('div');
+      infoContainer.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;';
+
+      if (this.currentOrderData?.auto_matched) {
+        const autoBadge = document.createElement('span');
+        autoBadge.style.cssText = 'display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;';
+        const reasonText = this.currentOrderData.auto_match_details?.reasons?.length ? ` (${this.currentOrderData.auto_match_details.reasons[0]})` : '';
+        autoBadge.innerHTML = `⚡ AUTO-MATCHED${reasonText}`;
+        infoContainer.appendChild(autoBadge);
+      }
+
+      const label = document.createElement('span');
+      const number = invoice.invoice_no || invoice.id;
+      const amount = Number(invoice.grand_total ?? invoice.total_amount ?? invoice.amount ?? 0);
+      label.innerHTML = `<strong>Invoice:</strong> ${number} · <strong>${new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR'
+      }).format(amount)}</strong>`;
+      infoContainer.appendChild(label);
+      summary.appendChild(infoContainer);
+
+      const actionContainer = document.createElement('div');
+      actionContainer.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.textContent = 'Export invoice PDF';
+      exportButton.style.cssText = 'padding:4px 10px; font-size:11px; background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-weight:600; color:#1e293b;';
+      exportButton.addEventListener('click', () => {
+        if (!this.billingApp?.exportBill) {
+          this.showNotification('Invoice PDF export is unavailable in this view.', 'error');
+          return;
+        }
+        this.billingApp.exportBill(number);
+      });
+      actionContainer.appendChild(exportButton);
+
+      const unlinkBtn = document.createElement('button');
+      unlinkBtn.type = 'button';
+      unlinkBtn.textContent = '✕ Unlink';
+      unlinkBtn.title = 'Clear linked invoice';
+      unlinkBtn.style.cssText = 'padding:4px 8px; font-size:11px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; cursor:pointer; font-weight:600; color:#dc2626;';
+      unlinkBtn.addEventListener('click', () => {
+        this.unlinkInvoice();
+      });
+      actionContainer.appendChild(unlinkBtn);
+
+      summary.appendChild(actionContainer);
+    }
 
   async linkOrderInvoiceFromQr(value) {
-    if (!value || typeof value !== 'string') return { success: false, message: 'Invalid QR content.' };
-    const parsed = parseInvoiceQrLink(value.trim(), window.location.origin);
+      if (!value || typeof value !== 'string') return { success: false, message: 'Invalid QR content.' };
+      const parsed = parseInvoiceQrLink(value.trim(), window.location.origin);
 
-    const customerId = String(this.currentOrderData?.customer_id ?? '');
-    if (!customerId) return { success: false, message: 'The order has no customer to match this invoice against.' };
+      const customerId = String(this.currentOrderData?.customer_id ?? '');
+      if (!customerId) return { success: false, message: 'The order has no customer to match this invoice against.' };
 
-    let invoices = this.allCustomerInvoices;
-    if (!invoices || !invoices.length) {
-      invoices = await this.getCustomerInvoices(customerId);
-      this.allCustomerInvoices = invoices;
+      let invoices = this.allCustomerInvoices;
+      if (!invoices || !invoices.length) {
+        invoices = await this.getCustomerInvoices(customerId);
+        this.allCustomerInvoices = invoices;
+      }
+
+      let invoice;
+      if (!parsed || parsed.type === 'payment') {
+        const invoiceNo = parsed?.invoiceNo || value.trim();
+        invoice = invoices.find(candidate =>
+          String(candidate.invoice_no || candidate.id || '').trim().toLowerCase() === invoiceNo.toLowerCase()
+        );
+        if (!invoice) {
+          this.currentOrderData.bill_reference = invoiceNo;
+          this.currentOrderData.auto_matched = false;
+          this.currentOrderData.auto_match_details = null;
+          this.selectedOrderInvoice = null;
+          const input = document.getElementById('billRefInput');
+          if (input) input.value = invoiceNo;
+          this.saveOrderDraft();
+          this.renderLinkedInvoiceSummary();
+          return {
+            success: true,
+            label: `Reference ${invoiceNo}`,
+            message: `Set reference ${invoiceNo} for this order.`,
+            close: true
+          };
+        }
+      } else {
+        const response = await fetch('/api/billing/orders/resolve-invoice-qr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reference: parsed.reference,
+            ledgerToken: parsed.ledgerToken,
+            customerId
+          })
+        });
+        let result;
+        try {
+          result = await response.json();
+        } catch (error) {
+          throw new Error(`Invoice QR resolution returned an invalid response (${response.status}).`);
+        }
+        if (!response.ok || result?.success !== true || !result.invoice) {
+          throw new Error(result?.error || 'The invoice QR could not be linked to this order.');
+        }
+        invoice = result.invoice;
+      }
+
+      this.selectInvoiceFromDropdown(invoice);
+      return {
+        success: true,
+        label: `Invoice ${invoice.invoice_no || invoice.id}`,
+        message: `Linked invoice ${invoice.invoice_no || invoice.id} to this order.`,
+        close: true
+      };
     }
 
-    let invoice;
-    if (!parsed || parsed.type === 'payment') {
-      const invoiceNo = parsed?.invoiceNo || value.trim();
-      invoice = invoices.find(candidate =>
-        String(candidate.invoice_no || candidate.id || '').trim().toLowerCase() === invoiceNo.toLowerCase()
-      );
-      if (!invoice) {
-        this.currentOrderData.bill_reference = invoiceNo;
-        this.currentOrderData.auto_matched = false;
-        this.currentOrderData.auto_match_details = null;
-        this.selectedOrderInvoice = null;
-        const input = document.getElementById('billRefInput');
-        if (input) input.value = invoiceNo;
-        this.saveOrderDraft();
-        this.renderLinkedInvoiceSummary();
-        return {
-          success: true,
-          label: `Reference ${invoiceNo}`,
-          message: `Set reference ${invoiceNo} for this order.`,
-          close: true
-        };
+    hideInvoiceDropdown() {
+      const dropdown = document.getElementById('invoiceDropdown');
+      if (dropdown) {
+        dropdown.style.display = 'none';
+        this.isInvoiceDropdownOpen = false;
+        this.invoiceSelectedIndex = -1;
       }
-    } else {
-      const response = await fetch('/api/billing/orders/resolve-invoice-qr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reference: parsed.reference,
-          ledgerToken: parsed.ledgerToken,
-          customerId
-        })
+    }
+
+    renderStage3() {
+      const container = document.getElementById('stageContent');
+      if (!container) return;
+
+      // Ensure items array exists
+      const items = this.currentOrderData.items || [];
+      const receivedItems = items.filter(i => {
+        const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+        return rec >= 1;
       });
-      let result;
-      try {
-        result = await response.json();
-      } catch (error) {
-        throw new Error(`Invoice QR resolution returned an invalid response (${response.status}).`);
-      }
-      if (!response.ok || result?.success !== true || !result.invoice) {
-        throw new Error(result?.error || 'The invoice QR could not be linked to this order.');
-      }
-      invoice = result.invoice;
-    }
+      const notReceivedItems = items.filter(i => {
+        const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+        return rec < 1;
+      });
 
-    this.selectInvoiceFromDropdown(invoice);
-    return {
-      success: true,
-      label: `Invoice ${invoice.invoice_no || invoice.id}`,
-      message: `Linked invoice ${invoice.invoice_no || invoice.id} to this order.`,
-      close: true
-    };
-  }
+      const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
+      const grandTotal = receivedItems.reduce((s, i) => {
+        const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+        return s + ((i.unit_price || i.price || 0) * rec);
+      }, 0);
+      const notReceivedTotal = fullSubtotal - grandTotal;
 
-  hideInvoiceDropdown() {
-    const dropdown = document.getElementById('invoiceDropdown');
-    if (dropdown) {
-      dropdown.style.display = 'none';
-      this.isInvoiceDropdownOpen = false;
-      this.invoiceSelectedIndex = -1;
-    }
-  }
+      const deliveryDateValue = this.currentOrderData.delivery_date ? new Date(this.currentOrderData.delivery_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
-  renderStage3() {
-    const container = document.getElementById('stageContent');
-    if (!container) return;
-
-    // Ensure items array exists
-    const items = this.currentOrderData.items || [];
-    const receivedItems = items.filter(i => {
-      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-      return rec >= 1;
-    });
-    const notReceivedItems = items.filter(i => {
-      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-      return rec < 1;
-    });
-
-    const fullSubtotal = items.reduce((s, i) => s + ((i.unit_price || i.price || 0) * (i.qty || i.quantity || 0)), 0);
-    const grandTotal = receivedItems.reduce((s, i) => {
-      const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-      return s + ((i.unit_price || i.price || 0) * rec);
-    }, 0);
-    const notReceivedTotal = fullSubtotal - grandTotal;
-
-    const deliveryDateValue = this.currentOrderData.delivery_date ? new Date(this.currentOrderData.delivery_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-
-    container.innerHTML = `
+      container.innerHTML = `
       <div style="display:flex; flex-direction:column; height:100%;">
         <div style="flex:1; overflow:visible; padding:0; scrollbar-width:none; -ms-overflow-style:none;" class="hide-scrollbar">
           <div>
@@ -3917,16 +3972,16 @@ class OrdersView {
 
             <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">ITEMS RECEIVED</h4>
             <div style="border:1px solid #ddd; border-radius:3px; padding:12px; background:#f9f9f9; margin-bottom:20px; min-height: 200px; max-height:300px; overflow-y:auto;">
-              ${receivedItems.length === 0 ? 
-                '<div style="padding: 20px; text-align: center; color: #999; font-size: 12px; font-family: Courier New, monospace;">No items received</div>' :
-                receivedItems.map(item => {
-                  const qty = item.quantity || item.qty || 0;
-                  const price = item.unit_price || item.price || 0;
-                  const received = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
-                  const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-                  const batchDisplay = item.batch_no || 'N/A';
-                  const globalIdx = items.indexOf(item);
-                  return `
+              ${receivedItems.length === 0 ?
+          '<div style="padding: 20px; text-align: center; color: #999; font-size: 12px; font-family: Courier New, monospace;">No items received</div>' :
+          receivedItems.map(item => {
+            const qty = item.quantity || item.qty || 0;
+            const price = item.unit_price || item.price || 0;
+            const received = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
+            const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+            const batchDisplay = item.batch_no || 'N/A';
+            const globalIdx = items.indexOf(item);
+            return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
                       <div style="flex:1; min-width:140px;">
@@ -3944,20 +3999,20 @@ class OrdersView {
                     </div>
                   </div>
                 `;
-                }).join('')
-              }
+          }).join('')
+        }
             </div>
 
             ${notReceivedItems.length > 0 ? `
               <h4 style="font-size:11px; font-weight:600; margin-bottom:8px; color: #666;">🚫 ITEMS NOT RECEIVED</h4>
               <div style="border:1px solid #eee; border-radius:3px; padding:12px; background:#fafafa; margin-bottom:20px; min-height: 200px; max-height:300px; overflow-y:auto; opacity: 0.7;">
                 ${notReceivedItems.map(item => {
-                  const qty = item.qty || item.quantity || 0;
-                  const price = item.unit_price || item.price || 0;
-                  const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
-                  const batchDisplay = item.batch_no || 'N/A';
-                  const globalIdx = items.indexOf(item);
-                  return `
+          const qty = item.qty || item.quantity || 0;
+          const price = item.unit_price || item.price || 0;
+          const variantDisplay = item.pack_size_value ? `${item.pack_size_value} ${item.pack_size_type || ''}`.trim() : '';
+          const batchDisplay = item.batch_no || 'N/A';
+          const globalIdx = items.indexOf(item);
+          return `
                   <div style="padding:10px; border-bottom:1px solid #ddd;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; opacity: 0.85;">
                       <div style="flex:1; min-width:140px;">
@@ -3975,7 +4030,7 @@ class OrdersView {
                     </div>
                   </div>
                 `;
-                }).join('')}
+        }).join('')}
               </div>
             ` : ''}
 
@@ -4033,560 +4088,560 @@ class OrdersView {
       </div>
     `;
 
-    // Fetch invoices for this customer and setup searchable dropdown + background auto-matching
-    const customerId = this.currentOrderData.customer_id;
-    this.getCustomerInvoices(customerId).then(invoices => {
-      this.allCustomerInvoices = invoices;
-      const existingReference = String(this.currentOrderData?.bill_reference || '').trim().toLowerCase();
-      
-      let linkedInvoice = null;
-      if (existingReference) {
-        linkedInvoice = invoices.find(invoice =>
-          String(invoice.invoice_no || invoice.id || '').trim().toLowerCase() === existingReference
-        );
-      }
+      // Fetch invoices for this customer and setup searchable dropdown + background auto-matching
+      const customerId = this.currentOrderData.customer_id;
+      this.getCustomerInvoices(customerId).then(invoices => {
+        this.allCustomerInvoices = invoices;
+        const existingReference = String(this.currentOrderData?.bill_reference || '').trim().toLowerCase();
 
-      // Background Auto-Matching & Pre-linking:
-      if (!linkedInvoice && !existingReference) {
-        const matchResult = this.autoMatchOrderInvoice(this.currentOrderData, invoices);
-        if (matchResult && matchResult.invoice) {
-          log.info(`[NewOrder] Background pre-linked matching invoice ${matchResult.invoice.invoice_no || matchResult.invoice.id} (Score: ${matchResult.score})`);
-          linkedInvoice = matchResult.invoice;
-          this.currentOrderData.bill_reference = linkedInvoice.invoice_no || linkedInvoice.id;
-          this.currentOrderData.auto_matched = true;
-          this.currentOrderData.auto_match_details = matchResult;
-          const input = document.getElementById('billRefInput');
-          if (input) input.value = this.currentOrderData.bill_reference;
-          this.saveOrderDraft();
-        }
-      }
-
-      if (linkedInvoice) {
-        this.selectedOrderInvoice = linkedInvoice;
-      }
-      this.renderLinkedInvoiceSummary();
-    }).catch(error => {
-      log.error('[NewOrder] Unable to load invoices for Stage 3:', error);
-      this.renderLinkedInvoiceSummary();
-    });
-
-    const input = document.getElementById('billRefInput');
-    this.bindOrderItemQuickActions(container);
-    if (input) {
-      input.addEventListener('input', (e) => {
-        this.currentOrderData.auto_matched = false;
-        this.currentOrderData.auto_match_details = null;
-        this.currentOrderData.bill_reference = e.target.value.trim();
-        this.saveOrderDraft();
-        this.handleInvoiceSearchInput(e.target.value);
-      });
-      input.addEventListener('paste', async (e) => {
-        const pastedText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-        if (pastedText && (pastedText.includes('http') || pastedText.includes('invoice') || pastedText.includes('INV-') || pastedText.includes('='))) {
-          setTimeout(async () => {
-            try {
-              const res = await this.linkOrderInvoiceFromQr(input.value.trim());
-              if (res?.success) {
-                this.showNotification(res.message, 'success');
-              }
-            } catch (_) {}
-          }, 50);
-        }
-      });
-      input.addEventListener('keydown', (e) => this.handleInvoiceSearchKeydown(e));
-      input.addEventListener('focus', () => {
-        if (this.allCustomerInvoices.length > 0) {
-          this.renderInvoiceDropdown(this.allCustomerInvoices);
-        }
-      });
-      input.addEventListener('blur', () => {
-        setTimeout(() => this.hideInvoiceDropdown(), 200);
-        this.currentOrderData.bill_reference = input.value.trim();
-        this.saveOrderDraft();
-        if (!this.selectedOrderInvoice || String(this.selectedOrderInvoice.invoice_no || this.selectedOrderInvoice.id).trim().toLowerCase() !== input.value.trim().toLowerCase()) {
-          const matched = this.allCustomerInvoices?.find(inv => 
-            String(inv.invoice_no || inv.id || '').trim().toLowerCase() === input.value.trim().toLowerCase()
+        let linkedInvoice = null;
+        if (existingReference) {
+          linkedInvoice = invoices.find(invoice =>
+            String(invoice.invoice_no || invoice.id || '').trim().toLowerCase() === existingReference
           );
-          this.selectedOrderInvoice = matched || null;
-          this.renderLinkedInvoiceSummary();
         }
-      });
-    }
 
-    const deliveryDateInput = document.getElementById('deliveryDate');
-    deliveryDateInput?.addEventListener('change', (e) => {
-      this.currentOrderData.delivery_date = e.target.value;
-      this.saveOrderDraft();
-    });
-    ['orderLrNo', 'orderLrDate', 'orderTransport', 'orderCases'].forEach(id => {
-      document.getElementById(id)?.addEventListener('input', event => {
-        const field = {
-          orderLrNo: 'lr_no',
-          orderLrDate: 'lr_date',
-          orderTransport: 'transport',
-          orderCases: 'cases'
-        }[id];
-        this.currentOrderData[field] = id === 'orderCases'
-          ? (event.target.value === '' ? '' : Number(event.target.value))
-          : event.target.value;
-        this.saveOrderDraft();
-      });
-    });
-
-    const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
-    stage3NotesArea?.addEventListener('input', (e) => {
-      this.currentOrderData.delivery_notes = e.target.value;
-      this.saveOrderDraft();
-    });
-    stage3NotesArea?.addEventListener('change', (e) => {
-      this.currentOrderData.delivery_notes = e.target.value;
-      this.saveOrderDraft();
-    });
-
-    container.querySelectorAll('.stage3-item-note-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData?.items?.[idx];
-        if (item) {
-          this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes');
+        // Background Auto-Matching & Pre-linking:
+        if (!linkedInvoice && !existingReference) {
+          const matchResult = this.autoMatchOrderInvoice(this.currentOrderData, invoices);
+          if (matchResult && matchResult.invoice) {
+            log.info(`[NewOrder] Background pre-linked matching invoice ${matchResult.invoice.invoice_no || matchResult.invoice.id} (Score: ${matchResult.score})`);
+            linkedInvoice = matchResult.invoice;
+            this.currentOrderData.bill_reference = linkedInvoice.invoice_no || linkedInvoice.id;
+            this.currentOrderData.auto_matched = true;
+            this.currentOrderData.auto_match_details = matchResult;
+            const input = document.getElementById('billRefInput');
+            if (input) input.value = this.currentOrderData.bill_reference;
+            this.saveOrderDraft();
+          }
         }
-      });
-    });
 
-    container.querySelectorAll('.stage3-not-received-note-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx);
-        const item = this.currentOrderData?.items?.[idx];
-        if (item) {
-          this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes', 'Not Received');
+        if (linkedInvoice) {
+          this.selectedOrderInvoice = linkedInvoice;
         }
+        this.renderLinkedInvoiceSummary();
+      }).catch(error => {
+        log.error('[NewOrder] Unable to load invoices for Stage 3:', error);
+        this.renderLinkedInvoiceSummary();
       });
-    });
 
-    document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
-      openQrScanner({
-        title: 'Scan invoice QR to link order',
-        onScan: value => this.linkOrderInvoiceFromQr(value)
-      });
-    });
-
-    document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
-      await this.saveCurrentStageState(true);
-      this.selectedCustomerId = this.currentOrderData?.customer_id;
-      this.clearOrderDraft();
-      this.refreshOrdersData();
-      this.rerenderOrderCards();
-    });
-
-    document.getElementById('completeStage3Btn')?.addEventListener('click', async () => {
-      const saved = await this.saveCurrentStageState(true, null, true);
-      if (!saved) return;
-
-      if (this.showConfirm('Complete Order?', 'Mark this order as delivered and complete?')) {
-        const customerId = this.currentOrderData.customer_id;
-        const customer = this.customers.find(c => c.id === customerId);
-        const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
-
-        this.currentOrderData.current_stage = 'stage3';
-        this.currentOrderData.status = 'complete';
-        await this.saveOrder();
-        this.clearOrderDraft();
-        this.showNotification('✓ Order completed!', 'success');
-        
-        this.loadOrders().then(() => {
-          this.showCustomerOrders(this.selectedCustomerId || customerId, customerName);
-          this.currentOrderData = null;
-          this.currentOrderId = null;
+      const input = document.getElementById('billRefInput');
+      this.bindOrderItemQuickActions(container);
+      if (input) {
+        input.addEventListener('input', (e) => {
+          this.currentOrderData.auto_matched = false;
+          this.currentOrderData.auto_match_details = null;
+          this.currentOrderData.bill_reference = e.target.value.trim();
+          this.saveOrderDraft();
+          this.handleInvoiceSearchInput(e.target.value);
+        });
+        input.addEventListener('paste', async (e) => {
+          const pastedText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+          if (pastedText && (pastedText.includes('http') || pastedText.includes('invoice') || pastedText.includes('INV-') || pastedText.includes('='))) {
+            setTimeout(async () => {
+              try {
+                const res = await this.linkOrderInvoiceFromQr(input.value.trim());
+                if (res?.success) {
+                  this.showNotification(res.message, 'success');
+                }
+              } catch (_) { }
+            }, 50);
+          }
+        });
+        input.addEventListener('keydown', (e) => this.handleInvoiceSearchKeydown(e));
+        input.addEventListener('focus', () => {
+          if (this.allCustomerInvoices.length > 0) {
+            this.renderInvoiceDropdown(this.allCustomerInvoices);
+          }
+        });
+        input.addEventListener('blur', () => {
+          setTimeout(() => this.hideInvoiceDropdown(), 200);
+          this.currentOrderData.bill_reference = input.value.trim();
+          this.saveOrderDraft();
+          if (!this.selectedOrderInvoice || String(this.selectedOrderInvoice.invoice_no || this.selectedOrderInvoice.id).trim().toLowerCase() !== input.value.trim().toLowerCase()) {
+            const matched = this.allCustomerInvoices?.find(inv =>
+              String(inv.invoice_no || inv.id || '').trim().toLowerCase() === input.value.trim().toLowerCase()
+            );
+            this.selectedOrderInvoice = matched || null;
+            this.renderLinkedInvoiceSummary();
+          }
         });
       }
-    });
 
-    document.getElementById('backStage2Btn')?.addEventListener('click', async () => {
-      await this.saveCurrentStageState(true);
-      this.currentOrderData.current_stage = 'stage2';
-      await this.saveOrder(true);
-      this.currentStage = 'stage2';
-      this.renderCurrentStage();
-      this.showNotification('✓ Changes saved', 'success');
-    });
-  }
+      const deliveryDateInput = document.getElementById('deliveryDate');
+      deliveryDateInput?.addEventListener('change', (e) => {
+        this.currentOrderData.delivery_date = e.target.value;
+        this.saveOrderDraft();
+      });
+      ['orderLrNo', 'orderLrDate', 'orderTransport', 'orderCases'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', event => {
+          const field = {
+            orderLrNo: 'lr_no',
+            orderLrDate: 'lr_date',
+            orderTransport: 'transport',
+            orderCases: 'cases'
+          }[id];
+          this.currentOrderData[field] = id === 'orderCases'
+            ? (event.target.value === '' ? '' : Number(event.target.value))
+            : event.target.value;
+          this.saveOrderDraft();
+        });
+      });
 
-  async saveOrder(skipRefresh = false) {
-    if (!this.currentOrderData) {
-      log.error('No order data to save');
-      this.showNotification('No order to save', 'error');
-      return;
+      const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
+      stage3NotesArea?.addEventListener('input', (e) => {
+        this.currentOrderData.delivery_notes = e.target.value;
+        this.saveOrderDraft();
+      });
+      stage3NotesArea?.addEventListener('change', (e) => {
+        this.currentOrderData.delivery_notes = e.target.value;
+        this.saveOrderDraft();
+      });
+
+      container.querySelectorAll('.stage3-item-note-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData?.items?.[idx];
+          if (item) {
+            this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes');
+          }
+        });
+      });
+
+      container.querySelectorAll('.stage3-not-received-note-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          const item = this.currentOrderData?.items?.[idx];
+          if (item) {
+            this.attachProductToNotes('stage3DeliveryNotes', item, 'delivery_notes', 'Not Received');
+          }
+        });
+      });
+
+      document.getElementById('stage3QrScanBtn')?.addEventListener('click', () => {
+        openQrScanner({
+          title: 'Scan invoice QR to link order',
+          onScan: value => this.linkOrderInvoiceFromQr(value)
+        });
+      });
+
+      document.getElementById('exitStageBtn')?.addEventListener('click', async () => {
+        await this.saveCurrentStageState(true);
+        this.selectedCustomerId = this.currentOrderData?.customer_id;
+        this.clearOrderDraft();
+        this.refreshOrdersData();
+        this.rerenderOrderCards();
+      });
+
+      document.getElementById('completeStage3Btn')?.addEventListener('click', async () => {
+        const saved = await this.saveCurrentStageState(true, null, true);
+        if (!saved) return;
+
+        if (this.showConfirm('Complete Order?', 'Mark this order as delivered and complete?')) {
+          const customerId = this.currentOrderData.customer_id;
+          const customer = this.customers.find(c => c.id === customerId);
+          const customerName = customer?.name || this.currentOrderData.customer_name || 'Unknown';
+
+          this.currentOrderData.current_stage = 'stage3';
+          this.currentOrderData.status = 'complete';
+          await this.saveOrder();
+          this.clearOrderDraft();
+          this.showNotification('✓ Order completed!', 'success');
+
+          this.loadOrders().then(() => {
+            this.showCustomerOrders(this.selectedCustomerId || customerId, customerName);
+            this.currentOrderData = null;
+            this.currentOrderId = null;
+          });
+        }
+      });
+
+      document.getElementById('backStage2Btn')?.addEventListener('click', async () => {
+        await this.saveCurrentStageState(true);
+        this.currentOrderData.current_stage = 'stage2';
+        await this.saveOrder(true);
+        this.currentStage = 'stage2';
+        this.renderCurrentStage();
+        this.showNotification('✓ Changes saved', 'success');
+      });
     }
 
-    const payload = {
-      customer_id: this.currentOrderData.customer_id,
-      order_number: this.currentOrderData.order_number,
-      items: this.currentOrderData.items,
-      current_stage: this.currentOrderData.current_stage,
-      order_date: this.currentOrderData.order_date,
-      order_notes: this.currentOrderData.order_notes,
-      qc_date: this.currentOrderData.qc_date,
-      qc_notes: this.currentOrderData.qc_notes,
-      delivery_notes: this.currentOrderData.delivery_notes,
-      checklist_items: this.currentOrderData.checklist_items,
-      delivery_date: this.currentOrderData.delivery_date,
-      bill_reference: this.currentOrderData.bill_reference,
-      lr_no: this.currentOrderData.lr_no || '',
-      lr_date: this.currentOrderData.lr_date || null,
-      transport: this.currentOrderData.transport || '',
-      cases: Number(this.currentOrderData.cases ?? 1),
-      discount: this.currentOrderData.discount,
-      tax: this.currentOrderData.tax,
-      total_amount: this.currentOrderData.total_amount,
-      status: this.currentOrderData.status || 'pending'
-    };
+  async saveOrder(skipRefresh = false) {
+      if (!this.currentOrderData) {
+        log.error('No order data to save');
+        this.showNotification('No order to save', 'error');
+        return;
+      }
 
-    const payloadString = JSON.stringify(payload);
-    
-    // Prevent redundant saves if payload hasn't changed
-    // Use string check for temporary IDs (ORD-XXXX) vs numeric DB IDs
-    const rawId = String(this.currentOrderData.id || '');
-    const isNewOrder = rawId.startsWith('ORD-') || rawId === '';
-    const numericId = parseInt(rawId);
+      const payload = {
+        customer_id: this.currentOrderData.customer_id,
+        order_number: this.currentOrderData.order_number,
+        items: this.currentOrderData.items,
+        current_stage: this.currentOrderData.current_stage,
+        order_date: this.currentOrderData.order_date,
+        order_notes: this.currentOrderData.order_notes,
+        qc_date: this.currentOrderData.qc_date,
+        qc_notes: this.currentOrderData.qc_notes,
+        delivery_notes: this.currentOrderData.delivery_notes,
+        checklist_items: this.currentOrderData.checklist_items,
+        delivery_date: this.currentOrderData.delivery_date,
+        bill_reference: this.currentOrderData.bill_reference,
+        lr_no: this.currentOrderData.lr_no || '',
+        lr_date: this.currentOrderData.lr_date || null,
+        transport: this.currentOrderData.transport || '',
+        cases: Number(this.currentOrderData.cases ?? 1),
+        discount: this.currentOrderData.discount,
+        tax: this.currentOrderData.tax,
+        total_amount: this.currentOrderData.total_amount,
+        status: this.currentOrderData.status || 'pending'
+      };
 
-    if (!isNewOrder && !isNaN(numericId) && this.lastSavedPayload === payloadString) {
+      const payloadString = JSON.stringify(payload);
+
+      // Prevent redundant saves if payload hasn't changed
+      // Use string check for temporary IDs (ORD-XXXX) vs numeric DB IDs
+      const rawId = String(this.currentOrderData.id || '');
+      const isNewOrder = rawId.startsWith('ORD-') || rawId === '';
+      const numericId = parseInt(rawId);
+
+      if (!isNewOrder && !isNaN(numericId) && this.lastSavedPayload === payloadString) {
+        if (!skipRefresh) {
+          await this.refreshOrdersData();
+          this.selectedOrderIds = new Set();
+          this.updateMultiSelectUI();
+        }
+        return;
+      }
+
+      try {
+        if (!isNewOrder && !isNaN(numericId)) {
+          const res = await fetch(`/api/billing/orders/${numericId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: payloadString
+          });
+          if (res.ok) {
+            const body = await res.json();
+            if (body) {
+              this.currentOrderData = { ...this.currentOrderData, ...body };
+              this.lastSavedPayload = payloadString;
+            }
+          }
+        } else {
+          const res = await fetch('/api/billing/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payloadString
+          });
+          if (res.ok) {
+            const body = await res.json();
+            if (body && body.id) {
+              this.currentOrderData = { ...this.currentOrderData, ...body, id: String(body.id) };
+              this.lastSavedPayload = JSON.stringify({ ...payload, id: String(body.id) });
+            }
+          }
+        }
+      } catch (error) {
+        log.error('Error saving:', error);
+      }
+
+      if (this.currentOrderData && this.currentOrderData.id) {
+        const idx = this.orders.findIndex(o => String(o.id) === String(this.currentOrderData.id));
+        if (idx >= 0) {
+          this.orders[idx] = this.currentOrderData;
+        } else {
+          this.orders.push(this.currentOrderData);
+        }
+      }
+
+      // Reload orders from server to ensure state is synchronized
+      await this.loadOrders();
+
+      // Update customer card status in sidebar (always do this for real-time updates)
+      if (this.currentOrderData && this.currentOrderData.customer_id) {
+        this.updateCustomerCardStatus(this.currentOrderData.customer_id);
+      }
+
+      // Refresh the display immediately with animations
       if (!skipRefresh) {
-        await this.refreshOrdersData();
+        await this.syncWithServer(true); // isManual=true force update
         this.selectedOrderIds = new Set();
         this.updateMultiSelectUI();
       }
-      return;
     }
-
-    try {
-      if (!isNewOrder && !isNaN(numericId)) {
-        const res = await fetch(`/api/billing/orders/${numericId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: payloadString
-        });
-        if (res.ok) {
-          const body = await res.json();
-          if (body) {
-            this.currentOrderData = { ...this.currentOrderData, ...body };
-            this.lastSavedPayload = payloadString;
-          }
-        }
-      } else {
-        const res = await fetch('/api/billing/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payloadString
-        });
-        if (res.ok) {
-          const body = await res.json();
-          if (body && body.id) {
-            this.currentOrderData = { ...this.currentOrderData, ...body, id: String(body.id) };
-            this.lastSavedPayload = JSON.stringify({...payload, id: String(body.id)});
-          }
-        }
-      }
-    } catch (error) {
-      log.error('Error saving:', error);
-    }
-
-    if (this.currentOrderData && this.currentOrderData.id) {
-      const idx = this.orders.findIndex(o => String(o.id) === String(this.currentOrderData.id));
-      if (idx >= 0) {
-        this.orders[idx] = this.currentOrderData;
-      } else {
-        this.orders.push(this.currentOrderData);
-      }
-    }
-    
-    // Reload orders from server to ensure state is synchronized
-    await this.loadOrders();
-    
-    // Update customer card status in sidebar (always do this for real-time updates)
-    if (this.currentOrderData && this.currentOrderData.customer_id) {
-      this.updateCustomerCardStatus(this.currentOrderData.customer_id);
-    }
-    
-    // Refresh the display immediately with animations
-    if (!skipRefresh) {
-      await this.syncWithServer(true); // isManual=true force update
-      this.selectedOrderIds = new Set();
-      this.updateMultiSelectUI();
-    }
-  }
 
   async deleteOrder(orderId) {
-    const order = this.orders.find(o => String(o.id) === String(orderId));
-    if (!order) {
-      this.showNotification('Order not found', 'error');
-      return;
-    }
-    const orderNumber = this.generateOrderNumber(order, new Date(order.order_date || order.created_at));
-    const confirmed = confirm(`Are you sure you want to delete order ${orderNumber}?\n\nThis action cannot be undone.`);
-    if (!confirmed) return;
-    try {
-      const numericId = parseInt(orderId);
-      if (!isNaN(numericId)) {
-        const res = await fetch(`/api/billing/orders/${numericId}`, { method: 'DELETE' });
-        if (res.ok) {
-          // 1. Immediate Visual Hiding
-          const card = document.querySelector(`[data-order-id="${orderId}"]`);
-          if (card) {
-            card.style.opacity = '0';
-            card.style.transform = 'scale(0.95)';
-            card.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
-            setTimeout(() => card.remove(), 250);
-          }
-
-          // 2. Immediate Data Update
-          this.orders = this.orders.filter(o => String(o.id) !== String(orderId));
-          this.updateStats();
-          
-          // 3. Sync sidebar and multi-select
-          if (this.currentOrderData && this.currentOrderData.customer_id) {
-            this.updateCustomerCardStatus(this.currentOrderData.customer_id);
-          }
-          this.selectedOrderIds.delete(orderId);
-          this.updateMultiSelectUI();
-
-          // 4. Background synchronization (silent refresh)
-          this.syncWithServer(true);
-          
-          this.showNotification(`Order ${orderNumber} deleted`, 'success');
-          // Close modal if open
-          const modal = document.getElementById('orderModal');
-          if (modal) modal.style.display = 'none';
-        } else {
-          this.showNotification('Failed to delete order', 'error');
-        }
+      const order = this.orders.find(o => String(o.id) === String(orderId));
+      if (!order) {
+        this.showNotification('Order not found', 'error');
+        return;
       }
-    } catch (error) {
-      log.error('Error deleting order:', error);
-      this.showNotification('Error deleting order', 'error');
+      const orderNumber = this.generateOrderNumber(order, new Date(order.order_date || order.created_at));
+      const confirmed = confirm(`Are you sure you want to delete order ${orderNumber}?\n\nThis action cannot be undone.`);
+      if (!confirmed) return;
+      try {
+        const numericId = parseInt(orderId);
+        if (!isNaN(numericId)) {
+          const res = await fetch(`/api/billing/orders/${numericId}`, { method: 'DELETE' });
+          if (res.ok) {
+            // 1. Immediate Visual Hiding
+            const card = document.querySelector(`[data-order-id="${orderId}"]`);
+            if (card) {
+              card.style.opacity = '0';
+              card.style.transform = 'scale(0.95)';
+              card.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+              setTimeout(() => card.remove(), 250);
+            }
+
+            // 2. Immediate Data Update
+            this.orders = this.orders.filter(o => String(o.id) !== String(orderId));
+            this.updateStats();
+
+            // 3. Sync sidebar and multi-select
+            if (this.currentOrderData && this.currentOrderData.customer_id) {
+              this.updateCustomerCardStatus(this.currentOrderData.customer_id);
+            }
+            this.selectedOrderIds.delete(orderId);
+            this.updateMultiSelectUI();
+
+            // 4. Background synchronization (silent refresh)
+            this.syncWithServer(true);
+
+            this.showNotification(`Order ${orderNumber} deleted`, 'success');
+            // Close modal if open
+            const modal = document.getElementById('orderModal');
+            if (modal) modal.style.display = 'none';
+          } else {
+            this.showNotification('Failed to delete order', 'error');
+          }
+        }
+      } catch (error) {
+        log.error('Error deleting order:', error);
+        this.showNotification('Error deleting order', 'error');
+      }
     }
-  }
 
   async getCustomerBillItems(customerName) {
-    try {
-      const resp = await fetch(`/api/billing/customer-bill-items/${encodeURIComponent(customerName)}`);
-      if (!resp.ok) return [];
-      const payload = await resp.json();
-      return payload.data || [];
-    } catch (e) {
-      log.error('Error:', e);
-      return [];
-    }
-  }
-
-  analyzePurchasePatterns(billItems) {
-    // Utilize shared Multi-Factor Predictive Pattern Engine when available
-    if (typeof window !== 'undefined' && window.CustomerPatternEngine && typeof window.CustomerPatternEngine.analyzeProductCadenceAndDepletion === 'function') {
-      const results = window.CustomerPatternEngine.analyzeProductCadenceAndDepletion(billItems, this.suppressionDays || 0);
-      return results.map(r => ({
-        productId: r.productId,
-        name: r.name,
-        frequency: r.orderCount,
-        totalQty: r.totalQty,
-        daysSinceLast: r.daysSinceLast,
-        score: r.score
-      })).slice(0, 6);
-    }
-
-    const patterns = {};
-    const now = Date.now();
-    const suppressionMs = this.suppressionDays * 24 * 60 * 60 * 1000;
-
-    billItems.forEach(item => {
-      // Handle various date property names from backend (invoice_date, bill_date, created_at)
-      const dateVal = item.invoice_date || item.bill_date || item.created_at || item.timestamp;
-      const billDate = new Date(dateVal || new Date()).getTime();
-      const daysSince = (now - billDate) / (1000 * 60 * 60 * 24);
-      const key = item.product_id || item.product_name || '';
-      if (!key) return;
-
-      if (!patterns[key]) {
-        patterns[key] = {
-          productId: item.product_id || '',
-          name: item.product_name || '',
-          frequency: 0,
-          daysSinceLast: 999,
-          totalQty: 0,
-          lastBillDate: 0,
-        };
-      }
-
-      patterns[key].frequency++;
-      patterns[key].totalQty += (item.qty || 1);
-      patterns[key].daysSinceLast = Math.min(patterns[key].daysSinceLast, daysSince);
-      patterns[key].lastBillDate = Math.max(patterns[key].lastBillDate, billDate);
-    });
-
-    const suggestions = Object.values(patterns)
-      .filter(p => {
-        const msSinceLast = now - p.lastBillDate;
-        return msSinceLast > suppressionMs;
-      })
-      .map(p => ({
-        ...p,
-        daysSinceLast: Math.round(p.daysSinceLast),
-        score: (p.frequency * 10) + (p.totalQty * 2) + (Math.max(0, 90 - p.daysSinceLast))
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6);
-
-    return suggestions;
-  }
-
-  async saveCurrentStageState(skipRefresh = true, targetStage = null, isFinalizing = false) {
-    try {
-      this.collectCurrentStageData(isFinalizing);
-
-      // Check partial fulfillment warning if transitioning from QC to Delivery
-      if (this.currentStage === ORDER_CONSTANTS.STAGES.QC && targetStage === ORDER_CONSTANTS.STAGES.DELIVERY) {
-        const items = this.currentOrderData.items || [];
-        const checklist = this.currentOrderData.checklist_items || {};
-        const totalChecked = items.filter((_, idx) => checklist[idx]).length;
-        
-        if (totalChecked < items.length) {
-          if (!confirm(`Warning: Only ${totalChecked} of ${items.length} items have passed QC. Proceed with partial fulfillment?`)) {
-            return false;
-          }
-        }
-      }
-
-      await this.saveOrder(skipRefresh);
-      return true;
-    } catch (err) {
-      this.showNotification(err.message, 'error');
-      return false;
-    }
-  }
-
-  collectCurrentStageData(isFinalizing = false) {
-    if (!this.currentOrderData) return;
-
-    // Reset status to pending only if we are modifying core items in Stage 1 or 2
-    if (this.currentOrderData.status === ORDER_CONSTANTS.STATUS.COMPLETE && this.isViewMode === false) {
-      if (this.currentStage === ORDER_CONSTANTS.STAGES.CREATE || this.currentStage === ORDER_CONSTANTS.STAGES.QC) {
-        this.currentOrderData.status = ORDER_CONSTANTS.STATUS.PENDING;
+      try {
+        const resp = await fetch(`/api/billing/customer-bill-items/${encodeURIComponent(customerName)}`);
+        if (!resp.ok) return [];
+        const payload = await resp.json();
+        return payload.data || [];
+      } catch (e) {
+        log.error('Error:', e);
+        return [];
       }
     }
 
-    if (this.currentStage === 'stage1') {
-      const orderDateInput = document.getElementById('orderDate');
-      if (orderDateInput) this.currentOrderData.order_date = orderDateInput.value;
-      const notesArea = document.getElementById('orderNotes');
-      if (notesArea) this.currentOrderData.order_notes = notesArea.value;
-
-      // Validation
-      if (!this.currentOrderData.items || this.currentOrderData.items.length === 0) {
-        throw new Error('Please add at least one product');
+    analyzePurchasePatterns(billItems) {
+      // Utilize shared Multi-Factor Predictive Pattern Engine when available
+      if (typeof window !== 'undefined' && window.CustomerPatternEngine && typeof window.CustomerPatternEngine.analyzeProductCadenceAndDepletion === 'function') {
+        const results = window.CustomerPatternEngine.analyzeProductCadenceAndDepletion(billItems, this.suppressionDays || 0);
+        return results.map(r => ({
+          productId: r.productId,
+          name: r.name,
+          frequency: r.orderCount,
+          totalQty: r.totalQty,
+          daysSinceLast: r.daysSinceLast,
+          score: r.score
+        })).slice(0, 6);
       }
-    } else if (this.currentStage === 'stage2') {
-      const qcDateInput = document.getElementById('qcDate');
-      const qcNotesArea = document.getElementById('qcNotes');
-      const items = this.currentOrderData.items || [];
-      this.currentOrderData.checklist_items = this.currentOrderData.checklist_items || {};
-      
-      // Update items and checklist from inputs
-      let hasValidationError = false;
-      document.querySelectorAll('.received-qty').forEach(input => {
-        const idx = parseInt(input.dataset.idx);
-        const val = Number(input.value) || 0;
-        const expected = Number(items[idx]?.qty ?? items[idx]?.quantity ?? 0);
-        const checkbox = document.querySelector(`.item-check[data-idx="${idx}"]`);
 
-        if (val < 0 || val > expected) {
-          hasValidationError = true;
-        }
-        
-        // Update checklist state
-        if (checkbox) {
-          this.currentOrderData.checklist_items[idx] = checkbox.checked;
-          
-          // Common sense validation: if ticked, qty must be > 0
-          if (checkbox.checked && val === 0) {
-            hasValidationError = true;
-          }
+      const patterns = {};
+      const now = Date.now();
+      const suppressionMs = this.suppressionDays * 24 * 60 * 60 * 1000;
+
+      billItems.forEach(item => {
+        // Handle various date property names from backend (invoice_date, bill_date, created_at)
+        const dateVal = item.invoice_date || item.bill_date || item.created_at || item.timestamp;
+        const billDate = new Date(dateVal || new Date()).getTime();
+        const daysSince = (now - billDate) / (1000 * 60 * 60 * 24);
+        const key = item.product_id || item.product_name || '';
+        if (!key) return;
+
+        if (!patterns[key]) {
+          patterns[key] = {
+            productId: item.product_id || '',
+            name: item.product_name || '',
+            frequency: 0,
+            daysSinceLast: 999,
+            totalQty: 0,
+            lastBillDate: 0,
+          };
         }
 
-        if (items[idx]) {
-          items[idx].received_quantity = val;
-        }
+        patterns[key].frequency++;
+        patterns[key].totalQty += (item.qty || 1);
+        patterns[key].daysSinceLast = Math.min(patterns[key].daysSinceLast, daysSince);
+        patterns[key].lastBillDate = Math.max(patterns[key].lastBillDate, billDate);
       });
 
-      if (hasValidationError) {
-        throw new Error('Received quantities must be between zero and the expected quantity; checked items must have a quantity greater than zero.');
-      }
+      const suggestions = Object.values(patterns)
+        .filter(p => {
+          const msSinceLast = now - p.lastBillDate;
+          return msSinceLast > suppressionMs;
+        })
+        .map(p => ({
+          ...p,
+          daysSinceLast: Math.round(p.daysSinceLast),
+          score: (p.frequency * 10) + (p.totalQty * 2) + (Math.max(0, 90 - p.daysSinceLast))
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6);
 
-      if (qcDateInput) {
-        const dateVal = qcDateInput.value;
-        const orderDate = new Date(this.currentOrderData.order_date || this.currentOrderData.created_at);
-        const qcDate = new Date(dateVal);
-        
-        // Date validation: QC cannot be before order
-        if (qcDate < orderDate) {
-          throw new Error('QC date cannot be earlier than order date');
-        }
-        this.currentOrderData.qc_date = qcDate.toISOString();
-      }
-      if (qcNotesArea) this.currentOrderData.qc_notes = qcNotesArea.value;
-    } else if (this.currentStage === 'stage3') {
-      const deliveryDateInput = document.getElementById('deliveryDate');
-      const billRefInput = document.getElementById('billRefInput');
-
-      if (deliveryDateInput && isFinalizing) {
-        const dateVal = deliveryDateInput.value;
-        if (!dateVal) throw new Error('Delivery date is required to complete order');
-        
-        const qcDate = this.currentOrderData.qc_date ? new Date(this.currentOrderData.qc_date) : null;
-        const dDate = new Date(dateVal);
-        
-        // Date validation: Delivery cannot be before QC
-        if (qcDate && dDate < qcDate) {
-          throw new Error('Delivery date cannot be earlier than QC date');
-        }
-        this.currentOrderData.delivery_date = dDate.toISOString();
-      }
-      if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
-      const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
-      if (stage3NotesArea) this.currentOrderData.delivery_notes = stage3NotesArea.value;
-      const lrNoInput = document.getElementById('orderLrNo');
-      const lrDateInput = document.getElementById('orderLrDate');
-      const transportInput = document.getElementById('orderTransport');
-      const casesInput = document.getElementById('orderCases');
-      if (lrNoInput) this.currentOrderData.lr_no = lrNoInput.value.trim();
-      if (lrDateInput) this.currentOrderData.lr_date = lrDateInput.value || null;
-      if (transportInput) this.currentOrderData.transport = transportInput.value.trim();
-      if (casesInput) {
-        const cases = Number(casesInput.value);
-        if (!Number.isInteger(cases) || cases < 0) {
-          throw new Error('Cases/cartons must be a non-negative whole number.');
-        }
-        this.currentOrderData.cases = cases;
-      }
-      
-      
-      // Update the total amount explicitly based on billing sum (received quantity)
-      const items = this.currentOrderData.items || [];
-      const subtotal = items.reduce((s, i) => {
-        const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
-        return s + ((i.unit_price || i.price || 0) * rec);
-      }, 0);
-      this.currentOrderData.total_amount = subtotal;
+      return suggestions;
     }
 
-    this.saveOrderDraft();
-  }
+  async saveCurrentStageState(skipRefresh = true, targetStage = null, isFinalizing = false) {
+      try {
+        this.collectCurrentStageData(isFinalizing);
 
-  injectOrdersStyles() {
-    if (document.getElementById('orders-module-styles')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.id = 'orders-module-styles';
-    link.href = '/modules/billing/css/new-order.css';
-    // document.head.appendChild(link); /* Disabled for Vite */
+        // Check partial fulfillment warning if transitioning from QC to Delivery
+        if (this.currentStage === ORDER_CONSTANTS.STAGES.QC && targetStage === ORDER_CONSTANTS.STAGES.DELIVERY) {
+          const items = this.currentOrderData.items || [];
+          const checklist = this.currentOrderData.checklist_items || {};
+          const totalChecked = items.filter((_, idx) => checklist[idx]).length;
+
+          if (totalChecked < items.length) {
+            if (!confirm(`Warning: Only ${totalChecked} of ${items.length} items have passed QC. Proceed with partial fulfillment?`)) {
+              return false;
+            }
+          }
+        }
+
+        await this.saveOrder(skipRefresh);
+        return true;
+      } catch (err) {
+        this.showNotification(err.message, 'error');
+        return false;
+      }
+    }
+
+    collectCurrentStageData(isFinalizing = false) {
+      if (!this.currentOrderData) return;
+
+      // Reset status to pending only if we are modifying core items in Stage 1 or 2
+      if (this.currentOrderData.status === ORDER_CONSTANTS.STATUS.COMPLETE && this.isViewMode === false) {
+        if (this.currentStage === ORDER_CONSTANTS.STAGES.CREATE || this.currentStage === ORDER_CONSTANTS.STAGES.QC) {
+          this.currentOrderData.status = ORDER_CONSTANTS.STATUS.PENDING;
+        }
+      }
+
+      if (this.currentStage === 'stage1') {
+        const orderDateInput = document.getElementById('orderDate');
+        if (orderDateInput) this.currentOrderData.order_date = orderDateInput.value;
+        const notesArea = document.getElementById('orderNotes');
+        if (notesArea) this.currentOrderData.order_notes = notesArea.value;
+
+        // Validation
+        if (!this.currentOrderData.items || this.currentOrderData.items.length === 0) {
+          throw new Error('Please add at least one product');
+        }
+      } else if (this.currentStage === 'stage2') {
+        const qcDateInput = document.getElementById('qcDate');
+        const qcNotesArea = document.getElementById('qcNotes');
+        const items = this.currentOrderData.items || [];
+        this.currentOrderData.checklist_items = this.currentOrderData.checklist_items || {};
+
+        // Update items and checklist from inputs
+        let hasValidationError = false;
+        document.querySelectorAll('.received-qty').forEach(input => {
+          const idx = parseInt(input.dataset.idx);
+          const val = Number(input.value) || 0;
+          const expected = Number(items[idx]?.qty ?? items[idx]?.quantity ?? 0);
+          const checkbox = document.querySelector(`.item-check[data-idx="${idx}"]`);
+
+          if (val < 0 || val > expected) {
+            hasValidationError = true;
+          }
+
+          // Update checklist state
+          if (checkbox) {
+            this.currentOrderData.checklist_items[idx] = checkbox.checked;
+
+            // Common sense validation: if ticked, qty must be > 0
+            if (checkbox.checked && val === 0) {
+              hasValidationError = true;
+            }
+          }
+
+          if (items[idx]) {
+            items[idx].received_quantity = val;
+          }
+        });
+
+        if (hasValidationError) {
+          throw new Error('Received quantities must be between zero and the expected quantity; checked items must have a quantity greater than zero.');
+        }
+
+        if (qcDateInput) {
+          const dateVal = qcDateInput.value;
+          const orderDate = new Date(this.currentOrderData.order_date || this.currentOrderData.created_at);
+          const qcDate = new Date(dateVal);
+
+          // Date validation: QC cannot be before order
+          if (qcDate < orderDate) {
+            throw new Error('QC date cannot be earlier than order date');
+          }
+          this.currentOrderData.qc_date = qcDate.toISOString();
+        }
+        if (qcNotesArea) this.currentOrderData.qc_notes = qcNotesArea.value;
+      } else if (this.currentStage === 'stage3') {
+        const deliveryDateInput = document.getElementById('deliveryDate');
+        const billRefInput = document.getElementById('billRefInput');
+
+        if (deliveryDateInput && isFinalizing) {
+          const dateVal = deliveryDateInput.value;
+          if (!dateVal) throw new Error('Delivery date is required to complete order');
+
+          const qcDate = this.currentOrderData.qc_date ? new Date(this.currentOrderData.qc_date) : null;
+          const dDate = new Date(dateVal);
+
+          // Date validation: Delivery cannot be before QC
+          if (qcDate && dDate < qcDate) {
+            throw new Error('Delivery date cannot be earlier than QC date');
+          }
+          this.currentOrderData.delivery_date = dDate.toISOString();
+        }
+        if (billRefInput) this.currentOrderData.bill_reference = billRefInput.value.trim();
+        const stage3NotesArea = document.getElementById('stage3DeliveryNotes');
+        if (stage3NotesArea) this.currentOrderData.delivery_notes = stage3NotesArea.value;
+        const lrNoInput = document.getElementById('orderLrNo');
+        const lrDateInput = document.getElementById('orderLrDate');
+        const transportInput = document.getElementById('orderTransport');
+        const casesInput = document.getElementById('orderCases');
+        if (lrNoInput) this.currentOrderData.lr_no = lrNoInput.value.trim();
+        if (lrDateInput) this.currentOrderData.lr_date = lrDateInput.value || null;
+        if (transportInput) this.currentOrderData.transport = transportInput.value.trim();
+        if (casesInput) {
+          const cases = Number(casesInput.value);
+          if (!Number.isInteger(cases) || cases < 0) {
+            throw new Error('Cases/cartons must be a non-negative whole number.');
+          }
+          this.currentOrderData.cases = cases;
+        }
+
+
+        // Update the total amount explicitly based on billing sum (received quantity)
+        const items = this.currentOrderData.items || [];
+        const subtotal = items.reduce((s, i) => {
+          const rec = (i.received_quantity !== undefined && i.received_quantity !== null) ? i.received_quantity : (i.received_qty !== undefined ? i.received_qty : 0);
+          return s + ((i.unit_price || i.price || 0) * rec);
+        }, 0);
+        this.currentOrderData.total_amount = subtotal;
+      }
+
+      this.saveOrderDraft();
+    }
+
+    injectOrdersStyles() {
+      if (document.getElementById('orders-module-styles')) return;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.id = 'orders-module-styles';
+      link.href = '/modules/billing/css/new-order.css';
+      // document.head.appendChild(link); /* Disabled for Vite */
+    }
   }
-}
 
 window.OrdersView = OrdersView;

@@ -1,4 +1,4 @@
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('ProductList') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('ProductList') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 import { BillingAPI } from '/modules/billing/js/billing-app.js';
 import { QRGenerator } from '/modules/product-list/js/qr-generator.js';
@@ -32,7 +32,7 @@ class ProductVariant {
   }
 
   sortBatches() {
-    this.batches.sort((a, b) => 
+    this.batches.sort((a, b) =>
       (a.batchNo || '').localeCompare(b.batchNo || '', undefined, { numeric: true, sensitivity: 'base' })
     );
   }
@@ -77,7 +77,7 @@ class Product {
     this.variants.sort((a, b) => {
       let valA = a.pack_size_value !== undefined && a.pack_size_value !== null ? parseFloat(a.pack_size_value) : NaN;
       let valB = b.pack_size_value !== undefined && b.pack_size_value !== null ? parseFloat(b.pack_size_value) : NaN;
-      
+
       if (isNaN(valA)) {
         const matchA = (a.packSize || '').toString().match(/^([\d.]+)/);
         valA = matchA ? parseFloat(matchA[1]) : NaN;
@@ -86,7 +86,7 @@ class Product {
         const matchB = (b.packSize || '').toString().match(/^([\d.]+)/);
         valB = matchB ? parseFloat(matchB[1]) : NaN;
       }
-      
+
       if (!isNaN(valA) && !isNaN(valB) && valA !== valB) {
         return valA - valB;
       }
@@ -286,7 +286,7 @@ export class ProductListApp extends AppWindow {
   constructor(containerId, callbacks = {}, params = {}) {
     const width = window.innerWidth;
     let config = { appId: 'products', appName: 'Product List', containerId: containerId, callbacks: callbacks };
-    
+
     if (width < 768) {
       const mobileSizes = AppWindow.calculateMobileSizing();
       config = { ...config, width: mobileSizes.width, height: mobileSizes.height };
@@ -295,7 +295,7 @@ export class ProductListApp extends AppWindow {
     } else {
       config = { ...config, width: '600px', height: '500px' };
     }
-    
+
     super(config);
 
     this.api = new BillingAPI('/api'); // Initialize API client pointing to backend
@@ -383,7 +383,7 @@ export class ProductListApp extends AppWindow {
       const products = await this.api.getProducts();
       const normalizedProducts = this.normalizeApiCollection(products, []);
       log.debug('Products response:', products, 'Type:', typeof products, 'Is Array:', Array.isArray(products), 'Normalized Length:', normalizedProducts.length);
-      
+
       if (Array.isArray(normalizedProducts)) {
         this.apiEnabled = true;
         log.debug('✅ Backend connected for Products - ' + normalizedProducts.length + ' products available');
@@ -411,7 +411,7 @@ export class ProductListApp extends AppWindow {
       log.error('API not available - cannot load products');
       return;
     }
-    
+
     try {
       const force = options.forceRefresh !== false;
       if (force && this.api) {
@@ -425,7 +425,7 @@ export class ProductListApp extends AppWindow {
       if (typeof window !== 'undefined' && window.MacOSStore) {
         window.MacOSStore.reconcile('products', this.products);
       }
-      
+
       // Update subview panels with fresh data
       const allPanel = this.getOrCreateSubviewPanel('all');
       if (this.currentView === 'all') {
@@ -466,7 +466,6 @@ export class ProductListApp extends AppWindow {
 
     if (params.action === 'edit') {
       this.renderEditProductView(product.id);
-      this.switchView('edit');
       return;
     }
 
@@ -575,7 +574,7 @@ export class ProductListApp extends AppWindow {
     product.last_edited_by_name = apiProduct.last_edited_by_name;
     product.createdAt = new Date(apiProduct.created_at || apiProduct.createdAt || Date.now());
     product.lastUpdated = new Date(apiProduct.updated_at || apiProduct.lastUpdated || product.createdAt);
-    
+
     // Parse variants array from API response (new normalized schema)
     if (Array.isArray(apiProduct.variants)) {
       apiProduct.variants.forEach(vData => {
@@ -585,13 +584,13 @@ export class ProductListApp extends AppWindow {
         const packSize = vData.packSize || (packSizeValue && packSizeType
           ? `${packSizeValue}${packSizeType}`
           : (packSizeValue ? packSizeValue.toString() : ''));
-        
+
         const variant = new ProductVariant(packSize);
         // Store the individual pack_size fields for later API serialization
         variant.id = vData.id;
         variant.pack_size_value = packSizeValue;
         variant.pack_size_type = packSizeType;
-        
+
         if (vData.batches && Array.isArray(vData.batches)) {
           vData.batches.forEach(bData => {
             const batch = new ProductBatch(
@@ -609,7 +608,7 @@ export class ProductListApp extends AppWindow {
         product.addVariant(variant);
       });
     }
-    
+
     return product;
   }
 
@@ -683,9 +682,9 @@ export class ProductListApp extends AppWindow {
   setupHeaderControls() {
     const container = document.getElementById(this.containerId);
     const titleBar = container.querySelector('.app-title-bar');
-    
+
     if (!titleBar) return;
-    
+
     // Create left controls group (after traffic lights)
     const leftControls = document.createElement('div');
     leftControls.className = 'product-left-controls';
@@ -703,16 +702,16 @@ export class ProductListApp extends AppWindow {
       </svg>
     `;
     leftControls.appendChild(expandBtn);
-    
+
     // Insert left controls after traffic lights
     const trafficLights = titleBar.querySelector('.app-traffic-lights');
     titleBar.insertBefore(leftControls, trafficLights.nextSibling);
-    
+
     // Create right controls group (replace title-spacer)
     const spacer = titleBar.querySelector('.title-spacer');
     const rightControls = document.createElement('div');
     rightControls.className = 'product-header-controls';
-    
+
     // Create buttons container (Edit, Add)
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'product-header-buttons';
@@ -720,28 +719,28 @@ export class ProductListApp extends AppWindow {
       <button class="product-header-btn" id="productEditBtn" title="Edit Product">✎</button>
       <button class="product-header-btn" id="productAddBtn" title="Add Product">+</button>
     `;
-    
+
     // Create search input
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'product-header-search';
     searchInput.id = 'productHeaderSearch';
     searchInput.placeholder = 'Search products...';
-    
+
     rightControls.appendChild(buttonsContainer);
     rightControls.appendChild(searchInput);
-    
+
     // Replace spacer with right controls
     spacer.parentNode.replaceChild(rightControls, spacer);
-    
+
     // Store references
     this.searchInput = searchInput;
     this.expandBtn = expandBtn;
-    
+
     // Setup sidebar toggle functionality
     this.expandBtn.addEventListener('click', () => this.toggleSidebar());
     document.getElementById('productAddBtn')?.addEventListener('click', () => this.switchView('create'));
-    
+
     // Setup search functionality matching billing app
     if (this.searchInput) {
       this.setupSearchFunctionality();
@@ -780,7 +779,7 @@ export class ProductListApp extends AppWindow {
       clearTimeout(searchTimeout);
       const query = e.target.value.trim().toLowerCase();
       this.searchQuery = query;
-      
+
       searchTimeout = setTimeout(() => {
         if (query) {
           this.performGlobalSearchWithDropdown(query);
@@ -839,7 +838,7 @@ export class ProductListApp extends AppWindow {
 
       const results = this.searchAllProductsData(query);
       this.populateSearchDropdown(results);
-      
+
       if (results.length === 0) {
         this.searchDropdown.innerHTML = `<div style="padding: 12px 16px; color: #999; text-align: center;">No results found</div>`;
         this.searchDropdown.style.display = 'block';
@@ -1037,7 +1036,7 @@ export class ProductListApp extends AppWindow {
       const odiaName = (product.odia_name || '').toLowerCase();
       const category = (product.category_name || product.category || '').toLowerCase();
       const classification = (product.classification || '').toLowerCase();
-      
+
       if (name.includes(qLower) || odiaName.includes(qLower) || category.includes(qLower) || classification.includes(qLower)) {
         return true;
       }
@@ -1206,7 +1205,7 @@ export class ProductListApp extends AppWindow {
   selectSmartSearchResult(product) {
     if (!product) return;
     this.hideSearchDropdown();
-    
+
     // Switch to all products view if not already there
     if (this.currentView !== 'all') {
       this.switchView('all');
@@ -1255,13 +1254,13 @@ export class ProductListApp extends AppWindow {
 
   switchView(viewName) {
     this.currentView = viewName;
-    
+
     // Clear search when switching views
     this.searchQuery = '';
     if (this.searchInput) {
       this.searchInput.value = '';
     }
-    
+
     // Update active menu item
     this.menuItems.forEach(item => {
       item.classList.remove('active');
@@ -1289,25 +1288,25 @@ export class ProductListApp extends AppWindow {
 
   updateHeader(viewName) {
     const headers = {
-      all: { 
-        title: 'All Products', 
-        subtitle: 'View all products in inventory' 
+      all: {
+        title: 'All Products',
+        subtitle: 'View all products in inventory'
       },
-      create: { 
-        title: 'Create New Product', 
-        subtitle: 'Add a new product to your inventory' 
+      create: {
+        title: 'Create New Product',
+        subtitle: 'Add a new product to your inventory'
       },
-      edit: { 
-        title: 'Edit Product', 
-        subtitle: 'Modify product information and variants' 
+      edit: {
+        title: 'Edit Product',
+        subtitle: 'Modify product information and variants'
       },
-      categories: { 
-        title: 'Manage Categories', 
-        subtitle: 'Organize products by category' 
+      categories: {
+        title: 'Manage Categories',
+        subtitle: 'Organize products by category'
       },
-      inventory: { 
-        title: 'Inventory Overview', 
-        subtitle: 'Track product quantities and stock levels' 
+      inventory: {
+        title: 'Inventory Overview',
+        subtitle: 'Track product quantities and stock levels'
       },
       qrcodes: {
         title: 'QR Code & Catalog Printing',
@@ -1321,12 +1320,14 @@ export class ProductListApp extends AppWindow {
   }
 
   renderView(viewName) {
-    switch(viewName) {
+    switch (viewName) {
       case 'create':
         this.renderCreateProductView();
         break;
       case 'edit':
-        // Edit view is handled by renderEditProductView directly
+        if (this.currentEditProductId) {
+          this.renderEditProductView(this.currentEditProductId);
+        }
         break;
       case 'categories':
         this.renderCategoriesView();
@@ -1373,7 +1374,7 @@ export class ProductListApp extends AppWindow {
 
   validateProduct(product) {
     const invalidVariants = [];
-    
+
     product.variants.forEach((variant, index) => {
       const hasValidBatch = variant.batches.some(batch => batch.batchNo && batch.batchNo.trim() !== '');
       if (!hasValidBatch) {
@@ -1384,7 +1385,7 @@ export class ProductListApp extends AppWindow {
         });
       }
     });
-    
+
     return {
       valid: invalidVariants.length === 0,
       invalidVariants
@@ -1417,7 +1418,7 @@ export class ProductListApp extends AppWindow {
       document.body.appendChild(container);
 
       const overlay = document.getElementById('validationWarningOverlay');
-      
+
       document.getElementById('optAddBatch').onclick = () => {
         validationResult.invalidVariants.forEach(v => {
           const variant = product.variants[v.index];
@@ -1450,7 +1451,7 @@ export class ProductListApp extends AppWindow {
 
   async saveProductToAPI(product) {
     if (!this.apiEnabled || !product) return false;
-    
+
     // Validate product before saving
     const validation = this.validateProduct(product);
     if (!validation.valid) {
@@ -1458,11 +1459,11 @@ export class ProductListApp extends AppWindow {
       const shouldProceed = await this.showValidationWarningModal(product, validation);
       if (!shouldProceed) return false;
     }
-    
+
     try {
       const productData = this.formatProductForAPI(product);
       if (this.api) this.api.invalidateCache('/products');
-      
+
       if (product.id && product.id > 0) {
         // Update existing product
         log.debug(`Updating product ${product.id}:`, productData);
@@ -1488,7 +1489,7 @@ export class ProductListApp extends AppWindow {
 
   async deleteProductFromAPI(productId) {
     if (!this.apiEnabled || !productId) return false;
-    
+
     try {
       log.debug(`Deleting product ${productId} from API`);
       const prod = this.products.find(p => p.id == productId);
@@ -1516,7 +1517,7 @@ export class ProductListApp extends AppWindow {
     const match = packSizeStr.match(/^([\d.]+)(.*)$/);
     const packSizeValue = match ? parseFloat(match[1]) : null;
     const packSizeType = match && match[2] ? match[2].trim() : '';
-    
+
     return {
       pack_size_value: packSizeValue,
       pack_size_type: packSizeType,
@@ -1532,7 +1533,7 @@ export class ProductListApp extends AppWindow {
 
   async createVariantAPI(productId, variant) {
     if (!this.apiEnabled || !productId || !variant) return null;
-    
+
     try {
       const variantData = this.formatVariantForAPI(variant);
       log.debug(`Creating variant for product ${productId}:`, variantData);
@@ -1555,7 +1556,7 @@ export class ProductListApp extends AppWindow {
 
   async updateVariantAPI(variantId, variant) {
     if (!this.apiEnabled || !variantId || !variant) return false;
-    
+
     try {
       const variantData = this.formatVariantForAPI(variant);
       log.debug(`Updating variant ${variantId}:`, variantData);
@@ -1575,7 +1576,7 @@ export class ProductListApp extends AppWindow {
 
   async deleteVariantAPI(variantId) {
     if (!this.apiEnabled || !variantId) return false;
-    
+
     try {
       log.debug(`Deleting variant ${variantId} from API`);
       await this.api.deleteVariant(variantId);
@@ -1606,7 +1607,7 @@ export class ProductListApp extends AppWindow {
 
   async createBatchAPI(variantId, batch) {
     if (!this.apiEnabled || !variantId || !batch) return null;
-    
+
     try {
       const batchData = this.formatBatchForAPI(batch);
       log.debug(`Creating batch for variant ${variantId}:`, batchData);
@@ -1628,7 +1629,7 @@ export class ProductListApp extends AppWindow {
 
   async updateBatchAPI(batchId, batch) {
     if (!this.apiEnabled || !batchId || !batch) return false;
-    
+
     try {
       const batchData = this.formatBatchForAPI(batch);
       log.debug(`Updating batch ${batchId}:`, batchData);
@@ -1648,7 +1649,7 @@ export class ProductListApp extends AppWindow {
 
   async deleteBatchAPI(batchId) {
     if (!this.apiEnabled || !batchId) return false;
-    
+
     try {
       log.debug(`Deleting batch ${batchId} from API`);
       await this.api.deleteBatch(batchId);
@@ -1672,12 +1673,12 @@ export class ProductListApp extends AppWindow {
       log.error('API not available - cannot load categories');
       return;
     }
-    
+
     try {
       const categories = await this.api.getCategories();
       const normalizedCategories = this.normalizeApiCollection(categories, []);
       log.debug('Categories response:', categories, 'Type:', typeof categories, 'Is Array:', Array.isArray(categories), 'Normalized Length:', normalizedCategories.length);
-      
+
       if (Array.isArray(normalizedCategories)) {
         this.categories = normalizedCategories; // Store full category objects with id and name
         log.debug('✅ Categories loaded from API:', this.categories.length, 'categories');
@@ -1704,7 +1705,7 @@ export class ProductListApp extends AppWindow {
     product.last_edited_by_name = data.last_edited_by_name;
     product.createdAt = new Date(data.createdAt);
     product.lastUpdated = data.lastUpdated ? new Date(data.lastUpdated) : new Date(data.createdAt);
-    
+
     if (data.variants) {
       data.variants.forEach(vData => {
         const variant = new ProductVariant(vData.packSize);
@@ -1741,7 +1742,7 @@ export class ProductListApp extends AppWindow {
 
     // Get filtered products based on search query
     const productsToDisplay = this.filterProducts();
-    
+
     if (this.isLoading && (!this.products || this.products.length === 0)) {
       if (window.MacOSLoader) {
         this.viewContainer.innerHTML = window.MacOSLoader.create('Loading Products...', 'Syncing inventory catalog with server');
@@ -1759,10 +1760,10 @@ export class ProductListApp extends AppWindow {
 
     if (productsToDisplay.length === 0) {
       // Show empty state or no results message
-      const emptyMessage = this.searchQuery 
+      const emptyMessage = this.searchQuery
         ? `No products found matching "${this.searchQuery}"`
         : 'No products yet. Create your first product!';
-      
+
       this.viewContainer.innerHTML = `
         <div class="product-empty-state">
           <div>
@@ -1802,19 +1803,19 @@ export class ProductListApp extends AppWindow {
               <span class="divider-letter">${letter}</span>
             </div>
             ${groupedProducts[letter].map(product => {
-              const auditInfo = JSON.stringify({
-                type: 'Product',
-                id: product.id,
-                name: product.name,
-                created_by_role: product.created_by_role,
-                created_by_name: product.created_by_name,
-                last_edited_by_role: product.last_edited_by_role,
-                last_edited_by_name: product.last_edited_by_name,
-                date: product.createdAt,
-                created_at: product.createdAt,
-                updated_at: product.lastUpdated
-              });
-              return `
+      const auditInfo = JSON.stringify({
+        type: 'Product',
+        id: product.id,
+        name: product.name,
+        created_by_role: product.created_by_role,
+        created_by_name: product.created_by_name,
+        last_edited_by_role: product.last_edited_by_role,
+        last_edited_by_name: product.last_edited_by_name,
+        date: product.createdAt,
+        created_at: product.createdAt,
+        updated_at: product.lastUpdated
+      });
+      return `
           <div class="product-card" data-product-id="${product.id}" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
             <div class="product-card-header">
               <div class="product-card-title">
@@ -1853,13 +1854,13 @@ export class ProductListApp extends AppWindow {
                   </div>
                   <div class="batches-container">
                     ${(() => {
-                      const activeBatch = getPortalActiveBatch(variant.batches);
-                      return variant.batches.map(batch => {
-                        const isPortalActive = activeBatch && (
-                          (batch.id && String(batch.id) === String(activeBatch.id)) ||
-                          (batch.batchNo && batch.batchNo === activeBatch.batchNo)
-                        );
-                        return `
+          const activeBatch = getPortalActiveBatch(variant.batches);
+          return variant.batches.map(batch => {
+            const isPortalActive = activeBatch && (
+              (batch.id && String(batch.id) === String(activeBatch.id)) ||
+              (batch.batchNo && batch.batchNo === activeBatch.batchNo)
+            );
+            return `
                           <div class="batch-card">
                             <div class="batch-row">
                               <span class="batch-label">Batch:</span>
@@ -1887,8 +1888,8 @@ export class ProductListApp extends AppWindow {
                             </div>
                           </div>
                         `;
-                      }).join('');
-                    })()}
+          }).join('');
+        })()}
                   </div>
                   <button class="add-batch-btn add-batch-margin" data-product-id="${product.id}" data-pack-size="${variant.packSize}">+ Add Batch</button>
                 </div>
@@ -1897,7 +1898,7 @@ export class ProductListApp extends AppWindow {
             </div>
           </div>
               `;
-            }).join('')}
+    }).join('')}
           </div>
         `).join('')}
       </div>
@@ -1906,16 +1907,16 @@ export class ProductListApp extends AppWindow {
     // Use event delegation instead of attaching listeners to each element
     // This prevents memory leaks from duplicate listeners on re-render
     const app = this;
-    
+
     // Remove old event delegator if exists
     if (this.viewContainerDelegator) {
       this.viewContainer.removeEventListener('click', this.viewContainerDelegator);
     }
-    
+
     // Single event delegator for all product card interactions
     this.viewContainerDelegator = (e) => {
       const target = e.target;
-      
+
       // Letter section toggle
       if (target.classList.contains('products-letter-divider')) {
         const section = target.closest('.products-letter-section');
@@ -1923,14 +1924,14 @@ export class ProductListApp extends AppWindow {
         target.style.cursor = 'pointer';
         return;
       }
-      
+
       // Print Product QR
       if (target.classList.contains('print-product-qr')) {
         const productId = target.dataset.productId;
         app.printProductCatalog(productId);
         return;
       }
-      
+
       // Print Batch QR
       if (target.classList.contains('print-batch-qr')) {
         const productId = target.dataset.productId;
@@ -1946,10 +1947,9 @@ export class ProductListApp extends AppWindow {
       if (target.classList.contains('edit-product')) {
         const productId = target.dataset.productId;
         app.renderEditProductView(productId);
-        app.switchView('edit');
         return;
       }
-      
+
       // Delete product
       if (target.classList.contains('delete-product')) {
         const productId = target.dataset.productId;
@@ -1963,7 +1963,7 @@ export class ProductListApp extends AppWindow {
         }
         return;
       }
-      
+
       // Add variant
       if (target.classList.contains('add-variant-btn')) {
         const productId = target.dataset.productId;
@@ -1973,7 +1973,7 @@ export class ProductListApp extends AppWindow {
         }
         return;
       }
-      
+
       // Add batch
       if (target.classList.contains('add-batch-btn')) {
         const productId = target.dataset.productId;
@@ -1981,7 +1981,7 @@ export class ProductListApp extends AppWindow {
         app.showAddBatchDialog(productId, packSize);
         return;
       }
-      
+
       // Delete batch
       if (target.classList.contains('batch-delete-btn')) {
         const productId = target.dataset.productId;
@@ -2006,7 +2006,7 @@ export class ProductListApp extends AppWindow {
         return;
       }
     };
-    
+
     this.viewContainer.addEventListener('click', this.viewContainerDelegator);
   }
 
@@ -2215,7 +2215,7 @@ export class ProductListApp extends AppWindow {
           variant.pack_size_value = parseFloat(packSizeNum) || null;
           variant.pack_size_type = packUnit || null;
           const batchElements = vEl.querySelectorAll('.batch-entry');
-          
+
           batchElements.forEach(bEl => {
             const batchNo = bEl.querySelector('.batch-number').value.trim();
             const mrp = parseFloat(bEl.querySelector('.batch-mrp').value);
@@ -2245,7 +2245,7 @@ export class ProductListApp extends AppWindow {
 
       // Save to API (API will set the product.id if created)
       const success = await this.saveProductToAPI(product);
-      
+
       if (success) {
         // Only push to local list and navigate on success
         this.products.push(product);
@@ -2390,8 +2390,17 @@ export class ProductListApp extends AppWindow {
   }
 
   renderEditProductView(productId) {
-    const product = this.products.find(p => p.id == productId);
-    if (!product) return;
+    this.currentEditProductId = productId;
+    if (this.currentView !== 'edit') {
+      this.switchView('edit');
+      return;
+    }
+
+    const product = this.products.find(p => String(p.id) === String(productId));
+    if (!product) {
+      log.warn(`[ProductList] Product with id ${productId} not found`);
+      return;
+    }
     const app = this; // Store reference to app instance for use in event handlers
 
     this.headerTitle.textContent = 'Edit Product';
@@ -2431,7 +2440,7 @@ export class ProductListApp extends AppWindow {
             <button type="button" id="addVariantEditBtn" class="add-variant-edit-btn">+ Add Variant</button>
           </h3>
           <div id="editVariantsContainer" class="edit-variants-container">
-            ${product.variants.map((variant, vIdx) => `
+            ${(product.variants || []).map((variant, vIdx) => `
               <div class="edit-variant-card">
                 <div class="edit-variant-header">
                   <h4 class="edit-variant-title">📦 Variant Identifier</h4>
@@ -2449,15 +2458,15 @@ export class ProductListApp extends AppWindow {
                   <button type="button" class="remove-variant-edit-btn" data-variant-idx="${vIdx}">Remove Variant</button>
                 </div>
                 <div class="edit-batches-wrapper">
-                  ${variant.batches.map((batch, bIdx) => `
+                  ${(variant.batches || []).map((batch, bIdx) => `
                     <div class="edit-batch-card">
                       <div class="edit-batch-grid">
                         <div class="edit-batch-field">
                           <label class="edit-batch-label">${(() => {
-                            const actB = getPortalActiveBatch(variant.batches);
-                            const isAct = actB && ((batch.id && String(batch.id) === String(actB.id)) || (batch.batchNo && batch.batchNo === actB.batchNo));
-                            return isAct ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-right:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : '';
-                          })()}Batch Number *</label>
+        const actB = getPortalActiveBatch(variant.batches || []);
+        const isAct = actB && ((batch.id && String(batch.id) === String(actB.id)) || (batch.batchNo && batch.batchNo === actB.batchNo));
+        return isAct ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 3px #10b981;margin-right:5px;vertical-align:middle;" title="Active batch on customer portal"></span>' : '';
+      })()}Batch Number *</label>
                           <input type="text" value="${batch.batchNo}" class="edit-batch-no edit-batch-input" data-variant-idx="${vIdx}" data-batch-idx="${bIdx}">
                         </div>
                         <div class="edit-batch-field">
@@ -2531,7 +2540,7 @@ export class ProductListApp extends AppWindow {
     this._editFormSubmitHandler = async (e) => {
       if (e.target.id !== 'editProductForm') return;
       e.preventDefault();
-      
+
       const newName = document.getElementById('editProductName').value.trim();
       const newCategory = document.getElementById('editProductCategory').value;
       const newClassification = document.getElementById('editProductClassification').value;
@@ -2546,7 +2555,7 @@ export class ProductListApp extends AppWindow {
       product.category = newCategory;
       product.classification = newClassification;
       product.hsn_code = document.getElementById('editProductHsnCode')?.value?.trim() || '30049011';
-      
+
       // Resolve category ID from categories list
       const categoryObj = app.categories.find(c => (c.name || c) === newCategory);
       if (categoryObj && categoryObj.id) {
@@ -2561,7 +2570,7 @@ export class ProductListApp extends AppWindow {
           const unitSelect = document.querySelector(`.variant-pack-unit[data-variant-idx="${vIdx}"]`);
           const newValue = input.value.trim();
           const newUnit = unitSelect.value.trim();
-          
+
           if (newValue && newUnit) {
             variant.pack_size_value = parseFloat(newValue) || 0;
             variant.pack_size_type = newUnit;
@@ -2582,7 +2591,7 @@ export class ProductListApp extends AppWindow {
           const expInput = document.querySelector(`.edit-batch-exp[data-variant-idx="${vIdx}"][data-batch-idx="${bIdx}"]`);
           const mrpInput = document.querySelector(`.edit-batch-mrp[data-variant-idx="${vIdx}"][data-batch-idx="${bIdx}"]`);
           const soldInput = document.querySelector(`.edit-batch-sold[data-variant-idx="${vIdx}"][data-batch-idx="${bIdx}"]`);
-          
+
           let newMfgDate = null;
           let newExpDate = null;
 
@@ -2609,8 +2618,9 @@ export class ProductListApp extends AppWindow {
       product.lastUpdated = new Date();
       // Save to API
       const success = await app.saveProductToAPI(product);
-      
+
       if (success) {
+        app.currentEditProductId = null;
         app.notifications.show(`"${product.name}" changes saved`, 'success', 2000, 'Product Updated');
         app.switchView('all');
       }
@@ -2618,10 +2628,11 @@ export class ProductListApp extends AppWindow {
 
     this._editFormClickHandler = async (e) => {
       if (e.target.id === 'cancelEditBtn') {
+        app.currentEditProductId = null;
         app.switchView('all');
         return;
       }
-      
+
       if (e.target.classList.contains('remove-variant-edit-btn')) {
         e.preventDefault();
         const vIdx = parseInt(e.target.dataset.variantIdx);
@@ -2639,7 +2650,7 @@ export class ProductListApp extends AppWindow {
         }
         return;
       }
-      
+
       if (e.target.classList.contains('remove-batch-edit-btn')) {
         e.preventDefault();
         const vIdx = parseInt(e.target.dataset.variantIdx);
@@ -2658,13 +2669,13 @@ export class ProductListApp extends AppWindow {
         }
         return;
       }
-      
+
       if (e.target.id === 'addVariantEditBtn') {
         e.preventDefault();
         app.showAddVariantModal(productId, true);
         return;
       }
-      
+
       if (e.target.classList.contains('add-batch-edit-btn')) {
         e.preventDefault();
         const vIdx = parseInt(e.target.dataset.variantIdx);
@@ -2681,7 +2692,7 @@ export class ProductListApp extends AppWindow {
   showAddBatchDialogForEdit(product, variantIdx, productId) {
     const packSize = product.variants[variantIdx].packSize;
     const app = this; // Store reference to app instance
-    
+
     const dialogHtml = `
       <div class="batch-dialog-overlay" id="batchDialogOverlay">
         <div class="batch-dialog">
@@ -2792,9 +2803,9 @@ export class ProductListApp extends AppWindow {
   showAddVariantModal(productId, isEdit = false) {
     const product = this.products.find(p => p.id == productId);
     if (!product) return;
-    
+
     const app = this; // Store reference to app instance
-    
+
     const dialogHtml = `
       <div class="batch-dialog-overlay" id="variantDialogOverlay">
         <div class="batch-dialog">
@@ -2860,21 +2871,21 @@ export class ProductListApp extends AppWindow {
       const variant = new ProductVariant(packSize);
       variant.pack_size_value = packSizeNumber;
       variant.pack_size_type = packSizeUnit;
-      
+
       // Add at least one batch field
       const batch = new ProductBatch('', null, null, 0, 0);
       variant.addBatch(batch);
-      
+
       product.addVariant(variant);
       product.lastUpdated = new Date();
-      
+
       // Save to API
       const success = await app.saveProductToAPI(product);
       overlay.parentElement.remove();
-      
+
       if (success) {
         app.notifications.show(`${packSize} variant added`, 'success', 2000, 'Variant Added');
-        
+
         // Re-render the appropriate view
         if (isEdit) {
           app.renderEditProductView(productId);
@@ -2936,10 +2947,10 @@ export class ProductListApp extends AppWindow {
 
         <div id="categoriesList" class="categories-list">
           ${this.categories.map(cat => {
-            const catName = cat.name || cat;
-            const catMeaning = cat.english_meaning || '';
-            const prodCount = categoryStats[catName] || 0;
-            return `
+      const catName = cat.name || cat;
+      const catMeaning = cat.english_meaning || '';
+      const prodCount = categoryStats[catName] || 0;
+      return `
             <div class="category-list-item" style="padding: 14px 16px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 8px; background: #fff;">
               <div class="category-list-item-info" style="flex: 1;">
                 <div class="category-list-item-name" style="font-size: 14.5px; font-weight: 600; color: #1e293b;">📂 ${catName}</div>
@@ -2952,7 +2963,8 @@ export class ProductListApp extends AppWindow {
                 <button class="delete-category-btn category-action-btn" data-category="${catName}">Delete</button>
               </div>
             </div>
-          `;}).join('')}
+          `;
+    }).join('')}
         </div>
 
         <!-- 🌿 Ayurvedic Product Descriptions, Indications & Company Info -->
@@ -3108,21 +3120,21 @@ export class ProductListApp extends AppWindow {
         this.notifications.show('API required to add categories', 'warning', 2000);
         return;
       }
-      
+
       const input = document.getElementById('newCategoryInput');
       const catName = input.value.trim();
-      
+
       if (!catName) {
         this.notifications.show('Please enter a category name!', 'warning', 2000);
         return;
       }
-      
+
       const categoryExists = this.categories.some(c => (c.name || c).toLowerCase() === catName.toLowerCase());
       if (categoryExists) {
         this.notifications.show('This category already exists!', 'warning', 2000);
         return;
       }
-      
+
       try {
         const result = await this.api.createCategory({ name: catName });
         this.categories.push({ id: result.id, name: catName, created_at: new Date() });
@@ -3161,29 +3173,29 @@ export class ProductListApp extends AppWindow {
           this.notifications.show('API required to rename categories', 'warning', 2000);
           return;
         }
-        
+
         const oldName = e.target.dataset.category;
         const newName = prompt(`Rename category from "${oldName}" to:`, oldName);
-        
+
         if (!newName || !newName.trim() || newName.trim() === oldName) {
           return;
         }
-        
+
         const categoryExists = this.categories.some(c => (c.name || c).toLowerCase() === newName.trim().toLowerCase());
         if (categoryExists) {
           this.notifications.show('This category name already exists!', 'warning', 2000);
           return;
         }
-        
+
         const categoryObj = this.categories.find(c => (c.name || c) === oldName);
         if (!categoryObj || !categoryObj.id) {
           this.notifications.show('Cannot rename category. Please reload the page.', 'error', 2500);
           return;
         }
-        
+
         try {
           await this.api.updateCategory(categoryObj.id, { name: newName.trim() });
-          
+
           // Update category in all products and categories array
           this.products.forEach(product => {
             if (product.category === oldName) {
@@ -3192,7 +3204,7 @@ export class ProductListApp extends AppWindow {
             }
           });
           categoryObj.name = newName.trim();
-          
+
           this.notifications.show(`Category renamed to "${newName.trim()}"!`, 'success', 2000);
           this.api.invalidateCache('/categories');
           if (typeof window !== 'undefined' && window.CoreDataBus) {
@@ -3213,25 +3225,25 @@ export class ProductListApp extends AppWindow {
           this.notifications.show('API required to delete categories', 'warning', 2000);
           return;
         }
-        
+
         const cat = e.target.dataset.category;
         const productCount = this.products.filter(p => p.category === cat).length;
-        
+
         if (productCount > 0) {
           this.notifications.show(`Cannot delete "${cat}"! It contains ${productCount} product(s). Please reassign them first.`, 'warning', 3000);
           return;
         }
-        
+
         if (!confirm(`Delete category "${cat}"?`)) {
           return;
         }
-        
+
         const categoryObj = this.categories.find(c => (c.name || c) === cat);
         if (!categoryObj || !categoryObj.id) {
           this.notifications.show('Cannot delete category. Please reload the page.', 'error', 2500);
           return;
         }
-        
+
         try {
           await this.api.deleteCategory(categoryObj.id);
           this.categories = this.categories.filter(c => (c.name || c) !== cat);
@@ -3252,7 +3264,7 @@ export class ProductListApp extends AppWindow {
   showCategoryProducts(category) {
     this.products = this.normalizeProductModels(this.products);
     const categoryProducts = this.products.filter(p => p.category === category);
-    
+
     const dialogHtml = `
       <div class="batch-dialog-overlay" id="categoryDialogOverlay">
         <div class="batch-dialog" style="max-width: 600px; max-height: 70vh;">
@@ -3304,16 +3316,16 @@ export class ProductListApp extends AppWindow {
   }
 
   // --- QR Printing Methods ---
-  
+
   _formatDateHumanReadable(dateStr) {
     if (!dateStr) return 'Not Defined';
     try {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return 'Invalid Date';
       const day = date.getDate();
-      const suffix = (day === 1 || day === 21 || day === 31) ? 'st' : 
-                     (day === 2 || day === 22) ? 'nd' : 
-                     (day === 3 || day === 23) ? 'rd' : 'th';
+      const suffix = (day === 1 || day === 21 || day === 31) ? 'st' :
+        (day === 2 || day === 22) ? 'nd' :
+          (day === 3 || day === 23) ? 'rd' : 'th';
       const month = date.toLocaleDateString('en-GB', { month: 'short' });
       const year = date.getFullYear();
       return `${day}${suffix} ${month} ${year}`;
@@ -3601,7 +3613,7 @@ export class ProductListApp extends AppWindow {
     const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
     const watermarkHTML = ``;
-    
+
     const bgPatternSVG = `<div class="qr-neo-grid"></div>`;
 
     // Alphabetical Sorting
@@ -3609,23 +3621,23 @@ export class ProductListApp extends AppWindow {
 
     // Extract unique categories
     const uniqueCategories = [...new Set(sortedProducts.map(p => p.category))].sort();
-    const categoryCloudHtml = `<div class="qr-category-cloud">` + 
-      uniqueCategories.map(cat => `<span class="qr-cat-tag">${cat}</span>`).join('') + 
+    const categoryCloudHtml = `<div class="qr-category-cloud">` +
+      uniqueCategories.map(cat => `<span class="qr-cat-tag">${cat}</span>`).join('') +
       `</div>`;
 
     // Calculate TOC metrics
     let totalProducts = sortedProducts.length;
     let totalVariants = 0;
     let totalBatches = 0;
-    
+
     let tocListHtml = '';
     let currentTocLetter = '';
-    
+
     for (const product of sortedProducts) {
       let productBatchCount = 0;
       let productVariantCount = product.variants.length;
       totalVariants += productVariantCount;
-      
+
       for (const variant of product.variants) {
         productBatchCount += variant.batches.length;
       }
@@ -3636,7 +3648,7 @@ export class ProductListApp extends AppWindow {
         currentTocLetter = startingLetter;
         tocListHtml += `<div class="qr-toc-letter">${currentTocLetter}</div>`;
       }
-      
+
       tocListHtml += `
         <a href="#prod-${product.id}" class="qr-toc-entry">
           <span class="qr-toc-name">${product.name}</span>
@@ -3731,10 +3743,10 @@ export class ProductListApp extends AppWindow {
         ${watermarkHTML}
         <div class="qr-catalog-products">
     `;
-    
+
     let currentRenderLetter = '';
     let productIdx = 0;
-    
+
     for (const product of sortedProducts) {
       let productBatchCount = 0;
       product.variants.forEach(v => productBatchCount += v.batches.length);
@@ -3744,7 +3756,7 @@ export class ProductListApp extends AppWindow {
       if (isNewLetter) {
         currentRenderLetter = startingLetter;
       }
-      
+
       const addedOn = product.createdAt ? product.createdAt.toLocaleDateString('en-IN', { dateStyle: 'medium' }) : 'N/A';
       const editedOn = product.lastUpdated && product.lastUpdated.getTime() !== product.createdAt?.getTime() ? product.lastUpdated.toLocaleDateString('en-IN', { dateStyle: 'medium' }) : addedOn;
 
@@ -3786,7 +3798,7 @@ export class ProductListApp extends AppWindow {
         for (const batch of variant.batches) {
           const qrUrl = generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id);
           const qrImage = await generator.generateQRCodeDataURL(qrUrl, 'medium');
-          
+
           catalogHtml += `
             <div class="qr-batch-card">
               <div class="qr-batch-top">
@@ -3940,7 +3952,7 @@ export class ProductListApp extends AppWindow {
           </div>
         </div>
     `;
-    
+
     for (const variant of product.variants) {
       catalogHtml += `
         <div class="qr-variant-block">
@@ -3950,7 +3962,7 @@ export class ProductListApp extends AppWindow {
       for (const batch of variant.batches) {
         const qrUrl = generator.generateBatchURL(batch.batchNo, product.id, variant.id, batch.id);
         const qrImage = await generator.generateQRCodeDataURL(qrUrl, 'medium');
-        
+
         catalogHtml += `
           <div class="qr-batch-card">
             <div class="qr-batch-top">
@@ -4054,7 +4066,7 @@ export class ProductListApp extends AppWindow {
     }
     const batch = matchingBatches[0];
     if (!batch) return;
-    
+
     const generatedAt = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
     const fontsLink = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Oriya:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;600;800;900&display=swap" rel="stylesheet">`;
     const cornerOrns = ``;
@@ -4067,7 +4079,7 @@ export class ProductListApp extends AppWindow {
       generator.generateQRCodeDataURL(qrUrl, 'medium'),
       generator.generateQRCodeDataURL(qrUrl, 'large')
     ]);
-    
+
     let catalogHtml = `
       ${fontsLink}
       <div class="qr-print-page">
@@ -4171,7 +4183,7 @@ export class ProductListApp extends AppWindow {
     const totalVariants = this.products.reduce((sum, p) => sum + (p.variants || []).length, 0);
     const totalBatches = this.products.reduce((sum, p) => sum + (p.variants || []).reduce((vsum, v) => vsum + ((v && v.batches) || []).length, 0), 0);
     const totalUnitsSold = this.products.reduce((sum, p) => sum + (typeof p.getTotalUnitsSold === 'function' ? p.getTotalUnitsSold() : (p.units_sold || 0)), 0);
-    
+
     // Group by category
     const categoryInventory = {};
     this.products.forEach(product => {
@@ -4216,8 +4228,8 @@ export class ProductListApp extends AppWindow {
         <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; margin-top: 20px;">Inventory by Category</h3>
         <div style="display: grid; gap: 10px;">
           ${Object.keys(categoryInventory).sort().map(category => {
-            const stats = categoryInventory[category];
-            return `
+      const stats = categoryInventory[category];
+      return `
               <div style="padding: 12px; background: #f5f5f5; border-radius: 6px; border-left: 4px solid #0071e3;">
                 <div style="font-weight: 600; margin-bottom: 8px; font-size: 14px;">${category}</div>
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 12px;">
@@ -4228,7 +4240,7 @@ export class ProductListApp extends AppWindow {
                 </div>
               </div>
             `;
-          }).join('')}
+    }).join('')}
         </div>
 
         ${totalProducts === 0 ? `
