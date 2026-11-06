@@ -1571,74 +1571,50 @@ class OrdersView {
     // Fetch all orders from the database and filter client-side
     try {
       const res = await fetch('/api/billing/orders');
-      if (res.ok) {
-        const data = await res.json();
-        const allOrders = Array.isArray(data) ? data : (data.data || []);
+      if (!res.ok) {
+        throw new Error('Failed to fetch orders');
+      }
+      const data = await res.json();
+      const allOrders = Array.isArray(data) ? data : (data.data || []);
 
-        // Update this.orders with fresh data from database
-        this.orders = allOrders;
+      // Update this.orders with fresh data from database
+      this.orders = allOrders;
 
-        // Filter orders for this customer
-        const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
+      // Filter orders for this customer
+      const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
 
-        log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
+      log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
 
-        // Render with fetched orders
-        this.renderCustomerOrdersList(customerId, customerName, customerOrders);
-      } else {
-        if (!res.ok) {
-          throw new Error('Failed to fetch orders');
-        }
-        const data = await res.json();
-        const allOrders = Array.isArray(data) ? data : (data.data || []);
-
-        // Update this.orders with fresh data from database
-        this.orders = allOrders;
-
-        // Filter orders for this customer
-        const customerOrders = allOrders.filter(o => String(o.customer_id) === String(customerId));
-
-        log.debug('Fetched orders:', { total: allOrders.length, forCustomer: customerOrders.length, customerId, customerOrders });
-
-        // Render with fetched orders
-        this.renderCustomerOrdersList(customerId, customerName, customerOrders);
-      } catch (error) {
-        log.error('Error fetching customer orders:', error);
-        // Fallback to in-memory orders
-        const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
-        this.renderCustomerOrdersList(customerId, customerName, customerOrders);
-        // Fallback to in-memory orders only if network fetch failed
-        if (error && error.message === 'Failed to fetch orders') {
-          try {
-            const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
-            this.renderCustomerOrdersList(customerId, customerName, customerOrders);
-          } catch (renderError) {
-            log.error('Error in fallback customer orders render:', renderError);
-          }
+      // Render with fetched orders
+      this.renderCustomerOrdersList(customerId, customerName, customerOrders);
+    } catch (error) {
+      log.error('Error fetching customer orders:', error);
+      // Fallback to in-memory orders only if network fetch failed
+      if (error && error.message === 'Failed to fetch orders') {
+        try {
+          const customerOrders = this.orders.filter(o => String(o.customer_id) === String(customerId));
+          this.renderCustomerOrdersList(customerId, customerName, customerOrders);
+        } catch (renderError) {
+          log.error('Error in fallback customer orders render:', renderError);
         }
       }
     }
+  }
 
   renderCustomerOrdersList(customerId, customerName, customerOrders) {
-      this.clearOrderSelection();
-      this.updateMultiSelectUI();
-      // Clear selection when switching to a customer
-      this.selectedOrderIds = new Set();
-      this.updateMultiSelectUI();
-      this.clearOrderSelection();
-      this.updateMultiSelectUI();
-      // Clear selection when switching to a customer
-      this.selectedOrderIds = new Set();
-      this.updateMultiSelectUI();
+    this.clearOrderSelection();
+    this.updateMultiSelectUI();
+    // Clear selection when switching to a customer
+    this.selectedOrderIds = new Set();
+    this.updateMultiSelectUI();
 
-      // Guard: Don't render if this is not the active visible view in billing
-      if (this.billingApp && this.billingApp.currentView && this.billingApp.currentView !== 'orders') {
-        return;
-      }
+    // Guard: Don't render if this is not the active visible view in billing
+    if (this.billingApp && this.billingApp.currentView && this.billingApp.currentView !== 'orders') {
+      return;
+    }
 
-      // Ensure the main content structure exists - restore if stage view replaced it
-      const mainContent = document.getElementById('mainContent');
-      let mainContent = this.viewContainer?.querySelector('#mainContent') || document.getElementById('mainContent');
+    // Ensure the main content structure exists - restore if stage view replaced it
+    let mainContent = this.viewContainer?.querySelector('#mainContent') || document.getElementById('mainContent');
       if (!mainContent) {
         if (this.viewContainer) {
           this.render();
