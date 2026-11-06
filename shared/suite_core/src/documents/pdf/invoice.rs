@@ -1418,11 +1418,15 @@ fn render_invoice_sheet(
 
     // Right: Customer Info
     let party_x = right_x + mm_to_pt(2.0);
-    let party_y = header_y + header_height - mm_to_pt(5.0);
+    let party_max_w = right_w - mm_to_pt(4.0);
+    let top_y = header_y + header_height;
+
+    // Party Name
+    let party_y = top_y - mm_to_pt(4.8);
     canvas.draw_string(PdfFont::Helvetica, 8.0, party_x, party_y, "Party Name :");
     let label_w = canvas.string_width(PdfFont::Helvetica, 8.0, "Party Name :");
     let mut party_font_size = 8.5;
-    let max_party_w = right_w - label_w - 12.0;
+    let max_party_w = party_max_w - label_w - 4.0;
     while canvas.string_width(PdfFont::HelveticaBold, party_font_size, &data.party_name)
         > max_party_w
         && party_font_size > 4.0
@@ -1437,44 +1441,147 @@ fn render_invoice_sheet(
         &data.party_name,
     );
 
-    let address_line = if data.address.len() > 60 {
-        &data.address[..60]
+    // Customer Address:
+    // Support long multi-line addresses gracefully instead of hard truncating at 60 characters.
+    let trimmed_address = data.address.trim();
+    let mut normalized_addr = String::with_capacity(trimmed_address.len() + 16);
+    let mut prev_char = ' ';
+    for ch in trimmed_address.chars() {
+        if prev_char == ',' && ch != ' ' {
+            normalized_addr.push(' ');
+        }
+        normalized_addr.push(ch);
+        prev_char = ch;
+    }
+
+    let (addr_lines, addr_font_size, addr_line_step) = if normalized_addr.is_empty() {
+        (Vec::new(), 7.5, mm_to_pt(3.4))
     } else {
-        &data.address
+        // Break any individual word exceeding party_max_w so words never clip
+        let mut safe_addr = String::new();
+        for token in normalized_addr.split_whitespace() {
+            if canvas.string_width(PdfFont::Helvetica, 7.5, token) > party_max_w {
+                let mut chunk = String::new();
+                for c in token.chars() {
+                    if canvas.string_width(PdfFont::Helvetica, 7.5, &format!("{}{}", chunk, c)) > party_max_w {
+                        if !safe_addr.is_empty() {
+                            safe_addr.push(' ');
+                        }
+                        safe_addr.push_str(&chunk);
+                        chunk.clear();
+                    }
+                    chunk.push(c);
+                }
+                if !chunk.is_empty() {
+                    if !safe_addr.is_empty() {
+                        safe_addr.push(' ');
+                    }
+                    safe_addr.push_str(&chunk);
+                }
+            } else {
+                if !safe_addr.is_empty() {
+                    safe_addr.push(' ');
+                }
+                safe_addr.push_str(token);
+            }
+        }
+
+        let mut fs = 7.5;
+        let mut step = mm_to_pt(3.4);
+        let mut lines = canvas.wrap_text(PdfFont::Helvetica, fs, &safe_addr, party_max_w);
+        if lines.len() > 2 {
+            // Check if 7.0pt fits in 2 lines, or use 3 lines
+            let compact_lines = canvas.wrap_text(PdfFont::Helvetica, 7.0, &safe_addr, party_max_w);
+            if compact_lines.len() <= 2 {
+                fs = 7.0;
+                step = mm_to_pt(3.2);
+                lines = compact_lines;
+            } else if lines.len() > 3 {
+                fs = 6.5;
+                step = mm_to_pt(2.9);
+                lines = canvas.wrap_text(PdfFont::Helvetica, fs, &safe_addr, party_max_w);
+            }
+        }
+        if lines.len() > 3 {
+            lines.truncate(3);
+            if let Some(last) = lines.last_mut() {
+                let ellipsis = "...";
+                while canvas.string_width(PdfFont::Helvetica, fs, &format!("{}{}", last, ellipsis)) > party_max_w && !last.is_empty() {
+                    last.pop();
+                }
+                last.push_str(ellipsis);
+            }
+        }
+        (lines, fs, step)
     };
-    canvas.draw_string(
+
+    let num_addr_lines = addr_lines.len();
+    let (addr_start_offset_mm, follow_step_mm, details_fs) = match num_addr_lines {
+        0 => (8.5, 4.0, 8.0),
+        1 => (8.8, 3.8, 8.0),
+        2 => (8.4, 3.5, 7.8),
+        _ => (7.9, 3.3, 7.5),
+    };
+
+    let mut current_y = top_y - mm_to_pt(addr_start_offset_mm);
+    for line in &addr_lines {
+        draw_fitted_string(
+            canvas,
+            PdfFont::Helvetica,
+            addr_font_size,
+            party_x,
+            current_y,
+            party_max_w,
+            line,
+        );
+        current_y -= addr_line_step;
+    }
+
+    let details_gap = mm_to_pt(follow_step_mm);
+    if num_addr_lines > 0 {
+        current_y = current_y + addr_line_step - details_gap;
+    }
+
+    draw_fitted_string(
+        canvas,
         PdfFont::Helvetica,
-        8.0,
+        details_fs,
         party_x,
-        header_y + header_height - mm_to_pt(10.0),
-        address_line,
-    );
-    canvas.draw_string(
-        PdfFont::Helvetica,
-        8.0,
-        party_x,
-        header_y + header_height - mm_to_pt(14.0),
+        current_y,
+        party_max_w,
         &format!("PHONE : {}", data.phone),
     );
-    canvas.draw_string(
+    current_y -= details_gap;
+
+    draw_fitted_string(
+        canvas,
         PdfFont::Helvetica,
-        8.0,
+        details_fs,
         party_x,
-        header_y + header_height - mm_to_pt(18.0),
+        current_y,
+        party_max_w,
         &format!("Licence No. : {}", data.licence_no),
     );
-    canvas.draw_string(
+    current_y -= details_gap;
+
+    draw_fitted_string(
+        canvas,
         PdfFont::Helvetica,
-        8.0,
+        details_fs,
         party_x,
-        header_y + header_height - mm_to_pt(22.0),
+        current_y,
+        party_max_w,
         &format!("PAN : {}", data.pan),
     );
-    canvas.draw_string(
+    current_y -= details_gap;
+
+    draw_fitted_string(
+        canvas,
         PdfFont::Helvetica,
-        8.0,
+        details_fs,
         party_x,
-        header_y + header_height - mm_to_pt(26.0),
+        current_y,
+        party_max_w,
         &format!("GSTIN : {}", data.gstin),
     );
 
@@ -2758,5 +2865,57 @@ mod tests {
             b"Signature"
         );
         assert!(decode_base64("not base64!").is_err());
+    }
+
+    #[test]
+    fn test_invoice_long_customer_address_wrapping() {
+        let invoice_data = InvoiceRenderData {
+            invoice_no: "GST-260026".to_string(),
+            is_estimate: false,
+            invoice_date: Some("2026-11-06".to_string()),
+            due_date: Some("2026-11-13".to_string()),
+            order_no: Some("ORD-260035".to_string()),
+            order_date: Some("2026-10-27".to_string()),
+            lr_no: None,
+            lr_date: None,
+            transport: None,
+            cases: Some(1),
+            party_name: "RAGHUNATH AYURVEDIC AUSHADHALAYA".to_string(),
+            address: "Room No: 19 Unit-2, Estern Tower Market Building, Bhubaneswar, Odisha - 751009".to_string(),
+            phone: "0674 2532895,9348081194".to_string(),
+            licence_no: "DL-999".to_string(),
+            pan: "ABCDE1234F".to_string(),
+            gstin: "21ABCDE1234F1Z5".to_string(),
+            total_amount: 9250.0,
+            total_discount: 2425.0,
+            total_sgst: 0.0,
+            total_cgst: 0.0,
+            round_off: 0.0,
+            grand_total: 9250.0,
+            previous_due: 0.0,
+            products: vec![create_sample_item(1, 9250.0)],
+            duplex_print: false,
+            export_mode: false,
+            app_settings: HashMap::new(),
+            customer_ledger_token: None,
+            invoice_ledger_ref: None,
+            customer_id: Some(10),
+            i_customer_id: None,
+            bank_account_holder: None,
+            bank_account_number: None,
+            bank_ifsc: None,
+            bank_branch: None,
+        };
+
+        let pdf = render_invoice_pdf(&invoice_data).expect("Should render invoice with long address");
+        let pdf_str = String::from_utf8_lossy(&pdf);
+
+        // Long address is wrapped without being truncated at 60 characters
+        assert!(pdf_str.contains("Room No: 19 Unit-2, Estern Tower Market Building,"));
+        assert!(pdf_str.contains("Bhubaneswar, Odisha - 751009"));
+        assert!(pdf_str.contains("PHONE : 0674 2532895,9348081194"));
+        assert!(pdf_str.contains("Licence No. : DL-999"));
+        assert!(pdf_str.contains("PAN : ABCDE1234F"));
+        assert!(pdf_str.contains("GSTIN : 21ABCDE1234F1Z5"));
     }
 }
