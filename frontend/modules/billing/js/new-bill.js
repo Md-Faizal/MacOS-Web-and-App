@@ -4,7 +4,7 @@ import { openQrScanner } from '../../../shared/qr-scanner.js';
 
 import { findBestOrderMatchForInvoice } from '../../../shared/order-invoice-matcher.mjs';
 
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:NewBill') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:NewBill') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
  * BillEditor Class
@@ -61,7 +61,7 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class BillEditor {
-    showNotification(message, type = 'info') {
+  showNotification(message, type = 'info') {
     if (this.billingApp?.showNotification) {
       return this.billingApp.showNotification(message, type);
     }
@@ -92,6 +92,8 @@ class BillEditor {
     this.autoFillDebounceTimer = null;  // Debounce timer for autoFillProductDetails
     this.allContacts = []; // Store full contact objects for ID lookup
     this.orderCheckDebounceTimer = null; // Debounce timer for checkCustomerOrders
+    this.autoLinkDebounceTimer = null; // Debounce timer for autoLinkOrderForBill
+    this._orderUnlinkedByUser = false; // Flag to prevent auto-re-linking when explicitly unlinked
     this.selectedIndex = -1; // Index for dropdown keyboard navigation
     this.isDropdownOpen = false; // Track dropdown state
     this.cachedProducts = []; // Local cache for instant Rust WASM fuzzy product search
@@ -134,7 +136,7 @@ class BillEditor {
     if (!dateInput) return '';
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -147,7 +149,7 @@ class BillEditor {
    */
   formatDateTimeForInput(dateInput) {
     if (!dateInput) return '';
-    
+
     let date;
     if (dateInput instanceof Date) {
       date = dateInput;
@@ -184,7 +186,7 @@ class BillEditor {
     }
 
     if (!date || isNaN(date.getTime())) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -435,7 +437,7 @@ class BillEditor {
     if (isEditMode && billDataToEdit) {
       // Editing: prefill with existing bill data (strictly prioritize invoice_date)
       const billDate = billDataToEdit.invoice_date || billDataToEdit.bill_date || billDataToEdit.created_at;
-      
+
       if (billDateTime) {
         const formattedDate = this.formatDateTimeForInput(billDate);
         if (formattedDate) {
@@ -451,10 +453,10 @@ class BillEditor {
           }
         }, 100);
       }
-      
+
       const customerNameInput = document.getElementById('customerName');
       const customerNameValue = billDataToEdit.customer_name || billDataToEdit.customer || '';
-      
+
       if (customerNameInput) {
         customerNameInput.value = customerNameValue;
         log.debug('✅ Customer name set in edit mode:', {
@@ -521,8 +523,8 @@ class BillEditor {
   initializeClearButtons() {
     // Add clear button functionality to inputs
     const inputIds = [
-      'billDateTime', 'customerName', 'productName', 'productPack', 
-      'productBatch', 'productQty', 'productDisc1', 'productDisc2', 
+      'billDateTime', 'customerName', 'productName', 'productPack',
+      'productBatch', 'productQty', 'productDisc1', 'productDisc2',
       'customSchemeValue', 'productMRP'
     ];
 
@@ -583,7 +585,7 @@ class BillEditor {
           };
           const customers = normalizeCollection(result);
           this.allContacts = customers;
-          
+
           if (this.allContacts.length > 0) {
             this.allContacts.forEach(customer => {
               if (customer && customer.name) {
@@ -643,7 +645,7 @@ class BillEditor {
     editDispatchBtn?.addEventListener('click', () => this.openInvoiceDispatchModal());
     listBtn?.addEventListener('click', () => this.switchView('existing'));
     clearBtn?.addEventListener('click', () => this.clearBillForm());
-    
+
     backBtn?.addEventListener('click', () => {
       // Return to ledger or edit bills list view
       const returnView = this.returnToView || ((this.billingApp?.currentView === 'ledger') ? 'ledger' : 'edit');
@@ -678,8 +680,12 @@ class BillEditor {
     });
 
     // Handle customer name change
-    customerNameInput?.addEventListener('input', () => this.checkCustomerOrders());
+    customerNameInput?.addEventListener('input', () => {
+      this._orderUnlinkedByUser = false;
+      this.checkCustomerOrders();
+    });
     customerNameInput?.addEventListener('change', () => {
+      this._orderUnlinkedByUser = false;
       this.loadProductMemoryForCustomer();
       this.checkCustomerOrders();
     });
@@ -691,6 +697,10 @@ class BillEditor {
       this.loadLinkedOrderForBill().catch(error => {
         log.error('Unable to load linked order for invoice:', error);
         this.showNotification(error.message || 'Unable to load the linked order.', 'error');
+      });
+    } else {
+      this.autoLinkOrderForBill().catch(error => {
+        log.error('Unable to auto-link order for invoice:', error);
       });
     }
 
@@ -965,7 +975,7 @@ class BillEditor {
       const variantCount = (product.variants && Array.isArray(product.variants)) ? product.variants.length : 0;
       const hasMultipleVariants = variantCount > 1;
       const priceDisplay = this.calculateProductPriceRange(product);
-      
+
       return `
         <div class="dropdown-item" data-index="${idx}">
           <div class="item-main">
@@ -1060,20 +1070,20 @@ class BillEditor {
         element.value = (id === 'productTax') ? '0' : (id === 'gstReverseCheckbox') ? 'false' : '';
       }
     });
-    
+
     const gstReverseBtn = document.getElementById('gstReverseBtn');
     if (gstReverseBtn) {
       gstReverseBtn.classList.remove('active');
     }
-    
+
     const customSchemeContainer = document.getElementById('customSchemeContainer');
     if (customSchemeContainer) {
       customSchemeContainer.style.display = 'none';
     }
-    
+
     // Clear gold indicator
     this.updateFormGoldIndicator(null);
-    
+
     this.currentProduct = null;
     log.debug('🧹 Product details cleared');
   }
@@ -1089,8 +1099,8 @@ class BillEditor {
     }
 
     const isGold = (product.isGold === true || product.is_gold === true || product.is_gold === 1 || product.is_gold === '1') ||
-                   (product.classification && String(product.classification).toLowerCase() === 'gold') ||
-                   (product.category && String(product.category).toLowerCase() === 'gold');
+      (product.classification && String(product.classification).toLowerCase() === 'gold') ||
+      (product.category && String(product.category).toLowerCase() === 'gold');
 
     goldIndicator.textContent = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
     goldIndicator.style.display = 'block';
@@ -1131,32 +1141,32 @@ class BillEditor {
     // Fill in product details from API response
     // Handle separate pack_value and pack_type
     const packUnitSelect = document.getElementById('productPackUnit');
-    
+
     // Mapping function to normalize pack types from API to database values (GM, ML, TAB, GENERIC)
     const normalizePackType = (packType) => {
       if (!packType) return '';
-      
+
       const normalized = packType.trim().toUpperCase();
-      
+
       // Map various API values to database values
       if (normalized.includes('GM') || normalized.includes('GRAM')) return 'GM';
       if (normalized.includes('ML') || normalized.includes('MILL')) return 'ML';
       if (normalized.includes('TAB') || normalized.includes('TABLET')) return 'TAB';
       if (normalized.includes('GENERIC') || normalized.includes('GEN')) return 'GENERIC';
-      
+
       // If exact match found, return it (GM, ML, TAB, GENERIC)
       if (['GM', 'ML', 'TAB', 'GENERIC'].includes(normalized)) return normalized;
-      
+
       return '';
     };
-    
+
     if (product.pack_value) {
       document.getElementById('productPack').value = product.pack_value;
       if (product.pack_type) {
         // Normalize and set the pack_type value
         const packTypeNormalized = normalizePackType(product.pack_type);
         packUnitSelect.value = packTypeNormalized;
-        
+
         // NEW: Also enrich currentProduct master info to avoid false positive change detection
         if (this.currentProduct) {
           this.currentProduct.pack_size_value = product.pack_value;
@@ -1177,7 +1187,7 @@ class BillEditor {
             normalized: packTypeNormalized
           });
           packUnitSelect.value = packTypeNormalized;
-          
+
           // NEW: Also enrich currentProduct master info to avoid false positive change detection
           if (this.currentProduct) {
             this.currentProduct.pack_size_value = packMatch[1];
@@ -1188,7 +1198,7 @@ class BillEditor {
         document.getElementById('productPack').value = product.pack;
       }
     }
-    
+
     // Log the final pack type value
     log.debug('✅ Pack type set to:', packUnitSelect.value, 'Available options:', Array.from(packUnitSelect.options).map(o => o.value));
 
@@ -1242,7 +1252,7 @@ class BillEditor {
       if (typeof v === 'object' && v !== null && (v.pack_size_value !== undefined || v.pack_size_type !== undefined || v.batches !== undefined)) {
         return v;
       }
-      
+
       // If variant is an array-like structure, map to object
       // Expected structure: [id, product_id, pack_size_value, pack_size_type, ...]
       if (Array.isArray(v) && v.length >= 4) {
@@ -1254,7 +1264,7 @@ class BillEditor {
           batches: v.batches || []
         };
       }
-      
+
       // Try to extract from object keys regardless of naming
       return {
         pack_size_value: v.pack_size_value || v['2'] || v.packValue,
@@ -1347,17 +1357,17 @@ class BillEditor {
     if (selectedRadio) {
       const idx = parseInt(selectedRadio.value);
       const batchIdx = parseInt(selectedRadio.getAttribute('data-batch-index') || '0');
-      
+
       if (idx >= 0 && idx < this.variantsToSelect.length) {
         // Set flag to prevent modal re-opening
         this.isSelectingVariant = true;
         try {
           const selectedVariant = this.variantsToSelect[idx];
-          
+
           // CRITICAL: Store the selected variant ID in currentProduct
           if (this.currentProduct) {
             this.currentProduct.variant_id = selectedVariant.id || null;
-            
+
             // NEW: Update master reference with selected batch/variant info
             // This ensures future comparisons and database updates use the correct baseline
             const selectedBatch = selectedVariant.batches && selectedVariant.batches[batchIdx] ? selectedVariant.batches[batchIdx] : null;
@@ -1375,7 +1385,7 @@ class BillEditor {
               variant_id: selectedVariant.id
             });
           }
-          
+
           this.autoFillVariantDetails(selectedVariant, batchIdx);
           const modal = document.getElementById('variantSelectorModal');
           if (modal) modal.remove();
@@ -1396,25 +1406,25 @@ class BillEditor {
     // Normalize pack type mapping function
     const normalizePackType = (packType) => {
       if (!packType) return '';
-      
+
       const normalized = packType.trim().toUpperCase();
-      
+
       // Map various API values to database values
       if (normalized.includes('GM') || normalized.includes('GRAM')) return 'GM';
       if (normalized.includes('ML') || normalized.includes('MILL')) return 'ML';
       if (normalized.includes('TAB') || normalized.includes('TABLET')) return 'TAB';
       if (normalized.includes('GENERIC') || normalized.includes('GEN')) return 'GENERIC';
-      
+
       // If exact match found, return it (GM, ML, TAB, GENERIC)
       if (['GM', 'ML', 'TAB', 'GENERIC'].includes(normalized)) return normalized;
-      
+
       return '';
     };
 
     // Extract pack values from variant (try multiple field names)
     const packValue = variant.pack_size_value || variant.pack_value || variant.pack || variant.packValue;
     const packType = variant.pack_size_type || variant.pack_type || variant.packType;
-    
+
     if (packValue) {
       document.getElementById('productPack').value = packValue;
       if (packType) {
@@ -1483,9 +1493,9 @@ class BillEditor {
   loadProductMemoryForCustomer() {
     const productNameElement = document.getElementById('productName');
     const customerNameElement = document.getElementById('customerName');
-    
+
     if (!productNameElement || !customerNameElement) return;
-    
+
     const productName = productNameElement.value.trim();
     const customerName = customerNameElement.value.trim();
 
@@ -1498,15 +1508,15 @@ class BillEditor {
   async loadProductMemoryFromAPI(productName, customerName) {
     try {
       const apiUrl = `/api/billing/preference/${encodeURIComponent(customerName)}/${encodeURIComponent(productName)}`;
-      
+
       const response = await fetch(apiUrl);
-      
+
       if (response.ok) {
         const result = await response.json();
-        
+
         if (result.status === 'success' && result.data) {
           const memory = result.data;
-          
+
           // Auto-fill with saved values ONLY if they exist
           if (memory.disc1 !== undefined && memory.disc1 !== null && memory.disc1 !== '') {
             document.getElementById('productDisc1').value = memory.disc1;
@@ -1562,7 +1572,7 @@ class BillEditor {
     const disc2Input = document.getElementById('productDisc2');
     const schemeSelect = document.getElementById('productScheme');
     const taxSelect = document.getElementById('productTax');
-    
+
     if (disc1Input && disc1Input.value === '') disc1Input.value = '0';
     if (disc2Input && disc2Input.value === '') disc2Input.value = '0';
     if (schemeSelect && schemeSelect.value === '') schemeSelect.value = '';
@@ -1577,7 +1587,7 @@ class BillEditor {
     const customerNameInput = document.getElementById('customerName');
     const customerName = customerNameInput?.value.trim();
     const container = document.getElementById('customerOrdersContainer');
-    
+
     if (!customerName || !container) {
       if (container) container.style.display = 'none';
       return;
@@ -1585,8 +1595,8 @@ class BillEditor {
 
     this.orderCheckDebounceTimer = setTimeout(async () => {
       // Find customer ID from cached contacts
-      const customer = this.allContacts.find(c => c.name.toLowerCase() === customerName.toLowerCase());
-      
+      const customer = this.getBillCustomer();
+
       if (!customer || !customer.id) {
         container.style.display = 'none';
         return;
@@ -1597,7 +1607,7 @@ class BillEditor {
         if (response.ok) {
           const result = await response.json();
           const orders = result.data || [];
-          
+
           if (orders.length > 0) {
             container.innerHTML = `
               <button type="button" id="viewCustomerOrdersBtn" class="view-orders-badge">
@@ -1605,7 +1615,7 @@ class BillEditor {
               </button>
             `;
             container.style.display = 'block';
-            
+
             document.getElementById('viewCustomerOrdersBtn').onclick = (e) => {
               e.preventDefault();
               this.showCustomerOrdersModal(orders, customerName);
@@ -1614,6 +1624,7 @@ class BillEditor {
             container.style.display = 'none';
           }
         }
+        await this.autoLinkOrderForBill();
       } catch (error) {
         log.error('Error checking customer orders:', error);
         container.style.display = 'none';
@@ -1724,7 +1735,7 @@ class BillEditor {
     if (existingModal) existingModal.remove();
 
     const orderNumber = order.order_number || order.id;
-    
+
     const getStageLabel = (stage) => {
       const labels = { 'stage1': 'Order Entry', 'stage2': 'Quality Check (QC)', 'stage3': 'Billing/Dispatch' };
       return labels[stage] || stage || 'Unknown';
@@ -1759,7 +1770,7 @@ class BillEditor {
               </div>
               <div>
                 <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Order Date</label>
-                <div style="font-size: 14px; color: #1e293b;">${new Date(order.order_date).toLocaleDateString()} ${new Date(order.order_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                <div style="font-size: 14px; color: #1e293b;">${new Date(order.order_date).toLocaleDateString()} ${new Date(order.order_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
               </div>
               <div>
                 <label style="display: block; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">Current Stage</label>
@@ -1803,9 +1814,9 @@ class BillEditor {
                 </thead>
                 <tbody>
                   ${order.items.map((item, idx) => {
-                    const isNotReceived = (item.received_quantity || 0) < 1;
-                    const strikeStyle = isNotReceived ? 'text-decoration: line-through; text-decoration-color: #ef4444; opacity: 0.7;' : '';
-                    return `
+      const isNotReceived = (item.received_quantity || 0) < 1;
+      const strikeStyle = isNotReceived ? 'text-decoration: line-through; text-decoration-color: #ef4444; opacity: 0.7;' : '';
+      return `
                     <tr style="border-bottom: 1px solid #f1f5f9; vertical-align: middle; ${isNotReceived ? 'background: #fafafa;' : ''}">
                       <td style="padding: 12px; color: #94a3b8; font-weight: 600; ${strikeStyle}">${idx + 1}</td>
                       <td style="padding: 12px; ${strikeStyle}">
@@ -1828,7 +1839,8 @@ class BillEditor {
                         ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.line_total || (item.unit_price * (item.quantity || 1)))}
                       </td>
                     </tr>
-                  `;}).join('')}
+                  `;
+    }).join('')}
                 </tbody>
                 <tfoot style="background: #f8fafc; border-top: 2px solid #e2e8f0;">
                   <tr>
@@ -1845,10 +1857,10 @@ class BillEditor {
           <div class="variant-modal-footer" style="padding: 15px 25px; border-top: 1px solid #f1f5f9;">
             <button class="variant-modal-btn cancel" id="details-back-btn" style="padding: 10px 20px;">← Back to List</button>
             <div style="flex: 1;"></div>
-            ${order.status === 'completed' 
-              ? `<span style="color: #64748b; font-size: 13px; font-weight: 600;">✓ This order has already been processed.</span>`
-              : `<button class="btn" id="confirm-import-btn" style="background: var(--billing-primary); color: white; padding: 10px 25px; border-radius: 6px; font-weight: 700; font-size: 14px;">✓ Import to Current Bill</button>`
-            }
+            ${order.status === 'completed'
+        ? `<span style="color: #64748b; font-size: 13px; font-weight: 600;">✓ This order has already been processed.</span>`
+        : `<button class="btn" id="confirm-import-btn" style="background: var(--billing-primary); color: white; padding: 10px 25px; border-radius: 6px; font-weight: 700; font-size: 14px;">✓ Import to Current Bill</button>`
+      }
           </div>
         </div>
       </div>
@@ -1965,10 +1977,10 @@ class BillEditor {
       };
 
       document.getElementById('pref-close-btn').onclick = () => closeModal();
-      
+
       const gstReverseBtn = document.getElementById('prefGstReverseBtn');
       const gstReverseInput = document.getElementById('prefGstReverse');
-      
+
       gstReverseBtn.onclick = (e) => {
         e.preventDefault();
         const newState = gstReverseInput.value !== 'true';
@@ -2003,7 +2015,7 @@ class BillEditor {
 
         // Save to API
         await this.saveProductMemoryToAPI(productName, customerName, disc1, disc2, scheme, tax, gstReverse);
-        
+
         closeModal(prefObj);
       };
     });
@@ -2040,7 +2052,7 @@ class BillEditor {
         for (const item of order.items) {
           // Use robust received quantity calculation (snake_case)
           const rec = (item.received_quantity !== undefined && item.received_quantity !== null) ? item.received_quantity : (item.received_qty !== undefined ? item.received_qty : 0);
-          
+
           // Bug 1 Fix: Skip unreceived products
           if (rec < 1) {
             log.debug(`🚫 Skipping unreceived product: ${item.product_name || 'Unknown'}`);
@@ -2049,14 +2061,14 @@ class BillEditor {
 
           // Bug 2 Fix: Use actual received quantity
           const qty = rec;
-          
+
           // Fetch preference for this customer and product
           let preference = null;
           try {
             const pName = (item.product_name || '').trim();
             const url = `/api/billing/preference/${encodeURIComponent(customerName)}/${encodeURIComponent(pName)}`;
             log.debug(`🔍 Checking preference for: ${pName} at ${url}`);
-            
+
             const prefRes = await fetch(url);
             if (prefRes.ok) {
               const prefData = await prefRes.json();
@@ -2072,17 +2084,17 @@ class BillEditor {
           // If preference is missing (null or empty data), show modal to ask user
           // Ensure we don't pop up for empty objects if API returns one
           const hasPref = preference && Object.keys(preference).length > 0;
-          
+
           if (!hasPref) {
             log.debug(`❓ No preference found for ${item.product_name}, opening fallback modal...`);
             // Hide loading overlay while modal is open
             if (loadingOverlay) loadingOverlay.style.display = 'none';
-            
+
             preference = await this.showMissingPreferenceModal(item.product_name, customerName, item);
-            
+
             // Show loading overlay again
             if (loadingOverlay) loadingOverlay.style.display = 'flex';
-            
+
             // If still no preference (modal cancelled), use defaults
             if (!preference) {
               preference = { disc1: 0, disc2: 0, tax: 0, scheme: '', gst_reverse: false };
@@ -2090,7 +2102,7 @@ class BillEditor {
           }
 
           const pName = (item.product_name || '').trim();
-          
+
           // Fetch full product info from API for metadata consistency (isGold, variants, etc)
           let productInfo = null;
           try {
@@ -2132,10 +2144,15 @@ class BillEditor {
       // Refresh UI once after all items added
       this.renderProductList();
       this.updateBillSummary();
-      
+
+      // Automatically link the imported order to this bill
+      this.selectedOrderForBill = order;
+      this._orderUnlinkedByUser = false;
+      this.renderInvoiceOrderSummary();
+
       // Scroll to product list
       document.querySelector('.bill-items-table')?.scrollIntoView({ behavior: 'smooth' });
-      
+
     } catch (err) {
       log.error('Import Error:', err);
       this.showNotification('Failed to import order items', 'error');
@@ -2147,7 +2164,7 @@ class BillEditor {
   async addProductToBill(itemData = null, suppressRefresh = false, incrementDuplicate = false) {
     const schemeValue = itemData ? itemData.scheme : document.getElementById('productScheme').value;
     let scheme = schemeValue;
-    
+
     if (schemeValue === 'custom') {
       scheme = itemData ? itemData.scheme : document.getElementById('customSchemeValue').value;
       if (!scheme && !itemData) {
@@ -2185,8 +2202,8 @@ class BillEditor {
       gstTotal: gstPct,
       gst_percent: gstPct,
       isGold: (itemData && (itemData.isGold === true || itemData.is_gold === true || itemData.is_gold === 1 || String(itemData.classification).toLowerCase() === 'gold')) ||
-              (this.currentProduct && (this.currentProduct.isGold === true || this.currentProduct.is_gold === true || this.currentProduct.is_gold === 1 || String(this.currentProduct.classification).toLowerCase() === 'gold')) ||
-              false,
+        (this.currentProduct && (this.currentProduct.isGold === true || this.currentProduct.is_gold === true || this.currentProduct.is_gold === 1 || String(this.currentProduct.classification).toLowerCase() === 'gold')) ||
+        false,
       gst_reverse: itemData ? (itemData.gst_reverse || false) : (document.getElementById('gstReverseCheckbox')?.value === 'true'),
       has_multiple_variants: itemData ? true : (this.currentProduct?.variants && Array.isArray(this.currentProduct.variants) && this.currentProduct.variants.length > 1)
     };
@@ -2221,17 +2238,17 @@ class BillEditor {
       if (changes.length > 0) {
         log.debug('🔍 Change detection triggered for:', changes);
         // For multiple changes, we'll ask for the first one that matters most (MRP > Pack > Batch)
-        const priorityField = changes[0]; 
-        const oldValue = priorityField === 'mrp' ? masterProduct.mrp : 
-                        (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
+        const priorityField = changes[0];
+        const oldValue = priorityField === 'mrp' ? masterProduct.mrp :
+          (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
         const newValue = product[priorityField === 'pack' ? 'pack_value' : priorityField];
 
         const updateType = await this.showProductMasterUpdateModal(product, priorityField, oldValue, newValue);
-        
+
         if (updateType === 'cancel') {
           return; // Skip adding the product
         }
-        
+
         if (updateType === 'update-db') {
           // FIX: Pass 'product' (the new one) instead of 'masterProduct' (the old reference)
           // This ensures the correct batch number and variant ID are sent to the API
@@ -2248,7 +2265,7 @@ class BillEditor {
       product_id: product.product_id
     });
 
-    log.debug('📝 DUPLICATE CHECK - Existing Products in Bill:', 
+    log.debug('📝 DUPLICATE CHECK - Existing Products in Bill:',
       this.currentBillProducts.map((p, idx) => ({
         idx,
         name: p.name,
@@ -2266,28 +2283,28 @@ class BillEditor {
     const existingProductIndex = this.currentBillProducts.findIndex((p, idx) => {
       // Super-aggressive normalization: remove all non-alphanumeric characters for "fuzzy" match
       const normalize = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
-      
+
       const nameA = normalize(p.name);
       const nameB = normalize(product.name);
       const nameMatch = nameA === nameB;
-      
+
       const batchA = normalize(p.batch);
       const batchB = normalize(product.batch);
       const batchMatch = batchA === batchB;
-      
+
       const normalizeVariant = (v) => (v === undefined || v === null || v === 'null' || v === '') ? null : String(v);
       const vA = normalizeVariant(p.variant_id);
       const vB = normalizeVariant(product.variant_id);
       const variantMatch = (vA === null || vB === null) ? true : (vA === vB);
-      
+
       const isMatch = nameMatch && variantMatch && batchMatch;
-      
-      log.debug(`   └─ Aggressive Match with #${idx+1}:`, {
+
+      log.debug(`   └─ Aggressive Match with #${idx + 1}:`, {
         matches: { name: nameMatch, batch: batchMatch, variant: variantMatch },
         FINAL_MATCH: isMatch,
         strings: { A: `${nameA}|${batchA}`, B: `${nameB}|${batchB}` }
       });
-      
+
       return isMatch;
     });
 
@@ -2308,9 +2325,9 @@ class BillEditor {
     this.saveProductMemory(product.name, customerName, product.disc1, product.disc2, product.scheme, product.gstTotal, product.gst_reverse);
 
     this.currentBillProducts.push(product);
-    
+
     if (!itemData) this.clearProductForm();
-    
+
     if (!suppressRefresh) {
       this.renderProductList();
       this.updateBillSummary();
@@ -2324,9 +2341,9 @@ class BillEditor {
       existingIndex: existingProductIndex,
       existingProduct: this.currentBillProducts[existingProductIndex]?.name
     });
-    
+
     const existingProduct = this.currentBillProducts[existingProductIndex];
-    
+
     const modalHtml = `
       <div class="duplicate-product-modal-overlay">
         <div class="duplicate-product-modal">
@@ -2394,7 +2411,7 @@ class BillEditor {
   mergeProductQuantity(existingProductIndex, additionalQty) {
     const existingProduct = this.currentBillProducts[existingProductIndex];
     existingProduct.qty = parseFloat((existingProduct.qty + additionalQty).toFixed(2));
-    
+
     // Recalculate free items
     existingProduct.free = this.calculateFreeItems(existingProduct.qty, existingProduct.scheme);
 
@@ -2463,13 +2480,13 @@ class BillEditor {
       };
 
       const calculations = this.calculateProductDetails(normalized);
-      
+
       // Use calculated values from BillCalculator which properly handles GST Reverse
       // Keep full precision during calculations
       const baseRateForDisplay = calculations.rate; // This is the rate after GST Reverse (base rate)
       const rateAfterDisc1Calculation = calculations.discounted_rate; // This is rate after disc1% is applied
       const qty = parseFloat(normalized.qty || 1);
-      
+
       // Calculate with full precision, only round for display
       const amountBeforeDisc = baseRateForDisplay * qty;
       const amountAfterDisc1 = calculations.amount - calculations.discount_1_amount;
@@ -2589,7 +2606,7 @@ class BillEditor {
         return;
       }
 
-      log.debug('📦 Opening variant selector from product card:', { 
+      log.debug('📦 Opening variant selector from product card:', {
         name: product.name || product.product_name,
         variants: product.variants?.length || 0
       });
@@ -2605,7 +2622,7 @@ class BillEditor {
       if (response.ok) {
         const result = await response.json();
         const products = this.normalizeProducts(result);
-        
+
         if (Array.isArray(products) && products.length > 0) {
           const fullProduct = products.find(p => p.name.toLowerCase() === (product.name || product.product_name).toLowerCase());
           if (fullProduct && fullProduct.variants && fullProduct.variants.length > 0) {
@@ -2637,7 +2654,7 @@ class BillEditor {
       if (typeof v === 'object' && v !== null && (v.pack_size_value !== undefined || v.pack_size_type !== undefined || v.batches !== undefined)) {
         return v;
       }
-      
+
       if (Array.isArray(v) && v.length >= 4) {
         return {
           id: v[0],
@@ -2647,7 +2664,7 @@ class BillEditor {
           batches: v.batches || []
         };
       }
-      
+
       return {
         pack_size_value: v.pack_size_value || v['2'] || v.packValue,
         pack_size_type: v.pack_size_type || v['3'] || v.packType,
@@ -2763,7 +2780,7 @@ class BillEditor {
           // Re-render the product list to show updated pack
           this.renderProductList();
           this.updateBillSummary();
-          
+
           // Check for conflicts after variant change
           this.checkAndResolveConflict(product.id);
         }
@@ -2775,13 +2792,13 @@ class BillEditor {
 
   setupProductListListeners() {
     const listTable = document.getElementById('productListTable');
-    
+
     if (!listTable) return;
 
     // Clone node to remove all existing event listeners
     const newListTable = listTable.cloneNode(true);
     listTable.parentNode.replaceChild(newListTable, listTable);
-    
+
     const updatedListTable = document.getElementById('productListTable');
 
     // Use event delegation for all interactions
@@ -3060,7 +3077,7 @@ class BillEditor {
       isSaving = true;
 
       let newValue = input.value;
-      
+
       // Parse numeric fields
       if (fieldName === 'qty' || fieldName === 'mrp' || fieldName === 'disc1' || fieldName === 'disc2' || fieldName === 'gstTotal') {
         newValue = parseFloat(newValue) || 0;
@@ -3082,7 +3099,7 @@ class BillEditor {
       }
 
       product[fieldName] = newValue;
-      
+
       // Recalculate based on what was edited
       this.recalculateProductFields(product, fieldName);
 
@@ -3090,7 +3107,7 @@ class BillEditor {
 
       this.renderProductList();
       this.updateBillSummary();
-      
+
       // Check for duplicates after editing variant/batch
       if (['pack', 'batch', 'variant_id'].includes(fieldName)) {
         this.checkAndResolveConflict(productId);
@@ -3112,7 +3129,7 @@ class BillEditor {
     if (existingModal) existingModal.remove();
 
     const currentScheme = product.scheme || '';
-    
+
     const modalHtml = `
       <div id="schemeSelectorModal" class="variant-modal-overlay" style="z-index: 20000;">
         <div class="variant-modal" style="max-width: 400px; width: 90%; border: 2px solid var(--accent-green);">
@@ -3161,7 +3178,7 @@ class BillEditor {
       product.scheme = newScheme;
       product.free = this.calculateFreeItems(product.qty, newScheme);
       this.recalculateProductFields(product, 'scheme');
-      
+
       // Update customer item memory too
       const customerName = document.getElementById('customerName')?.value?.trim();
       if (customerName) {
@@ -3180,7 +3197,7 @@ class BillEditor {
     // Preset buttons
     document.querySelectorAll('.scheme-preset-btn').forEach(btn => {
       btn.onclick = () => applyScheme(btn.dataset.scheme);
-      
+
       // Highlight active preset
       if (btn.dataset.scheme === currentScheme) {
         btn.style.background = 'rgba(29, 185, 84, 0.1)';
@@ -3210,17 +3227,17 @@ class BillEditor {
     const duplicateIndex = this.currentBillProducts.findIndex((p, idx) => {
       // Don't compare with itself
       if (p.id === editedProductId) return false;
-      
+
       const normalize = (str) => (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
       const nameMatch = normalize(p.name) === normalize(editedProduct.name);
-      
+
       const normalizeVariant = (v) => (v === undefined || v === null || v === 'null' || v === '') ? null : String(v);
       const vA = normalizeVariant(p.variant_id);
       const vB = normalizeVariant(editedProduct.variant_id);
       const variantMatch = (vA === null || vB === null) ? true : (vA === vB);
-      
+
       const batchMatch = normalize(p.batch) === normalize(editedProduct.batch);
-      
+
       return nameMatch && variantMatch && batchMatch;
     });
 
@@ -3339,14 +3356,14 @@ class BillEditor {
 
     // Toggle the GST Reverse flag
     product.gst_reverse = !product.gst_reverse;
-    
+
     log.debug(`🔀 GST Reverse toggled for product ${productId}: ${product.gst_reverse}`);
 
     // Re-render and recalculate
     setTimeout(() => {
       this.renderProductList();
       this.updateBillSummary();
-      
+
       // Remove transitioning class after re-render to smoothly fade back in
       setTimeout(() => {
         const updatedCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
@@ -3432,7 +3449,7 @@ class BillEditor {
 
   updateBillSummary() {
     log.debug('📊 updateBillSummary called with', this.currentBillProducts.length, 'products');
-    
+
     // Always recalculate using BillCalculator to ensure accuracy
     // This is more reliable than using stored amounts which might be incorrect
     const { lineItems, summary, total_quantity: totalQty } = BillCalculator.calculateProducts(this.currentBillProducts);
@@ -3467,22 +3484,29 @@ class BillEditor {
     updateElement('summarySGST', '₹' + summary.total_sgst.toFixed(2));
     updateElement('summaryCGST', '₹' + summary.total_cgst.toFixed(2));
     updateElement('summaryGrandTotalUnrounded', '₹' + (summary.grand_total - summary.round_off).toFixed(2));
-    
+
     // Show rounding off if applicable
     if (Math.abs(summary.round_off) > 0.01) {
       updateElement('summaryRoundingOff', '₹' + summary.round_off.toFixed(2));
     }
-    
+
     updateElement('summaryGrandTotal', '₹' + summary.grand_total.toFixed(2));
 
     // Update header stats
     updateElement('headerTotal', '₹' + summary.grand_total.toFixed(2));
     updateElement('headerItems', productCount);
+
+    // Auto-link matching order as products change
+    this.debouncedAutoLinkOrderForBill();
   }
 
   getBillCustomer() {
     const customerName = document.getElementById('customerName')?.value.trim().toLowerCase() || '';
-    return this.allContacts.find(contact => String(contact.name || '').trim().toLowerCase() === customerName) || null;
+    if (!customerName) return null;
+    const contacts = (this.allContacts && this.allContacts.length)
+      ? this.allContacts
+      : (this.billingData?.customers || this.billingApp?.billingData?.customers || []);
+    return contacts.find(contact => String(contact.name || '').trim().toLowerCase() === customerName) || null;
   }
 
   getBillInvoiceNumber() {
@@ -3518,20 +3542,101 @@ class BillEditor {
   getInvoiceMatchCandidate(customerId, invoiceNumber = '') {
     const products = this.currentBillProducts.map(product => ({
       product_id: product.product_id || product.id || null,
-      product_name: product.product_name || product.name || '',
+      product_name: product.name || product.product_name || '',
       qty: Number(product.qty || product.quantity || 0)
     }));
-    const totals = BillCalculator.calculateBillSummary(
-      this.currentBillProducts.map(product => BillCalculator.frontendToDb(product))
-    );
+    const { summary } = BillCalculator.calculateProducts(this.currentBillProducts);
     return {
       id: invoiceNumber ? undefined : 'draft-invoice',
       invoice_no: invoiceNumber || undefined,
       customer_id: customerId,
       invoice_date: document.getElementById('billDateTime')?.value || new Date().toISOString(),
-      grand_total: totals.grand_total,
+      grand_total: summary?.grand_total || 0,
       items: products
     };
+  }
+
+  debouncedAutoLinkOrderForBill() {
+    if (this.autoLinkDebounceTimer) {
+      clearTimeout(this.autoLinkDebounceTimer);
+    }
+    this.autoLinkDebounceTimer = setTimeout(() => {
+      this.autoLinkOrderForBill();
+    }, 400);
+  }
+
+  async autoLinkOrderForBill() {
+    if (this._orderUnlinkedByUser) return;
+    const customer = this.getBillCustomer();
+    if (!customer?.id) {
+      if (this.selectedOrderForBill) {
+        this.selectedOrderForBill = null;
+        this.renderInvoiceOrderSummary();
+      }
+      return;
+    }
+
+    // If an order was manually selected/linked and not auto-matched, keep it unless customer changed
+    if (this.selectedOrderForBill && !this.selectedOrderForBill.auto_matched) {
+      if (String(this.selectedOrderForBill.customer_id) === String(customer.id)) {
+        return;
+      }
+      this.selectedOrderForBill = null;
+    }
+
+    try {
+      const orders = await this.loadOrdersForBill(customer.id);
+      this.orderForBillCandidates = orders;
+      const invoiceNumber = this.getBillInvoiceNumber();
+
+      // 1. Check if an order already explicitly references this invoice
+      let linkedOrder = null;
+      if (invoiceNumber) {
+        linkedOrder = orders.find(order =>
+          String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
+        );
+        if (linkedOrder) {
+          linkedOrder.auto_matched = false;
+        }
+      }
+
+      // 2. Background Auto-Matching (reusing order-invoice-matcher.mjs from Stage 3)
+      if (!linkedOrder && !this._orderUnlinkedByUser) {
+        const invoiceCandidate = this.getInvoiceMatchCandidate(customer.id, invoiceNumber);
+        const matchResult = findBestOrderMatchForInvoice(invoiceCandidate, orders);
+
+        if (matchResult?.order) {
+          log.info(`[NewBill] Background pre-linked matching order #${matchResult.order.order_number || matchResult.order.id} (Score: ${matchResult.score})`);
+          linkedOrder = {
+            ...matchResult.order,
+            auto_matched: true,
+            auto_match_details: matchResult
+          };
+        } else if (this.currentBillProducts.length === 0 && orders.length > 0) {
+          // If bill has no items yet, check if there is an unlinked active order
+          const unlinkedOrders = orders.filter(o => !o.bill_reference && o.status !== 'cancelled' && o.status !== 'completed');
+          if (unlinkedOrders.length === 1) {
+            const singleOrder = unlinkedOrders[0];
+            log.info(`[NewBill] Background pre-linked single pending order #${singleOrder.order_number || singleOrder.id}`);
+            linkedOrder = {
+              ...singleOrder,
+              auto_matched: true,
+              auto_match_details: { score: 50, reasons: ['Only unlinked order for customer'] }
+            };
+          }
+        }
+      }
+
+      if (linkedOrder) {
+        this.selectedOrderForBill = linkedOrder;
+      } else if (this.selectedOrderForBill?.auto_matched) {
+        this.selectedOrderForBill = null;
+      }
+
+      this.renderInvoiceOrderSummary();
+    } catch (error) {
+      log.error('[NewBill] Error in autoLinkOrderForBill:', error);
+    }
   }
 
   renderInvoiceOrderSummary() {
@@ -3552,10 +3657,18 @@ class BillEditor {
     const lrDate = this.escapeHtml(String(order.lr_date || '').slice(0, 10) || '—');
     const transport = this.escapeHtml(order.transport || '—');
     const cases = Number.isInteger(Number(order.cases)) ? Number(order.cases) : '—';
+
+    let autoBadgeHtml = '';
+    if (order.auto_matched) {
+      const reasonText = order.auto_match_details?.reasons?.length ? ` (${order.auto_match_details.reasons[0]})` : '';
+      autoBadgeHtml = `<div style="margin-bottom:6px;"><span style="display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;">⚡ AUTO-MATCHED${reasonText}</span></div>`;
+    }
+
     summary.innerHTML = `
+      ${autoBadgeHtml}
       <div><strong>Linked order:</strong> ${orderNo}${orderDate ? ` · ${orderDate}` : ''}</div>
       <div style="margin-top:4px; color:#475569;">LR: ${lrNo} · ${lrDate} · ${transport} · Cases: ${cases}</div>
-      <button type="button" id="unlinkInvoiceOrderBtn" style="margin-top:6px; padding:3px 8px; border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; font-size:10px;">Unlink</button>
+      <button type="button" id="unlinkInvoiceOrderBtn" style="margin-top:6px; padding:3px 8px; border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; font-size:10px; color:#dc2626; font-weight:600;">✕ Unlink</button>
     `;
     summary.style.display = 'block';
     if (button) button.textContent = 'Change Order';
@@ -3656,6 +3769,7 @@ class BillEditor {
   }
 
   async saveInvoiceOrderLink(order) {
+    this._orderUnlinkedByUser = false;
     const invoiceNumber = this.getBillInvoiceNumber();
     const previousOrder = this.selectedOrderForBill;
     if (invoiceNumber) {
@@ -3693,6 +3807,7 @@ class BillEditor {
       const invoiceNumber = this.getBillInvoiceNumber();
       if (invoiceNumber) await this.updateOrderInvoiceReference(order, '');
       this.selectedOrderForBill = null;
+      this._orderUnlinkedByUser = true;
       this.renderInvoiceOrderSummary();
       this.showNotification('Order unlinked from invoice.', 'success');
     } catch (error) {
@@ -3827,7 +3942,7 @@ class BillEditor {
 
     // Calculate bill summary using BillCalculator
     const summary = BillCalculator.calculateBillSummary(formattedProducts);
-    
+
     // Calculate Due Date (preserve existing due_date when editing, avoid UTC timezone shift)
     const billDateTimeVal = document.getElementById('billDateTime').value;
     let dueDateVal = (this.billDataToEdit && this.billDataToEdit.due_date) ? this.billDataToEdit.due_date : '';
@@ -3854,7 +3969,7 @@ class BillEditor {
     // Check if we're updating an existing bill or creating a new one
     if (this.editingBillId) {
       // UPDATE MODE - Update existing bill
-      const billIndex = (this.billingData?.bills || []).findIndex(b => 
+      const billIndex = (this.billingData?.bills || []).findIndex(b =>
         b.id == this.editingBillId || b.bill_id == this.editingBillId || String(b.id) === String(this.editingBillId)
       );
 
@@ -3920,7 +4035,7 @@ class BillEditor {
             try {
               window.CoreDataBus.publish('billing:invoice', 'updated', updatedBill);
               window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
-            } catch (_) {}
+            } catch (_) { }
           }
 
           this.showNotification('✓ Bill Updated Successfully!', 'success');
@@ -4023,7 +4138,7 @@ class BillEditor {
             try {
               window.CoreDataBus.publish('billing:invoice', 'created', storedBill);
               window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, customer_id: result.customer_id });
-            } catch (_) {}
+            } catch (_) { }
           }
 
           // Reload billing data from API to ensure ledger/edit views have the latest
@@ -4062,6 +4177,7 @@ class BillEditor {
     this.billDataToEdit = null;
     this.selectedOrderForBill = null;
     this.orderForBillCandidates = [];
+    this._orderUnlinkedByUser = false;
     this.renderInvoiceOrderSummary();
     this.renderProductList();
     this.updateBillSummary();
@@ -4076,7 +4192,7 @@ class BillEditor {
         'batch': 'Batch Number',
         'exp': 'Expiry Date'
       };
-      
+
       const fieldName = fieldLabels[field] || field;
       const modal = document.createElement('div');
       modal.className = 'mrp-update-modal-overlay'; // Reusing existing class for styling
@@ -4156,7 +4272,7 @@ class BillEditor {
 
     try {
       log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
-      
+
       // Get IDs
       let variantId = product.variant_id || (this.currentProduct?.variant_id);
       let batchId = product.batch_id || (this.currentProduct?.batch_id);
@@ -4167,7 +4283,7 @@ class BillEditor {
       if (!variantId || !batchNo) {
         log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
         const repairData = await this.showRepairProductMetadataModal(product);
-        
+
         if (!repairData) {
           log.debug('❌ Repair cancelled by user.');
           return;
@@ -4327,7 +4443,7 @@ class BillEditor {
     try {
       const batch = product.batch || product.batch_no || (this.currentProduct?.batch_no);
       const variantId = product.variant_id || (this.currentProduct?.variant_id);
-      
+
       if (!batch || !variantId) {
         this.showNotification('Cannot update MRP: Batch info or Variant ID missing', 'error');
         return;
