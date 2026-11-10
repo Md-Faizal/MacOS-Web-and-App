@@ -195,7 +195,7 @@ function calculateDashboardMetrics(db, user, options = {}) {
   let invoicesQuery = `
     SELECT 
       i.id, i.customer_id, i.invoice_no, i.due_date, i.total_amount, i.grand_total,
-      i.total_discount, i.total_gst, i.created_at,
+      i.total_discount, i.total_gst, i.invoice_date, i.created_at,
       c.name as customer_name, c.exclude_from_stats
     FROM invoices i
     JOIN contacts c ON i.customer_id = c.id

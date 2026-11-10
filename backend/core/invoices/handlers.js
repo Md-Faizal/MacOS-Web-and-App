@@ -8,7 +8,7 @@ const BillCalculator = require('../../../frontend/shared/bill-calculator');
 const { helpers } = require('./payments');
 const dataBus = require('../sync/data-bus');
 
-module.exports = function(db) {
+module.exports = function (db) {
   function getWorkerContactScope(req, tableAlias = 'c') {
     if (req.user && req.user.role === 'worker') {
       const safeUserId = String(req.user.id || req.user.userId).replace(/'/g, "''");
@@ -61,11 +61,11 @@ module.exports = function(db) {
           const gstPercent = parseFloat(item.gst_percent || 0) || 0;
           const sgstPercent = parseFloat(item.sgst_percent || 0) || 0;
           const cgstPercent = parseFloat(item.cgst_percent || 0) || 0;
-          
+
           // Use separate SGST/CGST only if both are provided and reasonable
           // (i.e., not amounts mistaken for percentages, and sum makes sense)
           const useSeparateTax = sgstPercent > 0 && cgstPercent > 0 && sgstPercent <= 50 && cgstPercent <= 50;
-          
+
           return BillCalculator.calculateLineItem({
             rate: item.rate || 0,
             mrp: item.mrp || 0,
@@ -92,12 +92,12 @@ module.exports = function(db) {
         // previous_due = opening_balance + sum of all previous invoice amounts - total payments received
         const customer = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(customer_id);
         const opening_balance = customer ? (customer.opening_balance || 0) : 0;
-        
+
         // Get total from all previous invoices
         const previousInvoices = db.prepare(`
           SELECT COALESCE(SUM(grand_total), 0) as total_invoiced FROM invoices WHERE customer_id = ?
         `).get(customer_id);
-        
+
         // Get total payments received
         const payments = db.prepare(`
           SELECT 
@@ -105,7 +105,7 @@ module.exports = function(db) {
             COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as total_credited
           FROM payments WHERE customer_id = ?
         `).get(customer_id);
-        
+
         const previousDueAmount = opening_balance + (previousInvoices.total_invoiced || 0) - (payments.total_paid || 0) - (payments.total_credited || 0);
         const previous_due = Math.max(0, previousDueAmount); // Don't show negative as previous_due
 
@@ -205,7 +205,7 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:invoice', 'created', { id: invoice_id, customer_id, grand_total: summary.grand_total });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.status(201).json({
           success: true,
@@ -238,7 +238,7 @@ module.exports = function(db) {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        const { customer_id, limit = 100, offset = 0 } = req.query;
+        const { customer_id, offset = 0 } = req.query;
         let sql = `
           SELECT 
             i.id,
@@ -278,35 +278,40 @@ module.exports = function(db) {
           sql += ` AND ${workerScope}`;
         }
 
-        sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
-        params.push(parseInt(limit), parseInt(offset));
+        const hasExplicitLimit = req.query.limit !== undefined && req.query.limit !== null && req.query.limit !== 'all' && req.query.limit !== '-1';
+        if (hasExplicitLimit) {
+          sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
+          params.push(parseInt(req.query.limit, 10), parseInt(offset, 10));
+        } else {
+          sql += ' ORDER BY i.created_at DESC';
+        }
 
         const invoices = db.prepare(sql).all(...params);
 
         // Add items for each invoice with proper transformation
         const result = invoices.map(invoice => {
           const dbItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(invoice.id);
-          
+
           // Transform items to match getInvoice format
           const items = dbItems.map(item => {
             // For SGST and CGST percentages, derive from stored amounts if available
             const discountedAmount = (item.amount || 0) - (item.discount_1_amount || 0) - (item.discount_2_amount || 0);
-            
+
             let sgstPercent = 0;
             let cgstPercent = 0;
-            
+
             if (discountedAmount > 0 && item.sgst_amount > 0) {
               sgstPercent = parseFloat(((item.sgst_amount / discountedAmount) * 100).toFixed(2));
             } else if (item.gst_percent > 0) {
               sgstPercent = parseFloat((item.gst_percent / 2).toFixed(2));
             }
-            
+
             if (discountedAmount > 0 && item.cgst_amount > 0) {
               cgstPercent = parseFloat(((item.cgst_amount / discountedAmount) * 100).toFixed(2));
             } else if (item.gst_percent > 0) {
               cgstPercent = parseFloat((item.gst_percent / 2).toFixed(2));
             }
-            
+
             return {
               id: item.id,
               product_id: item.product_id,
@@ -331,7 +336,7 @@ module.exports = function(db) {
               gst_reverse: item.gst_reverse || false
             };
           });
-          
+
           return {
             ...invoice,
             items
@@ -400,11 +405,11 @@ module.exports = function(db) {
         }
 
         const dbItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(id);
-        
+
         // Calculate SGST and CGST totals from items
         let total_sgst = 0;
         let total_cgst = 0;
-        
+
         // Transform database items to frontend format
         // Frontend expects: rate, quantity, discount_1, discount_2, gst_percent, sgst_percent, cgst_percent
         // Database stores: rate, qty, discount_1_percent, gst_percent, sgst_amount, cgst_amount
@@ -412,27 +417,27 @@ module.exports = function(db) {
           // Accumulate totals from items
           total_sgst += (item.sgst_amount || 0);
           total_cgst += (item.cgst_amount || 0);
-          
+
           // For SGST and CGST percentages, derive from stored amounts if available
           // The base for calculating percentage is the discounted amount
           const discountedAmount = (item.amount || 0) - (item.discount_1_amount || 0) - (item.discount_2_amount || 0);
-          
+
           // Get the percentages from amounts, or fall back to gst_percent split 50/50
           let sgstPercent = 0;
           let cgstPercent = 0;
-          
+
           if (discountedAmount > 0 && item.sgst_amount > 0) {
             sgstPercent = parseFloat(((item.sgst_amount / discountedAmount) * 100).toFixed(2));
           } else if (item.gst_percent > 0) {
             sgstPercent = parseFloat((item.gst_percent / 2).toFixed(2));
           }
-          
+
           if (discountedAmount > 0 && item.cgst_amount > 0) {
             cgstPercent = parseFloat(((item.cgst_amount / discountedAmount) * 100).toFixed(2));
           } else if (item.gst_percent > 0) {
             cgstPercent = parseFloat((item.gst_percent / 2).toFixed(2));
           }
-          
+
           return {
             id: item.id,
             product_id: item.product_id,
@@ -516,7 +521,7 @@ module.exports = function(db) {
           const gstPercent = parseFloat(item.gst_percent || 0) || 0;
           const sgstPercent = parseFloat(item.sgst_percent || item.sgst || 0) || 0;
           const cgstPercent = parseFloat(item.cgst_percent || item.cgst || 0) || 0;
-          
+
           // Debug: Log received values
           console.log(`📦 Item ${idx} RECEIVED from frontend:`, {
             id: item.id,
@@ -529,11 +534,11 @@ module.exports = function(db) {
             cgstPercent,
             useSeparateTax: sgstPercent > 0 && cgstPercent > 0 && sgstPercent <= 50 && cgstPercent <= 50
           });
-          
+
           // Use separate SGST/CGST only if both are provided and reasonable
           // (i.e., not amounts mistaken for percentages, and sum makes sense)
           const useSeparateTax = sgstPercent > 0 && cgstPercent > 0 && sgstPercent <= 50 && cgstPercent <= 50;
-          
+
           const calculated = BillCalculator.calculateLineItem({
             rate: item.rate || 0,
             mrp: item.mrp || 0,
@@ -556,7 +561,7 @@ module.exports = function(db) {
             cgst_amount: calculated.cgst_amount,
             final_amount: calculated.final_amount
           });
-          
+
           return calculated;
         });
 
@@ -572,12 +577,12 @@ module.exports = function(db) {
         // previous_due = opening_balance + sum of all PREVIOUS invoice amounts (not including this one) - total payments received
         const customer = db.prepare('SELECT opening_balance FROM contacts WHERE id = ?').get(customer_id);
         const opening_balance = customer ? (customer.opening_balance || 0) : 0;
-        
+
         // Get total from all previous invoices (excluding current)
         const previousInvoices = db.prepare(`
           SELECT COALESCE(SUM(grand_total), 0) as total_invoiced FROM invoices WHERE customer_id = ? AND id != ?
         `).get(customer_id, id);
-        
+
         // Get total payments received
         const payments = db.prepare(`
           SELECT 
@@ -585,7 +590,7 @@ module.exports = function(db) {
             COALESCE(SUM(CASE WHEN type = 'CREDIT_NOTE' THEN credit_amount ELSE 0 END), 0) as total_credited
           FROM payments WHERE customer_id = ?
         `).get(customer_id);
-        
+
         const previousDueAmount = opening_balance + (previousInvoices.total_invoiced || 0) - (payments.total_paid || 0) - (payments.total_credited || 0);
         const previous_due = Math.max(0, previousDueAmount); // Don't show negative as previous_due
 
@@ -613,20 +618,20 @@ module.exports = function(db) {
 
         // Update existing items or insert new ones
         const existingItemIds = [];
-        
+
         itemsData.forEach((calculated, idx) => {
           const originalItem = items[idx];
           const itemId = originalItem.id;
-          
+
           console.log(`🔍 Processing item ${idx}:`, { itemId, hasId: itemId != null, hasQty: calculated.qty });
-          
+
           if (itemId != null) {  // ✅ FIXED: Use != null instead of truthiness check to handle ID=0
             // UPDATE existing item
             existingItemIds.push(itemId);
-            
+
             // Get BEFORE values from database for comparison
             const beforeUpdate = db.prepare('SELECT discount_1_amount, sgst_amount, cgst_amount, gst_amount FROM invoice_items WHERE id = ?').get(itemId);
-            
+
             console.log(`📝 UPDATE ITEM ${itemId}:`, {
               BEFORE: beforeUpdate,
               AFTER: {
@@ -674,7 +679,7 @@ module.exports = function(db) {
               id
             );
             console.log(`✅ UPDATE COMPLETE for item ${itemId}`);
-            
+
             // Verify what was actually written to database
             const afterUpdate = db.prepare('SELECT discount_1_amount, sgst_amount, cgst_amount, gst_amount FROM invoice_items WHERE id = ?').get(itemId);
             console.log(`🔍 VERIFICATION - Item ${itemId} AFTER database UPDATE:`, afterUpdate);
@@ -719,7 +724,7 @@ module.exports = function(db) {
             );
           }
         });
-        
+
         // Delete any items that were removed during edit
         if (existingItemIds.length > 0) {
           const placeholders = existingItemIds.map(() => '?').join(',');
@@ -827,11 +832,11 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:invoice', 'deleted', { id, customer_id });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
-        res.json({ 
-          success: true, 
-          message: 'Invoice deleted successfully', 
+        res.json({
+          success: true,
+          message: 'Invoice deleted successfully',
           current_due,
           customer_id
         });

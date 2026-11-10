@@ -215,26 +215,102 @@ class LedgerView {
   }
 
 
-  getDaysAgo(dateStr) {
-    if (!dateStr || dateStr === 'N/A') return null;
-    try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return null;
-      
-      const now = new Date();
-      // Set both to start of day for accurate day counting
-      const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      
-      const diffTime = startOfNow - startOfDate;
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 0) return '0D';
-      if (diffDays === 1) return '1D';
-      return `${diffDays}D`;
-    } catch (e) {
-      return null;
+  /**
+   * Standardized Civil Date Parser
+   * Parses ISO, SQLite, DD-MM-YYYY, or Date objects into local civil calendar date
+   * without UTC timezone skew or drift.
+   */
+  static parseCivilDate(dateInput) {
+    if (!dateInput || dateInput === 'N/A' || dateInput === 'None' || dateInput === '—') return null;
+    if (dateInput instanceof Date) {
+      return isNaN(dateInput.getTime()) ? null : {
+        year: dateInput.getFullYear(),
+        month: dateInput.getMonth() + 1,
+        day: dateInput.getDate(),
+        dateObj: new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate()),
+        isoDate: `${dateInput.getFullYear()}-${String(dateInput.getMonth() + 1).padStart(2, '0')}-${String(dateInput.getDate()).padStart(2, '0')}`
+      };
     }
+    const s = String(dateInput).trim();
+    if (!s) return null;
+
+    // Numeric timestamp
+    if (/^\d{10,13}$/.test(s)) {
+      const d = new Date(Number(s));
+      return isNaN(d.getTime()) ? null : {
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+        dateObj: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+        isoDate: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      };
+    }
+
+    const parts = s.split(/[-/T ]/);
+    if (parts.length >= 3) {
+      let year, month, day;
+      if (parts[0].length === 4) {
+        year = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10);
+        day = parseInt(parts[2], 10);
+      } else if (parts[2].length === 4) {
+        year = parseInt(parts[2], 10);
+        month = parseInt(parts[1], 10);
+        day = parseInt(parts[0], 10);
+      }
+      if (year && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return {
+          year,
+          month,
+          day,
+          dateObj: new Date(year, month - 1, day),
+          isoDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        };
+      }
+    }
+
+    const fallbackDate = new Date(s);
+    if (!isNaN(fallbackDate.getTime())) {
+      return {
+        year: fallbackDate.getFullYear(),
+        month: fallbackDate.getMonth() + 1,
+        day: fallbackDate.getDate(),
+        dateObj: new Date(fallbackDate.getFullYear(), fallbackDate.getMonth(), fallbackDate.getDate()),
+        isoDate: `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, '0')}-${String(fallbackDate.getDate()).padStart(2, '0')}`
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Standardized Civil Days Difference
+   * Calculates the exact integer day difference between two dates (defaulting to today)
+   */
+  static getCivilDaysDiff(fromDateInput, toDateInput = new Date()) {
+    const from = LedgerView.parseCivilDate(fromDateInput);
+    if (!from) return null;
+    const to = LedgerView.parseCivilDate(toDateInput);
+    if (!to) return null;
+    const diffTime = to.dateObj.getTime() - from.dateObj.getTime();
+    return Math.max(0, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+  }
+
+  /**
+   * Standardized Age Formatter (e.g., '0D', '1D', '4D')
+   */
+  getDaysAgo(dateStr) {
+    const diff = LedgerView.getCivilDaysDiff(dateStr);
+    if (diff === null) return null;
+    return `${diff}D`;
+  }
+
+  /**
+   * Standardized Date Display Formatter (DD-MM-YYYY)
+   */
+  formatCivilDisplayDate(dateInput) {
+    const civil = LedgerView.parseCivilDate(dateInput);
+    if (!civil) return 'N/A';
+    return `${String(civil.day).padStart(2, '0')}-${String(civil.month).padStart(2, '0')}-${civil.year}`;
   }
 
   /**
@@ -250,7 +326,7 @@ class LedgerView {
         id: String(b.id),
         customer_id: String(b.customer_id || ''),
         invoice_no: b.invoice_no || '',
-        date: b.invoice_date || b.bill_date || b.created_at || '',
+        date: LedgerView.parseCivilDate(b.invoice_date || b.bill_date || b.created_at)?.isoDate || b.invoice_date || b.bill_date || b.created_at || '',
         due_date: b.due_date || null,
         grand_total: parseFloat(b.grand_total || b.total || b.amount || 0)
       }));
@@ -259,7 +335,7 @@ class LedgerView {
         id: String(p.id),
         customer_id: String(p.customer_id || ''),
         reference_no: p.reference_number || 'PMT',
-        date: p.payment_date || p.date || p.created_at || '',
+        date: LedgerView.parseCivilDate(p.payment_date || p.date || p.created_at)?.isoDate || p.payment_date || p.date || p.created_at || '',
         amount: parseFloat(p.amount || p.credit_amount || 0),
         is_credit_note: p.type === 'CREDIT_NOTE' || Boolean(p.is_credit_note),
         payment_medium: p.payment_medium || null
@@ -1273,8 +1349,10 @@ class LedgerView {
         const total_credit = customer.total_credit || 0;
         const lastBillDays = this.getDaysAgo(customer.lastBillDate);
         const lastPmtDays = this.getDaysAgo(customer.lastPaymentDate);
-        const lastBillStr = lastBillDays ? `${lastBillDays} (${new Date(customer.lastBillDate).toLocaleDateString()})` : 'N/A';
-        const lastPmtStr = lastPmtDays ? `${lastPmtDays} (${new Date(customer.lastPaymentDate).toLocaleDateString()})` : 'N/A';
+        const lastBillDisplay = customer.lastBillDate && customer.lastBillDate !== 'N/A' ? this.formatCivilDisplayDate(customer.lastBillDate) : null;
+        const lastPmtDisplay = customer.lastPaymentDate && customer.lastPaymentDate !== 'N/A' ? this.formatCivilDisplayDate(customer.lastPaymentDate) : null;
+        const lastBillStr = lastBillDays && lastBillDisplay ? `${lastBillDays} (${lastBillDisplay})` : 'None';
+        const lastPmtStr = lastPmtDays && lastPmtDisplay ? `${lastPmtDays} (${lastPmtDisplay})` : 'None';
         
         const metrics = `${displayDue} | Total Payments: ₹${total_credit.toFixed(2)} | Days Overdue: ${daysOverdue > 0 ? daysOverdue : 'None'} | Last Bill: ${lastBillStr} | Last Payment: ${lastPmtStr}`;
         document.getElementById('ledgerCustomerMetrics').textContent = metrics;
@@ -1696,8 +1774,8 @@ class LedgerView {
     const billId = bill.id; // Use the numeric database ID
     const invoiceNo = bill.invoice_no || billId; // Use invoice_no for API, fallback to ID
     const displayId = bill.reference_no || `BILL-${Date.now()}`; // Use reference_no for display
-    const rawDate = new Date(bill.invoice_date || bill.bill_date || bill.created_at);
-    const date = rawDate.toLocaleDateString('en-GB').replace(/\//g, '-');
+    const billRawDate = bill.invoice_date || bill.bill_date || bill.created_at;
+    const date = this.formatCivilDisplayDate(billRawDate);
 
 
     const amount = (bill.total || 0).toFixed(2);
@@ -1773,8 +1851,8 @@ class LedgerView {
 
   renderPaymentRecord(payment, prefix = '') {
     const paymentId = payment.id; // Use the numeric database ID
-    const rawDate = new Date(payment.payment_date || payment.date || payment.created_at);
-    const date = rawDate.toLocaleDateString('en-GB').replace(/\//g, '-');
+    const paymentRawDate = payment.payment_date || payment.date || payment.created_at;
+    const date = this.formatCivilDisplayDate(paymentRawDate);
 
 
     const amount = (payment.amount || 0).toFixed(2);
@@ -2851,30 +2929,48 @@ class LedgerView {
   }
 
   calculateCustomerMetrics(bills, payments) {
-    const now = new Date();
-    const totalBilled = bills.reduce((s, b) => s + (b.grand_total || b.total || b.amount || 0), 0);
-    const totalPaid = payments.filter(p => p.type === 'PAYMENT').reduce((s, p) => s + (p.amount || 0), 0);
-    const totalCredits = payments.filter(p => p.type === 'CREDIT_NOTE').reduce((s, p) => s + (p.credit_amount || 0), 0);
-    // Calculate due: invoices - payments - credits
+    const totalBilled = (bills || []).reduce((s, b) => s + (b.grand_total || b.total || b.amount || 0), 0);
+    const totalPaid = (payments || []).filter(p => p.type === 'PAYMENT').reduce((s, p) => s + (p.amount || 0), 0);
+    const totalCredits = (payments || []).filter(p => p.type === 'CREDIT_NOTE').reduce((s, p) => s + (p.credit_amount || 0), 0);
     const due = totalBilled - totalPaid - totalCredits;
-    const lastB = bills.length > 0 ? new Date(Math.max(...bills.map(b => {
-      const d = new Date(b.invoice_date || b.bill_date || b.created_at);
-      return isNaN(d.getTime()) ? 0 : d.getTime();
-    }))) : null;
-    const lastP = payments.length > 0 ? new Date(Math.max(...payments.map(p => {
-      const d = new Date(p.payment_date || p.date || p.created_at);
-      return isNaN(d.getTime()) ? 0 : d.getTime();
-    }))) : null;
-    const daysB = lastB ? Math.floor((now - lastB) / 86400000) : null;
-    const daysP = lastP ? Math.floor((now - lastP) / 86400000) : null;
+
+    // Find true chronological latest bill
+    let latestBillDate = null;
+    if (bills && bills.length > 0) {
+      const sortedBills = [...bills].sort((a, b) => {
+        const da = LedgerView.parseCivilDate(a.invoice_date || a.bill_date || a.created_at)?.dateObj?.getTime() || 0;
+        const db = LedgerView.parseCivilDate(b.invoice_date || b.bill_date || b.created_at)?.dateObj?.getTime() || 0;
+        return db - da;
+      });
+      const topBill = sortedBills[0];
+      const parsed = LedgerView.parseCivilDate(topBill.invoice_date || topBill.bill_date || topBill.created_at);
+      if (parsed) latestBillDate = parsed.isoDate;
+    }
+
+    // Find true chronological latest payment
+    let latestPaymentDate = null;
+    if (payments && payments.length > 0) {
+      const sortedPayments = [...payments].sort((a, b) => {
+        const da = LedgerView.parseCivilDate(a.payment_date || a.date || a.created_at)?.dateObj?.getTime() || 0;
+        const db = LedgerView.parseCivilDate(b.payment_date || b.date || b.created_at)?.dateObj?.getTime() || 0;
+        return db - da;
+      });
+      const topPayment = sortedPayments[0];
+      const parsed = LedgerView.parseCivilDate(topPayment.payment_date || topPayment.date || topPayment.created_at);
+      if (parsed) latestPaymentDate = parsed.isoDate;
+    }
+
+    const daysB = latestBillDate ? LedgerView.getCivilDaysDiff(latestBillDate) : null;
+    const daysP = latestPaymentDate ? LedgerView.getCivilDaysDiff(latestPaymentDate) : null;
     const overdue = due > 0 && daysB && daysB > 30 ? daysB - 30 : 0;
+
     return { 
       amountDue: due, 
       total_debit: totalBilled,
       total_credit: totalPaid + totalCredits,
       daysOverdue: overdue, 
-      lastBillDate: lastB ? lastB.toISOString().split('T')[0] : 'N/A', 
-      lastPaymentDate: lastP ? lastP.toISOString().split('T')[0] : 'N/A', 
+      lastBillDate: latestBillDate || 'N/A', 
+      lastPaymentDate: latestPaymentDate || 'N/A', 
       daysSinceLastBill: daysB, 
       daysSinceLastPayment: daysP 
     };

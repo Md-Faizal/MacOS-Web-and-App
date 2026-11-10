@@ -450,7 +450,7 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
             linked_invoice_no = inv.invoice_no;
             linked_invoice_amount = inv.grand_total;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // Authoritative Ledger Statement Calculation (matches Customer Ledger exactly)
@@ -567,7 +567,7 @@ function generatePaymentPDF(dbPath, paymentId, options = {}) {
         for (const r of rows) {
           if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
         }
-      } catch (_) {}
+      } catch (_) { }
 
       renderData = {
         voucher_type,
@@ -656,7 +656,7 @@ function generateOpeningBalancePDF(dbPath, customerName, options = {}) {
         for (const r of rows) {
           if (r.setting_key) app_settings[r.setting_key] = String(r.setting_value ?? '');
         }
-      } catch (_) {}
+      } catch (_) { }
 
       renderData = {
         voucher_type: 'opening_balance',
@@ -707,7 +707,7 @@ function convertPDFToJPG(pdfPath) {
     const tempDir = getTempDir();
     const jpgPath = path.join(tempDir, `invoice-${Date.now()}.jpg`);
     const pythonScript = getScriptsPath('pdf-to-jpg.py');
-    
+
     // Verify files exist
     if (!fs.existsSync(pdfPath)) {
       throw new Error(`PDF not found at: ${pdfPath}`);
@@ -715,11 +715,11 @@ function convertPDFToJPG(pdfPath) {
     if (!fs.existsSync(pythonScript)) {
       throw new Error(`Python script not found at: ${pythonScript}`);
     }
-    
+
     // Call Python script with error capture
     const cmd = `${PYTHON_CMD} "${pythonScript}" --pdf "${pdfPath}" --out "${jpgPath}" --dpi 150 --quality 90`;
     let output, error;
-    
+
     try {
       output = execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (execError) {
@@ -732,11 +732,11 @@ function convertPDFToJPG(pdfPath) {
       console.error('Command:', cmd);
       throw new Error(`Python execution failed (${execError.status}): ${stderr || stdout || execError.message}`);
     }
-    
+
     if (!fs.existsSync(jpgPath)) {
       throw new Error(`JPG file was not created at ${jpgPath}. Script output: ${output}`);
     }
-    
+
     return jpgPath;
   } catch (error) {
     console.error(`JPG conversion failed: ${error.message}`);
@@ -752,7 +752,7 @@ function getAnnualSerialNumber(db, invoiceId) {
       SELECT customer_id, COALESCE(invoice_date, created_at) as effective_date, id
       FROM invoices WHERE id = ?
     `).get(invoiceId);
-    
+
     if (!currentInvoice) return 1;
 
     // 2. Extract year from effective date
@@ -774,11 +774,11 @@ function getAnnualSerialNumber(db, invoiceId) {
         OR (COALESCE(invoice_date, created_at) = ? AND id <= ?)
       )
     `).get(
-      currentInvoice.customer_id, 
-      startOfYear, 
-      endOfYear, 
-      currentInvoice.effective_date, 
-      currentInvoice.effective_date, 
+      currentInvoice.customer_id,
+      startOfYear,
+      endOfYear,
+      currentInvoice.effective_date,
+      currentInvoice.effective_date,
       currentInvoice.id
     );
 
@@ -792,7 +792,7 @@ function getAnnualSerialNumber(db, invoiceId) {
 const createActivityLogger = require('../../../core/audit/activity-logger');
 const { buildDashboardMetricsResponse, buildCustomerStatementResponse } = require('../../../shared/api/billing-contract');
 
-module.exports = function(db) {
+module.exports = function (db) {
   const activityLogger = createActivityLogger(db);
 
   function getWorkerContactScope(req, tableAlias = 'c') {
@@ -995,7 +995,7 @@ module.exports = function(db) {
       if (contact && contact.disable_duplex_export !== null && contact.disable_duplex_export !== undefined) {
         return Number(contact.disable_duplex_export) === 1 ? 'no' : 'yes';
       }
-    } catch (_) {}
+    } catch (_) { }
     return null;
   }
 
@@ -1171,18 +1171,18 @@ module.exports = function(db) {
     },
 
     // ============= INVOICES (BILLS) =============
-    
+
     // Create a new invoice/bill with line items using server-authoritative calculations
     createBill: (req, res) => {
       try {
-        const { 
-          customer_id, 
+        const {
+          customer_id,
           customer_name,
-          invoice_no, 
-          due_date, 
-          products, 
-          round_off, 
-          invoice_date 
+          invoice_no,
+          due_date,
+          products,
+          round_off,
+          invoice_date
         } = req.body;
 
         // Validate required fields
@@ -1214,7 +1214,7 @@ module.exports = function(db) {
               if (isWorker && creatorId) {
                 try {
                   db.prepare('INSERT OR IGNORE INTO user_contact_access (user_id, contact_id) VALUES (?, ?)').run(creatorId, finalCustomerId);
-                } catch (_) {}
+                } catch (_) { }
               }
             }
           } catch (err) {
@@ -1377,7 +1377,7 @@ module.exports = function(db) {
 
         const total_credit = ledgerTotals.total_payments + ledgerTotals.total_credits;
         const current_due = ledgerTotals.total_debit - total_credit;
-        
+
         // Determine current status based on current_due
         let current_status = 'PENDING';
         if (current_due < 0) {
@@ -1396,7 +1396,7 @@ module.exports = function(db) {
           metadata: { customer_id: finalCustomerId, grand_total: calculatedGrandTotal, items_count: serverCalc.items.length }
         });
 
-        const customerName = (function() {
+        const customerName = (function () {
           const cust = db.prepare('SELECT name FROM contacts WHERE id = ?').get(finalCustomerId);
           return cust?.name || customer_name || 'Customer';
         })();
@@ -1412,7 +1412,7 @@ module.exports = function(db) {
           dataBus.broadcast('billing:ledger', 'updated', {
             customer_id: finalCustomerId
           });
-        } catch (_) {}
+        } catch (_) { }
 
         res.status(201).json({
           success: true,
@@ -1449,7 +1449,7 @@ module.exports = function(db) {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        const { customer_id, limit = 100, offset = 0 } = req.query;
+        const { customer_id, offset = 0 } = req.query;
 
         // Join with contacts to get customer names
         let sql = `
@@ -1481,8 +1481,13 @@ module.exports = function(db) {
           sql += ` AND ${workerScope}`;
         }
 
-        sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
-        params.push(parseInt(limit), parseInt(offset));
+        const hasExplicitLimit = req.query.limit !== undefined && req.query.limit !== null && req.query.limit !== 'all' && req.query.limit !== '-1';
+        if (hasExplicitLimit) {
+          sql += ' ORDER BY i.created_at DESC LIMIT ? OFFSET ?';
+          params.push(parseInt(req.query.limit, 10), parseInt(offset, 10));
+        } else {
+          sql += ' ORDER BY i.created_at DESC';
+        }
 
         const stmt = db.prepare(sql);
         const invoices = stmt.all(...params);
@@ -1613,17 +1618,17 @@ module.exports = function(db) {
         const items = dbItems.map(item => {
           // Calculate the discounted amount (base for tax percentage calculation)
           const discountedAmount = (item.amount || 0) - (item.discount_1_amount || 0) - (item.discount_2_amount || 0);
-          
+
           // Derive the actual SGST and CGST percentages that were applied
           let sgstPercent = 0;
           let cgstPercent = 0;
-          
+
           if (discountedAmount > 0 && item.sgst_amount > 0) {
             sgstPercent = parseFloat(((item.sgst_amount / discountedAmount) * 100).toFixed(2));
           } else if (item.gst_percent > 0) {
             sgstPercent = parseFloat((item.gst_percent / 2).toFixed(2));
           }
-          
+
           if (discountedAmount > 0 && item.cgst_amount > 0) {
             cgstPercent = parseFloat(((item.cgst_amount / discountedAmount) * 100).toFixed(2));
           } else if (item.gst_percent > 0) {
@@ -1670,16 +1675,16 @@ module.exports = function(db) {
     updateBill: (req, res) => {
       try {
         const { id } = req.params;
-        const { 
-          customer_id, 
-          due_date, 
-          subtotal, 
-          total_discount, 
-          total_gst, 
-          round_off, 
+        const {
+          customer_id,
+          due_date,
+          subtotal,
+          total_discount,
+          total_gst,
+          round_off,
           grand_total,
           products,
-          invoice_date 
+          invoice_date
         } = req.body;
 
         // Check if invoice exists
@@ -1815,7 +1820,7 @@ module.exports = function(db) {
           try {
             dataBus.broadcast('billing:invoice', 'updated', { id, customer_id: customerId, grand_total: calculatedGrandTotal });
             dataBus.broadcast('billing:ledger', 'updated', { customer_id: customerId });
-          } catch (_) {}
+          } catch (_) { }
 
           return res.json({
             success: true,
@@ -1850,7 +1855,7 @@ module.exports = function(db) {
           try {
             dataBus.broadcast('billing:invoice', 'updated', { id, customer_id: customerId });
             dataBus.broadcast('billing:ledger', 'updated', { customer_id: customerId });
-          } catch (_) {}
+          } catch (_) { }
 
           return res.json({
             success: true,
@@ -1917,7 +1922,7 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:invoice', 'deleted', { id: invoice.id, customer_id });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.json({
           success: true,
@@ -2244,7 +2249,7 @@ module.exports = function(db) {
           const openingBalance = Number(c.opening_balance) || 0;
           const currentDue = Number(c.current_due) || 0;
           const amountDueWithOpening = currentDue + openingBalance;
-          
+
           // Calculate days overdue (grace period of 30 days)
           let daysOverdue = 0;
           if (amountDueWithOpening > 0 && c.last_bill_date) {
@@ -2337,10 +2342,10 @@ module.exports = function(db) {
                 try {
                   const { recordAccess } = require('../../../core/billing/link-telemetry');
                   recordAccess(db, { customerId, ledgerToken: token, eventType: 'VIEW', req });
-                } catch (_) {}
+                } catch (_) { }
               });
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         const outData = response.data?.raw || response.data || {};
@@ -2383,7 +2388,7 @@ module.exports = function(db) {
 
             outData.orders = customerOrders.map(ord => {
               let parsedItems = [];
-              try { parsedItems = JSON.parse(ord.items_json || '[]'); } catch (_) {}
+              try { parsedItems = JSON.parse(ord.items_json || '[]'); } catch (_) { }
               const { items_json, ...rest } = ord;
               return { ...rest, items: parsedItems };
             });
@@ -2768,7 +2773,7 @@ module.exports = function(db) {
     getPreference: (req, res) => {
       try {
         const { customerName, productName } = req.params;
-        
+
         // Find customer by name
         const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
         if (!customer) {
@@ -2799,9 +2804,9 @@ module.exports = function(db) {
           FROM customer_item_memory
           WHERE customer_id = ? AND product_id = ?
         `);
-        
+
         const preference = stmt.get(customer.id, product.id);
-        
+
         if (preference) {
           return res.json({
             status: 'success',
@@ -2832,7 +2837,7 @@ module.exports = function(db) {
           `).get(product.id);
 
           const isTargetGold = (prodCategory?.classification && String(prodCategory.classification).toLowerCase() === 'gold') ||
-                               (prodCategory?.category_name && String(prodCategory.category_name).toLowerCase().includes('gold'));
+            (prodCategory?.category_name && String(prodCategory.category_name).toLowerCase().includes('gold'));
 
           const memProfile = db.prepare(`
             SELECT 
@@ -2954,7 +2959,7 @@ module.exports = function(db) {
     getCustomerPreferences: (req, res) => {
       try {
         const { customerName } = req.params;
-        
+
         const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
         if (!customer || !isCustomerAccessible(req, customer.id)) {
           return res.json({
@@ -2962,7 +2967,7 @@ module.exports = function(db) {
             data: []
           });
         }
-        
+
         const stmt = db.prepare(`
           SELECT 
             cm.id,
@@ -2977,9 +2982,9 @@ module.exports = function(db) {
           WHERE cm.customer_id = ?
           ORDER BY p.name
         `);
-        
+
         const preferences = stmt.all(customer.id);
-        
+
         res.json({
           status: 'success',
           data: preferences
@@ -3028,7 +3033,7 @@ module.exports = function(db) {
     savePreference: (req, res) => {
       try {
         const { customerName, productName, disc1, disc2, scheme, tax } = req.body;
-        
+
         if (!customerName || !productName) {
           return res.status(400).json({
             status: 'error',
@@ -3074,7 +3079,7 @@ module.exports = function(db) {
             gst_reverse = excluded.gst_reverse,
             updated_at = datetime('now')
         `);
-        
+
         const result = stmt.run(
           customer.id,
           product.id,
@@ -3084,7 +3089,7 @@ module.exports = function(db) {
           tax || 0,
           req.body.gst_reverse ? 1 : 0
         );
-        
+
         res.json({
           status: 'success',
           message: 'Preference saved',
@@ -3103,7 +3108,7 @@ module.exports = function(db) {
     deletePreference: (req, res) => {
       try {
         const { customerName, productName } = req.params;
-        
+
         const customer = db.prepare('SELECT id FROM contacts WHERE LOWER(name) = LOWER(?)').get(customerName.trim());
         if (!customer) {
           return res.status(404).json({
@@ -3126,14 +3131,14 @@ module.exports = function(db) {
             message: `Product '${productName}' not found`
           });
         }
-        
+
         const stmt = db.prepare(`
           DELETE FROM customer_item_memory
           WHERE customer_id = ? AND product_id = ?
         `);
-        
+
         const result = stmt.run(customer.id, product.id);
-        
+
         res.json({
           status: 'success',
           message: 'Preference deleted',
@@ -3173,7 +3178,7 @@ module.exports = function(db) {
 
         // Get database path
         const dbPath = getDatabasePath();
-        
+
         // Check account/customer duplex preference for export/preview (decoupled per user and customer)
         let finalDuplex = duplex;
         if (!finalDuplex) {
@@ -3187,7 +3192,7 @@ module.exports = function(db) {
             finalDuplex = 'yes';
           }
         }
-        
+
         // Generate PDF using native Rust SuiteCore engine
         const pdfPath = await generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'print');
         console.log('PDF generated:', pdfPath);
@@ -3206,18 +3211,18 @@ module.exports = function(db) {
           });
           return res.send(pdfData);
         }
-        
+
         // Convert to JPG
         const jpgPath = convertPDFToJPG(pdfPath);
         console.log('JPG generated:', jpgPath);
-        
+
         // Read JPG and send as response
         const jpgData = fs.readFileSync(jpgPath);
-        
+
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Content-Disposition', `inline; filename="${invoiceNo}.jpg"`);
         res.send(jpgData);
-        
+
         // Clean up old temp files (keep recent ones)
         setTimeout(() => {
           try {
@@ -3225,7 +3230,7 @@ module.exports = function(db) {
             const files = fs.readdirSync(tempDir);
             const now = Date.now();
             const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-            
+
             files.forEach(file => {
               const filePath = path.join(tempDir, file);
               const fileStat = fs.statSync(filePath);
@@ -3237,13 +3242,13 @@ module.exports = function(db) {
             console.error('Error cleaning up temp files:', err);
           }
         }, 1000);
-        
+
       } catch (error) {
         console.error('Error generating preview PDF:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3252,7 +3257,7 @@ module.exports = function(db) {
     exportInvoicePDF: async (req, res) => {
       try {
         const { invoiceNo, invoiceId, duplex } = req.body;
-        
+
         if (!invoiceNo && !invoiceId) {
           return res.status(400).json({ error: 'invoiceNo or invoiceId is required' });
         }
@@ -3274,7 +3279,7 @@ module.exports = function(db) {
 
         // Get database path
         const dbPath = getDatabasePath();
-        
+
         // Check account/customer duplex preference for export (decoupled per user and customer)
         let finalDuplex = duplex;
         if (!finalDuplex) {
@@ -3288,39 +3293,39 @@ module.exports = function(db) {
             finalDuplex = 'yes';
           }
         }
-        
+
         // Generate PDF using native Rust SuiteCore engine in export mode
         const pdfPath = await generateInvoicePDF(dbPath, invoice.id, finalDuplex, 'export');
         console.log('PDF generated (export mode):', pdfPath);
-        
+
         // Read PDF and send as response
         const pdfData = fs.readFileSync(pdfPath);
-        
+
         const serial = getAnnualSerialNumber(db, invoice.id);
         const dateStr = formatDateStr(invoice.invoice_date || invoice.created_at);
         const fileName = `${serial}.Invoice ${dateStr}`;
 
         const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
-                          req.get('x-app-type') === 'native_android' ||
-                          (req.get('accept') || '').includes('application/pdf');
+          req.get('x-app-type') === 'native_android' ||
+          (req.get('accept') || '').includes('application/pdf');
 
         if (isAndroid) {
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
           return res.send(pdfData);
         }
-        
+
         res.json({
           pdf: pdfData.toString('base64'),
           fileName: `${fileName}.pdf`
         });
-        
+
       } catch (error) {
         console.error('Error generating export PDF:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3401,8 +3406,8 @@ module.exports = function(db) {
         const fileName = `${estNo}.${dateStr}`;
 
         const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
-                          req.get('x-app-type') === 'native_android' ||
-                          (req.get('accept') || '').includes('application/pdf');
+          req.get('x-app-type') === 'native_android' ||
+          (req.get('accept') || '').includes('application/pdf');
 
         if (isAndroid) {
           res.setHeader('Content-Type', 'application/pdf');
@@ -3427,7 +3432,7 @@ module.exports = function(db) {
     printInvoicePDF: async (req, res) => {
       try {
         const { invoiceNo, invoiceId, duplex } = req.query;
-        
+
         if (!invoiceNo && !invoiceId) {
           return res.status(400).json({ error: 'invoiceNo or invoiceId is required' });
         }
@@ -3449,20 +3454,20 @@ module.exports = function(db) {
 
         // Get database path
         const dbPath = getDatabasePath();
-        
+
         // Force duplex mode ON for all print operations
         const pdfPath = await generateInvoicePDF(dbPath, invoice.id, 'yes', 'print');
         console.log('PDF generated (print mode, forced duplex):', pdfPath);
-        
+
         // Read PDF and convert to base64
         const pdfData = fs.readFileSync(pdfPath);
         const pdfBase64 = pdfData.toString('base64');
-        
+
         // Get formatted invoice name
         const serial = getAnnualSerialNumber(db, invoice.id);
         const dateStr = formatDateStr(invoice.invoice_date || invoice.created_at);
         const fileName = `${serial}.Invoice ${dateStr}`;
-        
+
         // Return HTML page that embeds PDF and triggers print dialog
         const htmlContent = `
 <!DOCTYPE html>
@@ -3511,27 +3516,27 @@ module.exports = function(db) {
     <iframe id="pdf-container" src="data:application/pdf;base64,${pdfBase64}"></iframe>
 </body>
 </html>`;
-        
+
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Disposition', `inline; filename="${fileName}.html"`);
         res.send(htmlContent);
-        
+
       } catch (error) {
         console.error('Error generating print PDF:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
 
     // ============= PAYMENT/CREDIT NOTE PDF =============
-    
+
     exportPaymentPDF: (req, res) => {
       try {
         const { paymentId } = req.body;
-        
+
         if (!paymentId) {
           return res.status(400).json({ error: 'paymentId is required' });
         }
@@ -3547,30 +3552,30 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        
+
         const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: true });
         const pdfBuffer = fs.readFileSync(pdfPath);
-        
+
         const isCreditNote = paymentRecord && paymentRecord.type === 'CREDIT_NOTE';
         const docPrefix = isCreditNote ? 'Credit Note' : 'Payment';
         const dateStr = paymentRecord ? paymentRecord.created_at : null;
         const fileName = `${docPrefix} ${formatDateStr(dateStr)}`;
 
         const isAndroid = (req.get('x-client-platform') || '').toLowerCase() === 'android' ||
-                          req.get('x-app-type') === 'native_android' ||
-                          (req.get('accept') || '').includes('application/pdf');
+          req.get('x-app-type') === 'native_android' ||
+          (req.get('accept') || '').includes('application/pdf');
 
         if (isAndroid) {
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
           return res.send(pdfBuffer);
         }
-        
+
         res.json({
           pdf: pdfBuffer.toString('base64'),
           fileName: `${fileName}.pdf`
         });
-        
+
         // Clean up temp file asynchronously
         setImmediate(() => {
           try {
@@ -3585,9 +3590,9 @@ module.exports = function(db) {
       } catch (error) {
         console.error('Payment PDF Export Error:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3595,7 +3600,7 @@ module.exports = function(db) {
     previewPaymentPDF: (req, res) => {
       try {
         const { paymentId } = req.body;
-        
+
         if (!paymentId) {
           return res.status(400).json({ error: 'paymentId is required' });
         }
@@ -3610,7 +3615,7 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        
+
         const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: true });
         const wantsPdf = req.query.format === 'pdf' || (req.get('accept') || '').includes('application/pdf');
         if (wantsPdf) {
@@ -3629,10 +3634,10 @@ module.exports = function(db) {
 
         const jpgPath = convertPDFToJPG(pdfPath);
         const jpgBuffer = fs.readFileSync(jpgPath);
-        
+
         res.setHeader('Content-Type', 'image/jpeg');
         res.send(jpgBuffer);
-        
+
         // Clean up temp files asynchronously
         setImmediate(() => {
           try {
@@ -3650,9 +3655,9 @@ module.exports = function(db) {
       } catch (error) {
         console.error('Payment PDF Preview Error:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3705,7 +3710,7 @@ module.exports = function(db) {
     printPaymentPDF: (req, res) => {
       try {
         const paymentId = req.query.paymentId;
-        
+
         if (!paymentId) {
           return res.status(400).json({ error: 'paymentId query parameter is required' });
         }
@@ -3720,7 +3725,7 @@ module.exports = function(db) {
         }
 
         const dbPath = getDatabasePath();
-        
+
         const pdfPath = generatePaymentPDF(dbPath, paymentId, { export_mode: false });
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
@@ -3728,7 +3733,7 @@ module.exports = function(db) {
         const docPrefix = isCreditNote ? 'Credit Note' : 'Payment';
         const dateStr = paymentRecord ? paymentRecord.created_at : null;
         const fileName = `${docPrefix} ${formatDateStr(dateStr)}`;
-        
+
         // Return HTML with embedded PDF for print
         const htmlContent = `<!DOCTYPE html>
 <html>
@@ -3744,11 +3749,11 @@ module.exports = function(db) {
   <iframe id="pdfViewer" src="data:application/pdf;base64,${base64PDF}" type="application/pdf"></iframe>
 </body>
 </html>`;
-        
+
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Disposition', `inline; filename="${fileName}.html"`);
         res.send(htmlContent);
-        
+
         // Clean up temp file asynchronously
         setImmediate(() => {
           try {
@@ -3763,9 +3768,9 @@ module.exports = function(db) {
       } catch (error) {
         console.error('Payment PDF Print Error:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3785,7 +3790,7 @@ module.exports = function(db) {
         const dbPath = getDatabasePath();
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: true });
         const pdfBuffer = fs.readFileSync(pdfPath);
-        
+
         const dateStr = contactRecord ? contactRecord.created_at : null;
         const fileName = `Opening Balance ${formatDateStr(dateStr)}`;
 
@@ -3821,10 +3826,10 @@ module.exports = function(db) {
         const pdfPath = generateOpeningBalancePDF(dbPath, customerName, { export_mode: false });
         const pdfBuffer = fs.readFileSync(pdfPath);
         const base64PDF = pdfBuffer.toString('base64');
-        
+
         const dateStr = contactRecord ? contactRecord.created_at : null;
         const fileName = `Opening Balance ${formatDateStr(dateStr)}`;
-        
+
         const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -3839,11 +3844,11 @@ module.exports = function(db) {
   <iframe id="pdfViewer" src="data:application/pdf;base64,${base64PDF}" type="application/pdf"></iframe>
 </body>
 </html>`;
-        
+
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Content-Disposition', `inline; filename="${fileName}.html"`);
         res.send(htmlContent);
-        
+
         // Clean up temp file asynchronously
         setImmediate(() => {
           try {
@@ -3858,9 +3863,9 @@ module.exports = function(db) {
       } catch (error) {
         console.error('Opening Balance PDF Print Error:', error.message);
         console.error('Stack:', error.stack);
-        res.status(500).json({ 
+        res.status(500).json({
           error: error.message,
-          details: error.stack 
+          details: error.stack
         });
       }
     },
@@ -3869,7 +3874,7 @@ module.exports = function(db) {
     getCustomerBillItems: (req, res) => {
       try {
         const { customerName } = req.params;
-        
+
         if (!customerName) {
           return res.status(400).json({ error: 'customerName is required' });
         }
@@ -4041,21 +4046,21 @@ module.exports = function(db) {
 function isStrictlyPrior(dateA, createdA, idA, dateB, createdB, idB) {
   const normalize = (d, c) => {
     let t = d ? new Date(d) : new Date(c);
-    t.setHours(0,0,0,0);
+    t.setHours(0, 0, 0, 0);
     return t.getTime();
   };
-  
+
   const dayA = normalize(dateA, createdA);
   const dayB = normalize(dateB, createdB);
-  
+
   if (dayA < dayB) return true;
   if (dayA > dayB) return false;
-  
+
   const exactA = new Date(createdA).getTime();
   const exactB = new Date(createdB).getTime();
   if (exactA < exactB) return true;
   if (exactA > exactB) return false;
-  
+
   if (idA !== undefined && idB !== undefined) return idA < idB;
   return false;
 }
@@ -4095,27 +4100,27 @@ function generateNewInvoiceNumber(db, customerId, totalGst, invoiceDate = null) 
     const totalGstValue = parseFloat(totalGst || 0);
     const hasGst = totalGstValue > 0;
     const prefix = hasGst ? 'GST' : 'NGST';
-    
+
     // Use invoiceDate if provided, fallback to current date
     const dateObj = invoiceDate ? new Date(invoiceDate) : new Date();
     const yearStr = getCalendarYear(dateObj);
-    
+
     // Use MAX approach with LIKE to find the highest sequence for this year globally
     const maxResult = db.prepare(`
       SELECT invoice_no
       FROM invoices
       WHERE invoice_no LIKE ?
     `).all(`${prefix}-${yearStr}%`);
-    
+
     let maxSequence = 0;
     maxResult.forEach(row => {
       const seq = extractSequenceFromReference(row.invoice_no);
       if (seq > maxSequence) maxSequence = seq;
     });
-    
+
     const nextSequence = maxSequence + 1;
     const sequenceStr = String(nextSequence).padStart(4, '0');
-    
+
     return `${prefix}-${yearStr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating invoice number:', err);
@@ -4128,7 +4133,7 @@ function generateNewInvoiceNumber(db, customerId, totalGst, invoiceDate = null) 
 function generatePaymentReference(db, customerId, paymentDate = new Date()) {
   try {
     const yearStr = getCalendarYear(paymentDate);
-    
+
     // Use MAX approach with LIKE to find highest global sequence
     const maxResult = db.prepare(`
       SELECT reference_number
@@ -4136,16 +4141,16 @@ function generatePaymentReference(db, customerId, paymentDate = new Date()) {
       WHERE type = 'PAYMENT'
         AND reference_number LIKE ?
     `).all(`PAY-${yearStr}%`);
-    
+
     let maxSequence = 0;
     maxResult.forEach(row => {
       const seq = extractSequenceFromReference(row.reference_number);
       if (seq > maxSequence) maxSequence = seq;
     });
-    
+
     const nextSequence = maxSequence + 1;
     const sequenceStr = String(nextSequence).padStart(4, '0');
-    
+
     return `PAY-${yearStr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating payment reference:', err);
@@ -4157,7 +4162,7 @@ function generatePaymentReference(db, customerId, paymentDate = new Date()) {
 function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
   try {
     const yearStr = getCalendarYear(paymentDate);
-    
+
     // Use MAX approach with LIKE to find highest global sequence
     const maxResult = db.prepare(`
       SELECT reference_number
@@ -4165,16 +4170,16 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
       WHERE type = 'CREDIT_NOTE'
         AND reference_number LIKE ?
     `).all(`CREDIT-${yearStr}%`);
-    
+
     let maxSequence = 0;
     maxResult.forEach(row => {
       const seq = extractSequenceFromReference(row.reference_number);
       if (seq > maxSequence) maxSequence = seq;
     });
-    
+
     const nextSequence = maxSequence + 1;
     const sequenceStr = String(nextSequence).padStart(4, '0');
-    
+
     return `CREDIT-${yearStr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating credit note reference:', err);

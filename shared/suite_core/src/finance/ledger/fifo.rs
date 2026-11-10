@@ -3,7 +3,7 @@ use crate::types::round2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Convert a date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS) into days since 1970-01-01
+/// Convert a date string (YYYY-MM-DD, DD-MM-YYYY, YYYY/MM/DD, DD/MM/YYYY, or ISO) into days since 1970-01-01
 pub fn parse_date_to_days(s: &str) -> Option<i64> {
     if s.is_empty() {
         return None;
@@ -12,9 +12,13 @@ pub fn parse_date_to_days(s: &str) -> Option<i64> {
     if parts.len() < 3 {
         return None;
     }
-    let year: i64 = parts[0].parse().ok()?;
-    let month: u64 = parts[1].parse().ok()?;
-    let day: u64 = parts[2].parse().ok()?;
+    let (year, month, day): (i64, u64, u64) = if parts[0].len() == 4 {
+        (parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?)
+    } else if parts[2].len() == 4 {
+        (parts[2].parse().ok()?, parts[1].parse().ok()?, parts[0].parse().ok()?)
+    } else {
+        return None;
+    };
 
     if month < 1 || month > 12 || day < 1 || day > 31 {
         return None;

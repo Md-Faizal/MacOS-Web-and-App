@@ -1,12 +1,12 @@
 const dataBus = require('../sync/data-bus');
 
 // Request handlers for Payments module
-module.exports = function(db) {
+module.exports = function (db) {
   return {
     // Create a new payment
     createPayment: (req, res) => {
       const { transaction_id, amount, payment_method, reference_number, notes } = req.body;
-      
+
       if (!amount || !payment_method) {
         return res.status(400).json({ error: 'Missing required fields: amount, payment_method' });
       }
@@ -19,12 +19,12 @@ module.exports = function(db) {
       try {
         const stmt = db.prepare(sql);
         const result = stmt.run(transaction_id || null, amount, payment_method, reference_number || null, notes || null);
-        
+
         // Real-time broadcast
         try {
           dataBus.broadcast('billing:payment', 'created', { id: result.lastInsertRowid, transaction_id, amount });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id: transaction_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.status(201).json({
           id: result.lastInsertRowid,
@@ -43,8 +43,8 @@ module.exports = function(db) {
 
     // Get all payments
     getPayments: (req, res) => {
-      const { status, payment_method, limit = 100, offset = 0 } = req.query;
-      
+      const { status, payment_method, offset = 0 } = req.query;
+
       let sql = `
         SELECT p.*,
                COALESCE(u_creator.role, 'owner') as created_by_role,
@@ -73,8 +73,13 @@ module.exports = function(db) {
         sql += ` AND (p.customer_id IN (SELECT contact_id FROM user_contact_access WHERE user_id = '${safeUserId}') OR p.customer_id IN (SELECT id FROM contacts WHERE created_by_user_id IN (SELECT id FROM users WHERE role = 'worker') OR created_by_user_id = '${safeUserId}'))`;
       }
 
-      sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-      params.push(parseInt(limit), parseInt(offset));
+      const hasExplicitLimit = req.query.limit !== undefined && req.query.limit !== null && req.query.limit !== 'all' && req.query.limit !== '-1';
+      if (hasExplicitLimit) {
+        sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
+        params.push(parseInt(req.query.limit, 10), parseInt(offset, 10));
+      } else {
+        sql += ' ORDER BY p.created_at DESC';
+      }
 
       try {
         const stmt = db.prepare(sql);
@@ -103,7 +108,7 @@ module.exports = function(db) {
       try {
         const stmt = db.prepare(sql);
         const row = stmt.get(id);
-        
+
         if (!row) {
           return res.status(404).json({ error: 'Payment not found' });
         }
@@ -148,11 +153,11 @@ module.exports = function(db) {
       try {
         const stmt = db.prepare(sql);
         const result = stmt.run(...values);
-        
+
         if (result.changes === 0) {
           return res.status(404).json({ error: 'Payment not found' });
         }
-        
+
         const getStmt = db.prepare('SELECT * FROM payments WHERE id = ?');
         const payment = getStmt.get(id);
         res.json(payment);
@@ -190,7 +195,7 @@ module.exports = function(db) {
 
         const total_credit = totals.total_payments + totals.total_credits;
         const current_due = totals.total_debit - total_credit;
-        
+
         // Determine current status based on current_due
         let current_status = 'PENDING';
         if (current_due < 0) {
@@ -198,7 +203,7 @@ module.exports = function(db) {
         } else if (current_due === 0) {
           current_status = 'SETTLED';
         }
-        
+
         // Update ledger row
         db.prepare(`
           UPDATE ledger 
@@ -211,7 +216,7 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:payment', 'deleted', { id, customer_id });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.json({ message: 'Payment deleted successfully', id, current_due });
       } catch (err) {
@@ -222,7 +227,7 @@ module.exports = function(db) {
     // Get payment summary statistics
     getPaymentSummary: (req, res) => {
       const { start_date, end_date } = req.query;
-      
+
       let sql = `
         SELECT 
           COUNT(*) as total_payments,

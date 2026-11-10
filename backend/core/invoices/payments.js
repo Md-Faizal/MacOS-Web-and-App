@@ -6,7 +6,7 @@ const dataBus = require('../sync/data-bus');
  * Handles both payments and credit notes in a unified payments table
  */
 
-module.exports = function(db) {
+module.exports = function (db) {
   const activityLogger = createActivityLogger(db);
 
   function getWorkerContactScope(req, tableAlias = 'c') {
@@ -79,12 +79,12 @@ module.exports = function(db) {
         WHERE customer_id = ?
         ORDER BY COALESCE(invoice_date, created_at) ASC, id ASC
       `).all(customerId);
-      
+
       const allPayments = db.prepare(`
         SELECT id, reference_number, amount, payment_date, created_at FROM payments
         WHERE customer_id = ? AND type = 'PAYMENT'
       `).all(customerId);
-      
+
       const allCredits = db.prepare(`
         SELECT id, reference_number, credit_amount, payment_date, created_at FROM payments
         WHERE customer_id = ? AND type = 'CREDIT_NOTE'
@@ -94,15 +94,15 @@ module.exports = function(db) {
         const priorInvoiceTotal = allInvoices
           .filter(inv => isStrictlyPrior(inv.invoice_date, inv.created_at, inv.id, invoice.invoice_date, invoice.created_at, invoice.id))
           .reduce((sum, inv) => sum + inv.grand_total, 0);
-        
+
         const totalPriorPayments = allPayments
           .filter(p => isStrictlyPrior(p.payment_date, p.created_at, p.id, invoice.invoice_date, invoice.created_at, undefined))
           .reduce((sum, p) => sum + p.amount, 0);
-        
+
         const totalPriorCredits = allCredits
           .filter(c => isStrictlyPrior(c.payment_date, c.created_at, c.id, invoice.invoice_date, invoice.created_at, undefined))
           .reduce((sum, c) => sum + c.credit_amount, 0);
-        
+
         const calculatedPreviousDue = opening_balance + priorInvoiceTotal - (totalPriorPayments + totalPriorCredits);
         db.prepare('UPDATE invoices SET previous_due = ? WHERE id = ?').run(calculatedPreviousDue, invoice.id);
       });
@@ -135,7 +135,7 @@ module.exports = function(db) {
 
         const dateObj = new Date(payment_date);
         const reference = generatePaymentReference(db, parseInt(customer_id), dateObj);
-        
+
         res.json({
           success: true,
           reference_number: reference
@@ -159,7 +159,7 @@ module.exports = function(db) {
 
         const dateObj = new Date(payment_date);
         const reference = generateCreditNoteReference(db, parseInt(customer_id), dateObj);
-        
+
         res.json({
           success: true,
           reference_number: reference
@@ -240,7 +240,7 @@ module.exports = function(db) {
             amount
           });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.status(201).json({
           success: true,
@@ -312,11 +312,11 @@ module.exports = function(db) {
         `);
 
         const creditResult = creditStmt.run(
-          customer_id, 
-          amount, 
-          reason, 
-          finalReferenceNumber, 
-          finalPaymentDate || null, 
+          customer_id,
+          amount,
+          reason,
+          finalReferenceNumber,
+          finalPaymentDate || null,
           invoice_id || null,
           notes || null,
           attachment_data,
@@ -346,7 +346,7 @@ module.exports = function(db) {
             amount
           });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.status(201).json({
           success: true,
@@ -373,8 +373,8 @@ module.exports = function(db) {
      */
     getPayments: (req, res) => {
       try {
-        const { customer_id, type, id, limit = 100, offset = 0 } = req.query;
-        
+        const { customer_id, type, id, offset = 0 } = req.query;
+
         // If specific ID requested, return single payment
         if (id) {
           const payment = db.prepare(`
@@ -404,7 +404,7 @@ module.exports = function(db) {
             LEFT JOIN users u_editor ON p.last_edited_by_user_id = u_editor.id
             WHERE p.id = ?
           `).get(id);
-          
+
           if (!payment) {
             return res.status(404).json({ error: 'Payment not found' });
           }
@@ -412,10 +412,10 @@ module.exports = function(db) {
           if (payment.customer_id && !isCustomerAccessible(req, payment.customer_id)) {
             return res.status(403).json({ error: 'Access denied to this payment' });
           }
-          
+
           return res.json([payment]);
         }
-        
+
         // Build query to get payments/credit notes
         let sql = `
           SELECT 
@@ -461,8 +461,13 @@ module.exports = function(db) {
           sql += ` AND ${workerScope}`;
         }
 
-        sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-        params.push(parseInt(limit), parseInt(offset));
+        const hasExplicitLimit = req.query.limit !== undefined && req.query.limit !== null && req.query.limit !== 'all' && req.query.limit !== '-1';
+        if (hasExplicitLimit) {
+          sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
+          params.push(parseInt(req.query.limit, 10), parseInt(offset, 10));
+        } else {
+          sql += ' ORDER BY p.created_at DESC';
+        }
 
         const payments = db.prepare(sql).all(...params);
         res.json(payments);
@@ -511,7 +516,7 @@ module.exports = function(db) {
         if (payment.type === 'PAYMENT') {
           oldAmount = payment.amount || 0;
           newAmount = amount !== undefined ? amount : oldAmount;
-          
+
           if (amount !== undefined) {
             updateFields.push('amount = ?');
             updateValues.push(amount);
@@ -535,7 +540,7 @@ module.exports = function(db) {
         } else if (payment.type === 'CREDIT_NOTE') {
           oldAmount = payment.credit_amount || 0;
           newAmount = credit_amount !== undefined ? credit_amount : oldAmount;
-          
+
           if (credit_amount !== undefined) {
             updateFields.push('credit_amount = ?');
             updateValues.push(credit_amount);
@@ -598,7 +603,7 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:payment', 'updated', { id, customer_id: updatedPayment?.customer_id });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id: updatedPayment?.customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
         res.json({
           success: true,
@@ -652,10 +657,10 @@ module.exports = function(db) {
         try {
           dataBus.broadcast('billing:payment', 'deleted', { id, customer_id });
           dataBus.broadcast('billing:ledger', 'updated', { customer_id });
-        } catch (_) {}
+        } catch (_) { }
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Payment deleted successfully',
           customer_id,
           current_due: ledgerSync ? ledgerSync.current_due : undefined,
@@ -784,7 +789,7 @@ module.exports = function(db) {
     getCustomerOutstanding: (req, res) => {
       try {
         const { customer_id, customer_name } = req.query;
-        
+
         if (!customer_id && !customer_name) {
           return res.status(400).json({ error: 'customer_id or customer_name required' });
         }
@@ -792,7 +797,7 @@ module.exports = function(db) {
         // Get customer ID if name provided
         let cust_id = customer_id;
         let opening_balance = 0;
-        
+
         if (customer_name && !customer_id) {
           const customer = db.prepare('SELECT id, opening_balance FROM contacts WHERE name = ? OR id = ?').get(customer_name, customer_name);
           if (!customer) {
@@ -846,11 +851,11 @@ module.exports = function(db) {
         const total_collected = parseFloat((total_paid + total_credited).toFixed(2));
         const total_outstanding = parseFloat((total_invoiced + opening_balance - total_collected).toFixed(2));
         const total_bills = invoiceStats.total_bills || 0;
-        
+
         // Estimate outstanding bills based on outstanding amount vs average bill
         const avg_bill = total_bills > 0 ? total_invoiced / total_bills : 0;
         const outstanding_bills_count = avg_bill > 0 ? Math.ceil(total_outstanding / avg_bill) : 0;
-        
+
         // Count partial payments (invoices with some payment)
         // Since we don't track per-invoice payments, estimate as invoices with remainder
         const partial_bills = Math.min(outstanding_bills_count, total_bills);
@@ -923,21 +928,21 @@ function getCalendarYear(date = new Date()) {
 function isStrictlyPrior(dateA, createdA, idA, dateB, createdB, idB) {
   const normalize = (d, c) => {
     let t = d ? new Date(d) : new Date(c);
-    t.setHours(0,0,0,0);
+    t.setHours(0, 0, 0, 0);
     return t.getTime();
   };
-  
+
   const dayA = normalize(dateA, createdA);
   const dayB = normalize(dateB, createdB);
-  
+
   if (dayA < dayB) return true;
   if (dayA > dayB) return false;
-  
+
   const exactA = new Date(createdA).getTime();
   const exactB = new Date(createdB).getTime();
   if (exactA < exactB) return true;
   if (exactA > exactB) return false;
-  
+
   if (idA !== undefined && idB !== undefined) return idA < idB;
   return false;
 }
@@ -961,7 +966,7 @@ function generatePaymentReference(db, customerId, paymentDate = new Date()) {
     const yr = getCalendarYear(paymentDate);
     const yrStart = getCalendarYearStart(paymentDate);
     const yrEnd = getCalendarYearEnd(paymentDate);
-    
+
     // Global count for PAYMENT type records in this calendar year (removed customer_id filter)
     const countResult = db.prepare(`
       SELECT COUNT(*) as count
@@ -970,10 +975,10 @@ function generatePaymentReference(db, customerId, paymentDate = new Date()) {
         AND date(p.payment_date) >= date(?)
         AND date(p.payment_date) <= date(?)
     `).get(yrStart.toISOString().split('T')[0], yrEnd.toISOString().split('T')[0]);
-    
+
     const sequence = (countResult?.count || 0) + 1;
     const sequenceStr = String(sequence).padStart(4, '0');
-    
+
     return `PAY-${yr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating payment reference:', err);
@@ -988,7 +993,7 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
     const yr = getCalendarYear(paymentDate);
     const yrStart = getCalendarYearStart(paymentDate);
     const yrEnd = getCalendarYearEnd(paymentDate);
-    
+
     // Global count for CREDIT_NOTE type records in this calendar year (removed customer_id filter)
     const countResult = db.prepare(`
       SELECT COUNT(*) as count
@@ -997,10 +1002,10 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
         AND date(p.payment_date) >= date(?)
         AND date(p.payment_date) <= date(?)
     `).get(yrStart.toISOString().split('T')[0], yrEnd.toISOString().split('T')[0]);
-    
+
     const sequence = (countResult?.count || 0) + 1;
     const sequenceStr = String(sequence).padStart(4, '0');
-    
+
     return `CREDIT-${yr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating credit note reference:', err);
@@ -1015,12 +1020,12 @@ function generateInvoiceReference(db, customerId, invoiceDate = new Date()) {
     const yr = getCalendarYear(invoiceDate);
     const yrStart = getCalendarYearStart(invoiceDate);
     const yrEnd = getCalendarYearEnd(invoiceDate);
-    
+
     // Check if customer has GSTIN
     const customer = db.prepare('SELECT gstin FROM contacts WHERE id = ?').get(customerId);
     const hasGST = customer && customer.gstin && customer.gstin.trim().length > 0;
     const prefix = hasGST ? 'GST' : 'NGST';
-    
+
     // Global count for invoices in this calendar year
     const countResult = db.prepare(`
       SELECT COUNT(*) as count
@@ -1028,10 +1033,10 @@ function generateInvoiceReference(db, customerId, invoiceDate = new Date()) {
       WHERE date(invoice_date) >= date(?)
         AND date(invoice_date) <= date(?)
     `).get(yrStart.toISOString().split('T')[0], yrEnd.toISOString().split('T')[0]);
-    
+
     const sequence = (countResult?.count || 0) + 1;
     const sequenceStr = String(sequence).padStart(4, '0');
-    
+
     return `${prefix}-${yr}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating invoice reference:', err);

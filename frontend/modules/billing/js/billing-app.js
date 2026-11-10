@@ -1900,8 +1900,8 @@ export class BillingApp extends AppWindow {
           }
         };
         const [billsResponse, paymentsResponse, contactsResponse, ordersPayload, productsPayload] = await Promise.all([
-          fetchWithFallback(() => this.api.getBills({ forceRefresh: force }), [], 'error', 'Error fetching bills:'),
-          fetchWithFallback(() => this.api.getPayments({ forceRefresh: force }), { data: [], success: false }, 'warn', 'Warning: Error fetching payments:'),
+          fetchWithFallback(() => this.api.getBills({ forceRefresh: force, limit: -1 }), [], 'error', 'Error fetching bills:'),
+          fetchWithFallback(() => this.api.getPayments({ forceRefresh: force, limit: -1 }), { data: [], success: false }, 'warn', 'Warning: Error fetching payments:'),
           fetchWithFallback(() => this.api.getContacts({ forceRefresh: force }), { data: [], success: false }, 'warn', 'Warning: Error fetching contacts:'),
           fetchWithFallback(() => this.api.getOrders({ forceRefresh: force }), [], 'warn', 'Warning: Error fetching orders:'),
           fetchWithFallback(() => this.api.getProducts({ forceRefresh: force }), [], 'warn', 'Warning: Error fetching products for billing search:')
