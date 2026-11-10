@@ -4075,6 +4075,20 @@ module.exports = function (db) {
       }
     },
 
+    getPublicPaymentReceiptPdf: async (req, res) => {
+      try {
+        const { code } = req.params;
+        const pdfBuffer = paymentGatewayService.generateProvisionalReceiptPdf(db, code);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Provisional-Receipt-${code}.pdf"`);
+        res.setHeader('Content-Length', pdfBuffer.length);
+        res.end(pdfBuffer);
+      } catch (err) {
+        console.error('[Billing] getPublicPaymentReceiptPdf error:', err);
+        res.status(400).send(`Receipt generation failed: ${err.message}`);
+      }
+    },
+
     // ============= PAYMENT LINKS MANAGEMENT =============
     createPaymentLink: async (req, res) => {
       try {
@@ -4117,17 +4131,48 @@ module.exports = function (db) {
     settlePaymentLink: async (req, res) => {
       try {
         const { id } = req.params;
-        const { payment_method, payment_date, notes } = req.body;
+        const { payment_method, payment_date, amount, utr, notes } = req.body;
         const userId = req.user ? (req.user.id || req.user.userId) : null;
         const result = paymentGatewayService.settlePaymentLink(db, id, {
           paymentMethod: payment_method,
           paymentDate: payment_date,
+          amount,
+          utr,
           notes,
           userId
         });
         res.json(result);
       } catch (err) {
         console.error('[Billing] settlePaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
+    },
+
+    updatePaymentLink: async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { amount, claimed_amount, claimed_utr, claimed_notes, status } = req.body;
+        const result = paymentGatewayService.updatePaymentLink(db, id, {
+          amount,
+          claimedAmount: claimed_amount,
+          claimedUtr: claimed_utr,
+          claimedNotes: claimed_notes,
+          status
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] updatePaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
+    },
+
+    deletePaymentLink: async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = paymentGatewayService.deletePaymentLink(db, id);
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] deletePaymentLink error:', err);
         res.status(400).json({ error: err.message });
       }
     },
@@ -4289,3 +4334,4 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
     return `CREDIT-${Date.now().toString().slice(-8)}`;
   }
 }
+                                                                                                                                                      

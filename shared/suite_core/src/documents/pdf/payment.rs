@@ -10,6 +10,7 @@ pub enum VoucherType {
     PaymentReceipt,
     CreditNote,
     OpeningBalance,
+    ProvisionalReceipt,
 }
 
 impl Default for VoucherType {
@@ -310,9 +311,15 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
             PdfColor::hex("#fde68a"),
             PdfColor::hex("#92400e"),
         ),
+        VoucherType::ProvisionalReceipt => (
+            "PROVISIONAL ACKNOWLEDGMENT",
+            PdfColor::hex("#fffbeb"),
+            PdfColor::hex("#fde68a"),
+            PdfColor::hex("#92400e"),
+        ),
     };
 
-    let badge_width = 138.0;
+    let badge_width = if data.voucher_type == VoucherType::ProvisionalReceipt { 172.0 } else { 138.0 };
     let badge_height = 24.0;
     let badge_x = left_margin + content_width - badge_width;
     let badge_y = brand_top_y - 23.0;
@@ -322,10 +329,11 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
     canvas.set_line_width(0.75);
     canvas.round_rect(badge_x, badge_y, badge_width, badge_height, 4.0, true, true);
 
+    let badge_font_size = if data.voucher_type == VoucherType::ProvisionalReceipt { 7.5 } else { 9.0 };
     canvas.set_fill_color(text_color);
     canvas.draw_centered_spaced_string(
         PdfFont::HelveticaBold,
-        9.0,
+        badge_font_size,
         badge_x + badge_width / 2.0,
         badge_y + 7.5,
         badge_title,
@@ -351,6 +359,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         VoucherType::PaymentReceipt => "AMOUNT RECEIVED",
         VoucherType::CreditNote => "CREDIT AMOUNT",
         VoucherType::OpeningBalance => "OPENING BALANCE AMOUNT",
+        VoucherType::ProvisionalReceipt => "CLAIMED REMITTANCE AMOUNT",
     };
 
     canvas.set_fill_color(PdfColor::hex("#64748b"));
@@ -391,6 +400,7 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         VoucherType::OpeningBalance => ("CARRYOVER", PdfColor::hex("#fef3c7"), PdfColor::hex("#92400e")),
         VoucherType::CreditNote => ("CREDIT RECORDED", PdfColor::hex("#e0e7ff"), PdfColor::hex("#3730a3")),
         VoucherType::PaymentReceipt => ("COMPLETED", PdfColor::hex("#d1fae5"), PdfColor::hex("#065f46")),
+        VoucherType::ProvisionalReceipt => ("UNDER REVIEW", PdfColor::hex("#fef3c7"), PdfColor::hex("#92400e")),
     };
     let s_pill_w = 96.0;
     let s_pill_h = 20.0;
@@ -1042,7 +1052,38 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
         .map(|v| v == "true" || v == "1" || v == "yes")
         .unwrap_or(false);
 
-    if auto_sign {
+    if data.voucher_type == VoucherType::ProvisionalReceipt {
+        let auth_box_h = 36.0;
+        let auth_box_y = 75.0;
+
+        canvas.set_fill_color(PdfColor::hex("#fffbeb"));
+        canvas.set_stroke_color(PdfColor::hex("#fde68a"));
+        canvas.set_line_width(0.75);
+        canvas.round_rect(left_margin, auth_box_y, content_width, auth_box_h, 4.0, true, true);
+
+        // Amber accent left bar
+        canvas.set_fill_color(PdfColor::hex("#f59e0b"));
+        canvas.round_rect(left_margin, auth_box_y, 3.5, auth_box_h, 1.5, false, true);
+
+        canvas.set_fill_color(PdfColor::hex("#92400e"));
+        canvas.draw_spaced_string(
+            PdfFont::HelveticaBold,
+            7.5,
+            left_margin + 12.0,
+            auth_box_y + auth_box_h - 13.0,
+            "PROVISIONAL REMITTANCE ACKNOWLEDGMENT  •  PENDING CLEARANCE REVIEW",
+            0.5,
+        );
+
+        canvas.set_fill_color(PdfColor::hex("#78350f"));
+        canvas.draw_string(
+            PdfFont::Helvetica,
+            7.0,
+            left_margin + 12.0,
+            auth_box_y + 10.0,
+            "Acknowledgment of remittance submission. Not a full/final payment proof until verified by accounts team.",
+        );
+    } else if auto_sign {
         let auth_box_h = 36.0;
         let auth_box_y = 75.0;
 
@@ -1123,6 +1164,9 @@ pub fn render_payment_voucher_pdf(data: &PaymentVoucherRenderData) -> Result<Vec
 
     // 7b. COURTESY & APPRECIATION NOTE
     let thank_you_text = match data.voucher_type {
+        VoucherType::ProvisionalReceipt => {
+            "Remittance reference submitted. Official receipt credit will reflect upon bank clearance verification."
+        }
         VoucherType::CreditNote => {
             "We value your business. This credit adjustment has been credited to your running account."
         }

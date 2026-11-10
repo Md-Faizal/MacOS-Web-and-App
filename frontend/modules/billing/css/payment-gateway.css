@@ -717,6 +717,50 @@ main {
   margin: 0 auto 16px;
 }
 
+.receipt-notice-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-left: 3px solid #f59e0b;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 16px 0;
+  text-align: left;
+}
+
+.notice-headline {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  margin-bottom: 6px;
+}
+
+.notice-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.notice-disclaimer {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.5;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+}
+
+.notice-disclaimer strong {
+  color: var(--text-2);
+}
+
+.notice-disclaimer em {
+  font-style: normal;
+  color: #ffffff;
+}
+
 .receipt-grid {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-subtle);

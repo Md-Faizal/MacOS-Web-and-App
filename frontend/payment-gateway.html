@@ -138,34 +138,34 @@
 
           <div class="drawer-content" id="accordionContent">
             <form id="remittanceForm">
-                <!-- Dynamically populated tranche-aware UTR input fields -->
-                <div id="utrFieldsContainer">
-                  <div class="form-group" style="margin-bottom: 10px;">
-                    <label class="input-label" for="utrInput">Transaction Reference / UTR Number *</label>
-                    <input type="text" id="utrInput" class="input-mono" placeholder="Enter 12-digit UTR number" required
-                      autocomplete="off" />
-                  </div>
-                </div>
-
+              <!-- Dynamically populated tranche-aware UTR input fields -->
+              <div id="utrFieldsContainer">
                 <div class="form-group" style="margin-bottom: 10px;">
-                  <label class="input-label" for="amountInput">Total Amount Transferred (₹) *</label>
-                  <input type="number" id="amountInput" class="input-mono" placeholder="Transferred Amount (₹)"
-                    step="0.01" min="1" required />
+                  <label class="input-label" for="utrInput">Transaction Reference / UTR Number *</label>
+                  <input type="text" id="utrInput" class="input-mono" placeholder="Enter 12-digit UTR number" required
+                    autocomplete="off" />
                 </div>
+              </div>
 
-                <div class="form-group" style="margin-bottom: 10px;">
-                  <label class="input-label" for="payerNameInput">Remitter Name (Optional)</label>
-                  <input type="text" id="payerNameInput" class="input-mono" placeholder="Name as per bank account" />
-                </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="input-label" for="amountInput">Total Amount Transferred (₹) *</label>
+                <input type="number" id="amountInput" class="input-mono" placeholder="Transferred Amount (₹)"
+                  step="0.01" min="1" required />
+              </div>
 
-                <div class="form-group" style="margin-bottom: 10px;">
-                  <label class="input-label" for="notesInput">Notes (Optional)</label>
-                  <input type="text" id="notesInput" class="input-mono" placeholder="Optional notes" />
-                </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="input-label" for="payerNameInput">Remitter Name (Optional)</label>
+                <input type="text" id="payerNameInput" class="input-mono" placeholder="Name as per bank account" />
+              </div>
 
-                <button type="submit" class="btn-primary" id="submitRemittanceBtn" style="margin-top: 14px;">
-                  Submit Reference
-                </button>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="input-label" for="notesInput">Notes (Optional)</label>
+                <input type="text" id="notesInput" class="input-mono" placeholder="Optional notes" />
+              </div>
+
+              <button type="submit" class="btn-primary" id="submitRemittanceBtn" style="margin-top: 14px;">
+                Submit Reference
+              </button>
             </form>
           </div>
         </div>
@@ -232,20 +232,29 @@
     <!-- Verified Remittance Receipt State -->
     <div id="receiptView" class="card receipt-box" style="display: none;">
       <div class="receipt-mark">✓</div>
-      <div class="state-title">Payment Reference Submitted</div>
-      <div class="state-sub">
-        Your payment reference has been recorded. Our accounts team will verify the transaction and update your ledger.
-      </div>
+        <div class="state-title">Remittance Reference Logged</div>
 
-      <div class="receipt-grid">
-        <div class="receipt-item">
-          <span>Customer:</span>
-          <span id="receiptCustomer">-</span>
+        <div class="receipt-notice-card">
+          <div class="notice-headline">Provisional Acknowledgment</div>
+          <p class="notice-desc">
+            Your payment reference has been recorded in our clearance registry.
+          </p>
+          <p class="notice-disclaimer">
+            <strong>Please note:</strong> This document serves as a <em>provisional remittance acknowledgment</em> and
+            does not constitute full and final payment proof until verified by our accounts review team against bank
+            clearance records. Official receipt credit will reflect in your ledger once verified.
+          </p>
         </div>
-        <div class="receipt-item">
-          <span>Amount:</span>
-          <span id="receiptAmount">₹0.00</span>
-        </div>
+
+        <div class="receipt-grid">
+          <div class="receipt-item">
+            <span>Customer:</span>
+            <span id="receiptCustomer">-</span>
+          </div>
+          <div class="receipt-item">
+            <span>Amount Claimed:</span>
+            <span id="receiptAmount">₹0.00</span>
+          </div>
           <div class="receipt-item" id="receiptInvoiceRow">
             <span>Invoice(s) Covered:</span>
             <span id="receiptInvoice">-</span>
@@ -255,15 +264,15 @@
             <span id="receiptUtr" style="text-align: right; max-width: 60%; word-break: break-all;">-</span>
           </div>
           <div class="receipt-item">
-            <span>Timestamp:</span>
+            <span>Logged At:</span>
             <span id="receiptTime">-</span>
           </div>
         </div>
 
-        <button class="btn-primary" id="printReceiptBtn" style="max-width: 200px; margin: 0 auto;">
-          Print Receipt
-        </button>
-      </div>
+      <button class="btn-primary" id="printReceiptBtn" style="max-width: 280px; margin: 0 auto;">
+        📄 Print Acknowledgment Receipt
+      </button>
+    </div>
   </main>
 
   <footer>

@@ -225,10 +225,14 @@
     });
   }
 
-  // Print Receipt
+  // Print / Download Rust WASM Provisional Receipt
   if (printReceiptBtn) {
     printReceiptBtn.addEventListener('click', () => {
-      window.print();
+      if (code) {
+        window.open(`/api/billing/public/pay/${encodeURIComponent(code)}/receipt.pdf`, '_blank');
+      } else {
+        window.print();
+      }
     });
   }
 
@@ -325,37 +329,37 @@
     if (companyNameEl) {
       companyNameEl.textContent = data.company?.name || 'Utkal Chemical Aushadhalaya';
     }
-      if (invoiceCoverRefEl) {
-        invoiceCoverRefEl.textContent = data.invoice_label || (data.invoices?.length ? `Invoice: ${data.invoices.join(', ')}` : 'Statement Settlement');
+    if (invoiceCoverRefEl) {
+      invoiceCoverRefEl.textContent = data.invoice_label || (data.invoices?.length ? `Invoice: ${data.invoices.join(', ')}` : 'Statement Settlement');
+    }
+
+    // Hero Meta
+    if (payableAmountEl) payableAmountEl.textContent = formatINR(data.amount);
+    if (customerNameEl) customerNameEl.textContent = data.customer_name || 'Customer';
+    if (paymentMemoEl) paymentMemoEl.textContent = data.description || 'Statement Settlement';
+
+    // Status Check
+    if (data.status === 'CLAIMED' || data.status === 'SETTLED') {
+      showReceipt(data);
+      const headEl = receiptView?.querySelector('.state-title');
+      if (headEl && data.status === 'SETTLED') {
+        headEl.textContent = 'Payment Settled';
       }
+      return;
+    }
 
-      // Hero Meta
-      if (payableAmountEl) payableAmountEl.textContent = formatINR(data.amount);
-      if (customerNameEl) customerNameEl.textContent = data.customer_name || 'Customer';
-      if (paymentMemoEl) paymentMemoEl.textContent = data.description || 'Statement Settlement';
+    // Banking Coordinates
+    if (bankHolderEl) bankHolderEl.textContent = data.banking?.account_holder || 'MD FAIZAL';
+    if (bankBranchEl) bankBranchEl.textContent = data.banking?.bank_branch || 'HDFC Bank - Cuttack';
+    if (bankAccNoEl) bankAccNoEl.textContent = data.banking?.account_number || '50100673684509';
+    if (bankIfscEl) bankIfscEl.textContent = data.banking?.ifsc || 'HDFC0000236';
+    if (bankUpiEl) bankUpiEl.textContent = data.banking?.upi_id || '7749089400@hdfc';
 
-      // Status Check
-      if (data.status === 'CLAIMED' || data.status === 'SETTLED') {
-        showReceipt(data);
-        const headEl = receiptView?.querySelector('.state-title');
-        if (headEl && data.status === 'SETTLED') {
-          headEl.textContent = 'Payment Settled';
-        }
-        return;
-      }
-
-      // Banking Coordinates
-      if (bankHolderEl) bankHolderEl.textContent = data.banking?.account_holder || 'MD FAIZAL';
-      if (bankBranchEl) bankBranchEl.textContent = data.banking?.bank_branch || 'HDFC Bank - Cuttack';
-      if (bankAccNoEl) bankAccNoEl.textContent = data.banking?.account_number || '50100673684509';
-      if (bankIfscEl) bankIfscEl.textContent = data.banking?.ifsc || 'HDFC0000236';
-      if (bankUpiEl) bankUpiEl.textContent = data.banking?.upi_id || '7749089400@hdfc';
-
-      // Multi-Tranche Rendering (> ₹1 Lakh)
-      if (trancheSection && tranchePills) {
-        if (data.is_split && Array.isArray(data.tranches) && data.tranches.length > 1) {
-          trancheSection.style.display = 'block';
-          tranchePills.innerHTML = data.tranches.map((t, idx) => `
+    // Multi-Tranche Rendering (> ₹1 Lakh)
+    if (trancheSection && tranchePills) {
+      if (data.is_split && Array.isArray(data.tranches) && data.tranches.length > 1) {
+        trancheSection.style.display = 'block';
+        tranchePills.innerHTML = data.tranches.map((t, idx) => `
           <button type="button" class="tranche-pill ${idx === 0 ? 'active' : ''}" data-tranche-idx="${idx}">
             <span>0${t.part}</span>
             <span style="opacity:0.4;">/</span>
@@ -363,154 +367,154 @@
           </button>
         `).join('');
 
-          tranchePills.querySelectorAll('.tranche-pill').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const idx = parseInt(btn.getAttribute('data-tranche-idx'), 10);
-              selectTranche(idx);
-            });
+        tranchePills.querySelectorAll('.tranche-pill').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.getAttribute('data-tranche-idx'), 10);
+            selectTranche(idx);
           });
-        } else {
-          trancheSection.style.display = 'none';
-        }
+        });
+      } else {
+        trancheSection.style.display = 'none';
       }
-
-      // Initialize first tranche and UTR fields
-      selectTranche(0);
-      updateUtrFields();
-
-      if (loadingView) loadingView.style.display = 'none';
-      if (activeView) activeView.style.display = 'grid';
     }
 
-    // Show Error
-    function showError(title, msg) {
-      if (loadingView) loadingView.style.display = 'none';
-      if (activeView) activeView.style.display = 'none';
-      if (receiptView) receiptView.style.display = 'none';
-      if (errorTitle) errorTitle.textContent = title;
-      if (errorMsg) errorMsg.textContent = msg;
-      if (errorView) errorView.style.display = 'block';
+    // Initialize first tranche and UTR fields
+    selectTranche(0);
+    updateUtrFields();
+
+    if (loadingView) loadingView.style.display = 'none';
+    if (activeView) activeView.style.display = 'grid';
+  }
+
+  // Show Error
+  function showError(title, msg) {
+    if (loadingView) loadingView.style.display = 'none';
+    if (activeView) activeView.style.display = 'none';
+    if (receiptView) receiptView.style.display = 'none';
+    if (errorTitle) errorTitle.textContent = title;
+    if (errorMsg) errorMsg.textContent = msg;
+    if (errorView) errorView.style.display = 'block';
+  }
+
+  // Fetch Gateway Data
+  async function fetchGatewayData() {
+    if (!code) {
+      showError('Payment Link Not Specified', 'No payment link reference was identified in the URL. Please use /p/{code} or ?code={code}.');
+      return;
     }
 
-    // Fetch Gateway Data
-    async function fetchGatewayData() {
-      if (!code) {
-        showError('Payment Link Not Specified', 'No payment link reference was identified in the URL. Please use /p/{code} or ?code={code}.');
+    try {
+      const res = await fetch(`/api/billing/public/pay/${encodeURIComponent(code)}`);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        showError('Order Not Found', errJson.error || 'This payment link has reached its threshold or does not exist.');
         return;
       }
 
-      try {
-        const res = await fetch(`/api/billing/public/pay/${encodeURIComponent(code)}`);
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          showError('Order Not Found', errJson.error || 'This payment link has reached its threshold or does not exist.');
-          return;
-        }
-
-        const data = await res.json();
-        if (data.is_expired) {
-          showError('Order Expired', 'This payment order has reached its expiration threshold.');
-          return;
-        }
-
-        populateGateway(data);
-      } catch (_) {
-        showError('Connection Error', 'Unable to communicate with the payment server. Please check your network and reload.');
+      const data = await res.json();
+      if (data.is_expired) {
+        showError('Order Expired', 'This payment order has reached its expiration threshold.');
+        return;
       }
+
+      populateGateway(data);
+    } catch (_) {
+      showError('Connection Error', 'Unable to communicate with the payment server. Please check your network and reload.');
     }
+  }
 
-    // Remittance Form Submission
-    if (remittanceForm) {
-      remittanceForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+  // Remittance Form Submission
+  if (remittanceForm) {
+    remittanceForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
 
-        let finalUtr = '';
-        const trancheInputs = document.querySelectorAll('.tranche-utr-input');
+      let finalUtr = '';
+      const trancheInputs = document.querySelectorAll('.tranche-utr-input');
 
-        if (currentMode === 'qr' && trancheInputs.length > 0) {
-          // Multi-tranche submission
-          const utrParts = [];
-          let hasEmpty = false;
+      if (currentMode === 'qr' && trancheInputs.length > 0) {
+        // Multi-tranche submission
+        const utrParts = [];
+        let hasEmpty = false;
 
-          trancheInputs.forEach(input => {
-            const val = input.value.trim();
-            const part = input.getAttribute('data-part');
-            if (!val) {
-              hasEmpty = true;
-              input.focus();
-            }
-            utrParts.push(`Tranche 0${part}: ${val}`);
-          });
-
-          if (hasEmpty) {
-            showToast('Please enter UTR for each tranche');
-            return;
+        trancheInputs.forEach(input => {
+          const val = input.value.trim();
+          const part = input.getAttribute('data-part');
+          if (!val) {
+            hasEmpty = true;
+            input.focus();
           }
+          utrParts.push(`Tranche 0${part}: ${val}`);
+        });
 
-          finalUtr = utrParts.join(' | ');
-        } else {
-          // Single UTR submission (single QR or Bank Transfer)
-          const singleUtrEl = document.getElementById('utrInput');
-          finalUtr = singleUtrEl ? singleUtrEl.value.trim() : '';
-          if (!finalUtr) {
-            showToast('Please enter the transaction reference (UTR)');
-            if (singleUtrEl) singleUtrEl.focus();
-            return;
-          }
-        }
-
-        const amount = amountInput ? Number(amountInput.value) : Number(gatewayData.amount);
-        const payerName = payerNameInput ? payerNameInput.value.trim() : '';
-        const notes = notesInput ? notesInput.value.trim() : '';
-
-        if (isNaN(amount) || amount <= 0) {
-          showToast('Please enter a valid transferred amount');
-          if (amountInput) amountInput.focus();
+        if (hasEmpty) {
+          showToast('Please enter UTR for each tranche');
           return;
         }
 
+        finalUtr = utrParts.join(' | ');
+      } else {
+        // Single UTR submission (single QR or Bank Transfer)
+        const singleUtrEl = document.getElementById('utrInput');
+        finalUtr = singleUtrEl ? singleUtrEl.value.trim() : '';
+        if (!finalUtr) {
+          showToast('Please enter the transaction reference (UTR)');
+          if (singleUtrEl) singleUtrEl.focus();
+          return;
+        }
+      }
+
+      const amount = amountInput ? Number(amountInput.value) : Number(gatewayData.amount);
+      const payerName = payerNameInput ? payerNameInput.value.trim() : '';
+      const notes = notesInput ? notesInput.value.trim() : '';
+
+      if (isNaN(amount) || amount <= 0) {
+        showToast('Please enter a valid transferred amount');
+        if (amountInput) amountInput.focus();
+        return;
+      }
+
+      if (submitRemittanceBtn) {
+        submitRemittanceBtn.disabled = true;
+        submitRemittanceBtn.textContent = 'Submitting...';
+      }
+
+      try {
+        const res = await fetch(`/api/billing/public/pay/${encodeURIComponent(code)}/confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            utr: finalUtr,
+            amount,
+            payerName,
+            notes
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.error || 'Submission failed');
+        }
+
+        showToast('Reference submitted');
+        showReceipt({
+          customer_name: gatewayData?.customer_name,
+          claimed_amount: amount,
+          claimed_utr: finalUtr,
+          link_code: code,
+          invoice_label: gatewayData?.invoice_label,
+          claimed_at: new Date().toISOString()
+        });
+
+      } catch (err) {
+        showToast(err.message || 'Submission failed');
         if (submitRemittanceBtn) {
-          submitRemittanceBtn.disabled = true;
-          submitRemittanceBtn.textContent = 'Submitting...';
+          submitRemittanceBtn.disabled = false;
+          submitRemittanceBtn.textContent = 'Submit Reference';
         }
+      }
+    });
+  }
 
-        try {
-          const res = await fetch(`/api/billing/public/pay/${encodeURIComponent(code)}/confirm`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              utr: finalUtr,
-              amount,
-              payerName,
-              notes
-            })
-          });
-
-          const json = await res.json();
-          if (!res.ok) {
-            throw new Error(json.error || 'Submission failed');
-          }
-
-          showToast('Reference submitted');
-          showReceipt({
-            customer_name: gatewayData?.customer_name,
-            claimed_amount: amount,
-            claimed_utr: finalUtr,
-            link_code: code,
-            invoice_label: gatewayData?.invoice_label,
-            claimed_at: new Date().toISOString()
-          });
-
-        } catch (err) {
-          showToast(err.message || 'Submission failed');
-          if (submitRemittanceBtn) {
-            submitRemittanceBtn.disabled = false;
-            submitRemittanceBtn.textContent = 'Submit Reference';
-          }
-        }
-      });
-    }
-
-    // Initialize
-    fetchGatewayData();
-  }) ();
+  // Initialize
+  fetchGatewayData();
+})();

@@ -1,4 +1,4 @@
-module.exports = function(router, handlers) {
+module.exports = function (router, handlers) {
   // ============= PREFERENCES =============
   // These must come BEFORE the /:id route to avoid the generic route catching them!
   router.get('/preference/:customerName/:productName', handlers.getPreference);          // GET /api/billing/preference/:customerName/:productName
@@ -6,13 +6,13 @@ module.exports = function(router, handlers) {
   router.get('/customer-bill-items/:customerName', handlers.getCustomerBillItems);      // GET /api/billing/customer-bill-items/:customerName
   router.post('/preference', handlers.savePreference);                                   // POST /api/billing/preference
   router.delete('/preference/:customerName/:productName', handlers.deletePreference);    // DELETE /api/billing/preference/:customerName/:productName
-  
+
   // ============= PDF GENERATION =============
   // Invoice PDFs
   router.post('/preview-invoice-pdf', handlers.previewInvoicePDF);      // POST /api/billing/preview-invoice-pdf - Generate preview PDF
   router.post('/export-invoice-pdf', handlers.exportInvoicePDF);        // POST /api/billing/export-invoice-pdf - Generate export PDF
   router.get('/print-invoice-pdf', handlers.printInvoicePDF);           // GET /api/billing/print-invoice-pdf - Generate print PDF
-  
+
   // Estimate / Quotation PDFs
   router.post('/preview-estimate-pdf', handlers.previewEstimatePDF);    // POST /api/billing/preview-estimate-pdf - Generate estimate preview PDF/JPG
   router.post('/export-estimate-pdf', handlers.exportEstimatePDF);      // POST /api/billing/export-estimate-pdf - Generate estimate export PDF
@@ -30,21 +30,23 @@ module.exports = function(router, handlers) {
   router.post('/preview-payment-pdf', handlers.previewPaymentPDF);      // POST /api/billing/preview-payment-pdf - Generate preview PDF
   router.post('/export-payment-pdf', handlers.exportPaymentPDF);        // POST /api/billing/export-payment-pdf - Generate export PDF
   router.get('/print-payment-pdf', handlers.printPaymentPDF);           // GET /api/billing/print-payment-pdf - Generate print PDF
-  
+
   // Opening Balance PDFs
   router.post('/preview-opening-balance', handlers.previewOpeningBalancePDF);  // POST /api/billing/preview-opening-balance - Generate preview image
   router.post('/export-opening-balance', handlers.exportOpeningBalancePDF);  // POST /api/billing/export-opening-balance - Generate opening balance PDF
   router.get('/print-opening-balance', handlers.printOpeningBalancePDF);  // GET /api/billing/print-opening-balance - Generate print PDF
-  
+
   // ============= PUBLIC PAYMENT GATEWAY =============
   router.get('/public/pay/:code', handlers.getPublicPaymentLinkData);          // GET /api/billing/public/pay/:code - Customer Payment Gateway data
   router.post('/public/pay/:code/confirm', handlers.confirmPublicPaymentLink); // POST /api/billing/public/pay/:code/confirm - Submit payment claim
+  router.get('/public/pay/:code/receipt.pdf', handlers.getPublicPaymentReceiptPdf); // GET /api/billing/public/pay/:code/receipt.pdf - Stream Rust WASM PDF receipt
 
   // ============= PAYMENT LINKS MANAGEMENT =============
   router.post('/payment-links', handlers.createPaymentLink);                   // POST /api/billing/payment-links - Generate short payment link
   router.get('/payment-links', handlers.getPaymentLinks);                      // GET /api/billing/payment-links - List payment links & stats
+  router.put('/payment-links/:id', handlers.updatePaymentLink);                // PUT /api/billing/payment-links/:id - Update link details before approval
   router.post('/payment-links/:id/settle', handlers.settlePaymentLink);        // POST /api/billing/payment-links/:id/settle - Settle link into ledger
-  router.delete('/payment-links/:id', handlers.cancelPaymentLink);             // DELETE /api/billing/payment-links/:id - Cancel payment link
+  router.delete('/payment-links/:id', handlers.deletePaymentLink);             // DELETE /api/billing/payment-links/:id - Delete payment link
 
   // ============= PUBLIC ENDPOINTS =============
   router.get('/public/ledger/:customerId', handlers.getPublicLedger); // GET /api/billing/public/ledger/:customerId - Get public ledger data (token or ID)
@@ -74,6 +76,6 @@ module.exports = function(router, handlers) {
   router.get('/:id', handlers.getBill);            // GET /api/billing/:id - Get bill detail (must be last!)
   router.put('/:id', handlers.updateBill);         // PUT /api/billing/:id - Update bill
   router.delete('/:id', handlers.deleteBill);      // DELETE /api/billing/:id - Delete bill
-  
+
   return router;
 };
