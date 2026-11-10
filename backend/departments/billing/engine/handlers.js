@@ -4334,4 +4334,3 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
     return `CREDIT-${Date.now().toString().slice(-8)}`;
   }
 }
-                                                                                                                                                      

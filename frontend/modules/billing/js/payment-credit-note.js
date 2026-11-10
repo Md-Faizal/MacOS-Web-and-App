@@ -1,0 +1,2318 @@
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Payments') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
+
+/**
+ * PaymentCreditNote Module
+ * Handles payment entry and credit note management with advanced features
+ * 
+ * Features:
+ * - Record new payments with real-time balance calculation
+ * - Issue credit notes with detailed tracking
+ * - Dashboard with key metrics and analytics
+ * - Payment method management with icons
+ * - Advanced transaction history with filtering
+ * - Quick actions and smart defaults
+ */
+
+class PaymentCreditNote {
+  get billingData() {
+    return this.billingApp?.billingData || this._billingData || {};
+  }
+  set billingData(val) {
+    this._billingData = val;
+  }
+
+  refreshCustomerDropdowns() {
+    const customers = this.getUniqueCustomers();
+    ['paymentCustomerSelect', 'creditNoteCustomerSelect', 'plCustomerSelect'].forEach(id => {
+      const select = document.getElementById(id);
+      if (select) {
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">-- Choose a customer --</option>' +
+          customers.map(c => `<option value="${c}"${c === currentVal ? ' selected' : ''}>${c}</option>`).join('');
+      }
+    });
+  }
+
+  startPolling() {
+    if (typeof window !== 'undefined' && window.CoreDataBus && !this._dataBusUnsub) {
+      this._dataBusUnsub = window.CoreDataBus.subscribeDomain('billing:', (data) => {
+        this.loadRecentTransactions();
+        this.loadTransactionHistory();
+        if (this.updateStatsDisplay) this.updateStatsDisplay();
+        if (data?.domain === 'contacts:customer') {
+          this.refreshCustomerDropdowns();
+        }
+      });
+    }
+  }
+
+  stopPolling() {
+    // Keep real-time CoreDataBus listener alive so updates are never missed while tab is hidden
+  }
+
+  constructor(billingApp) {
+    this.billingApp = billingApp;
+    this.viewContainer = billingApp.viewContainer;
+    this._billingData = billingApp.billingData || {};
+    this.currentBillId = null;
+    this.paymentMethod = 'cash';
+    this.selectedBillDetails = null;
+    this.startPolling();
+    window.currentPaymentManager = this;
+  }
+
+  isWorkerUser() {
+    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  }
+
+  /**
+   * Format a date for <input type="date"> (YYYY-MM-DD)
+   */
+  formatDateForInput(dateInput) {
+    if (!dateInput) return '';
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return '';
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Format a date for <input type="datetime-local"> (YYYY-MM-DDTHH:mm)
+   */
+  formatDateTimeForInput(dateInput) {
+    if (!dateInput) return '';
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return '';
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  /**
+   * Render the enhanced payment and credit note interface
+   */
+  async render(params = null) {
+    // Refresh billingData reference from billingApp (in case it was reloaded)
+    this.billingData = this.billingApp.billingData || {};
+
+    const stats = await this.calculateStats();
+
+    this.viewContainer.innerHTML = `
+      <div class="payment-credit-container">
+        <!-- Enhanced Header with Stats -->
+        <div class="payment-credit-header-enhanced">
+          <div class="header-title">
+            <h2>💰 Payment & Credit Manager</h2>
+            <p>Manage payments, track balances & issue credits</p>
+          </div>
+          <div class="header-stats">
+            <div class="stat-box">
+              <div class="stat-value">₹${stats.totalPending.toFixed(2)}</div>
+              <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value">${stats.partialBills}</div>
+              <div class="stat-label">Partial Bills</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value">₹${stats.totalPaid.toFixed(2)}</div>
+              <div class="stat-label">Collected</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Enhanced Tabs -->
+        <div class="payment-credit-tabs-enhanced">
+          <button class="tab-btn-enhanced active" data-tab="payment">
+            <span class="tab-icon">💳</span> Record Payment
+          </button>
+          <button class="tab-btn-enhanced" data-tab="credit-note">
+            <span class="tab-icon">📋</span> Issue Credit Note
+          </button>
+          <button class="tab-btn-enhanced" data-tab="history">
+            <span class="tab-icon">📊</span> Transaction History
+          </button>
+          <button class="tab-btn-enhanced" data-tab="payment-links">
+            <span class="tab-icon">⚡</span> Payment Links
+          </button>
+        </div>
+
+        <!-- Record Payment Tab -->
+        <div id="payment-tab" class="tab-content-enhanced active">
+          <div class="form-container">
+            <div class="form-section">
+              <div class="section-title">Customer Information</div>
+              
+              <div class="form-group-enhanced">
+                <label>Select Customer *</label>
+                <select id="paymentCustomerSelect" class="form-input-enhanced">
+                  <option value="">-- Choose a customer --</option>
+                  ${this.getUniqueCustomers()
+        .map(customer => `<option value="${customer}">${customer}</option>`)
+        .join('')}
+                </select>
+              </div>
+
+              <!-- Customer Balance Summary Card -->
+              <div id="customerBalanceCard" class="bill-details-card" style="display: none;">
+                <div class="details-row">
+                  <span class="label">Total Due</span>
+                  <span id="customerTotalDue" class="value highlight-balance">₹0.00</span>
+                </div>
+                <div class="details-row">
+                  <span class="label">Outstanding Bills</span>
+                  <span id="customerBillCount" class="value">0</span>
+                </div>
+                <div class="progress-bar">
+                  <div id="paymentProgress" class="progress-fill"></div>
+                </div>
+                <div class="details-row">
+                  <span class="label" style="font-size: 10px;">Payment will settle bills in order of priority</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="section-title">Payment Details</div>
+              
+              <div class="form-row-enhanced">
+                <div class="form-group-enhanced">
+                  <label>Payment Amount *</label>
+                  <div class="input-with-button">
+                    <input type="number" id="paymentAmount" class="form-input-enhanced" placeholder="0.00" step="0.01" min="0">
+                    <button id="payFullBtn" class="quick-btn" title="Pay all outstanding dues">Pay Full Due</button>
+                    <button type="button" id="quickGenPaymentLinkBtn" class="quick-btn" style="background:rgba(67,97,238,0.12);color:#4361ee;border-color:rgba(67,97,238,0.3);" title="Create tiny gateway link for customer">⚡ Gateway Link</button>
+                  </div>
+                </div>
+                
+                <div class="form-group-enhanced">
+                  <label>Payment Method *</label>
+                  <select id="paymentMethod" class="form-input-enhanced">
+                    <option value="cash">💵 Cash</option>
+                    <option value="cheque">🏦 Cheque</option>
+                    <option value="bank-transfer">🏧 Bank Transfer</option>
+                    <option value="online">💻 Online Payment</option>
+                    <option value="upi">📱 UPI</option>
+                    <option value="card">💳 Card</option>
+                    <option value="other">📝 Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-enhanced">
+                <div class="form-group-enhanced">
+                  <label>Payment Date *</label>
+                  <input type="date" id="paymentDate" class="form-input-enhanced" value="${this.formatDateForInput(new Date())}">
+                </div>
+                
+                <div class="form-group-enhanced">
+                  <label>Reference Number</label>
+                  <input type="text" id="paymentReference" class="form-input-enhanced" placeholder="Transaction ID, Cheque #, etc.">
+                </div>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Notes (Optional)</label>
+                <textarea id="paymentNotes" class="form-textarea-enhanced" placeholder="Add any special notes..."></textarea>
+              </div>
+            </div>
+
+            <div class="form-actions-enhanced">
+              <button id="recordPaymentBtn" class="btn btn-primary-enhanced">✓ Record Payment</button>
+              <button id="clearPaymentBtn" class="btn btn-secondary-enhanced">Clear Form</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Issue Credit Note Tab -->
+        <div id="credit-note-tab" class="tab-content-enhanced">
+          <div class="form-container">
+            <div class="form-section">
+              <div class="section-title">Select Customer</div>
+              
+              <div class="form-group-enhanced">
+                <label>Customer *</label>
+                <select id="creditNoteCustomerSelect" class="form-input-enhanced">
+                  <option value="">-- Choose a customer --</option>
+                  ${this.getUniqueCustomers()
+        .map(customer => `<option value="${customer}">${customer}</option>`)
+        .join('')}
+                </select>
+              </div>
+
+              <!-- Customer Info Card for Credit Notes -->
+              <div id="creditCustomerInfoCard" class="bill-details-card" style="display: none;">
+                <div class="details-row">
+                  <span class="label">Total Outstanding</span>
+                  <span id="creditCustomerDue" class="value highlight-balance">₹0.00</span>
+                </div>
+                <div class="details-row">
+                  <span class="label">Active Bills</span>
+                  <span id="creditCustomerBillCount" class="value">0</span>
+                </div>
+                <div class="details-row">
+                  <span class="label" style="font-size: 10px;">Credit will be applied to reduce total due</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="section-title">Credit Details</div>
+              
+              <div class="form-row-enhanced">
+                <div class="form-group-enhanced">
+                  <label>Credit Amount *</label>
+                  <input type="number" id="creditAmount" class="form-input-enhanced" placeholder="0.00" step="0.01" min="0">
+                </div>
+                
+                <div class="form-group-enhanced">
+                  <label>Reason *</label>
+                  <select id="creditReason" class="form-input-enhanced">
+                    <option value="">-- Select reason --</option>
+                    <option value="overpayment">↩️ Overpayment/Refund</option>
+                    <option value="product-return">📦 Product Return</option>
+                    <option value="discount">🏷️ Discount Adjustment</option>
+                    <option value="damage">⚠️ Damaged/Defective</option>
+                    <option value="billing-error">❌ Billing Error</option>
+                    <option value="other">📝 Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-enhanced">
+                <div class="form-group-enhanced">
+                  <label>Credit Date *</label>
+                  <input type="date" id="creditNoteDate" class="form-input-enhanced" value="${this.formatDateForInput(new Date())}">
+                </div>
+                
+                <div class="form-group-enhanced">
+                  <label>Reference Number</label>
+                  <input type="text" id="creditNoteReference" class="form-input-enhanced" placeholder="Reference ID, etc.">
+                </div>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Description</label>
+                <textarea id="creditDescription" class="form-textarea-enhanced" placeholder="Detailed explanation for the credit note..."></textarea>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Attachment (Image)</label>
+                <input type="file" id="creditAttachment" class="form-input-enhanced" accept="image/jpeg, image/png, image/webp" style="display: none;">
+                <button type="button" id="creditAttachmentBtn" class="btn btn-secondary-enhanced" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; padding: 10px; border: 1px dashed #999; background: #f9fafb; cursor: pointer; border-radius: 4px; color: #374151;">
+                  <span style="font-size: 16px;">📎</span> <span>Choose Image</span>
+                </button>
+                <div style="font-size: 11px; color: #666; margin-top: 4px;">Max size: 5MB. JPG, PNG, WEBP allowed.</div>
+                
+                <div id="attachmentPreviewContainer" style="display: none; margin-top: 10px; position: relative; max-width: 200px;">
+                  <img id="attachmentPreviewImg" src="" style="width: 100%; border-radius: 4px; border: 1px solid #ddd; display: block;">
+                  <button id="removeAttachmentBtn" type="button" style="position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">✕</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions-enhanced">
+              <button id="issueCreditNoteBtn" class="btn btn-warning-enhanced">📋 Issue Credit Note</button>
+              <button id="clearCreditBtn" class="btn btn-secondary-enhanced">Clear Form</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transaction History Tab -->
+        <div id="history-tab" class="tab-content-enhanced">
+          <div class="history-container">
+            <div class="history-controls">
+              <input type="text" id="historySearch" class="search-input" placeholder="Search by bill #, customer, or reference...">
+              <select id="historyFilter" class="filter-select">
+                <option value="all">All Transactions</option>
+                <option value="payment">Payments Only</option>
+                <option value="credit-note">Credit Notes Only</option>
+                <option value="opening-balance">📊 Opening Balance</option>
+              </select>
+            </div>
+            
+            <div id="transactionHistory" class="transaction-history">
+              <p class="loading-state">Loading transactions...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Links Tab -->
+        <div id="payment-links-tab" class="tab-content-enhanced">
+          <div class="payment-links-layout">
+            
+            <!-- Left: Generator Card -->
+            <div class="pl-card">
+              <div class="pl-card-title">
+                <span>⚡ Create Payment Link</span>
+                <span style="font-size: 10px; color: var(--text-secondary); text-transform: none;">mac.faizal.uk/p/...</span>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Select Customer *</label>
+                <select id="plCustomerSelect" class="form-input-enhanced">
+                  <option value="">-- Choose a customer --</option>
+                  ${this.getUniqueCustomers().map(customer => `<option value="${customer}">${customer}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Payable Amount (₹) *</label>
+                <div class="input-with-button">
+                  <input type="number" id="plAmount" class="form-input-enhanced" placeholder="0.00" step="0.01" min="1">
+                  <button type="button" id="plFullDueBtn" class="quick-btn">Full Due</button>
+                </div>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Description / Note</label>
+                <input type="text" id="plDescription" class="form-input-enhanced" placeholder="e.g. Statement Settlement" />
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Link Expiry</label>
+                <select id="plExpiry" class="form-input-enhanced">
+                  <option value="7" selected>7 Days</option>
+                  <option value="1">24 Hours</option>
+                  <option value="3">3 Days</option>
+                  <option value="30">30 Days</option>
+                  <option value="0">Never (Persistent)</option>
+                </select>
+              </div>
+
+              <button type="button" id="plGenerateBtn" class="btn btn-primary-enhanced" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #4361EE 0%, #7209B7 100%); border: none;">
+                ⚡ Generate Short Link
+              </button>
+
+              <!-- Generated Result Card -->
+              <div id="plResultCard" class="pl-result-card">
+                <div style="font-size: 11px; font-weight: 700; color: #4361EE; text-transform: uppercase;">✓ Link Generated</div>
+                <div id="plResultUrl" class="pl-result-url">https://mac.faizal.uk/p/...</div>
+                <div class="pl-btn-group">
+                  <button type="button" class="pl-btn primary" id="plCopyBtn">📋 Copy Link</button>
+                  <button type="button" class="pl-btn whatsapp" id="plWhatsAppBtn">💬 WhatsApp</button>
+                  <a href="#" target="_blank" class="pl-btn" id="plOpenBtn">↗ Open</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Links & Remittance Ledger -->
+            <div class="pl-card">
+              <div class="pl-card-title">
+                <span>Recent Payment Links & Remittances</span>
+                <button type="button" class="pl-btn" id="plRefreshBtn" style="padding: 4px 8px; font-size: 10px;">🔄 Refresh</button>
+              </div>
+
+              <div class="pl-table-wrap">
+                <table class="pl-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Customer</th>
+                      <th>Amount</th>
+                      <th>Short Link</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="plTableBody">
+                    <tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">Loading payment links...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Remittance Review & Edit Modal -->
+          <div id="plReviewModal" class="pl-modal-overlay" style="display:none;">
+            <div class="pl-modal-card">
+              <div class="pl-modal-header">
+                <div class="pl-modal-title">
+                  <span>🔍 Review Remittance Submission</span>
+                  <span id="plModalStatusBadge" class="pl-badge claimed">Claimed</span>
+                </div>
+                <button type="button" class="pl-modal-close" onclick="window.currentPaymentManager?.closeReviewModal()">&times;</button>
+              </div>
+
+              <div class="pl-modal-body">
+                <!-- Read-only client submission summary -->
+                <div class="pl-submission-summary">
+                  <div class="pl-summary-row">
+                    <span class="pl-summary-label">Customer:</span>
+                    <strong id="plModalCustomer">-</strong>
+                  </div>
+                  <div class="pl-summary-row">
+                    <span class="pl-summary-label">Original Link Amount:</span>
+                    <span id="plModalOriginalAmount" style="font-family:monospace;font-weight:700;">₹0.00</span>
+                  </div>
+                  <div class="pl-summary-row">
+                    <span class="pl-summary-label">Remitter Name:</span>
+                    <span id="plModalPayerName">Not specified</span>
+                  </div>
+                  <div class="pl-summary-row">
+                    <span class="pl-summary-label">Submission Time:</span>
+                    <span id="plModalTime">-</span>
+                  </div>
+                  <div class="pl-summary-row" id="plModalNotesRow">
+                    <span class="pl-summary-label">Client Notes:</span>
+                    <span id="plModalClientNotes">None</span>
+                  </div>
+                </div>
+
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#475569;margin:14px 0 8px;">
+                  Verification &amp; Ledger Adjustments
+                </div>
+
+                <!-- Editable fields -->
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Verified / Settled Amount (₹) *</label>
+                  <input type="number" id="plModalAmount" class="form-input-enhanced" step="0.01" min="1" required />
+                </div>
+
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Verified UTR / Transaction Reference *</label>
+                  <input type="text" id="plModalUtr" class="form-input-enhanced" required />
+                </div>
+
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Payment Medium</label>
+                  <select id="plModalMedium" class="form-input-enhanced">
+                    <option value="upi" selected>UPI</option>
+                    <option value="bank_transfer">Bank Transfer / NEFT / IMPS</option>
+                    <option value="cash">Cash</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Settlement Date</label>
+                  <input type="date" id="plModalDate" class="form-input-enhanced" />
+                </div>
+
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Settlement Notes (Optional)</label>
+                  <input type="text" id="plModalNotes" class="form-input-enhanced" placeholder="Verified from bank statement" />
+                </div>
+              </div>
+
+              <div class="pl-modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="window.currentPaymentManager?.closeReviewModal()">Cancel</button>
+                <button type="button" class="btn" id="plModalSaveOnlyBtn" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">💾 Save Details Only</button>
+                <button type="button" class="btn btn-primary-enhanced" id="plModalApproveBtn" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;">
+                  ✓ Approve &amp; Settle to Ledger
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.attachEventListeners();
+    this.loadRecentTransactions();
+
+    // Handle deep link params
+    if (params && params.customerName) {
+      log.debug(`🔗 PaymentCreditNote: Pre-selecting customer ${params.customerName}`);
+      setTimeout(() => {
+        const select = document.getElementById('paymentCustomerSelect');
+        if (select) {
+          select.value = params.customerName;
+          // Trigger change event to load balance
+          select.dispatchEvent(new Event('change'));
+        }
+      }, 300);
+    }
+  }
+
+  /**
+   * Attach enhanced event listeners
+   */
+  attachEventListeners() {
+    // Quick link generation button in record payment tab
+    document.getElementById('quickGenPaymentLinkBtn')?.addEventListener('click', async () => {
+      const currentCust = document.getElementById('paymentCustomerSelect')?.value;
+      const currentAmount = document.getElementById('paymentAmount')?.value;
+      this.switchTab('payment-links');
+      if (currentCust) {
+        setTimeout(async () => {
+          const plSelect = document.getElementById('plCustomerSelect');
+          if (plSelect) {
+            plSelect.value = currentCust;
+            if (currentAmount && Number(currentAmount) > 0) {
+              const plAmount = document.getElementById('plAmount');
+              if (plAmount) plAmount.value = Number(currentAmount).toFixed(2);
+            } else {
+              await this.preloadPaymentLinkDue();
+            }
+          }
+        }, 120);
+      }
+    });
+
+    // Payment links tab generator events
+    document.getElementById('plFullDueBtn')?.addEventListener('click', async () => {
+      await this.preloadPaymentLinkDue();
+    });
+
+    document.getElementById('plCustomerSelect')?.addEventListener('change', async () => {
+      await this.preloadPaymentLinkDue();
+    });
+
+    document.getElementById('plGenerateBtn')?.addEventListener('click', () => {
+      this.createPaymentLink();
+    });
+
+    document.getElementById('plRefreshBtn')?.addEventListener('click', () => {
+      this.loadPaymentLinks();
+    });
+
+    // Tab switching
+    document.querySelectorAll('.tab-btn-enhanced').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const tabName = e.currentTarget.dataset.tab;
+        this.switchTab(tabName);
+      });
+    });
+
+    // Customer selection change - show balance summary
+    const paymentCustomerSelect = document.getElementById('paymentCustomerSelect');
+    if (paymentCustomerSelect) {
+      paymentCustomerSelect.addEventListener('change', () => {
+        this.updateCustomerBalance().catch(err => log.error('Error updating customer balance:', err));
+      });
+    }
+
+    // Payment date change - refresh reference number
+    const paymentDate = document.getElementById('paymentDate');
+    if (paymentDate) {
+      paymentDate.addEventListener('change', () => {
+        const paymentReference = document.getElementById('paymentReference');
+        const paymentCustomerSelect = document.getElementById('paymentCustomerSelect');
+        if (paymentReference && paymentCustomerSelect.value) {
+          // Clear reference to trigger auto-fill
+          paymentReference.value = '';
+          this.updateCustomerBalance().catch(err => log.error('Error updating customer balance:', err));
+        }
+      });
+    }
+
+    // Quick Payment All button
+    const payFullBtn = document.getElementById('payFullBtn');
+    if (payFullBtn) {
+      payFullBtn.addEventListener('click', () => {
+        this.payFullDue().catch(err => log.error('Error in payFullDue:', err));
+      });
+    }
+
+    // Record payment
+    document.getElementById('recordPaymentBtn')?.addEventListener('click', () => {
+      this.recordPayment();
+    });
+
+    // Clear payment form
+    document.getElementById('clearPaymentBtn')?.addEventListener('click', () => {
+      this.clearPaymentForm();
+      if (this.pendingSettlementLinkId) {
+        try {
+          fetch(`/api/billing/payment-links/${this.pendingSettlementLinkId}/settle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_method: method, notes })
+          });
+        } catch (_) { }
+        this.pendingSettlementLinkId = null;
+      }
+    });
+
+    // Issue credit note
+    document.getElementById('issueCreditNoteBtn')?.addEventListener('click', () => {
+      this.issueCreditNote();
+    });
+
+    // Clear credit note form
+    document.getElementById('clearCreditBtn')?.addEventListener('click', () => {
+      this.clearCreditNoteForm();
+    });
+
+    // Credit note customer selection change - show customer info
+    const creditNoteCustomerSelect = document.getElementById('creditNoteCustomerSelect');
+    if (creditNoteCustomerSelect) {
+      creditNoteCustomerSelect.addEventListener('change', () => {
+        this.updateCreditNoteCustomerInfo().catch(err => log.error('Error updating credit note customer info:', err));
+      });
+    }
+
+    // Credit note date change - refresh reference number
+    const creditNoteDate = document.getElementById('creditNoteDate');
+    if (creditNoteDate) {
+      creditNoteDate.addEventListener('change', () => {
+        const creditNoteReference = document.getElementById('creditNoteReference');
+        const creditNoteCustomerSelect = document.getElementById('creditNoteCustomerSelect');
+        if (creditNoteReference && creditNoteCustomerSelect.value) {
+          // Clear reference to trigger auto-fill
+          creditNoteReference.value = '';
+          this.updateCreditNoteCustomerInfo().catch(err => log.error('Error updating credit note customer info:', err));
+        }
+      });
+    }
+
+    // History search and filter
+    const historySearch = document.getElementById('historySearch');
+    const historyFilter = document.getElementById('historyFilter');
+    if (historySearch) {
+      historySearch.addEventListener('input', () => this.filterTransactionHistory());
+    }
+    if (historyFilter) {
+      historyFilter.addEventListener('change', () => this.filterTransactionHistory());
+    }
+
+    // Attachment Handlers
+    const creditAttachmentBtn = document.getElementById('creditAttachmentBtn');
+    const creditAttachment = document.getElementById('creditAttachment');
+    const attachmentPreviewContainer = document.getElementById('attachmentPreviewContainer');
+    const attachmentPreviewImg = document.getElementById('attachmentPreviewImg');
+    const removeAttachmentBtn = document.getElementById('removeAttachmentBtn');
+
+    if (creditAttachmentBtn && creditAttachment) {
+      creditAttachmentBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        creditAttachment.click();
+      });
+
+      creditAttachment.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Validation
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          this.showAlert('❌ Please select a valid image (JPG, PNG, or WEBP)', 'error');
+          e.target.value = '';
+          return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          this.showAlert('❌ Image must be less than 5MB', 'error');
+          e.target.value = '';
+          return;
+        }
+
+        try {
+          const compressedBase64 = await this.compressImage(file);
+          if (attachmentPreviewImg) attachmentPreviewImg.src = compressedBase64;
+          if (attachmentPreviewContainer) attachmentPreviewContainer.style.display = 'block';
+          // Store it in a dataset
+          creditAttachment.dataset.compressedData = compressedBase64;
+        } catch (err) {
+          log.error('Error compressing image:', err);
+          this.showAlert('❌ Failed to process image', 'error');
+          e.target.value = '';
+        }
+      });
+    }
+
+    if (removeAttachmentBtn) {
+      removeAttachmentBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const creditAttachment = document.getElementById('creditAttachment');
+        const attachmentPreviewContainer = document.getElementById('attachmentPreviewContainer');
+        if (creditAttachment) {
+          creditAttachment.value = '';
+          creditAttachment.dataset.compressedData = '';
+        }
+        if (attachmentPreviewContainer) attachmentPreviewContainer.style.display = 'none';
+      });
+    }
+  }
+
+  /**
+   * Compress image before upload
+   */
+  compressImage(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Get compressed data
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressedDataUrl);
+        };
+        img.onerror = (error) => reject(error);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  }
+
+  /**
+   * Switch tabs
+   */
+  switchTab(tabName) {
+    // Hide all tabs and remove active from buttons
+    document.querySelectorAll('.tab-content-enhanced').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn-enhanced').forEach(b => b.classList.remove('active'));
+
+    // Show selected tab and activate button
+    document.getElementById(`${tabName}-tab`)?.classList.add('active');
+    document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
+
+    // Load history if switching to history tab
+    if (tabName === 'history') {
+      this.loadTransactionHistory();
+    }
+    if (tabName === 'payment-links') {
+      this.loadPaymentLinks();
+    }
+  }
+
+  /**
+   * Update customer balance display
+   */
+  async updateCustomerBalance() {
+    const customerSelect = document.getElementById('paymentCustomerSelect');
+    const customerBalanceCard = document.getElementById('customerBalanceCard');
+    const customerTotalDue = document.getElementById('customerTotalDue');
+    const customerBillCount = document.getElementById('customerBillCount');
+    const paymentProgress = document.getElementById('paymentProgress');
+    const paymentAmount = document.getElementById('paymentAmount');
+    const paymentReference = document.getElementById('paymentReference');
+
+    if (!customerSelect.value) {
+      if (customerBalanceCard) customerBalanceCard.style.display = 'none';
+      return;
+    }
+
+    const customerName = customerSelect.value;
+
+    try {
+      // Get customer outstanding from API (now includes opening_balance)
+      const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+
+      const totalDue = stats.total_outstanding || 0;
+      const openingBalance = stats.opening_balance || 0;
+      const invoicedAmount = stats.total_invoiced || 0;
+      const outstandingCount = stats.outstanding_bills_count || 0;
+      const totalBills = stats.total_bills || 0;
+      const progressPercent = totalBills > 0 ? ((totalBills - outstandingCount) / totalBills) * 100 : 0;
+      const customerId = stats.customer_id;
+
+      if (customerTotalDue) {
+        // Show opening balance separately in card
+        let balanceHTML = `<strong>₹${totalDue.toFixed(2)}</strong>`;
+        if (openingBalance !== 0) {
+          const openingDisplay = openingBalance > 0 ? `<span style="color: #dc2626;">+ ₹${openingBalance.toFixed(2)} (Opening)</span>` : `<span style="color: #16a34a;">- ₹${Math.abs(openingBalance).toFixed(2)} (Credit)</span>`;
+          balanceHTML = `<div style="font-size: 11px; margin-bottom: 2px;">Invoices: <strong>₹${invoicedAmount.toFixed(2)}</strong></div><div style="font-size: 11px;">${openingDisplay}</div><div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #ddd; font-size: 12px;">Total: ${balanceHTML}</div>`;
+        }
+        customerTotalDue.innerHTML = balanceHTML;
+      }
+      if (customerBillCount) customerBillCount.textContent = `${outstandingCount}`;
+      if (paymentProgress) paymentProgress.style.width = `${progressPercent}%`;
+      if (customerBalanceCard) customerBalanceCard.style.display = 'block';
+
+      // Auto-fill amount with total due
+      if (paymentAmount && paymentAmount.value === '') {
+        paymentAmount.placeholder = `Max: ₹${totalDue.toFixed(2)}`;
+      }
+
+      // Auto-fill reference number with next payment reference
+      if (paymentReference && !paymentReference.value && customerId) {
+        try {
+          const paymentDate = document.getElementById('paymentDate')?.value || this.formatDateForInput(new Date());
+          const refResponse = await fetch(`/api/billing/invoices/payments/next-reference?customer_id=${customerId}&payment_date=${paymentDate}`);
+          if (refResponse.ok) {
+            const refData = await refResponse.json();
+            paymentReference.value = refData.reference_number;
+            paymentReference.placeholder = refData.reference_number;
+          }
+        } catch (err) {
+          log.warn('Could not fetch next reference number:', err);
+        }
+      }
+    } catch (error) {
+      log.error('Error updating customer balance:', error);
+      if (customerBalanceCard) customerBalanceCard.style.display = 'none';
+    }
+  }
+
+  /**
+   * Pay full outstanding due for customer
+   */
+  async payFullDue() {
+    const customerSelect = document.getElementById('paymentCustomerSelect');
+    const paymentAmount = document.getElementById('paymentAmount');
+
+    if (!customerSelect.value) {
+      this.showAlert('Please select a customer first', 'warning');
+      return;
+    }
+
+    const customerName = customerSelect.value;
+
+    try {
+      // Get customer outstanding from API
+      const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+      const totalDue = stats.total_outstanding || 0;
+
+      if (paymentAmount) {
+        paymentAmount.value = totalDue.toFixed(2);
+      }
+    } catch (error) {
+      log.error('Error fetching full due amount:', error);
+      this.showAlert('Error fetching customer balance', 'error');
+    }
+  }
+
+  /**
+   * Calculate amount already paid for a bill
+   */
+  calculateBillPaid(billId) {
+    return (this.billingData.payments || [])
+      .filter(p => (p.type === 'PAYMENT' || !p.type) && (p.bill_id == billId || (p.billsSettled && p.billsSettled.some(b => b.billId === billId))))
+      .reduce((sum, p) => {
+        const billFromParent = p.billsSettled?.find(b => b.billId === billId);
+        return sum + (billFromParent ? billFromParent.amount : (p.amount || 0));
+      }, 0);
+  }
+
+  /**
+   * Get unique customer names from scoped contacts and bills
+   */
+  getUniqueCustomers() {
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const contacts = scoped ? scoped.contacts : (this.billingData.contacts || []);
+    const bills = scoped ? scoped.bills : (this.billingData.bills || []);
+
+    const customers = new Set();
+
+    // Add customers from contacts list first
+    contacts.forEach(contact => {
+      if (contact.name) customers.add(contact.name);
+    });
+
+    // Add any customer names from active scoped bills
+    bills.forEach(bill => {
+      if (bill.customer_name) {
+        customers.add(bill.customer_name);
+      }
+    });
+
+    return Array.from(customers).sort();
+  }
+
+  /**
+   * Calculate overall statistics
+   */
+  /**
+   * Update the stats display in the header without full re-render
+   */
+  async updateStatsDisplay() {
+    // Refresh billingData reference from billingApp (in case it was reloaded)
+    this.billingData = this.billingApp.billingData || {};
+
+    const stats = await this.calculateStats();
+
+    const statBoxes = document.querySelectorAll('.payment-credit-container .stat-box');
+    if (statBoxes.length >= 3) {
+      // Update Pending
+      statBoxes[0].querySelector('.stat-value').textContent = `₹${stats.totalPending.toFixed(2)}`;
+      // Update Partial Bills
+      statBoxes[1].querySelector('.stat-value').textContent = `${stats.partialBills}`;
+      // Update Collected
+      statBoxes[2].querySelector('.stat-value').textContent = `₹${stats.totalPaid.toFixed(2)}`;
+    }
+  }
+
+  async calculateStats() {
+    const isWorker = this.billingApp.isWorkerUser ? this.billingApp.isWorkerUser() : false;
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+
+    const bills = scoped ? (scoped.statsBills || scoped.bills) : (this.billingData.bills || []);
+    const contacts = scoped ? (scoped.statsContacts || scoped.contacts) : (this.billingData.contacts || []);
+    const payments = scoped ? (scoped.statsPayments || scoped.payments) : (this.billingData.payments || []);
+
+    let totalInvoiced = 0;
+    let partialBills = 0;
+    let totalPaid = 0;
+    let totalOpeningBalance = 0;
+
+    // Calculate total invoiced amount and partial bills
+    bills.forEach(bill => {
+      totalInvoiced += (bill.total || 0);
+      if (bill.status === 'partial') partialBills++;
+    });
+
+    // If worker, calculate totalPaid directly from scoped payments
+    if (isWorker) {
+      payments.forEach(p => {
+        if (p.type === 'PAYMENT' || !p.type) {
+          totalPaid += (p.amount || 0);
+        } else if (p.type === 'CREDIT_NOTE') {
+          totalPaid += (p.credit_amount || 0);
+        }
+      });
+    } else {
+      // Admin: Get total collected directly from database (respects exclude_from_stats)
+      try {
+        if (this.billingApp.api && this.billingApp.api.getTotalCollected) {
+          const result = await this.billingApp.api.getTotalCollected();
+          totalPaid = result.total_collected || 0;
+        }
+      } catch (error) {
+        log.warn('Error fetching total collected:', error.message);
+        totalPaid = 0;
+      }
+    }
+
+    contacts.forEach(contact => {
+      totalOpeningBalance += (contact.opening_balance || 0);
+    });
+
+    // Pending = Total Invoiced + Opening Balance - Total Collected
+    const totalPending = Math.max(0, totalInvoiced + totalOpeningBalance - totalPaid);
+
+    return { totalPending, partialBills, totalPaid };
+  }
+
+  /**
+   * Record a new payment (applies to customer's outstanding bills in priority order)
+   */
+  async recordPayment() {
+    const customerName = document.getElementById('paymentCustomerSelect')?.value;
+    const amount = parseFloat(document.getElementById('paymentAmount')?.value || 0);
+    const method = document.getElementById('paymentMethod')?.value;
+    const date = document.getElementById('paymentDate')?.value;
+    const reference = document.getElementById('paymentReference')?.value;
+    const notes = document.getElementById('paymentNotes')?.value;
+
+    // Validation
+    if (!customerName) {
+      this.showAlert('❌ Please select a customer', 'error');
+      return;
+    }
+
+    if (amount <= 0) {
+      this.showAlert('❌ Please enter a valid payment amount', 'error');
+      return;
+    }
+
+    // Find customer ID from bills data or contacts data
+    let customerId = (this.billingData.bills || []).find(b => b.customer_name === customerName)?.customer_id;
+
+    // If not in bills, look in contacts (for opening balance settlements)
+    if (!customerId && this.billingData.contacts) {
+      customerId = this.billingData.contacts.find(c => c.name === customerName)?.id;
+    }
+
+    if (!customerId) {
+      this.showAlert('❌ Customer ID not found', 'error');
+      return;
+    }
+
+    // 1. Identify if this payment is being recorded FROM a specific bill (optional)
+    const specificInvoiceId = this.currentBillId || null;
+
+    // 2. Prepare the single consolidated payment record
+    const paymentData = {
+      invoice_id: specificInvoiceId,
+      customer_id: customerId,
+      amount: amount,
+      payment_medium: method || null,
+      reference_number: reference || null,
+      payment_date: date || this.formatDateForInput(new Date()),
+      notes: notes || null
+    };
+
+    log.debug('Sending single consolidated payment data:', paymentData);
+
+    let paymentSaved = false;
+    try {
+      const response = await fetch('/api/billing/invoices/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = result.error || `HTTP ${response.status}`;
+        throw new Error(`Failed to save payment: ${errorMsg}`);
+      }
+
+      paymentSaved = true;
+      log.debug(`✓ Consolidated payment of ₹${amount.toFixed(2)} saved successfully`, result);
+      this.showAlert(`✓ Payment of ₹${amount.toFixed(2)} recorded successfully for ${customerName}`, 'success');
+      this.clearPaymentForm();
+
+      // Invalidate API read cache immediately
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
+      // Optimistic local store update for 0ms instantaneous UI feedback
+      const createdPayment = {
+        id: result.payment_id || result.id || Date.now(),
+        transaction_id: specificInvoiceId,
+        invoice_id: specificInvoiceId,
+        customer_id: customerId,
+        customer_name: customerName,
+        amount: amount,
+        payment_medium: method || 'cash',
+        reference_number: result.reference_number || reference || 'PMT',
+        payment_date: date || this.formatDateForInput(new Date()),
+        type: 'PAYMENT',
+        notes: notes || null,
+        created_at: new Date().toISOString()
+      };
+      if (this.billingApp?.billingData) {
+        if (!this.billingApp.billingData.payments) this.billingApp.billingData.payments = [];
+        this.billingApp.billingData.payments.unshift(createdPayment);
+      }
+
+      // Publish to CoreDataBus (intra-window and cross-tab reactive sync)
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'created', createdPayment);
+        window.CoreDataBus.publish('billing:ledger', 'updated', {
+          customer_id: customerId,
+          customer_name: customerName,
+          amount: amount,
+          current_due: result.current_due
+        });
+      }
+
+      // Background canonical reload with forceRefresh
+      if (this.billingApp.loadBillingDataFromAPI) {
+        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: true });
+      }
+
+      // Dispatched reactively via CoreDataBus event stream with full customer and amount formatting
+      await this.updateCustomerBalance();
+      this.loadRecentTransactions();
+      await this.updateStatsDisplay();
+
+      // Immediately sync active ledger if mounted
+      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+      if (ledgerInstance) {
+        await ledgerInstance.syncWithServer(true);
+      }
+    } catch (error) {
+      if (paymentSaved) {
+        log.warn('Payment was saved, but the billing view did not fully refresh:', error);
+        this.showAlert('Payment was saved, but some billing details could not be refreshed.', 'warning');
+      } else {
+        log.error('Error saving payment:', error);
+        this.showAlert(`❌ Error: ${error.message}`, 'error');
+      }
+    }
+  }
+
+  /**
+   * Update credit note customer info display
+   */
+  async updateCreditNoteCustomerInfo() {
+    const customerSelect = document.getElementById('creditNoteCustomerSelect');
+    const customerInfoCard = document.getElementById('creditCustomerInfoCard');
+    const customerDue = document.getElementById('creditCustomerDue');
+    const customerBillCount = document.getElementById('creditCustomerBillCount');
+    const creditNoteReference = document.getElementById('creditNoteReference');
+
+    if (!customerSelect.value) {
+      if (customerInfoCard) customerInfoCard.style.display = 'none';
+      return;
+    }
+
+    const customerName = customerSelect.value;
+
+    try {
+      // Get customer outstanding from API (now includes opening_balance)
+      const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+
+      const totalDue = stats.total_outstanding || 0;
+      const openingBalance = stats.opening_balance || 0;
+      const invoicedAmount = stats.total_invoiced || 0;
+      const outstandingCount = stats.outstanding_bills_count || 0;
+      const customerId = stats.customer_id;
+
+      if (customerDue) {
+        // Show opening balance separately in card (matching payment UI)
+        let balanceHTML = `<strong>₹${totalDue.toFixed(2)}</strong>`;
+        if (openingBalance !== 0) {
+          const openingDisplay = openingBalance > 0 ? `<span style="color: #dc2626;">+ ₹${openingBalance.toFixed(2)} (Opening)</span>` : `<span style="color: #16a34a;">- ₹${Math.abs(openingBalance).toFixed(2)} (Credit)</span>`;
+          balanceHTML = `<div style="font-size: 11px; margin-bottom: 2px;">Invoices: <strong>₹${invoicedAmount.toFixed(2)}</strong></div><div style="font-size: 11px;">${openingDisplay}</div><div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #ddd; font-size: 12px;">Total: ${balanceHTML}</div>`;
+        }
+        customerDue.innerHTML = balanceHTML;
+      }
+      if (customerBillCount) customerBillCount.textContent = `${outstandingCount}`;
+      if (customerInfoCard) customerInfoCard.style.display = 'block';
+
+      // Auto-fill reference number with next credit note reference
+      if (creditNoteReference && !creditNoteReference.value && customerId) {
+        try {
+          const creditDate = document.getElementById('creditNoteDate')?.value || this.formatDateForInput(new Date());
+          const refResponse = await fetch(`/api/billing/invoices/payments/next-credit-reference?customer_id=${customerId}&payment_date=${creditDate}`);
+          if (refResponse.ok) {
+            const refData = await refResponse.json();
+            creditNoteReference.value = refData.reference_number;
+            creditNoteReference.placeholder = refData.reference_number;
+          }
+        } catch (err) {
+          log.warn('Could not fetch next credit note reference:', err);
+        }
+      }
+    } catch (error) {
+      log.error('Error updating credit note customer info:', error);
+      if (customerInfoCard) customerInfoCard.style.display = 'none';
+    }
+  }
+
+  /**
+   * Issue a credit note (applies to customer's account in priority order)
+   */
+  async issueCreditNote() {
+    const customerName = document.getElementById('creditNoteCustomerSelect')?.value;
+    const amount = parseFloat(document.getElementById('creditAmount')?.value || 0);
+    const reason = document.getElementById('creditReason')?.value;
+    const date = document.getElementById('creditNoteDate')?.value;
+    const reference = document.getElementById('creditNoteReference')?.value;
+    const description = document.getElementById('creditDescription')?.value;
+
+    const attachmentInput = document.getElementById('creditAttachment');
+    let attachment_data = null;
+    if (attachmentInput && attachmentInput.dataset.compressedData) {
+      attachment_data = attachmentInput.dataset.compressedData;
+    } else if (attachmentInput && attachmentInput.files && attachmentInput.files.length > 0) {
+      // Fallback
+      const file = attachmentInput.files[0];
+      attachment_data = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Validation
+    if (!customerName) {
+      this.showAlert('❌ Please select a customer', 'error');
+      return;
+    }
+
+    if (amount <= 0) {
+      this.showAlert('❌ Please enter a valid credit amount', 'error');
+      return;
+    }
+
+    if (!reason) {
+      this.showAlert('❌ Please select a reason', 'error');
+      return;
+    }
+
+    // Find customer ID from bills data or contacts data
+    let customerId = (this.billingData.bills || []).find(b => b.customer_name === customerName)?.customer_id;
+
+    // If not in bills, look in contacts (for opening balance settlements)
+    if (!customerId && this.billingData.contacts) {
+      customerId = this.billingData.contacts.find(c => c.name === customerName)?.id;
+    }
+
+    if (!customerId) {
+      this.showAlert('❌ Customer not found', 'error');
+      return;
+    }
+
+    // Get customer's outstanding bills
+    const customerBills = (this.billingData.bills || [])
+      .filter(b => b.customer_name === customerName)
+      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)); // Sort by date for priority
+
+    let remainingCredit = amount;
+    let billsAffected = [];
+
+    // Apply credit to bills in priority (oldest first)
+    for (const bill of customerBills) {
+      if (remainingCredit <= 0) break;
+
+      const paidAmount = this.calculateBillPaid(bill.id);
+      const billDue = bill.total - paidAmount;
+
+      if (billDue > 0) {
+        const creditForThisBill = Math.min(remainingCredit, billDue);
+        billsAffected.push({ invoiceId: bill.id, amount: creditForThisBill });
+        remainingCredit -= creditForThisBill;
+      }
+    }
+
+    // If no bills were affected or if there's remaining credit, record it as a standalone credit note
+    // This allows credit notes to be issued against opening balances
+    if (billsAffected.length === 0 || remainingCredit > 0) {
+      billsAffected.push({ invoiceId: null, amount: remainingCredit });
+    }
+
+    // Save each credit note to the database via API
+    try {
+      let totalSaved = 0;
+      for (const { invoiceId, amount: creditAmount } of billsAffected) {
+        const creditData = {
+          invoice_id: invoiceId,
+          customer_id: customerId,
+          amount: creditAmount,
+          reason: reason,
+          payment_date: date || this.formatDateForInput(new Date()),
+          reference_number: reference || null,
+          notes: description || null,
+          attachment_data: attachment_data || null
+        };
+
+        log.debug('Sending credit note data:', creditData);
+
+        const response = await fetch('/api/billing/invoices/creditnotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creditData)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          const errorMsg = result.error || `HTTP ${response.status}`;
+          throw new Error(`Failed to save credit note for invoice ${invoiceId}: ${errorMsg}`);
+        }
+
+        totalSaved += creditAmount;
+        log.debug(`✓ Credit note of ₹${creditAmount.toFixed(2)} saved for invoice ${invoiceId}`, result);
+      }
+
+      // Invalidate API read cache immediately
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
+      // Publish to CoreDataBus
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:creditnote', 'created', { customer_name: customerName, amount: totalSaved });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, amount: totalSaved });
+      }
+
+      // Background canonical reload with forceRefresh
+      if (this.billingApp.loadBillingDataFromAPI) {
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
+      }
+
+      this.showAlert(`✓ Credit note of ₹${totalSaved.toFixed(2)} issued and applied to ${billsAffected.length} bill(s)`, 'success');
+      this.clearCreditNoteForm();
+      await this.updateCreditNoteCustomerInfo();
+      this.loadRecentTransactions();
+      await this.updateStatsDisplay();
+    } catch (error) {
+      log.error('Error saving credit note:', error);
+      this.showAlert(`❌ Error: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Show alert notifications
+   */
+  showAlert(message, type = 'info') {
+    if (this.billingApp?.showNotification) {
+      return this.billingApp.showNotification(message, type);
+    }
+    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+      return window.MacOSNotificationManager.notify({
+        app: 'Billing',
+        title: 'Payment & Credit',
+        message: message,
+        type: type
+      });
+    }
+    if (typeof window !== 'undefined' && window.showNotification) {
+      return window.showNotification(message, type, { app: 'Billing', title: 'Payment & Credit' });
+    }
+  }
+
+  /**
+   * Load and display recent transactions (for main dashboard)
+   */
+  loadRecentTransactions() {
+    const container = document.getElementById('recentTransactions');
+    if (!container) return;
+
+    // All payments and credit notes come from scoped payments
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const allPayments = scoped ? scoped.payments : (this.billingData.payments || []);
+
+    // Separate by type
+    const payments = allPayments.filter(p => p.type === 'PAYMENT');
+    const creditNotes = allPayments.filter(p => p.type === 'CREDIT_NOTE');
+
+    // Combine and sort
+    const allTransactions = [...payments, ...creditNotes]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 10);
+
+    if (allTransactions.length === 0) {
+      container.innerHTML = '<p style="color: #999; font-size: 12px;">No transactions yet</p>';
+      return;
+    }
+
+    container.innerHTML = allTransactions.map(txn => {
+      const methodIcon = {
+        'cash': '💵',
+        'cheque': '🏦',
+        'bank-transfer': '🏧',
+        'online': '💻',
+        'upi': '📱',
+        'card': '💳'
+      };
+
+      const reasonIcon = {
+        'overpayment': '↩️',
+        'product-return': '📦',
+        'discount': '🏷️',
+        'damage': '⚠️',
+        'billing-error': '❌',
+        'other': '📝'
+      };
+
+      return `
+        <div class="transaction-item">
+          <div class="transaction-icon">${txn.type === 'PAYMENT' ? '💳' : '📋'}</div>
+          <div class="transaction-content">
+            <div class="transaction-title">
+              ${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'} - ${txn.customer_name || 'Unknown'}
+            </div>
+            <div class="transaction-meta">
+              ${txn.type === 'PAYMENT' ? `${methodIcon[txn.payment_medium] || '📝'} ${txn.payment_medium || 'N/A'}` : `${reasonIcon[txn.reason] || '📝'} ${txn.reason || 'N/A'}`}
+              ${txn.reference_number ? ` • Ref: ${txn.reference_number}` : ''}
+            </div>
+          </div>
+          <div class="transaction-amount" style="color: ${txn.type === 'PAYMENT' ? '#22c55e' : '#f59e0b'}">
+            ₹${(txn.amount || txn.credit_amount || 0).toFixed(2)}
+          </div>
+          <div class="transaction-date">${new Date(txn.created_at).toLocaleDateString()}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * Load full transaction history
+   */
+  loadTransactionHistory() {
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const allPayments = scoped ? scoped.payments : (this.billingData.payments || []);
+    this.displayTransactionHistory(allPayments);
+  }
+
+  /**
+   * Filter transaction history based on search and filter criteria
+   */
+  filterTransactionHistory() {
+    const searchTerm = document.getElementById('historySearch')?.value.toLowerCase() || '';
+    const filterType = document.getElementById('historyFilter')?.value || 'all';
+
+    const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    let transactions = scoped ? scoped.payments : (this.billingData.payments || []);
+    let showingOpeningBalance = false;
+
+    // Apply type filter
+    if (filterType === 'opening-balance') {
+      showingOpeningBalance = true;
+      transactions = [];
+    } else if (filterType === 'PAYMENT' || filterType === 'payment') {
+      transactions = transactions.filter(t => t.type === 'PAYMENT');
+    } else if (filterType === 'CREDIT_NOTE' || filterType === 'credit-note') {
+      transactions = transactions.filter(t => t.type === 'CREDIT_NOTE');
+    }
+
+    // Apply search filter
+    if (searchTerm && !showingOpeningBalance) {
+      transactions = transactions.filter(t =>
+        (t.customer_name || '').toLowerCase().includes(searchTerm) ||
+        (t.reference_number || '').toLowerCase().includes(searchTerm) ||
+        (t.reason || '').toLowerCase().includes(searchTerm)
+      );
+    }
+
+    if (!showingOpeningBalance) {
+      transactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+    this.displayTransactionHistory(transactions, showingOpeningBalance);
+  }
+
+  /**
+   * Display transaction history
+   */
+  displayTransactionHistory(transactions, showingOpeningBalance = false) {
+    const container = document.getElementById('transactionHistory');
+    if (!container) return;
+
+    if (showingOpeningBalance) {
+      // Show only opening balance cards for accessible customers
+      const uniqueCustomers = this.getUniqueCustomers();
+
+      const openingBalanceCardsHTML = uniqueCustomers.map(customer => `
+        <div class="transaction-card opening-balance-card" data-customer="${customer}" style="background-color: #f0f8ff; border: 2px solid #1e40af;">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">📊</span>
+              <div class="title-text">
+                <div class="main-title">Opening Balance</div>
+                <div class="sub-title">${customer}</div>
+              </div>
+            </div>
+            <div class="card-amount opening-balance-amount" style="color: #1e40af;">Loading...</div>
+          </div>
+        </div>
+      `).join('');
+
+      container.innerHTML = openingBalanceCardsHTML;
+
+      // Fetch opening balances for each customer
+      uniqueCustomers.forEach(customer => {
+        this.fetchAndDisplayOpeningBalanceForCustomer(customer, container);
+      });
+      return;
+    }
+
+    if (transactions.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>No transactions found</p></div>';
+      return;
+    }
+
+    const methodIcon = {
+      'cash': '💵',
+      'cheque': '🏦',
+      'bank-transfer': '🏧',
+      'online': '💻',
+      'upi': '📱',
+      'card': '💳'
+    };
+
+    const reasonIcon = {
+      'overpayment': '↩️',
+      'product-return': '📦',
+      'discount': '🏷️',
+      'damage': '⚠️',
+      'billing-error': '❌',
+      'other': '📝'
+    };
+
+    // Get unique customers from transactions
+    const customers = [...new Set(transactions.map(t => t.customer_name))];
+
+    // Build opening balance cards for each customer
+    const openingBalanceCardsHTML = customers.map(customer => `
+      <div class="transaction-card opening-balance-card" data-customer="${customer}" style="background-color: #f0f8ff; border: 2px solid #1e40af;">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon">📊</span>
+            <div class="title-text">
+              <div class="main-title">Opening Balance</div>
+              <div class="sub-title">${customer}</div>
+            </div>
+          </div>
+          <div class="card-amount opening-balance-amount" style="color: #1e40af;">Loading...</div>
+        </div>
+      </div>
+    `).join('');
+
+    container.innerHTML = openingBalanceCardsHTML + transactions.map(txn => {
+      const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
+        ? window.renderWorkerBadge(txn, { compact: true })
+        : '';
+      const auditInfo = JSON.stringify({
+        type: txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note',
+        id: txn.id,
+        name: `${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'} (${txn.customer_name || 'Customer'})`,
+        created_by_role: txn.created_by_role,
+        created_by_name: txn.created_by_name,
+        last_edited_by_role: txn.last_edited_by_role,
+        last_edited_by_name: txn.last_edited_by_name,
+        date: txn.payment_date || txn.created_at,
+        created_at: txn.created_at
+      });
+      return `
+      <div class="transaction-card" data-worker-audit='${auditInfo.replace(/'/g, "&#39;")}'>
+        <div class="card-header">
+          <div class="card-title">
+            <span class="icon">${txn.type === 'PAYMENT' ? '💳' : '📋'}</span>
+            <div class="title-text">
+              <div class="main-title" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${txn.type === 'PAYMENT' ? 'Payment' : 'Credit Note'}</span> ${workerBadgeHtml}</div>
+              <div class="sub-title">${txn.customer_name || 'Unknown'}</div>
+            </div>
+          </div>
+          <div class="card-amount">${txn.type === 'PAYMENT' ? '+' : '-'}₹${(txn.type === 'PAYMENT' ? txn.amount : txn.credit_amount).toFixed(2)}</div>
+        </div>
+        <div class="card-body">
+          <div class="detail-row">
+            <span class="label">Type</span>
+            <span class="value">${txn.type === 'PAYMENT' ? `${methodIcon[txn.payment_medium] || '📝'} ${txn.payment_medium || 'N/A'}` : `${reasonIcon[txn.reason] || '📝'} ${txn.reason || 'N/A'}`}</span>
+          </div>
+          ${txn.reference_number ? `
+            <div class="detail-row">
+              <span class="label">Reference</span>
+              <span class="value">${txn.reference_number}</span>
+            </div>
+          ` : ''}
+          ${txn.notes ? `
+            <div class="detail-row">
+              <span class="label">Notes</span>
+              <span class="value">${txn.notes}</span>
+            </div>
+          ` : ''}
+          ${txn.attachment_data ? `
+            <div class="detail-row">
+              <span class="label">Attachment</span>
+              <span class="value"><span class="view-attachment-link" onclick="event.stopPropagation(); if(window.HistoryView && window.HistoryView.showViewer) { window.HistoryView.showViewer('${txn.attachment_data}'); } else { log.debug('Viewer not ready'); }" style="cursor: pointer; color: #3b82f6; text-decoration: underline; font-weight: bold;">🖼️ View</span></span>
+            </div>
+          ` : ''}
+          <div class="detail-row">
+            <span class="label">Date</span>
+            <span class="value">${new Date(txn.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+      </div>
+      `;
+    }).join('');
+
+    // Fetch opening balances for each customer
+    customers.forEach(customer => {
+      this.fetchAndDisplayOpeningBalanceForCustomer(customer, container);
+    });
+  }
+
+  async fetchAndDisplayOpeningBalanceForCustomer(customerName, container) {
+    try {
+      const response = await fetch(`/api/contacts?search=${encodeURIComponent(customerName)}`);
+      if (response.ok) {
+        const result = await response.json();
+        const contacts = result.data || result;
+
+        if (Array.isArray(contacts) && contacts.length > 0) {
+          const customer = contacts.find(c => c.name.toLowerCase() === customerName.toLowerCase());
+          if (customer) {
+            const openingBalance = customer.opening_balance || 0;
+            const balanceCard = container.querySelector(`[data-customer="${customerName}"]`);
+
+            // Hide card if opening balance is 0
+            if (openingBalance === 0) {
+              if (balanceCard) balanceCard.style.display = 'none';
+              return;
+            }
+
+            const card = container.querySelector(`[data-customer="${customerName}"] .opening-balance-amount`);
+            if (card) {
+              let balanceHTML = '';
+              if (openingBalance < 0) {
+                balanceHTML = `<span style="color: #16a34a;">Credit: ₹${Math.abs(openingBalance).toFixed(2)}</span>`;
+              } else {
+                balanceHTML = `<span style="color: #dc2626;">₹${openingBalance.toFixed(2)}</span>`;
+              }
+              card.innerHTML = balanceHTML;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      log.error('Error fetching opening balance:', error);
+    }
+  }
+
+  /**
+   * Open edit modal for a payment/credit note
+   */
+  /**
+   * Save payment/credit note edit
+   */
+  async savePaymentEdit() {
+    if (!this.currentEditPaymentId) {
+      this.showAlert('No payment selected for editing', 'error');
+      return;
+    }
+
+    try {
+      const paymentId = this.currentEditPaymentId;
+      const paymentType = this.currentEditPaymentType;
+
+      let updateData = {};
+
+      if (paymentType === 'PAYMENT') {
+        const amount = parseFloat(document.getElementById('editAmount').value);
+        if (!amount || amount <= 0) {
+          this.showAlert('Please enter a valid amount', 'warning');
+          return;
+        }
+
+        updateData = {
+          amount,
+          payment_medium: document.getElementById('editPaymentMethod').value,
+          reference_number: document.getElementById('editReference').value,
+          payment_date: document.getElementById('editPaymentDate').value,
+          notes: document.getElementById('editPaymentNotes').value
+        };
+      } else if (paymentType === 'CREDIT_NOTE') {
+        const creditAmount = parseFloat(document.getElementById('editCreditAmount').value);
+        if (!creditAmount || creditAmount <= 0) {
+          this.showAlert('Please enter a valid credit amount', 'warning');
+          return;
+        }
+
+        updateData = {
+          credit_amount: creditAmount,
+          reason: document.getElementById('editCreditReason').value,
+          payment_date: document.getElementById('editCreditDate').value,
+          notes: document.getElementById('editCreditNotes').value
+        };
+      }
+
+      // Send update to backend
+      const response = await fetch(`/api/billing/invoices/payments/${paymentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update payment');
+      }
+
+      const result = await response.json();
+
+      // Close modal
+      document.getElementById('editPaymentModal').classList.add('hidden');
+
+      // Show success message
+      this.showAlert('Payment updated successfully', 'success');
+
+      // Reload transactions
+      this.loadTransactionHistory();
+
+      // Invalidate API cache & publish update
+      if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'updated', { id: paymentId });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+      }
+      if (this.billingApp?.loadBillingDataFromAPI) {
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
+      }
+
+    } catch (error) {
+      log.error('Error saving payment edit:', error);
+      this.showAlert('Error updating payment: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * Delete a payment/credit note
+   */
+  async deletePayment(paymentId) {
+    if (!confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // 1. Optimistic removal from in-memory billing data
+      if (this.billingApp?.billingData?.payments) {
+        this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
+          p => String(p.id) !== String(paymentId)
+        );
+      }
+
+      // 2. 0ms DOM removal of the transaction row
+      const row = document.querySelector(`[data-payment-id="${paymentId}"]`);
+      if (row) {
+        row.style.transition = 'all 0.2s ease';
+        row.style.opacity = '0';
+        row.style.transform = 'scale(0.96)';
+        setTimeout(() => row.remove(), 200);
+      }
+
+      const response = await fetch(`/api/billing/invoices/payments/${paymentId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete payment');
+      }
+
+      if (this.billingApp?.showNotification) {
+        this.billingApp.showNotification('Transaction deleted successfully', 'success');
+      }
+
+      // Invalidate API cache immediately
+      if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
+
+      // Publish delete event to CoreDataBus
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId });
+        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+      }
+
+      // Reload local history
+      this.loadTransactionHistory();
+      if (this.updateStatsDisplay) this.updateStatsDisplay();
+
+      // Background canonical reload
+      if (this.billingApp?.loadBillingDataFromAPI) {
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
+      }
+
+      // Synchronize ledger subview instance
+      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+      if (ledgerInstance) {
+        ledgerInstance.syncWithServer(true);
+      }
+    } catch (error) {
+      log.error('Error deleting payment:', error);
+      this.showAlert('Error deleting transaction: ' + error.message, 'error');
+    }
+  }
+
+  /**
+   * Clear payment form
+   */
+  clearPaymentForm() {
+    const paymentCustomerSelect = document.getElementById('paymentCustomerSelect');
+    const paymentAmount = document.getElementById('paymentAmount');
+    const paymentMethod = document.getElementById('paymentMethod');
+    const paymentDate = document.getElementById('paymentDate');
+    const paymentReference = document.getElementById('paymentReference');
+    const paymentNotes = document.getElementById('paymentNotes');
+    const customerBalanceCard = document.getElementById('customerBalanceCard');
+
+    if (paymentCustomerSelect) paymentCustomerSelect.value = '';
+    if (paymentAmount) paymentAmount.value = '';
+    if (paymentMethod) paymentMethod.value = 'cash';
+    if (paymentDate) paymentDate.value = this.formatDateForInput(new Date());
+    if (paymentReference) paymentReference.value = '';
+    if (paymentNotes) paymentNotes.value = '';
+    if (customerBalanceCard) customerBalanceCard.style.display = 'none';
+  }
+
+  /**
+   * Clear credit note form
+   */
+  clearCreditNoteForm() {
+    const creditNoteCustomerSelect = document.getElementById('creditNoteCustomerSelect');
+    const creditAmount = document.getElementById('creditAmount');
+    const creditReason = document.getElementById('creditReason');
+    const creditNoteDate = document.getElementById('creditNoteDate');
+    const creditNoteReference = document.getElementById('creditNoteReference');
+    const creditDescription = document.getElementById('creditDescription');
+    const customerInfoCard = document.getElementById('creditCustomerInfoCard');
+    const creditAttachment = document.getElementById('creditAttachment');
+    const attachmentPreviewContainer = document.getElementById('attachmentPreviewContainer');
+
+    if (creditNoteCustomerSelect) creditNoteCustomerSelect.value = '';
+    if (creditAmount) creditAmount.value = '';
+    if (creditReason) creditReason.value = '';
+    if (creditNoteDate) creditNoteDate.value = this.formatDateForInput(new Date());
+    if (creditNoteReference) creditNoteReference.value = '';
+    if (creditDescription) creditDescription.value = '';
+    if (customerInfoCard) customerInfoCard.style.display = 'none';
+    if (creditAttachment) {
+      creditAttachment.value = '';
+      creditAttachment.dataset.compressedData = '';
+    }
+    if (attachmentPreviewContainer) attachmentPreviewContainer.style.display = 'none';
+  }
+
+  // ─── Payment Links Methods ──────────────────────────────────────────────────
+  async resolveCustomerId(customerName) {
+    if (!customerName) return null;
+
+    // 1. Check scoped contacts or billingData.contacts
+    const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const contacts = scoped ? scoped.contacts : (this.billingData?.contacts || []);
+    const foundContact = (contacts || []).find(c => c.name === customerName);
+    if (foundContact && foundContact.id) return foundContact.id;
+
+    // 2. Check bills
+    const bills = scoped ? scoped.bills : (this.billingData?.bills || []);
+    const foundBill = (bills || []).find(b => b.customer_name === customerName);
+    if (foundBill && foundBill.customer_id) return foundBill.customer_id;
+
+    // 3. Query getCustomerOutstanding
+    try {
+      if (this.billingApp?.api?.getCustomerOutstanding) {
+        const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+        if (stats && stats.customer_id) return stats.customer_id;
+      }
+    } catch (_) { }
+
+    // 4. Query /api/billing/invoices/customers/outstanding directly
+    try {
+      const res = await fetch(`/api/billing/invoices/customers/outstanding?customer_name=${encodeURIComponent(customerName)}`);
+      if (res.ok) {
+        const stats = await res.json();
+        if (stats && stats.customer_id) return stats.customer_id;
+      }
+    } catch (_) { }
+
+    // 5. Search contacts API directly
+    try {
+      const res = await fetch(`/api/contacts?search=${encodeURIComponent(customerName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.contacts || []);
+        const match = list.find(c => c.name?.trim().toLowerCase() === customerName.trim().toLowerCase());
+        if (match && match.id) return match.id;
+      }
+    } catch (_) { }
+
+    return null;
+  }
+
+  async preloadPaymentLinkDue() {
+    const customerSelect = document.getElementById('plCustomerSelect');
+    const plAmount = document.getElementById('plAmount');
+    if (!customerSelect || !plAmount) return;
+
+    const customerName = customerSelect.value;
+    if (!customerName) {
+      plAmount.value = '';
+      plAmount.placeholder = '0.00';
+      return;
+    }
+
+    try {
+      plAmount.placeholder = 'Fetching due...';
+      let totalDue = 0;
+
+      if (this.billingApp?.api?.getCustomerOutstanding) {
+        const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+        totalDue = Number(stats?.total_outstanding !== undefined ? stats.total_outstanding : (stats?.amountDue || stats?.current_due || 0));
+      } else {
+        const res = await fetch(`/api/billing/invoices/customers/outstanding?customer_name=${encodeURIComponent(customerName)}`);
+        if (res.ok) {
+          const stats = await res.json();
+          totalDue = Number(stats?.total_outstanding !== undefined ? stats.total_outstanding : (stats?.amountDue || stats?.current_due || 0));
+        }
+      }
+
+      plAmount.value = totalDue > 0 ? totalDue.toFixed(2) : (totalDue === 0 ? '0.00' : totalDue.toFixed(2));
+      plAmount.placeholder = '0.00';
+    } catch (err) {
+      log.error('Error preloading payment link due:', err);
+      plAmount.placeholder = '0.00';
+      this.showAlert('Could not fetch customer due balance', 'error');
+    }
+  }
+
+  async loadPaymentLinks() {
+    const tbody = document.getElementById('plTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">Loading payment links...</td></tr>';
+
+    try {
+      const res = await fetch('/api/billing/payment-links');
+      if (!res.ok) throw new Error('Failed to fetch payment links');
+      const data = await res.json();
+      const links = data.links || [];
+      this.loadedPaymentLinks = links;
+
+      if (!links.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:25px;color:#999;">No payment links generated yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = links.map(link => {
+        const isClaimed = link.status === 'CLAIMED';
+        const isSettled = link.status === 'SETTLED';
+        const isExpired = link.status === 'EXPIRED';
+
+        let badgeClass = 'active';
+        let badgeLabel = 'Active';
+        if (isClaimed) {
+          badgeClass = 'claimed';
+          badgeLabel = `⚡ Claimed: UTR ${link.claimed_utr || 'Submitted'}`;
+        } else if (isSettled) {
+          badgeClass = 'settled';
+          badgeLabel = '✓ Settled';
+        } else if (isExpired) {
+          badgeClass = 'expired';
+          badgeLabel = 'Expired';
+        }
+
+        const dateStr = link.created_at ? link.created_at.slice(0, 10) : '-';
+        const shortUrl = link.share_url || `https://mac.faizal.uk/p/${link.link_code}`;
+
+        return `
+          <tr>
+            <td style="white-space:nowrap;font-size:11px;color:#666;">${dateStr}</td>
+            <td style="font-weight:600;">
+              <div>${link.customer_name}</div>
+              ${link.claimed_at ? `<div style="font-size:10px;color:#059669;font-weight:normal;">Logged: ${new Date(link.claimed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>` : ''}
+            </td>
+            <td style="font-weight:700;font-family:monospace;color:#111;">
+              ₹${Number(link.claimed_amount || link.amount).toFixed(2)}
+              ${link.claimed_amount && Number(link.claimed_amount) !== Number(link.amount) ? `<div style="font-size:10px;color:#666;font-weight:normal;">Orig: ₹${Number(link.amount).toFixed(2)}</div>` : ''}
+            </td>
+            <td>
+              <a href="${shortUrl}" target="_blank" style="font-family:monospace;font-size:11px;color:#4361EE;text-decoration:none;" title="Open link">
+                ${link.link_code}
+              </a>
+            </td>
+            <td>
+              <span class="pl-badge ${badgeClass}" ${isClaimed ? `style="cursor:pointer;" title="Click to Review & Settle" onclick="window.currentPaymentManager?.openReviewModal(${link.id})"` : ''}>
+                ${badgeLabel}
+              </span>
+            </td>
+            <td>
+              <div class="pl-actions-cell">
+                <button type="button" class="pl-action-btn" title="Copy Payment Link" onclick="window.currentPaymentManager?.copyLink('${shortUrl}')">📋</button>
+                <button type="button" class="pl-action-btn wa" title="Share via WhatsApp" onclick="window.currentPaymentManager?.shareWhatsApp('${encodeURIComponent(link.customer_name)}', '${link.customer_phone || ''}', ${link.claimed_amount || link.amount}, '${shortUrl}')">💬</button>
+                ${isClaimed ? `<button type="button" class="pl-review-btn" onclick="window.currentPaymentManager?.openReviewModal(${link.id})">🔍 Review &amp; Settle</button>` : `<a href="${shortUrl}" target="_blank" class="pl-action-btn" title="Open Link">↗</a>`}
+                ${(isClaimed || isSettled) ? `<a href="/api/billing/public/pay/${link.link_code}/receipt.pdf" target="_blank" class="pl-action-btn" title="View Acknowledgment PDF">📄</a>` : ''}
+                <button type="button" class="pl-action-btn del" title="Delete Payment Link" onclick="window.currentPaymentManager?.deleteLink(${link.id}, '${encodeURIComponent(link.customer_name)}')">🗑️</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+    } catch (err) {
+      log.error('loadPaymentLinks error:', err);
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc2626;">Failed to load links: ${err.message}</td></tr>`;
+    }
+  }
+
+  async createPaymentLink() {
+    const customerName = document.getElementById('plCustomerSelect')?.value;
+    const amount = parseFloat(document.getElementById('plAmount')?.value || 0);
+    const description = document.getElementById('plDescription')?.value || '';
+    const expiresInDays = parseInt(document.getElementById('plExpiry')?.value || '7', 10);
+
+    if (!customerName) {
+      this.showAlert('❌ Please select a customer', 'error');
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      this.showAlert('❌ Please enter a valid positive amount', 'error');
+      return;
+    }
+
+    const customerId = await this.resolveCustomerId(customerName);
+    if (!customerId) {
+      this.showAlert('❌ Customer ID could not be resolved', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('plGenerateBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+    }
+
+    try {
+      const res = await fetch('/api/billing/payment-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          customer_name: customerName,
+          amount,
+          description,
+          expires_in_days: expiresInDays
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create payment link');
+
+      this.showAlert('✓ Short payment link generated successfully', 'success');
+
+      // Show result card
+      const resultCard = document.getElementById('plResultCard');
+      const resultUrl = document.getElementById('plResultUrl');
+      const openBtn = document.getElementById('plOpenBtn');
+      const copyBtn = document.getElementById('plCopyBtn');
+      const waBtn = document.getElementById('plWhatsAppBtn');
+
+      const url = data.link?.share_url || `https://mac.faizal.uk/p/${data.link?.link_code}`;
+      if (resultCard && resultUrl) {
+        resultUrl.textContent = url;
+        resultCard.style.display = 'block';
+        if (openBtn) openBtn.href = url;
+
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(url);
+            copyBtn.textContent = 'Copied ✓';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy Link'; }, 1500);
+          };
+        }
+
+        if (waBtn) {
+          const waText = encodeURIComponent(`Dear ${customerName},\n\nPlease use the following secure payment gateway link to settle your statement amount of ₹${amount.toFixed(2)}:\n${url}\n\nThank you,\nUtkal Chemical Aushadhalaya`);
+          waBtn.onclick = () => {
+            window.open(`https://api.whatsapp.com/send?text=${waText}`, '_blank');
+          };
+        }
+      }
+
+      this.loadPaymentLinks();
+
+    } catch (err) {
+      this.showAlert(`❌ ${err.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Generate Short Link';
+      }
+    }
+  }
+
+  verifyAndSettleLink(linkId, customerNameEnc, claimedAmount, claimedUtr, code) {
+    const customerName = decodeURIComponent(customerNameEnc);
+    this.switchTab('payment');
+
+    setTimeout(() => {
+      const select = document.getElementById('paymentCustomerSelect');
+      if (select) {
+        select.value = customerName;
+        select.dispatchEvent(new Event('change'));
+      }
+
+      const amountInput = document.getElementById('paymentAmount');
+      if (amountInput) amountInput.value = Number(claimedAmount).toFixed(2);
+
+      const methodSelect = document.getElementById('paymentMethod');
+      if (methodSelect) methodSelect.value = 'upi';
+
+      const refInput = document.getElementById('paymentReference');
+      if (refInput) refInput.value = claimedUtr || `PAY-${code}`;
+
+      const notesInput = document.getElementById('paymentNotes');
+      if (notesInput) notesInput.value = `Settled from payment gateway link: ${code}`;
+
+      this.pendingSettlementLinkId = linkId;
+
+      this.showAlert(`⚡ Pre-filled settlement form for ${customerName}. Verify and click 'Record Payment' to post to ledger.`, 'info');
+    }, 250);
+  }
+
+  copyLink(url) {
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      this.showAlert('📋 Payment link copied to clipboard', 'success');
+    }).catch(() => {
+      this.showAlert('Could not copy link', 'warning');
+    });
+  }
+
+  shareWhatsApp(customerNameEnc, phone, amount, url) {
+    const customerName = decodeURIComponent(customerNameEnc);
+    const inr = `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const msg = `Dear ${customerName},\n\nPlease use the following secure payment gateway link to settle your pending statement of ${inr}:\n${url}\n\nThank you,\nUtkal Chemical Aushadhalaya`;
+    const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
+    const waUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+  }
+
+  async deleteLink(linkId, customerNameEnc) {
+    const customerName = decodeURIComponent(customerNameEnc);
+    if (!confirm(`Are you sure you want to delete the payment link for "${customerName}"?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/billing/payment-links/${linkId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete payment link');
+      this.showAlert('🗑️ Payment link deleted successfully', 'success');
+      this.loadPaymentLinks();
+    } catch (err) {
+      this.showAlert(`❌ ${err.message}`, 'error');
+    }
+  }
+
+  openReviewModal(linkId) {
+    const link = (this.loadedPaymentLinks || []).find(l => Number(l.id) === Number(linkId));
+    if (!link) return;
+
+    this.activeReviewLinkId = linkId;
+
+    const modal = document.getElementById('plReviewModal');
+    if (!modal) return;
+
+    document.getElementById('plModalCustomer').textContent = link.customer_name || '-';
+    document.getElementById('plModalOriginalAmount').textContent = `₹${Number(link.amount).toFixed(2)}`;
+    document.getElementById('plModalPayerName').textContent = link.payer_name || 'Not specified';
+    document.getElementById('plModalTime').textContent = link.claimed_at ? new Date(link.claimed_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+    document.getElementById('plModalClientNotes').textContent = link.claimed_notes || 'None';
+
+    const statusBadge = document.getElementById('plModalStatusBadge');
+    if (statusBadge) {
+      statusBadge.textContent = link.status || 'CLAIMED';
+      statusBadge.className = `pl-badge ${link.status?.toLowerCase() || 'claimed'}`;
+    }
+
+    const amtInput = document.getElementById('plModalAmount');
+    if (amtInput) amtInput.value = Number(link.claimed_amount || link.amount).toFixed(2);
+
+    const utrInput = document.getElementById('plModalUtr');
+    if (utrInput) utrInput.value = link.claimed_utr || '';
+
+    const dateInput = document.getElementById('plModalDate');
+    if (dateInput) {
+      dateInput.value = link.claimed_at ? link.claimed_at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    }
+
+    const notesInput = document.getElementById('plModalNotes');
+    if (notesInput) {
+      notesInput.value = link.claimed_notes ? `Verified remittance: ${link.claimed_notes}` : `Verified payment clearance for ${link.customer_name}`;
+    }
+
+    // Bind save only
+    const saveBtn = document.getElementById('plModalSaveOnlyBtn');
+    if (saveBtn) {
+      saveBtn.onclick = () => this.saveReviewModalChanges();
+    }
+
+    // Bind approve & settle
+    const approveBtn = document.getElementById('plModalApproveBtn');
+    if (approveBtn) {
+      approveBtn.onclick = () => this.approveAndSettleModal();
+    }
+
+    modal.style.display = 'flex';
+  }
+
+  closeReviewModal() {
+    const modal = document.getElementById('plReviewModal');
+    if (modal) modal.style.display = 'none';
+    this.activeReviewLinkId = null;
+  }
+
+  async saveReviewModalChanges() {
+    if (!this.activeReviewLinkId) return;
+    const linkId = this.activeReviewLinkId;
+
+    const amt = parseFloat(document.getElementById('plModalAmount')?.value || 0);
+    const utr = document.getElementById('plModalUtr')?.value?.trim();
+    const notes = document.getElementById('plModalNotes')?.value?.trim();
+
+    if (isNaN(amt) || amt <= 0) {
+      this.showAlert('Please enter a valid amount', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/billing/payment-links/${linkId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          claimed_amount: amt,
+          claimed_utr: utr,
+          claimed_notes: notes
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to update details');
+      this.showAlert('💾 Remittance details updated', 'success');
+      this.closeReviewModal();
+      this.loadPaymentLinks();
+    } catch (err) {
+      this.showAlert(`❌ ${err.message}`, 'error');
+    }
+  }
+
+  async approveAndSettleModal() {
+    if (!this.activeReviewLinkId) return;
+    const linkId = this.activeReviewLinkId;
+
+    const amt = parseFloat(document.getElementById('plModalAmount')?.value || 0);
+    const utr = document.getElementById('plModalUtr')?.value?.trim();
+    const medium = document.getElementById('plModalMedium')?.value || 'upi';
+    const date = document.getElementById('plModalDate')?.value || new Date().toISOString().slice(0, 10);
+    const notes = document.getElementById('plModalNotes')?.value?.trim();
+
+    if (isNaN(amt) || amt <= 0) {
+      this.showAlert('Please enter a valid amount to settle', 'warning');
+      return;
+    }
+
+    const approveBtn = document.getElementById('plModalApproveBtn');
+    if (approveBtn) {
+      approveBtn.disabled = true;
+      approveBtn.textContent = 'Posting to Ledger...';
+    }
+
+    try {
+      const res = await fetch(`/api/billing/payment-links/${linkId}/settle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amt,
+          utr: utr,
+          payment_method: medium,
+          payment_date: date,
+          notes: notes
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to settle remittance');
+
+      this.showAlert(`✓ Approved! Payment voucher created and posted to ledger.`, 'success');
+      this.closeReviewModal();
+      this.loadPaymentLinks();
+
+      // Broadcast update
+      if (typeof window !== 'undefined' && window.CoreDataBus) {
+        window.CoreDataBus.publish('billing:payment', 'created', { id: data.payment_id });
+        window.CoreDataBus.publish('billing:ledger', 'updated', {});
+      }
+    } catch (err) {
+      this.showAlert(`❌ ${err.message}`, 'error');
+    } finally {
+      if (approveBtn) {
+        approveBtn.disabled = false;
+        approveBtn.textContent = '✓ Approve & Settle to Ledger';
+      }
+    }
+  }
+
+}
+
+// Make accessible globally
+window.PaymentCreditNote = PaymentCreditNote;
