@@ -113,6 +113,7 @@ function getGatewayBaseUrl(db) {
  */
 function createPaymentLink(db, {
   customerId,
+  customerName = null,
   amount,
   description = '',
   invoiceIds = [],
@@ -122,14 +123,20 @@ function createPaymentLink(db, {
 }) {
   ensurePaymentLinksTable(db);
 
-  if (!customerId) throw new Error('Customer ID is required to generate a payment link.');
+  let targetId = customerId;
+  if (!targetId && customerName) {
+    const found = db.prepare('SELECT id FROM contacts WHERE name = ? COLLATE NOCASE').get(customerName);
+    if (found) targetId = found.id;
+  }
+
+  if (!targetId) throw new Error('Customer ID is required to generate a payment link.');
   const numAmount = Number(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
     throw new Error('Valid positive amount is required for payment link.');
   }
 
-  const customer = db.prepare('SELECT id, name, phone FROM contacts WHERE id = ?').get(customerId);
-  if (!customer) throw new Error(`Customer with ID ${customerId} does not exist.`);
+  const customer = db.prepare('SELECT id, name, phone FROM contacts WHERE id = ?').get(targetId);
+  if (!customer) throw new Error(`Customer with ID ${targetId} does not exist.`);
 
   // Generate unique slug
   let linkCode = '';
@@ -160,7 +167,7 @@ function createPaymentLink(db, {
 
   const result = insertStmt.run(
     linkCode,
-    customerId,
+    targetId,
     numAmount,
     description || `Invoice Settlement: ${customer.name}`,
     invoiceIdsStr,
@@ -175,7 +182,7 @@ function createPaymentLink(db, {
   return {
     id: result.lastInsertRowid,
     link_code: linkCode,
-    customer_id: customerId,
+    customer_id: targetId,
     customer_name: customer.name,
     customer_phone: customer.phone,
     amount: numAmount,

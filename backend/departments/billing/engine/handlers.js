@@ -4078,10 +4078,11 @@ module.exports = function (db) {
     // ============= PAYMENT LINKS MANAGEMENT =============
     createPaymentLink: async (req, res) => {
       try {
-        const { customer_id, amount, description, invoice_ids, expires_in_days } = req.body;
+        const { customer_id, customer_name, amount, description, invoice_ids, expires_in_days } = req.body;
         const userId = req.user ? (req.user.id || req.user.userId) : null;
         const link = paymentGatewayService.createPaymentLink(db, {
           customerId: customer_id,
+          customerName: customer_name,
           amount,
           description,
           invoiceIds: invoice_ids,

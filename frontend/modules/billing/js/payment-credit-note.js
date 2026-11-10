@@ -23,7 +23,7 @@ class PaymentCreditNote {
 
   refreshCustomerDropdowns() {
     const customers = this.getUniqueCustomers();
-    ['paymentCustomerSelect', 'creditNoteCustomerSelect'].forEach(id => {
+    ['paymentCustomerSelect', 'creditNoteCustomerSelect', 'plCustomerSelect'].forEach(id => {
       const select = document.getElementById(id);
       if (select) {
         const currentVal = select.value;
@@ -456,34 +456,33 @@ class PaymentCreditNote {
    */
   attachEventListeners() {
     // Quick link generation button in record payment tab
-    document.getElementById('quickGenPaymentLinkBtn')?.addEventListener('click', () => {
+    document.getElementById('quickGenPaymentLinkBtn')?.addEventListener('click', async () => {
       const currentCust = document.getElementById('paymentCustomerSelect')?.value;
+      const currentAmount = document.getElementById('paymentAmount')?.value;
       this.switchTab('payment-links');
       if (currentCust) {
-        setTimeout(() => {
+        setTimeout(async () => {
           const plSelect = document.getElementById('plCustomerSelect');
           if (plSelect) {
             plSelect.value = currentCust;
-            const fullDueBtn = document.getElementById('plFullDueBtn');
-            fullDueBtn?.click();
+            if (currentAmount && Number(currentAmount) > 0) {
+              const plAmount = document.getElementById('plAmount');
+              if (plAmount) plAmount.value = Number(currentAmount).toFixed(2);
+            } else {
+              await this.preloadPaymentLinkDue();
+            }
           }
-        }, 150);
+        }, 120);
       }
     });
 
     // Payment links tab generator events
-    document.getElementById('plFullDueBtn')?.addEventListener('click', () => {
-      const customerName = document.getElementById('plCustomerSelect')?.value;
-      if (!customerName) return;
-      const customer = this.billingData.customers?.find(c => c.name === customerName);
-      if (customer && customer.current_due !== undefined) {
-        const plAmount = document.getElementById('plAmount');
-        if (plAmount) plAmount.value = Math.max(0, customer.current_due).toFixed(2);
-      }
+    document.getElementById('plFullDueBtn')?.addEventListener('click', async () => {
+      await this.preloadPaymentLinkDue();
     });
 
-    document.getElementById('plCustomerSelect')?.addEventListener('change', () => {
-      document.getElementById('plFullDueBtn')?.click();
+    document.getElementById('plCustomerSelect')?.addEventListener('change', async () => {
+      await this.preloadPaymentLinkDue();
     });
 
     document.getElementById('plGenerateBtn')?.addEventListener('click', () => {
@@ -1773,6 +1772,87 @@ class PaymentCreditNote {
   }
 
   // ─── Payment Links Methods ──────────────────────────────────────────────────
+  async resolveCustomerId(customerName) {
+    if (!customerName) return null;
+
+    // 1. Check scoped contacts or billingData.contacts
+    const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
+    const contacts = scoped ? scoped.contacts : (this.billingData?.contacts || []);
+    const foundContact = (contacts || []).find(c => c.name === customerName);
+    if (foundContact && foundContact.id) return foundContact.id;
+
+    // 2. Check bills
+    const bills = scoped ? scoped.bills : (this.billingData?.bills || []);
+    const foundBill = (bills || []).find(b => b.customer_name === customerName);
+    if (foundBill && foundBill.customer_id) return foundBill.customer_id;
+
+    // 3. Query getCustomerOutstanding
+    try {
+      if (this.billingApp?.api?.getCustomerOutstanding) {
+        const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+        if (stats && stats.customer_id) return stats.customer_id;
+      }
+    } catch (_) {}
+
+    // 4. Query /api/billing/invoices/customers/outstanding directly
+    try {
+      const res = await fetch(`/api/billing/invoices/customers/outstanding?customer_name=${encodeURIComponent(customerName)}`);
+      if (res.ok) {
+        const stats = await res.json();
+        if (stats && stats.customer_id) return stats.customer_id;
+      }
+    } catch (_) {}
+
+    // 5. Search contacts API directly
+    try {
+      const res = await fetch(`/api/contacts?search=${encodeURIComponent(customerName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.contacts || []);
+        const match = list.find(c => c.name?.trim().toLowerCase() === customerName.trim().toLowerCase());
+        if (match && match.id) return match.id;
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  async preloadPaymentLinkDue() {
+    const customerSelect = document.getElementById('plCustomerSelect');
+    const plAmount = document.getElementById('plAmount');
+    if (!customerSelect || !plAmount) return;
+
+    const customerName = customerSelect.value;
+    if (!customerName) {
+      plAmount.value = '';
+      plAmount.placeholder = '0.00';
+      return;
+    }
+
+    try {
+      plAmount.placeholder = 'Fetching due...';
+      let totalDue = 0;
+
+      if (this.billingApp?.api?.getCustomerOutstanding) {
+        const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
+        totalDue = Number(stats?.total_outstanding !== undefined ? stats.total_outstanding : (stats?.amountDue || stats?.current_due || 0));
+      } else {
+        const res = await fetch(`/api/billing/invoices/customers/outstanding?customer_name=${encodeURIComponent(customerName)}`);
+        if (res.ok) {
+          const stats = await res.json();
+          totalDue = Number(stats?.total_outstanding !== undefined ? stats.total_outstanding : (stats?.amountDue || stats?.current_due || 0));
+        }
+      }
+
+      plAmount.value = totalDue > 0 ? totalDue.toFixed(2) : (totalDue === 0 ? '0.00' : totalDue.toFixed(2));
+      plAmount.placeholder = '0.00';
+    } catch (err) {
+      log.error('Error preloading payment link due:', err);
+      plAmount.placeholder = '0.00';
+      this.showAlert('Could not fetch customer due balance', 'error');
+    }
+  }
+
   async loadPaymentLinks() {
     const tbody = document.getElementById('plTableBody');
     if (!tbody) return;
@@ -1862,8 +1942,7 @@ class PaymentCreditNote {
       return;
     }
 
-    const customer = this.billingData.customers?.find(c => c.name === customerName);
-    const customerId = customer ? customer.id : null;
+    const customerId = await this.resolveCustomerId(customerName);
     if (!customerId) {
       this.showAlert('❌ Customer ID could not be resolved', 'error');
       return;
@@ -1881,6 +1960,7 @@ class PaymentCreditNote {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: customerId,
+          customer_name: customerName,
           amount,
           description,
           expires_in_days: expiresInDays
