@@ -4087,7 +4087,8 @@ module.exports = function (db) {
           description,
           invoiceIds: invoice_ids,
           expiresInDays: expires_in_days,
-          userId
+          userId,
+          req
         });
         res.status(201).json({ success: true, link });
       } catch (err) {
@@ -4103,7 +4104,8 @@ module.exports = function (db) {
           customerId: customer_id,
           status,
           limit,
-          offset
+          offset,
+          req
         });
         res.json(result);
       } catch (err) {

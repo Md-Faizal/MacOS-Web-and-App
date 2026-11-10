@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
             const pathName = req.url.split('?')[0];
             if (pathName === '/customer-ledger' || pathName === '/ledger' || pathName.startsWith('/ledger/') || pathName === '/l' || pathName.startsWith('/l/')) {
               req.url = '/customer-ledger.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+            } else if (pathName === '/payment-gateway' || pathName === '/pay' || pathName.startsWith('/p/') || pathName.startsWith('/pay/')) {
+              req.url = '/payment-gateway.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
             }
             next();
           });
@@ -54,6 +56,7 @@ export default defineConfig(({ mode }) => {
           home: resolve(__dirname, 'frontend/home.html'),
           offline: resolve(__dirname, 'frontend/offline.html'),
           'customer-ledger': resolve(__dirname, 'frontend/customer-ledger.html'),
+          'payment-gateway': resolve(__dirname, 'frontend/payment-gateway.html'),
           'public-product': resolve(__dirname, 'frontend/public-product.html')
         }
       }

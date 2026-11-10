@@ -1,4 +1,4 @@
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Payments') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:Payments') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
  * PaymentCreditNote Module
@@ -72,7 +72,7 @@ class PaymentCreditNote {
     if (!dateInput) return '';
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -86,7 +86,7 @@ class PaymentCreditNote {
     if (!dateInput) return '';
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -101,9 +101,9 @@ class PaymentCreditNote {
   async render(params = null) {
     // Refresh billingData reference from billingApp (in case it was reloaded)
     this.billingData = this.billingApp.billingData || {};
-    
+
     const stats = await this.calculateStats();
-    
+
     this.viewContainer.innerHTML = `
       <div class="payment-credit-container">
         <!-- Enhanced Header with Stats -->
@@ -155,8 +155,8 @@ class PaymentCreditNote {
                 <select id="paymentCustomerSelect" class="form-input-enhanced">
                   <option value="">-- Choose a customer --</option>
                   ${this.getUniqueCustomers()
-                    .map(customer => `<option value="${customer}">${customer}</option>`)
-                    .join('')}
+        .map(customer => `<option value="${customer}">${customer}</option>`)
+        .join('')}
                 </select>
               </div>
 
@@ -242,8 +242,8 @@ class PaymentCreditNote {
                 <select id="creditNoteCustomerSelect" class="form-input-enhanced">
                   <option value="">-- Choose a customer --</option>
                   ${this.getUniqueCustomers()
-                    .map(customer => `<option value="${customer}">${customer}</option>`)
-                    .join('')}
+        .map(customer => `<option value="${customer}">${customer}</option>`)
+        .join('')}
                 </select>
               </div>
 
@@ -352,7 +352,7 @@ class PaymentCreditNote {
             <div class="pl-card">
               <div class="pl-card-title">
                 <span>⚡ Create Payment Link</span>
-                <span style="font-size: 10px; color: var(--text-secondary); text-transform: none;">faizal.uk/p/...</span>
+                <span style="font-size: 10px; color: var(--text-secondary); text-transform: none;">mac.faizal.uk/p/...</span>
               </div>
 
               <div class="form-group-enhanced">
@@ -394,7 +394,7 @@ class PaymentCreditNote {
               <!-- Generated Result Card -->
               <div id="plResultCard" class="pl-result-card">
                 <div style="font-size: 11px; font-weight: 700; color: #4361EE; text-transform: uppercase;">✓ Link Generated</div>
-                <div id="plResultUrl" class="pl-result-url">https://faizal.uk/p/...</div>
+                <div id="plResultUrl" class="pl-result-url">https://mac.faizal.uk/p/...</div>
                 <div class="pl-btn-group">
                   <button type="button" class="pl-btn primary" id="plCopyBtn">📋 Copy Link</button>
                   <button type="button" class="pl-btn whatsapp" id="plWhatsAppBtn">💬 WhatsApp</button>
@@ -546,7 +546,7 @@ class PaymentCreditNote {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ payment_method: method, notes })
           });
-        } catch (_) {}
+        } catch (_) { }
         this.pendingSettlementLinkId = null;
       }
     });
@@ -605,11 +605,11 @@ class PaymentCreditNote {
         e.preventDefault();
         creditAttachment.click();
       });
-      
+
       creditAttachment.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
+
         // Validation
         const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!validTypes.includes(file.type)) {
@@ -617,7 +617,7 @@ class PaymentCreditNote {
           e.target.value = '';
           return;
         }
-        
+
         if (file.size > 5 * 1024 * 1024) {
           this.showAlert('❌ Image must be less than 5MB', 'error');
           e.target.value = '';
@@ -703,7 +703,7 @@ class PaymentCreditNote {
     // Hide all tabs and remove active from buttons
     document.querySelectorAll('.tab-content-enhanced').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn-enhanced').forEach(b => b.classList.remove('active'));
-    
+
     // Show selected tab and activate button
     document.getElementById(`${tabName}-tab`)?.classList.add('active');
     document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
@@ -739,7 +739,7 @@ class PaymentCreditNote {
     try {
       // Get customer outstanding from API (now includes opening_balance)
       const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
-      
+
       const totalDue = stats.total_outstanding || 0;
       const openingBalance = stats.opening_balance || 0;
       const invoicedAmount = stats.total_invoiced || 0;
@@ -792,7 +792,7 @@ class PaymentCreditNote {
   async payFullDue() {
     const customerSelect = document.getElementById('paymentCustomerSelect');
     const paymentAmount = document.getElementById('paymentAmount');
-    
+
     if (!customerSelect.value) {
       this.showAlert('Please select a customer first', 'warning');
       return;
@@ -833,9 +833,9 @@ class PaymentCreditNote {
     const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
     const contacts = scoped ? scoped.contacts : (this.billingData.contacts || []);
     const bills = scoped ? scoped.bills : (this.billingData.bills || []);
-    
+
     const customers = new Set();
-    
+
     // Add customers from contacts list first
     contacts.forEach(contact => {
       if (contact.name) customers.add(contact.name);
@@ -860,9 +860,9 @@ class PaymentCreditNote {
   async updateStatsDisplay() {
     // Refresh billingData reference from billingApp (in case it was reloaded)
     this.billingData = this.billingApp.billingData || {};
-    
+
     const stats = await this.calculateStats();
-    
+
     const statBoxes = document.querySelectorAll('.payment-credit-container .stat-box');
     if (statBoxes.length >= 3) {
       // Update Pending
@@ -877,7 +877,7 @@ class PaymentCreditNote {
   async calculateStats() {
     const isWorker = this.billingApp.isWorkerUser ? this.billingApp.isWorkerUser() : false;
     const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
-    
+
     const bills = scoped ? (scoped.statsBills || scoped.bills) : (this.billingData.bills || []);
     const contacts = scoped ? (scoped.statsContacts || scoped.contacts) : (this.billingData.contacts || []);
     const payments = scoped ? (scoped.statsPayments || scoped.payments) : (this.billingData.payments || []);
@@ -949,7 +949,7 @@ class PaymentCreditNote {
 
     // Find customer ID from bills data or contacts data
     let customerId = (this.billingData.bills || []).find(b => b.customer_name === customerName)?.customer_id;
-    
+
     // If not in bills, look in contacts (for opening balance settlements)
     if (!customerId && this.billingData.contacts) {
       customerId = this.billingData.contacts.find(c => c.name === customerName)?.id;
@@ -1078,7 +1078,7 @@ class PaymentCreditNote {
     try {
       // Get customer outstanding from API (now includes opening_balance)
       const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
-      
+
       const totalDue = stats.total_outstanding || 0;
       const openingBalance = stats.opening_balance || 0;
       const invoicedAmount = stats.total_invoiced || 0;
@@ -1160,7 +1160,7 @@ class PaymentCreditNote {
 
     // Find customer ID from bills data or contacts data
     let customerId = (this.billingData.bills || []).find(b => b.customer_name === customerName)?.customer_id;
-    
+
     // If not in bills, look in contacts (for opening balance settlements)
     if (!customerId && this.billingData.contacts) {
       customerId = this.billingData.contacts.find(c => c.name === customerName)?.id;
@@ -1246,7 +1246,7 @@ class PaymentCreditNote {
 
       // Background canonical reload with forceRefresh
       if (this.billingApp.loadBillingDataFromAPI) {
-        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
       }
 
       this.showAlert(`✓ Credit note of ₹${totalSaved.toFixed(2)} issued and applied to ${billsAffected.length} bill(s)`, 'success');
@@ -1290,11 +1290,11 @@ class PaymentCreditNote {
     // All payments and credit notes come from scoped payments
     const scoped = this.billingApp.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
     const allPayments = scoped ? scoped.payments : (this.billingData.payments || []);
-    
+
     // Separate by type
     const payments = allPayments.filter(p => p.type === 'PAYMENT');
     const creditNotes = allPayments.filter(p => p.type === 'CREDIT_NOTE');
-    
+
     // Combine and sort
     const allTransactions = [...payments, ...creditNotes]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -1377,7 +1377,7 @@ class PaymentCreditNote {
 
     // Apply search filter
     if (searchTerm && !showingOpeningBalance) {
-      transactions = transactions.filter(t => 
+      transactions = transactions.filter(t =>
         (t.customer_name || '').toLowerCase().includes(searchTerm) ||
         (t.reference_number || '').toLowerCase().includes(searchTerm) ||
         (t.reason || '').toLowerCase().includes(searchTerm)
@@ -1400,7 +1400,7 @@ class PaymentCreditNote {
     if (showingOpeningBalance) {
       // Show only opening balance cards for accessible customers
       const uniqueCustomers = this.getUniqueCustomers();
-      
+
       const openingBalanceCardsHTML = uniqueCustomers.map(customer => `
         <div class="transaction-card opening-balance-card" data-customer="${customer}" style="background-color: #f0f8ff; border: 2px solid #1e40af;">
           <div class="card-header">
@@ -1415,9 +1415,9 @@ class PaymentCreditNote {
           </div>
         </div>
       `).join('');
-      
+
       container.innerHTML = openingBalanceCardsHTML;
-      
+
       // Fetch opening balances for each customer
       uniqueCustomers.forEach(customer => {
         this.fetchAndDisplayOpeningBalanceForCustomer(customer, container);
@@ -1450,7 +1450,7 @@ class PaymentCreditNote {
 
     // Get unique customers from transactions
     const customers = [...new Set(transactions.map(t => t.customer_name))];
-    
+
     // Build opening balance cards for each customer
     const openingBalanceCardsHTML = customers.map(customer => `
       <div class="transaction-card opening-balance-card" data-customer="${customer}" style="background-color: #f0f8ff; border: 2px solid #1e40af;">
@@ -1525,7 +1525,7 @@ class PaymentCreditNote {
       </div>
       `;
     }).join('');
-    
+
     // Fetch opening balances for each customer
     customers.forEach(customer => {
       this.fetchAndDisplayOpeningBalanceForCustomer(customer, container);
@@ -1538,19 +1538,19 @@ class PaymentCreditNote {
       if (response.ok) {
         const result = await response.json();
         const contacts = result.data || result;
-        
+
         if (Array.isArray(contacts) && contacts.length > 0) {
           const customer = contacts.find(c => c.name.toLowerCase() === customerName.toLowerCase());
           if (customer) {
             const openingBalance = customer.opening_balance || 0;
             const balanceCard = container.querySelector(`[data-customer="${customerName}"]`);
-            
+
             // Hide card if opening balance is 0
             if (openingBalance === 0) {
               if (balanceCard) balanceCard.style.display = 'none';
               return;
             }
-            
+
             const card = container.querySelector(`[data-customer="${customerName}"] .opening-balance-amount`);
             if (card) {
               let balanceHTML = '';
@@ -1630,16 +1630,16 @@ class PaymentCreditNote {
       }
 
       const result = await response.json();
-      
+
       // Close modal
       document.getElementById('editPaymentModal').classList.add('hidden');
-      
+
       // Show success message
       this.showAlert('Payment updated successfully', 'success');
-      
+
       // Reload transactions
       this.loadTransactionHistory();
-      
+
       // Invalidate API cache & publish update
       if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
       if (typeof window !== 'undefined' && window.CoreDataBus) {
@@ -1647,7 +1647,7 @@ class PaymentCreditNote {
         window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
       }
       if (this.billingApp?.loadBillingDataFromAPI) {
-        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
       }
 
     } catch (error) {
@@ -1692,7 +1692,7 @@ class PaymentCreditNote {
       if (this.billingApp?.showNotification) {
         this.billingApp.showNotification('Transaction deleted successfully', 'success');
       }
-      
+
       // Invalidate API cache immediately
       if (this.billingApp?.api) this.billingApp.api.invalidateCache('/billing');
 
@@ -1708,7 +1708,7 @@ class PaymentCreditNote {
 
       // Background canonical reload
       if (this.billingApp?.loadBillingDataFromAPI) {
-        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => {});
+        this.billingApp.loadBillingDataFromAPI({ forceRefresh: true }).catch(() => { });
       }
 
       // Synchronize ledger subview instance
@@ -1792,7 +1792,7 @@ class PaymentCreditNote {
         const stats = await this.billingApp.api.getCustomerOutstanding(customerName);
         if (stats && stats.customer_id) return stats.customer_id;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 4. Query /api/billing/invoices/customers/outstanding directly
     try {
@@ -1801,7 +1801,7 @@ class PaymentCreditNote {
         const stats = await res.json();
         if (stats && stats.customer_id) return stats.customer_id;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 5. Search contacts API directly
     try {
@@ -1812,7 +1812,7 @@ class PaymentCreditNote {
         const match = list.find(c => c.name?.trim().toLowerCase() === customerName.trim().toLowerCase());
         if (match && match.id) return match.id;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     return null;
   }
@@ -1889,7 +1889,7 @@ class PaymentCreditNote {
         }
 
         const dateStr = link.created_at ? link.created_at.slice(0, 10) : '-';
-        const shortUrl = link.share_url || `https://faizal.uk/p/${link.link_code}`;
+        const shortUrl = link.share_url || `https://mac.faizal.uk/p/${link.link_code}`;
 
         let actionBtn = `<a href="${shortUrl}" target="_blank" class="pl-btn" style="padding:3px 7px;font-size:10px;">↗ Open</a>`;
         if (isClaimed) {
@@ -1979,7 +1979,7 @@ class PaymentCreditNote {
       const copyBtn = document.getElementById('plCopyBtn');
       const waBtn = document.getElementById('plWhatsAppBtn');
 
-      const url = data.link?.share_url || `https://faizal.uk/p/${data.link?.link_code}`;
+      const url = data.link?.share_url || `https://mac.faizal.uk/p/${data.link?.link_code}`;
       if (resultCard && resultUrl) {
         resultUrl.textContent = url;
         resultCard.style.display = 'block';
