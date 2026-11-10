@@ -78,6 +78,23 @@ async function runTests() {
   assert(publicData.banking.ifsc, 'Bank IFSC code present.');
   console.log('✓ Step 4: Public gateway data resolved with dynamic QR and banking coordinates.');
 
+  // Step 4b: Test Multi-QR Tranche Splitting for amounts > 1 Lakh (NPCI Limit Edge Case)
+  const highValAmount = 235000.0;
+  const highValLink = paymentGateway.createPaymentLink(db, {
+    customerId: contact.id,
+    amount: highValAmount,
+    description: 'High Value Settlement Test'
+  });
+  const highValData = await paymentGateway.getPublicPaymentLinkData(db, highValLink.link_code);
+  assert.strictEqual(highValData.is_split, true, 'is_split flag must be true for amounts > 1 Lakh');
+  assert.strictEqual(highValData.total_parts, 3, 'Must split 235000 into 3 tranches (100k + 100k + 35k)');
+  assert.strictEqual(highValData.tranches[0].amount, 100000);
+  assert.strictEqual(highValData.tranches[1].amount, 100000);
+  assert.strictEqual(highValData.tranches[2].amount, 35000);
+  assert(highValData.tranches[0].qr_data_url.startsWith('data:image/png;base64,'));
+  db.prepare('DELETE FROM payment_links WHERE id = ?').run(highValLink.id);
+  console.log('✓ Step 4b: Multi-QR tranche splitting (> 1 Lakh) verified: 3 parts [100k, 100k, 35k].');
+
   // Step 5: Submit Remittance Claim (Customer paid via UPI/Netbanking)
   const testUtr = '439810294821';
   const confirmResult = await paymentGateway.confirmPaymentRemittance(db, link.link_code, {

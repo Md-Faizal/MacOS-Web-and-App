@@ -257,24 +257,68 @@ async function getPublicPaymentLinkData(db, linkCode, req = null) {
   const accountType = getSetting(db, 'bank_account_type', 'Current / Savings Account');
   const companyPhone = getSetting(db, 'company_phone', '06822273304 / 943933330');
 
-  // UPI Deep Link Specification:
-  // upi://pay?pa={upi_id}&pn={merchant_name}&am={amount}&cu=INR&tn={note}
-  const upiNote = `PAY-${cleanCode}`.slice(0, 30);
-  const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(companyName)}&am=${Number(link.amount).toFixed(2)}&cu=INR&tn=${encodeURIComponent(upiNote)}`;
+  // UPI Deep Link Specification (NPCI regulatory cap: ₹1,00,000 per txn)
+  const UPI_LIMIT = 100000;
+  const numAmount = Number(link.amount);
+  const isSplit = numAmount > UPI_LIMIT;
+  const tranches = [];
 
-  let qrDataUrl = '';
-  if (qrcode && typeof qrcode.toDataURL === 'function') {
-    try {
-      qrDataUrl = await qrcode.toDataURL(upiUri, {
-        width: 380,
-        margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#ffffff'
-        },
-        errorCorrectionLevel: 'M'
+  if (isSplit) {
+    let rem = numAmount;
+    let partNum = 1;
+    const totalParts = Math.ceil(numAmount / UPI_LIMIT);
+
+    while (rem > 0) {
+      const partAmount = Math.min(rem, UPI_LIMIT);
+      const trancheNote = `PAY-${cleanCode}-P${partNum}`.slice(0, 30);
+      const trancheUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(companyName)}&am=${partAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(trancheNote)}`;
+
+      let trancheQr = '';
+      if (qrcode && typeof qrcode.toDataURL === 'function') {
+        try {
+          trancheQr = await qrcode.toDataURL(trancheUri, {
+            width: 380,
+            margin: 1,
+            color: { dark: '#000000', light: '#ffffff' },
+            errorCorrectionLevel: 'M'
+          });
+        } catch (_) {}
+      }
+
+      tranches.push({
+        part: partNum,
+        total_parts: totalParts,
+        amount: partAmount,
+        note: trancheNote,
+        upi_uri: trancheUri,
+        qr_data_url: trancheQr
       });
-    } catch (_) { }
+
+      rem = Math.round((rem - partAmount) * 100) / 100;
+      partNum++;
+    }
+  } else {
+    const upiNote = `PAY-${cleanCode}`.slice(0, 30);
+    const upiUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(companyName)}&am=${numAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(upiNote)}`;
+    let qrDataUrl = '';
+    if (qrcode && typeof qrcode.toDataURL === 'function') {
+      try {
+        qrDataUrl = await qrcode.toDataURL(upiUri, {
+          width: 380,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+          errorCorrectionLevel: 'M'
+        });
+      } catch (_) {}
+    }
+    tranches.push({
+      part: 1,
+      total_parts: 1,
+      amount: numAmount,
+      note: upiNote,
+      upi_uri: upiUri,
+      qr_data_url: qrDataUrl
+    });
   }
 
   return {
@@ -302,8 +346,11 @@ async function getPublicPaymentLinkData(db, linkCode, req = null) {
       bank_branch: bankBranch,
       account_type: accountType
     },
-    upi_uri: upiUri,
-    qr_data_url: qrDataUrl
+    upi_uri: tranches[0].upi_uri,
+    qr_data_url: tranches[0].qr_data_url,
+    is_split: isSplit,
+    total_parts: tranches.length,
+    tranches: tranches
   };
 }
 

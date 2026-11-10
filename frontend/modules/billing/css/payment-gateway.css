@@ -3,6 +3,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Monochromatic SpaceX / xAI / X.com inspired design system
  * with Google Gemini spectral accent highlights.
+ * SpaceX Minimalist & Cyber-Brutalist Widescreen Telemetry Cockpit
+ * with Google Gemini Iridescent Highlights and Holographic HUD Elements.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -12,6 +14,12 @@
   --bg-card-hover: rgba(20, 22, 28, 0.95);
   --bg-input: rgba(18, 19, 26, 0.9);
   --bg-secondary: rgba(255, 255, 255, 0.04);
+
+  --bg-deep: #020204;
+  --bg-cockpit: rgba(10, 11, 15, 0.92);
+  --bg-panel: rgba(16, 17, 24, 0.78);
+  --bg-panel-hover: rgba(22, 24, 34, 0.9);
+  --bg-input: rgba(12, 13, 18, 0.95);
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-medium: rgba(255, 255, 255, 0.14);
@@ -23,7 +31,18 @@
   --text-subtle: #52525b;
 
   /* Google Gemini Iridescent Signature Glow */
+  --border-grid: rgba(255, 255, 255, 0.14);
+  --border-accent: rgba(67, 97, 238, 0.45);
+  --border-active: #ffffff;
+
+  --text-white: #ffffff;
+  --text-silver: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
+
+  /* Google Gemini Spectral Iridescence */
   --gemini-gradient: linear-gradient(135deg, #4361EE 0%, #7209B7 50%, #4CC9F0 100%);
+  --gemini-beam: linear-gradient(90deg, transparent 0%, #4361EE 35%, #7209B7 50%, #4CC9F0 65%, transparent 100%);
   --gemini-glow: rgba(67, 97, 238, 0.35);
   --gemini-glow-subtle: rgba(114, 9, 183, 0.18);
   --gemini-accent: #4361EE;
@@ -38,745 +57,1345 @@
 
   --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
   --transition-smooth: 280ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font-sans: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Geist", "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", "Geist Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Reset & Base */
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
 
-body {
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-stack);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 24px 16px 48px;
-  overflow-x: hidden;
-  position: relative;
-}
-
-/* SpaceX Micro-Grid & Ambient Radial Backdrop */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    radial-gradient(1000px 500px at 50% 0%, rgba(255, 255, 255, 0.045) 0%, transparent 70%),
-    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 100% 100%, 32px 32px, 32px 32px;
-  background-position: center top, center center, center center;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Subtle Gemini Ambient Aurora Light in Background */
-body::after {
-  content: "";
-  position: fixed;
-  width: 500px;
-  height: 500px;
-  top: -150px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(67, 97, 238, 0.12) 0%, rgba(114, 9, 183, 0.06) 50%, transparent 75%);
-  filter: blur(80px);
-  pointer-events: none;
-  z-index: 0;
-  animation: auroraPulse 10s ease-in-out infinite alternate;
-}
-
-@keyframes auroraPulse {
-  0% {
-    transform: translateX(-50%) scale(0.9);
-    opacity: 0.6;
+  /* Reset & Cosmic Canvas */
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  100% {
-    transform: translateX(-50%) scale(1.15);
-    opacity: 0.95;
-  }
-}
-
-/* Layout Wrapper */
-.gateway-container {
-  width: 100%;
-  max-width: 460px;
-  position: relative;
-  z-index: 1;
-}
-
-/* Main Gateway Card */
-.gateway-card {
-  background: var(--bg-card);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 28px 24px;
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.75),
-    0 1px 0 rgba(255, 255, 255, 0.08) inset;
-  transition: border-color var(--transition-smooth), transform var(--transition-smooth);
-}
-
-.gateway-card:hover {
-  border-color: var(--border-medium);
-}
-
-/* Header Area */
-.gateway-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 22px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.brand-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.brand-name {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.gateway-token {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-subtle);
-  letter-spacing: 0.04em;
-}
-
-/* Gemini Glowing Pill Badge */
-.gemini-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.03);
-  color: #c7d2fe;
-  border: 1px solid rgba(67, 97, 238, 0.35);
-  box-shadow: 0 0 12px var(--gemini-glow-subtle);
-  position: relative;
-}
-
-.gemini-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #38ef7d;
-  box-shadow: 0 0 8px #38ef7d;
-  animation: pulseDot 2s ease-in-out infinite;
-}
-
-@keyframes pulseDot {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.4;
-    transform: scale(0.85);
-  }
-}
-
-/* Amount & Customer Section */
-.amount-hero {
-  text-align: center;
-  padding: 10px 0 20px;
-}
-
-.amount-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.amount-display {
-  font-size: 42px;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  color: var(--text-primary);
-  font-feature-settings: "tnum" 1;
-  line-height: 1.1;
-  position: relative;
-  display: inline-block;
-}
-
-.amount-display::after {
-  content: "";
-  position: absolute;
-  bottom: -4px;
-  left: 20%;
-  right: 20%;
-  height: 2px;
-  background: var(--gemini-gradient);
-  border-radius: 2px;
-  opacity: 0.8;
-}
-
-.customer-meta {
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.customer-meta strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.payment-memo {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 3px;
-}
-
-/* Segmented Control Switcher */
-.mode-switcher {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  gap: 4px;
-  margin: 18px 0;
-  position: relative;
-}
-
-.mode-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-family: var(--font-stack);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 9px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  transition: all var(--transition-fast);
-}
-
-.mode-btn:hover {
-  color: var(--text-primary);
-}
-
-.mode-btn.active {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  position: relative;
-}
-
-.mode-btn.active::after {
-  content: "";
-  position: absolute;
-  bottom: -4px;
-  left: 30%;
-  right: 30%;
-  height: 2px;
-  background: var(--gemini-accent);
-  border-radius: 2px;
-}
-
-/* Tab Panels */
-.tab-panel {
-  display: none;
-  animation: fadeIn var(--transition-smooth);
-}
-
-.tab-panel.active {
-  display: block;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* QR Code Section */
-.qr-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 0 6px;
-}
-
-.qr-frame {
-  background: #ffffff;
-  padding: 14px;
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-  display: inline-block;
-  margin-bottom: 16px;
-  transition: transform var(--transition-fast);
-}
-
-.qr-frame:hover {
-  transform: scale(1.015);
-}
-
-.qr-image {
-  display: block;
-  width: 220px;
-  height: 220px;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.qr-instructions {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-align: center;
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-/* Mobile Deep Link CTA Button */
-.upi-app-btn {
-  width: 100%;
-  background: var(--text-primary);
-  color: #000000;
-  border: none;
-  padding: 14px 20px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 700;
-  font-family: var(--font-stack);
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  text-decoration: none;
-  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.15);
-  transition: all var(--transition-fast);
-  margin-bottom: 12px;
-}
-
-.upi-app-btn:hover {
-  background: #f4f4f5;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
-}
-
-.upi-app-btn:active {
-  transform: translateY(0);
-}
-
-/* Supported Apps Pill Strip */
-.supported-apps {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-  color: var(--text-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
-  margin-top: 4px;
-}
-
-/* Bank Account Detail Rows */
-.bank-details-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 8px 0;
-}
-
-.bank-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  transition: border-color var(--transition-fast), background-color var(--transition-fast);
-}
-
-.bank-row:hover {
-  border-color: var(--border-medium);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.bank-info {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  overflow: hidden;
-}
-
-.bank-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.bank-val {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Copy Button */
-.copy-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-family: var(--font-stack);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  transition: all var(--transition-fast);
-}
-
-.copy-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--text-primary);
-  border-color: var(--border-medium);
-}
-
-.copy-btn.copied {
-  background: rgba(56, 239, 125, 0.15);
-  border-color: #38ef7d;
-  color: #38ef7d;
-}
-
-/* Remittance Notice Collapsible Drawer */
-.settlement-drawer {
-  margin-top: 24px;
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 18px;
-}
-
-.drawer-trigger {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-family: var(--font-stack);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  transition: all var(--transition-smooth);
-}
-
-.drawer-trigger:hover {
-  border-color: rgba(67, 97, 238, 0.5);
-  color: var(--text-primary);
-  box-shadow: 0 0 16px var(--gemini-glow-subtle);
-}
-
-.drawer-icon {
-  transition: transform var(--transition-smooth);
-  font-size: 12px;
-}
-
-.drawer-trigger.open .drawer-icon {
-  transform: rotate(180deg);
-}
-
-.drawer-content {
-  display: none;
-  padding-top: 16px;
-  animation: fadeIn var(--transition-smooth);
-}
-
-.drawer-content.open {
-  display: block;
-}
-
-/* Form Controls */
-.form-group {
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-}
-
-.form-input {
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  font-family: var(--font-stack);
-  font-size: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  outline: none;
-  transition: all var(--transition-fast);
-}
-
-.form-input:focus {
-  border-color: var(--gemini-accent);
-  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
-  background: rgba(24, 25, 34, 0.95);
-}
-
-.form-input::placeholder {
-  color: var(--text-subtle);
-}
-
-.form-input.mono {
-  font-family: var(--font-mono);
-}
-
-/* Submit Confirmation Button with Gemini Spectral Gradient */
-.gemini-submit-btn {
-  width: 100%;
-  background: var(--gemini-gradient);
-  color: #ffffff;
-  border: none;
-  padding: 14px 20px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 700;
-  font-family: var(--font-stack);
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 4px 20px var(--gemini-glow);
-  transition: all var(--transition-fast);
-  margin-top: 8px;
-  position: relative;
-  overflow: hidden;
-}
-
-.gemini-submit-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 26px rgba(67, 97, 238, 0.55);
-}
-
-.gemini-submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-/* Verified Confirmation Receipt State */
-.receipt-card {
-  text-align: center;
-  padding: 20px 8px;
-  animation: fadeIn var(--transition-smooth);
-}
-
-.receipt-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: rgba(56, 239, 125, 0.12);
-  border: 1px solid #38ef7d;
-  color: #38ef7d;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 0 24px rgba(56, 239, 125, 0.3);
-}
-
-.receipt-title {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-  margin-bottom: 6px;
-}
-
-.receipt-sub {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 20px;
-}
-
-.receipt-details {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
-  text-align: left;
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.receipt-row {
-  display: flex;
-  justify-content: space-between;
-}
-
-.receipt-row span:first-child {
-  color: var(--text-muted);
-}
-
-.receipt-row span:last-child {
-  color: var(--text-primary);
-  font-weight: 600;
-  font-family: var(--font-mono);
-}
-
-/* Loading Skeleton */
-.skeleton-loader {
-  padding: 40px 20px;
-  text-align: center;
-}
-
-.spinner {
-  width: 36px;
-  height: 36px;
-  border: 2px solid var(--border-subtle);
-  border-top-color: var(--gemini-accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 16px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.loading-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
-}
-
-/* Toast Notification */
-.gateway-toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%) translateY(40px);
-  background: #ffffff;
-  color: #000000;
-  padding: 10px 18px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-  opacity: 0;
-  pointer-events: none;
-  transition: all var(--transition-fast);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.gateway-toast.visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-/* Footer Footprint */
-.gateway-footer {
-  text-align: center;
-  margin-top: 20px;
-  font-size: 11px;
-  color: var(--text-subtle);
-  line-height: 1.6;
-}
-
-.gateway-footer span {
-  display: inline-block;
-  opacity: 0.75;
-}
-
-/* Mobile Optimizations */
-@media (max-width: 480px) {
   body {
-    padding: 12px 10px 36px;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-stack);
+    background-color: var(--bg-deep);
+    color: var(--text-white);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 24px 16px 48px;
+    padding: 32px 20px 48px;
+    overflow-x: hidden;
+    position: relative;
   }
 
-  .gateway-card {
-    padding: 22px 18px;
-  }
+  /* SpaceX Micro-Grid & Ambient Radial Backdrop */
+  body::before {
+    content: "";
 
-  .amount-display {
-    font-size: 36px;
-  }
+    /* Background Particle Canvas */
+    #starfieldCanvas {
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1000px 500px at 50% 0%, rgba(255, 255, 255, 0.045) 0%, transparent 70%),
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+      background-position: center top, center center, center center;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
 
-  .qr-image {
-    width: 200px;
-    height: 200px;
-  }
-}
+    /* Subtle Gemini Ambient Aurora Light in Background */
+    body::after {
+
+      /* SpaceX Micro-Grid Telemetry Line Overlay */
+      body::before {
+        content: "";
+        position: fixed;
+        width: 500px;
+        height: 500px;
+        top: -150px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: radial-gradient(circle, rgba(67, 97, 238, 0.12) 0%, rgba(114, 9, 183, 0.06) 50%, transparent 75%);
+        filter: blur(80px);
+        inset: 0;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 40px 40px;
+        background-position: center center;
+        pointer-events: none;
+        z-index: 0;
+        animation: auroraPulse 10s ease-in-out infinite alternate;
+      }
+
+      @keyframes auroraPulse {
+        0% {
+          transform: translateX(-50%) scale(0.9);
+          opacity: 0.6;
+        }
+
+        100% {
+          transform: translateX(-50%) scale(1.15);
+          opacity: 0.95;
+        }
+      }
+
+      /* Layout Wrapper */
+      .gateway-container {
+
+        /* Widescreen Cockpit Container */
+        .cockpit-container {
+          width: 100%;
+          max-width: 460px;
+          max-width: 1040px;
+          position: relative;
+          z-index: 1;
+        }
+
+        /* Main Gateway Card */
+        .gateway-card {
+          background: var(--bg-card);
+          backdrop-filter: blur(28px) saturate(180%);
+          -webkit-backdrop-filter: blur(28px) saturate(180%);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-lg);
+          padding: 28px 24px;
+          box-shadow:
+            0 24px 60px rgba(0, 0, 0, 0.75),
+            0 1px 0 rgba(255, 255, 255, 0.08) inset;
+          transition: border-color var(--transition-smooth), transform var(--transition-smooth);
+
+          /* Cockpit Shell */
+          .cockpit-shell {
+            background: var(--bg-cockpit);
+            backdrop-filter: blur(32px) saturate(180%);
+            -webkit-backdrop-filter: blur(32px) saturate(180%);
+            border: 1px solid var(--border-grid);
+            border-radius: 12px;
+            box-shadow:
+              0 32px 80px rgba(0, 0, 0, 0.85),
+              0 1px 0 rgba(255, 255, 255, 0.1) inset;
+            position: relative;
+            overflow: hidden;
+          }
+
+          .gateway-card:hover {
+            border-color: var(--border-medium);
+          }
+
+          /* Header Area */
+          .gateway-header {
+
+            /* Top Telemetry Flight-Bar */
+            .flight-bar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 22px;
+              padding-bottom: 16px;
+              padding: 14px 24px;
+              border-bottom: 1px solid var(--border-subtle);
+              background: rgba(255, 255, 255, 0.02);
+              font-family: var(--font-mono);
+              font-size: 11px;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+            }
+
+            .brand-wrapper {
+              .flight-bar-brand {
+                color: var(--text-white);
+                font-weight: 700;
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                align-items: center;
+                gap: 8px;
+              }
+
+              .brand-name {
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--text-secondary);
+
+                .flight-bar-ref {
+                  color: var(--text-muted);
+                }
+
+                .gateway-token {
+                  font-family: var(--font-mono);
+                  font-size: 11px;
+                  color: var(--text-subtle);
+                  letter-spacing: 0.04em;
+                }
+
+                /* Gemini Glowing Pill Badge */
+                .gemini-badge {
+                  display: inline-flex;
+
+                  .flight-status-indicator {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    color: #38ef7d;
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    padding: 4px 10px;
+                    border-radius: var(--radius-full);
+                    background: rgba(255, 255, 255, 0.03);
+                    color: #c7d2fe;
+                    border: 1px solid rgba(67, 97, 238, 0.35);
+                    box-shadow: 0 0 12px var(--gemini-glow-subtle);
+                    position: relative;
+                  }
+
+                  .gemini-dot {
+                    .flight-status-dot {
+                      width: 6px;
+                      height: 6px;
+                      border-radius: 50%;
+                      background: #38ef7d;
+                      box-shadow: 0 0 8px #38ef7d;
+                      animation: pulseDot 2s ease-in-out infinite;
+                    }
+
+                    @keyframes pulseDot {
+
+                      /* 2-Column Horizontal Cockpit Grid */
+                      .cockpit-grid {
+                        display: grid;
+                        grid-template-columns: 1.15fr 0.85fr;
+                        min-height: 520px;
+                      }
+
+                      0%,
+                      100% {
+                        opacity: 1;
+                        transform: scale(1);
+                      }
+
+                      50% {
+                        opacity: 0.4;
+                        transform: scale(0.85);
+                      }
+
+                      /* Left Panel: Primary Data & Remittance Controller */
+                      .telemetry-panel {
+                        padding: 32px 28px;
+                        border-right: 1px solid var(--border-subtle);
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: space-between;
+                      }
+
+                      /* Amount & Customer Section */
+                      .amount-hero {
+                        text-align: center;
+                        padding: 10px 0 20px;
+
+                        /* Balance Hero */
+                        .telemetry-hero {
+                          margin-bottom: 24px;
+                        }
+
+                        .amount-label {
+                          font-size: 11px;
+                          font-weight: 600;
+                          letter-spacing: 0.1em;
+
+                          .telemetry-label {
+                            font-family: var(--font-mono);
+                            font-size: 10px;
+                            letter-spacing: 0.14em;
+                            text-transform: uppercase;
+                            color: var(--text-muted);
+                            margin-bottom: 6px;
+                            color: var(--text-dim);
+                            margin-bottom: 8px;
+                          }
+
+                          .amount-display {
+                            font-size: 42px;
+
+                            .telemetry-amount {
+                              font-size: 48px;
+                              font-weight: 800;
+                              letter-spacing: -0.04em;
+                              color: var(--text-primary);
+                              font-family: var(--font-sans);
+                              color: var(--text-white);
+                              font-feature-settings: "tnum" 1;
+                              line-height: 1.1;
+                              line-height: 1.05;
+                              position: relative;
+                              display: inline-block;
+                            }
+
+                            .amount-display::after {
+                              .telemetry-amount::after {
+                                content: "";
+                                position: absolute;
+                                bottom: -4px;
+                                left: 20%;
+                                right: 20%;
+                                bottom: -6px;
+                                left: 0;
+                                width: 80px;
+                                height: 2px;
+                                background: var(--gemini-gradient);
+                                border-radius: 2px;
+                                opacity: 0.8;
+                              }
+
+                              .customer-meta {
+                                margin-top: 14px;
+
+                                .telemetry-target {
+                                  margin-top: 18px;
+                                  font-size: 13px;
+                                  color: var(--text-secondary);
+                                  color: var(--text-silver);
+                                  font-family: var(--font-sans);
+                                }
+
+                                .customer-meta strong {
+                                  color: var(--text-primary);
+
+                                  .telemetry-target strong {
+                                    color: var(--text-white);
+                                    font-weight: 600;
+                                  }
+
+                                  .payment-memo {
+                                    .telemetry-memo {
+                                      font-family: var(--font-mono);
+                                      font-size: 11px;
+                                      color: var(--text-muted);
+                                      margin-top: 3px;
+                                      margin-top: 4px;
+                                    }
+
+                                    /* Segmented Control Switcher */
+                                    .mode-switcher {
+                                      display: grid;
+                                      grid-template-columns: 1fr 1fr;
+                                      background: rgba(0, 0, 0, 0.45);
+                                      border: 1px solid var(--border-subtle);
+                                      border-radius: var(--radius-md);
+                                      padding: 4px;
+                                      gap: 4px;
+                                      margin: 18px 0;
+                                      position: relative;
+
+                                      /* Split Tranche Controller (> ₹1 Lakh) */
+                                      .tranche-section {
+                                        background: rgba(255, 255, 255, 0.025);
+                                        border: 1px solid var(--border-accent);
+                                        border-radius: 8px;
+                                        padding: 14px 16px;
+                                        margin-bottom: 22px;
+                                        box-shadow: 0 0 16px rgba(67, 97, 238, 0.08);
+                                      }
+
+                                      .mode-btn {
+                                        background: transparent;
+                                        border: none;
+                                        color: var(--text-secondary);
+                                        font-family: var(--font-stack);
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        letter-spacing: 0.02em;
+                                        padding: 9px 12px;
+                                        border-radius: 8px;
+                                        cursor: pointer;
+
+                                        .tranche-header {
+                                          display: flex;
+                                          justify-content: space-between;
+                                          align-items: center;
+                                          justify-content: center;
+                                          gap: 7px;
+                                          transition: all var(--transition-fast);
+                                          margin-bottom: 10px;
+                                        }
+
+                                        .mode-btn:hover {
+                                          color: var(--text-primary);
+
+                                          .tranche-title {
+                                            font-family: var(--font-mono);
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                            letter-spacing: 0.08em;
+                                            text-transform: uppercase;
+                                            color: #93c5fd;
+                                          }
+
+                                          .mode-btn.active {
+                                            background: rgba(255, 255, 255, 0.08);
+                                            color: var(--text-primary);
+                                            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+                                            position: relative;
+
+                                            .tranche-notice {
+                                              font-size: 11px;
+                                              color: var(--text-muted);
+                                              margin-top: 8px;
+                                              line-height: 1.4;
+                                            }
+
+                                            .mode-btn.active::after {
+                                              content: "";
+                                              position: absolute;
+                                              bottom: -4px;
+                                              left: 30%;
+                                              right: 30%;
+                                              height: 2px;
+                                              background: var(--gemini-accent);
+                                              border-radius: 2px;
+
+                                              .tranche-pills {
+                                                display: flex;
+                                                flex-wrap: wrap;
+                                                gap: 8px;
+                                              }
+
+                                              /* Tab Panels */
+                                              .tab-panel {
+                                                display: none;
+                                                animation: fadeIn var(--transition-smooth);
+                                              }
+
+                                              .tab-panel.active {
+                                                display: block;
+                                              }
+
+                                              @keyframes fadeIn {
+                                                from {
+                                                  opacity: 0;
+                                                  transform: translateY(4px);
+                                                }
+
+                                                to {
+                                                  opacity: 1;
+                                                  transform: translateY(0);
+                                                }
+                                              }
+
+                                              /* QR Code Section */
+                                              .qr-container {
+                                                .tranche-pill {
+                                                  background: rgba(255, 255, 255, 0.06);
+                                                  border: 1px solid var(--border-subtle);
+                                                  color: var(--text-silver);
+                                                  font-family: var(--font-mono);
+                                                  font-size: 11px;
+                                                  font-weight: 600;
+                                                  padding: 8px 12px;
+                                                  border-radius: 6px;
+                                                  cursor: pointer;
+                                                  transition: all 160ms var(--ease-spring);
+                                                  display: flex;
+                                                  flex-direction: column;
+                                                  align-items: center;
+                                                  padding: 16px 0 6px;
+                                                  gap: 6px;
+                                                }
+
+                                                .qr-frame {
+                                                  background: #ffffff;
+                                                  padding: 14px;
+                                                  border-radius: var(--radius-md);
+                                                  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+                                                  display: inline-block;
+                                                  margin-bottom: 16px;
+                                                  transition: transform var(--transition-fast);
+
+                                                  .tranche-pill:hover {
+                                                    background: rgba(255, 255, 255, 0.12);
+                                                    color: var(--text-white);
+                                                    border-color: var(--border-grid);
+                                                  }
+
+                                                  .qr-frame:hover {
+                                                    transform: scale(1.015);
+
+                                                    .tranche-pill.active {
+                                                      background: #ffffff;
+                                                      color: #000000;
+                                                      border-color: #ffffff;
+                                                      font-weight: 700;
+                                                      box-shadow: 0 2px 10px rgba(255, 255, 255, 0.25);
+                                                    }
+
+                                                    .qr-image {
+                                                      display: block;
+                                                      width: 220px;
+                                                      height: 220px;
+                                                      object-fit: contain;
+                                                      border-radius: 4px;
+
+                                                      /* Mode Switcher Tabs */
+                                                      .channel-switcher {
+                                                        display: grid;
+                                                        grid-template-columns: 1fr 1fr;
+                                                        background: rgba(0, 0, 0, 0.5);
+                                                        border: 1px solid var(--border-subtle);
+                                                        border-radius: 8px;
+                                                        padding: 4px;
+                                                        gap: 4px;
+                                                        margin-bottom: 20px;
+                                                      }
+
+                                                      .qr-instructions {
+                                                        font-size: 12px;
+                                                        color: var(--text-secondary);
+                                                        text-align: center;
+                                                        margin-bottom: 16px;
+                                                        line-height: 1.5;
+                                                      }
+
+                                                      /* Mobile Deep Link CTA Button */
+                                                      .upi-app-btn {
+                                                        width: 100%;
+                                                        background: var(--text-primary);
+                                                        color: #000000;
+
+                                                        .channel-btn {
+                                                          background: transparent;
+                                                          border: none;
+                                                          padding: 14px 20px;
+                                                          border-radius: var(--radius-md);
+                                                          font-size: 14px;
+                                                          font-weight: 700;
+                                                          font-family: var(--font-stack);
+                                                          letter-spacing: -0.01em;
+                                                          color: var(--text-muted);
+                                                          font-family: var(--font-mono);
+                                                          font-size: 11px;
+                                                          font-weight: 600;
+                                                          letter-spacing: 0.04em;
+                                                          text-transform: uppercase;
+                                                          padding: 10px 14px;
+                                                          border-radius: 6px;
+                                                          cursor: pointer;
+                                                          display: flex;
+                                                          align-items: center;
+                                                          justify-content: center;
+                                                          gap: 8px;
+                                                          cursor: pointer;
+                                                          text-decoration: none;
+                                                          box-shadow: 0 4px 16px rgba(255, 255, 255, 0.15);
+                                                          transition: all var(--transition-fast);
+                                                          margin-bottom: 12px;
+                                                          gap: 6px;
+                                                          transition: all 160ms var(--ease-spring);
+                                                        }
+
+                                                        .upi-app-btn:hover {
+                                                          background: #f4f4f5;
+                                                          transform: translateY(-1px);
+                                                          box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
+
+                                                          .channel-btn:hover {
+                                                            color: var(--text-white);
+                                                          }
+
+                                                          .upi-app-btn:active {
+                                                            transform: translateY(0);
+
+                                                            .channel-btn.active {
+                                                              background: rgba(255, 255, 255, 0.1);
+                                                              color: var(--text-white);
+                                                              border: 1px solid rgba(255, 255, 255, 0.15);
+                                                            }
+
+                                                            /* Supported Apps Pill Strip */
+                                                            .supported-apps {
+
+                                                              /* Bank Details Spec Table */
+                                                              .bank-spec-table {
+                                                                display: flex;
+                                                                justify-content: center;
+                                                                align-items: center;
+                                                                gap: 12px;
+                                                                font-size: 11px;
+                                                                color: var(--text-subtle);
+                                                                text-transform: uppercase;
+                                                                letter-spacing: 0.05em;
+                                                                font-weight: 600;
+                                                                margin-top: 4px;
+                                                              }
+
+                                                              /* Bank Account Detail Rows */
+                                                              .bank-details-list {
+                                                                display: flex;
+                                                                flex-direction: column;
+                                                                gap: 10px;
+                                                                margin: 8px 0;
+                                                                gap: 8px;
+                                                                margin-bottom: 20px;
+                                                              }
+
+                                                              .bank-row {
+                                                                .bank-spec-row {
+                                                                  display: flex;
+                                                                  justify-content: space-between;
+                                                                  align-items: center;
+                                                                  background: var(--bg-secondary);
+                                                                  background: rgba(255, 255, 255, 0.025);
+                                                                  border: 1px solid var(--border-subtle);
+                                                                  border-radius: var(--radius-md);
+                                                                  padding: 12px 14px;
+                                                                  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+                                                                  border-radius: 8px;
+                                                                  padding: 10px 14px;
+                                                                  transition: border-color 160ms ease;
+                                                                }
+
+                                                                .bank-row:hover {
+                                                                  border-color: var(--border-medium);
+                                                                  background: rgba(255, 255, 255, 0.06);
+
+                                                                  .bank-spec-row:hover {
+                                                                    border-color: var(--border-grid);
+                                                                  }
+
+                                                                  .bank-info {
+                                                                    .bank-spec-meta {
+                                                                      display: flex;
+                                                                      flex-direction: column;
+                                                                      gap: 3px;
+                                                                      overflow: hidden;
+                                                                      gap: 2px;
+                                                                    }
+
+                                                                    .bank-label {
+                                                                      font-size: 10px;
+                                                                      font-weight: 600;
+
+                                                                      .bank-spec-label {
+                                                                        font-family: var(--font-mono);
+                                                                        font-size: 9px;
+                                                                        letter-spacing: 0.08em;
+                                                                        text-transform: uppercase;
+                                                                        letter-spacing: 0.08em;
+                                                                        color: var(--text-muted);
+                                                                        color: var(--text-dim);
+                                                                      }
+
+                                                                      .bank-val {
+                                                                        font-size: 14px;
+
+                                                                        .bank-spec-value {
+                                                                          font-family: var(--font-mono);
+                                                                          font-size: 13px;
+                                                                          font-weight: 700;
+                                                                          color: var(--text-primary);
+                                                                          font-family: var(--font-mono);
+                                                                          color: var(--text-white);
+                                                                          letter-spacing: 0.02em;
+                                                                          white-space: nowrap;
+                                                                          overflow: hidden;
+                                                                          text-overflow: ellipsis;
+                                                                        }
+
+                                                                        /* Copy Button */
+                                                                        .copy-btn {
+                                                                          .spec-copy-btn {
+                                                                            background: rgba(255, 255, 255, 0.06);
+                                                                            border: 1px solid var(--border-subtle);
+                                                                            color: var(--text-secondary);
+                                                                            font-family: var(--font-stack);
+                                                                            font-size: 11px;
+                                                                            color: var(--text-silver);
+                                                                            font-family: var(--font-mono);
+                                                                            font-size: 10px;
+                                                                            font-weight: 600;
+                                                                            padding: 6px 12px;
+                                                                            border-radius: var(--radius-sm);
+                                                                            padding: 5px 10px;
+                                                                            border-radius: 4px;
+                                                                            cursor: pointer;
+                                                                            display: inline-flex;
+                                                                            align-items: center;
+                                                                            gap: 4px;
+                                                                            flex-shrink: 0;
+                                                                            transition: all var(--transition-fast);
+                                                                            transition: all 160ms ease;
+                                                                          }
+
+                                                                          .copy-btn:hover {
+                                                                            background: rgba(255, 255, 255, 0.12);
+                                                                            color: var(--text-primary);
+                                                                            border-color: var(--border-medium);
+
+                                                                            .spec-copy-btn:hover {
+                                                                              background: #ffffff;
+                                                                              color: #000000;
+                                                                            }
+
+                                                                            .copy-btn.copied {
+                                                                              background: rgba(56, 239, 125, 0.15);
+
+                                                                              .spec-copy-btn.copied {
+                                                                                background: #38ef7d;
+                                                                                color: #000000;
+                                                                                border-color: #38ef7d;
+                                                                                color: #38ef7d;
+                                                                              }
+
+                                                                              /* Remittance Notice Collapsible Drawer */
+                                                                              .settlement-drawer {
+                                                                                margin-top: 24px;
+
+                                                                                /* Collapsible Remittance Notice Drawer */
+                                                                                .remittance-accordion {
+                                                                                  border-top: 1px solid var(--border-subtle);
+                                                                                  padding-top: 18px;
+                                                                                  padding-top: 16px;
+                                                                                  margin-top: 16px;
+                                                                                }
+
+                                                                                .drawer-trigger {
+                                                                                  .accordion-trigger {
+                                                                                    width: 100%;
+                                                                                    background: rgba(255, 255, 255, 0.03);
+                                                                                    border: 1px solid var(--border-subtle);
+                                                                                    color: var(--text-secondary);
+                                                                                    font-family: var(--font-stack);
+                                                                                    font-size: 13px;
+                                                                                    color: var(--text-silver);
+                                                                                    font-family: var(--font-mono);
+                                                                                    font-size: 11px;
+                                                                                    font-weight: 600;
+                                                                                    letter-spacing: 0.06em;
+                                                                                    text-transform: uppercase;
+                                                                                    padding: 12px 16px;
+                                                                                    border-radius: var(--radius-md);
+                                                                                    border-radius: 8px;
+                                                                                    display: flex;
+                                                                                    justify-content: space-between;
+                                                                                    align-items: center;
+                                                                                    cursor: pointer;
+                                                                                    transition: all var(--transition-smooth);
+                                                                                    transition: all 200ms ease;
+                                                                                  }
+
+                                                                                  .drawer-trigger:hover {
+                                                                                    border-color: rgba(67, 97, 238, 0.5);
+                                                                                    color: var(--text-primary);
+                                                                                    box-shadow: 0 0 16px var(--gemini-glow-subtle);
+
+                                                                                    .accordion-trigger:hover {
+                                                                                      border-color: var(--border-grid);
+                                                                                      color: var(--text-white);
+                                                                                      background: rgba(255, 255, 255, 0.06);
+                                                                                    }
+
+                                                                                    .drawer-icon {
+                                                                                      transition: transform var(--transition-smooth);
+                                                                                      font-size: 12px;
+
+                                                                                      .accordion-content {
+                                                                                        display: none;
+                                                                                        padding-top: 14px;
+                                                                                        animation: fadeIn 200ms ease;
+                                                                                      }
+
+                                                                                      .drawer-trigger.open .drawer-icon {
+                                                                                        transform: rotate(180deg);
+
+                                                                                        .accordion-content.open {
+                                                                                          display: block;
+                                                                                        }
+
+                                                                                        .drawer-content {
+                                                                                          display: none;
+                                                                                          padding-top: 16px;
+                                                                                          animation: fadeIn var(--transition-smooth);
+
+                                                                                          .cockpit-input {
+                                                                                            width: 100%;
+                                                                                            background: var(--bg-input);
+                                                                                            border: 1px solid var(--border-subtle);
+                                                                                            color: var(--text-white);
+                                                                                            font-family: var(--font-mono);
+                                                                                            font-size: 13px;
+                                                                                            padding: 10px 14px;
+                                                                                            border-radius: 6px;
+                                                                                            outline: none;
+                                                                                            margin-bottom: 10px;
+                                                                                            transition: border-color 160ms ease;
+                                                                                          }
+
+                                                                                          .drawer-content.open {
+                                                                                            display: block;
+
+                                                                                            .cockpit-input:focus {
+                                                                                              border-color: #4361EE;
+                                                                                              box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
+                                                                                            }
+
+                                                                                            /* Form Controls */
+                                                                                            .form-group {
+                                                                                              margin-bottom: 12px;
+
+                                                                                              .cockpit-submit-btn {
+                                                                                                width: 100%;
+                                                                                                background: var(--gemini-gradient);
+                                                                                                color: #ffffff;
+                                                                                                border: none;
+                                                                                                padding: 12px 18px;
+                                                                                                border-radius: 6px;
+                                                                                                font-family: var(--font-mono);
+                                                                                                font-size: 12px;
+                                                                                                font-weight: 700;
+                                                                                                letter-spacing: 0.06em;
+                                                                                                text-transform: uppercase;
+                                                                                                cursor: pointer;
+                                                                                                transition: transform 160ms ease, box-shadow 160ms ease;
+                                                                                                box-shadow: 0 4px 18px var(--gemini-glow);
+                                                                                              }
+
+                                                                                              .cockpit-submit-btn:hover {
+                                                                                                transform: translateY(-1px);
+                                                                                                box-shadow: 0 6px 24px rgba(67, 97, 238, 0.55);
+                                                                                              }
+
+                                                                                              .cockpit-submit-btn:disabled {
+                                                                                                opacity: 0.5;
+                                                                                                cursor: not-allowed;
+                                                                                                transform: none;
+                                                                                              }
+
+                                                                                              /* Right Panel: Interactive QR Telemetry Terminal */
+                                                                                              .terminal-panel {
+                                                                                                padding: 32px 28px;
+                                                                                                display: flex;
+                                                                                                flex-direction: column;
+                                                                                                gap: 6px;
+                                                                                                justify-content: space-between;
+                                                                                                align-items: center;
+                                                                                                background: rgba(0, 0, 0, 0.25);
+                                                                                                position: relative;
+                                                                                              }
+
+                                                                                              .form-label {
+                                                                                                font-size: 11px;
+                                                                                                font-weight: 600;
+
+                                                                                                .terminal-header {
+                                                                                                  width: 100%;
+                                                                                                  display: flex;
+                                                                                                  justify-content: space-between;
+                                                                                                  align-items: center;
+                                                                                                  font-family: var(--font-mono);
+                                                                                                  font-size: 10px;
+                                                                                                  letter-spacing: 0.1em;
+                                                                                                  text-transform: uppercase;
+                                                                                                  letter-spacing: 0.06em;
+                                                                                                  color: var(--text-secondary);
+                                                                                                  color: var(--text-dim);
+                                                                                                  margin-bottom: 20px;
+                                                                                                }
+
+                                                                                                .form-input {
+                                                                                                  background: var(--bg-input);
+                                                                                                  border: 1px solid var(--border-subtle);
+                                                                                                  color: var(--text-primary);
+                                                                                                  font-family: var(--font-stack);
+                                                                                                  font-size: 14px;
+                                                                                                  padding: 12px 14px;
+                                                                                                  border-radius: var(--radius-md);
+                                                                                                  outline: none;
+                                                                                                  transition: all var(--transition-fast);
+
+                                                                                                  .terminal-tranche-label {
+                                                                                                    color: #93c5fd;
+                                                                                                    font-weight: 700;
+                                                                                                  }
+
+                                                                                                  .form-input:focus {
+                                                                                                    border-color: var(--gemini-accent);
+                                                                                                    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
+                                                                                                    background: rgba(24, 25, 34, 0.95);
+
+                                                                                                    /* Holographic Aperture QR Frame with Corner Reticles */
+                                                                                                    .aperture-frame {
+                                                                                                      position: relative;
+                                                                                                      background: #ffffff;
+                                                                                                      padding: 16px;
+                                                                                                      border-radius: 12px;
+                                                                                                      box-shadow:
+                                                                                                        0 16px 40px rgba(0, 0, 0, 0.8),
+                                                                                                        0 0 0 1px rgba(255, 255, 255, 0.15);
+                                                                                                      margin-bottom: 20px;
+                                                                                                      transition: transform 200ms var(--ease-spring);
+                                                                                                      overflow: hidden;
+                                                                                                    }
+
+                                                                                                    .form-input::placeholder {
+                                                                                                      color: var(--text-subtle);
+
+                                                                                                      .aperture-frame:hover {
+                                                                                                        transform: scale(1.02);
+                                                                                                      }
+
+                                                                                                      .form-input.mono {
+
+                                                                                                        /* Corner Reticles (+) */
+                                                                                                        .aperture-frame::before,
+                                                                                                        .aperture-frame::after {
+                                                                                                          content: "+";
+                                                                                                          position: absolute;
+                                                                                                          font-family: var(--font-mono);
+                                                                                                          font-size: 12px;
+                                                                                                          color: #000000;
+                                                                                                          font-weight: 900;
+                                                                                                          line-height: 1;
+                                                                                                          pointer-events: none;
+                                                                                                          opacity: 0.35;
+                                                                                                        }
+
+                                                                                                        /* Submit Confirmation Button with Gemini Spectral Gradient */
+                                                                                                        .gemini-submit-btn {
+                                                                                                          .aperture-frame::before {
+                                                                                                            top: 6px;
+                                                                                                            left: 6px;
+                                                                                                          }
+
+                                                                                                          .aperture-frame::after {
+                                                                                                            bottom: 6px;
+                                                                                                            right: 6px;
+                                                                                                          }
+
+                                                                                                          /* QR Image & Canvas Overlay */
+                                                                                                          .qr-viewport {
+                                                                                                            position: relative;
+                                                                                                            width: 240px;
+                                                                                                            height: 240px;
+                                                                                                            border-radius: 6px;
+                                                                                                            overflow: hidden;
+                                                                                                            background: #ffffff;
+                                                                                                          }
+
+                                                                                                          .qr-image-display {
+                                                                                                            width: 100%;
+                                                                                                            background: var(--gemini-gradient);
+                                                                                                            color: #ffffff;
+                                                                                                            height: 100%;
+                                                                                                            object-fit: contain;
+                                                                                                            display: block;
+                                                                                                          }
+
+                                                                                                          /* Holographic Laser Scanline Beam */
+                                                                                                          .scanline-beam {
+                                                                                                            position: absolute;
+                                                                                                            top: 0;
+                                                                                                            left: 0;
+                                                                                                            right: 0;
+                                                                                                            height: 3px;
+                                                                                                            background: var(--gemini-beam);
+                                                                                                            box-shadow: 0 0 12px #4CC9F0, 0 0 20px #4361EE;
+                                                                                                            opacity: 0.85;
+                                                                                                            pointer-events: none;
+                                                                                                            animation: scanlineSweep 3.2s ease-in-out infinite alternate;
+                                                                                                          }
+
+                                                                                                          @keyframes scanlineSweep {
+                                                                                                            0% {
+                                                                                                              top: 0%;
+                                                                                                              opacity: 0.3;
+                                                                                                            }
+
+                                                                                                            15% {
+                                                                                                              opacity: 0.95;
+                                                                                                            }
+
+                                                                                                            85% {
+                                                                                                              opacity: 0.95;
+                                                                                                            }
+
+                                                                                                            100% {
+                                                                                                              top: 98%;
+                                                                                                              opacity: 0.3;
+                                                                                                            }
+                                                                                                          }
+
+                                                                                                          /* Optical Matrix Assembly Overlay */
+                                                                                                          .assembly-overlay {
+                                                                                                            position: absolute;
+                                                                                                            inset: 0;
+                                                                                                            background: #040406;
+                                                                                                            display: flex;
+                                                                                                            align-items: center;
+                                                                                                            justify-content: center;
+                                                                                                            opacity: 0;
+                                                                                                            pointer-events: none;
+                                                                                                            transition: opacity 160ms ease;
+                                                                                                            z-index: 5;
+                                                                                                          }
+
+                                                                                                          .assembly-overlay.active {
+                                                                                                            opacity: 0.95;
+                                                                                                          }
+
+                                                                                                          .assembly-spinner {
+                                                                                                            width: 28px;
+                                                                                                            height: 28px;
+                                                                                                            border: 2px solid rgba(255, 255, 255, 0.15);
+                                                                                                            border-top-color: #4361EE;
+                                                                                                            border-radius: 50%;
+                                                                                                            animation: spin 0.6s linear infinite;
+                                                                                                          }
+
+                                                                                                          /* 1-Tap Mobile Launch Button */
+                                                                                                          .launch-app-btn {
+                                                                                                            width: 100%;
+                                                                                                            max-width: 280px;
+                                                                                                            background: #ffffff;
+                                                                                                            color: #000000;
+                                                                                                            border: none;
+                                                                                                            padding: 14px 20px;
+                                                                                                            border-radius: var(--radius-md);
+                                                                                                            font-size: 14px;
+                                                                                                            padding: 13px 20px;
+                                                                                                            border-radius: 8px;
+                                                                                                            font-family: var(--font-sans);
+                                                                                                            font-size: 13px;
+                                                                                                            font-weight: 700;
+                                                                                                            font-family: var(--font-stack);
+                                                                                                            letter-spacing: 0.02em;
+                                                                                                            cursor: pointer;
+                                                                                                            letter-spacing: -0.01em;
+                                                                                                            display: flex;
+                                                                                                            align-items: center;
+                                                                                                            justify-content: center;
+                                                                                                            gap: 8px;
+                                                                                                            box-shadow: 0 4px 20px var(--gemini-glow);
+                                                                                                            transition: all var(--transition-fast);
+                                                                                                            margin-top: 8px;
+                                                                                                            position: relative;
+                                                                                                            overflow: hidden;
+                                                                                                            cursor: pointer;
+                                                                                                            text-decoration: none;
+                                                                                                            box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
+                                                                                                            transition: all 160ms ease;
+                                                                                                            margin-bottom: 20px;
+                                                                                                          }
+
+                                                                                                          .gemini-submit-btn:hover {
+                                                                                                            .launch-app-btn:hover {
+                                                                                                              background: #f4f4f5;
+                                                                                                              transform: translateY(-1px);
+                                                                                                              box-shadow: 0 6px 26px rgba(67, 97, 238, 0.55);
+                                                                                                              box-shadow: 0 6px 22px rgba(255, 255, 255, 0.35);
+                                                                                                            }
+
+                                                                                                            .gemini-submit-btn:disabled {
+                                                                                                              opacity: 0.5;
+                                                                                                              cursor: not-allowed;
+                                                                                                              transform: none;
+
+                                                                                                              /* Vector App Logos Strip */
+                                                                                                              .vector-brand-strip {
+                                                                                                                width: 100%;
+                                                                                                                display: flex;
+                                                                                                                justify-content: center;
+                                                                                                                align-items: center;
+                                                                                                                gap: 16px;
+                                                                                                                padding-top: 14px;
+                                                                                                                border-top: 1px solid var(--border-subtle);
+                                                                                                              }
+
+                                                                                                              /* Verified Confirmation Receipt State */
+                                                                                                              .receipt-card {
+                                                                                                                .brand-icon-link {
+                                                                                                                  display: inline-flex;
+                                                                                                                  align-items: center;
+                                                                                                                  justify-content: center;
+                                                                                                                  opacity: 0.85;
+                                                                                                                  transition: opacity 160ms ease, transform 160ms ease;
+                                                                                                                }
+
+                                                                                                                .brand-icon-link:hover {
+                                                                                                                  opacity: 1;
+                                                                                                                  transform: translateY(-2px);
+                                                                                                                }
+
+                                                                                                                .brand-icon-svg {
+                                                                                                                  height: 22px;
+                                                                                                                  width: auto;
+                                                                                                                  display: block;
+                                                                                                                }
+
+                                                                                                                /* Loading & Error States */
+                                                                                                                .cockpit-loader {
+                                                                                                                  padding: 60px 20px;
+                                                                                                                  text-align: center;
+                                                                                                                  padding: 20px 8px;
+                                                                                                                  animation: fadeIn var(--transition-smooth);
+                                                                                                                }
+
+                                                                                                                .receipt-icon {
+                                                                                                                  width: 56px;
+                                                                                                                  height: 56px;
+
+                                                                                                                  .loader-spinner {
+                                                                                                                    width: 32px;
+                                                                                                                    height: 32px;
+                                                                                                                    border: 2px solid var(--border-subtle);
+                                                                                                                    border-top-color: #4361EE;
+                                                                                                                    border-radius: 50%;
+                                                                                                                    animation: spin 0.8s linear infinite;
+                                                                                                                    margin: 0 auto 16px;
+                                                                                                                  }
+
+                                                                                                                  @keyframes spin {
+                                                                                                                    to {
+                                                                                                                      transform: rotate(360deg);
+                                                                                                                    }
+                                                                                                                  }
+
+                                                                                                                  @keyframes fadeIn {
+                                                                                                                    from {
+                                                                                                                      opacity: 0;
+                                                                                                                      transform: translateY(4px);
+                                                                                                                    }
+
+                                                                                                                    to {
+                                                                                                                      opacity: 1;
+                                                                                                                      transform: translateY(0);
+                                                                                                                    }
+                                                                                                                  }
+
+                                                                                                                  /* Confirmation Receipt */
+                                                                                                                  .receipt-shell {
+                                                                                                                    padding: 40px 32px;
+                                                                                                                    text-align: center;
+                                                                                                                  }
+
+                                                                                                                  .receipt-status-mark {
+                                                                                                                    width: 52px;
+                                                                                                                    height: 52px;
+                                                                                                                    border-radius: 50%;
+                                                                                                                    background: rgba(56, 239, 125, 0.12);
+                                                                                                                    border: 1px solid #38ef7d;
+                                                                                                                    color: #38ef7d;
+                                                                                                                    display: inline-flex;
+                                                                                                                    align-items: center;
+                                                                                                                    justify-content: center;
+                                                                                                                    font-size: 24px;
+                                                                                                                    font-size: 22px;
+                                                                                                                    margin-bottom: 16px;
+                                                                                                                    box-shadow: 0 0 24px rgba(56, 239, 125, 0.3);
+                                                                                                                  }
+
+                                                                                                                  .receipt-title {
+                                                                                                                    font-size: 20px;
+
+                                                                                                                    .receipt-heading {
+                                                                                                                      font-size: 22px;
+                                                                                                                      font-weight: 800;
+                                                                                                                      letter-spacing: -0.02em;
+                                                                                                                      color: var(--text-primary);
+                                                                                                                      margin-bottom: 6px;
+                                                                                                                      color: var(--text-white);
+                                                                                                                      margin-bottom: 8px;
+                                                                                                                    }
+
+                                                                                                                    .receipt-sub {
+                                                                                                                      .receipt-subtext {
+                                                                                                                        font-size: 13px;
+                                                                                                                        color: var(--text-secondary);
+                                                                                                                        color: var(--text-muted);
+                                                                                                                        max-width: 480px;
+                                                                                                                        margin: 0 auto 24px;
+                                                                                                                        line-height: 1.5;
+                                                                                                                        margin-bottom: 20px;
+                                                                                                                      }
+
+                                                                                                                      .receipt-details {
+                                                                                                                        background: var(--bg-secondary);
+
+                                                                                                                        .receipt-grid {
+                                                                                                                          max-width: 480px;
+                                                                                                                          margin: 0 auto;
+                                                                                                                          background: rgba(255, 255, 255, 0.03);
+                                                                                                                          border: 1px solid var(--border-subtle);
+                                                                                                                          border-radius: var(--radius-md);
+                                                                                                                          padding: 14px 16px;
+                                                                                                                          border-radius: 8px;
+                                                                                                                          padding: 16px 20px;
+                                                                                                                          text-align: left;
+                                                                                                                          font-family: var(--font-mono);
+                                                                                                                          font-size: 12px;
+                                                                                                                          display: flex;
+                                                                                                                          flex-direction: column;
+                                                                                                                          gap: 8px;
+                                                                                                                        }
+
+                                                                                                                        .receipt-row {
+                                                                                                                          .receipt-item {
+                                                                                                                            display: flex;
+                                                                                                                            justify-content: space-between;
+                                                                                                                          }
+
+                                                                                                                          .receipt-row span:first-child {
+                                                                                                                            color: var(--text-muted);
+                                                                                                                          }
+
+                                                                                                                          .receipt-item span:first-child {
+                                                                                                                            color: var(--text-dim);
+                                                                                                                          }
+
+                                                                                                                          .receipt-item span:last-child {
+                                                                                                                            color: var(--text-white);
+                                                                                                                            font-weight: 700;
+                                                                                                                          }
+
+                                                                                                                          .receipt-row span:last-child {
+                                                                                                                            color: var(--text-primary);
+                                                                                                                            font-weight: 600;
+                                                                                                                            font-family: var(--font-mono);
+                                                                                                                          }
+
+                                                                                                                          /* Loading Skeleton */
+                                                                                                                          .skeleton-loader {
+                                                                                                                            padding: 40px 20px;
+                                                                                                                            text-align: center;
+                                                                                                                          }
+
+                                                                                                                          .spinner {
+                                                                                                                            width: 36px;
+                                                                                                                            height: 36px;
+                                                                                                                            border: 2px solid var(--border-subtle);
+                                                                                                                            border-top-color: var(--gemini-accent);
+                                                                                                                            border-radius: 50%;
+                                                                                                                            animation: spin 0.8s linear infinite;
+                                                                                                                            margin: 0 auto 16px;
+                                                                                                                          }
+
+                                                                                                                          @keyframes spin {
+                                                                                                                            to {
+                                                                                                                              transform: rotate(360deg);
+                                                                                                                            }
+                                                                                                                          }
+
+                                                                                                                          .loading-text {
+                                                                                                                            font-size: 13px;
+                                                                                                                            color: var(--text-secondary);
+                                                                                                                            letter-spacing: 0.04em;
+                                                                                                                          }
+
+                                                                                                                          /* Toast Notification */
+                                                                                                                          .gateway-toast {
+
+                                                                                                                            /* Toast */
+                                                                                                                            .cockpit-toast {
+                                                                                                                              position: fixed;
+                                                                                                                              bottom: 24px;
+                                                                                                                              left: 50%;
+                                                                                                                              transform: translateX(-50%) translateY(40px);
+                                                                                                                              background: #ffffff;
+                                                                                                                              color: #000000;
+                                                                                                                              padding: 10px 18px;
+                                                                                                                              border-radius: var(--radius-full);
+                                                                                                                              font-size: 12px;
+                                                                                                                              font-family: var(--font-mono);
+                                                                                                                              font-size: 11px;
+                                                                                                                              font-weight: 700;
+                                                                                                                              letter-spacing: 0.02em;
+                                                                                                                              box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+                                                                                                                              letter-spacing: 0.04em;
+                                                                                                                              padding: 8px 16px;
+                                                                                                                              border-radius: 9999px;
+                                                                                                                              box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+                                                                                                                              opacity: 0;
+                                                                                                                              pointer-events: none;
+                                                                                                                              transition: all var(--transition-fast);
+                                                                                                                              transition: all 160ms var(--ease-spring);
+                                                                                                                              z-index: 100;
+                                                                                                                              display: flex;
+                                                                                                                              align-items: center;
+                                                                                                                              gap: 6px;
+                                                                                                                            }
+
+                                                                                                                            .gateway-toast.visible {
+                                                                                                                              .cockpit-toast.visible {
+                                                                                                                                opacity: 1;
+                                                                                                                                transform: translateX(-50%) translateY(0);
+                                                                                                                              }
+
+                                                                                                                              /* Footer Footprint */
+                                                                                                                              .gateway-footer {
+                                                                                                                                text-align: center;
+                                                                                                                                margin-top: 20px;
+                                                                                                                                font-size: 11px;
+                                                                                                                                color: var(--text-subtle);
+                                                                                                                                line-height: 1.6;
+                                                                                                                              }
+
+                                                                                                                              .gateway-footer span {
+                                                                                                                                display: inline-block;
+                                                                                                                                opacity: 0.75;
+                                                                                                                              }
+
+                                                                                                                              /* Mobile Optimizations */
+                                                                                                                              @media (max-width: 480px) {
+
+                                                                                                                                /* Mobile Responsive Reflow */
+                                                                                                                                @media (max-width: 860px) {
+                                                                                                                                  body {
+                                                                                                                                    padding: 12px 10px 36px;
+                                                                                                                                    padding: 16px 12px 36px;
+                                                                                                                                  }
+
+                                                                                                                                  .gateway-card {
+                                                                                                                                    padding: 22px 18px;
+
+                                                                                                                                    .cockpit-grid {
+                                                                                                                                      grid-template-columns: 1fr;
+                                                                                                                                    }
+
+                                                                                                                                    .amount-display {
+                                                                                                                                      font-size: 36px;
+
+                                                                                                                                      .telemetry-panel {
+                                                                                                                                        border-right: none;
+                                                                                                                                        border-bottom: 1px solid var(--border-subtle);
+                                                                                                                                        padding: 24px 20px;
+                                                                                                                                      }
+
+                                                                                                                                      .qr-image {
+                                                                                                                                        width: 200px;
+                                                                                                                                        height: 200px;
+
+                                                                                                                                        .terminal-panel {
+                                                                                                                                          padding: 28px 20px;
+                                                                                                                                        }
+
+                                                                                                                                        .telemetry-amount {
+                                                                                                                                          font-size: 38px;
+                                                                                                                                        }
+                                                                                                                                      }
