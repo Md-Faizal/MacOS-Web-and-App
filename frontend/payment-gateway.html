@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#040406" />
+  <meta name="color-scheme" content="dark" />
+  <title>Remittance Clearance &bull; Electronic Payment Order</title>
+  <link rel="stylesheet" href="/modules/billing/css/payment-gateway.css" />
+</head>
+
+<body>
+
+  <div class="gateway-container">
+    <div class="gateway-card" id="gatewayCard">
+
+      <!-- Skeleton Loading State -->
+      <div id="loadingView" class="skeleton-loader">
+        <div class="spinner"></div>
+        <div class="loading-text">Resolving electronic payment order...</div>
+      </div>
+
+      <!-- Error State -->
+      <div id="errorView" class="receipt-card" style="display: none;">
+        <div class="receipt-icon"
+          style="border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,0.12);box-shadow:0 0 24px rgba(239,68,68,0.3);">
+          ✕</div>
+        <div class="receipt-title" id="errorTitle">Order Unavailable</div>
+        <div class="receipt-sub" id="errorMsg">This payment link is invalid, expired, or has already been cleared.</div>
+      </div>
+
+      <!-- Active Checkout View -->
+      <div id="activeView" style="display: none;">
+
+        <!-- Header -->
+        <header class="gateway-header">
+          <div class="brand-wrapper">
+            <span class="brand-name" id="companyName">UTKAL CHEMICAL AUSHADHALAYA</span>
+            <span class="gateway-token" id="linkRefToken">REF:
+              PAY-&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+          </div>
+          <div class="gemini-badge" id="statusBadge">
+            <span class="gemini-dot"></span>
+            <span id="statusText">Active Order</span>
+          </div>
+        </header>
+
+        <!-- Payable Hero -->
+        <div class="amount-hero">
+          <div class="amount-label">Settlement Amount Payable</div>
+          <div class="amount-display" id="payableAmount">₹0.00</div>
+          <div class="customer-meta">
+            Target Account: <strong id="customerName">Customer</strong>
+          </div>
+          <div class="payment-memo" id="paymentMemo">Settlement of Outstanding Statement Balance</div>
+        </div>
+
+        <!-- Segmented Mode Control -->
+        <div class="mode-switcher" role="tablist">
+          <button class="mode-btn active" id="tabBtnQr" role="tab" aria-selected="true" data-tab="qr">
+            <span>⚡ Instant UPI QR</span>
+          </button>
+          <button class="mode-btn" id="tabBtnBank" role="tab" aria-selected="false" data-tab="bank">
+            <span>🏦 Bank Remittance</span>
+          </button>
+        </div>
+
+        <!-- Tab 1: Instant UPI QR -->
+        <div class="tab-panel active" id="tabPanelQr" role="tabpanel">
+          <div class="qr-container">
+            <div class="qr-frame">
+              <img id="qrImage" class="qr-image" alt="Dynamic UPI Payment QR" src="" />
+            </div>
+            <div class="qr-instructions">
+              Point your camera or open any UPI app to scan and settle instantly.
+            </div>
+
+            <!-- Deep Link Action for Mobile Users -->
+            <a href="#" id="launchUpiBtn" class="upi-app-btn">
+              <span>⚡ Launch Installed UPI App</span>
+            </a>
+
+            <div class="supported-apps">
+              <span>GPay</span> &bull;
+              <span>PhonePe</span> &bull;
+              <span>Paytm</span> &bull;
+              <span>BHIM</span> &bull;
+              <span>CRED</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Direct Bank Transfer Details -->
+        <div class="tab-panel" id="tabPanelBank" role="tabpanel">
+          <div class="bank-details-list">
+
+            <div class="bank-row">
+              <div class="bank-info">
+                <span class="bank-label">Beneficiary Name</span>
+                <span class="bank-val" id="bankHolder">MD FAIZAL</span>
+              </div>
+              <button class="copy-btn" data-copy-target="bankHolder">Copy</button>
+            </div>
+
+            <div class="bank-row">
+              <div class="bank-info">
+                <span class="bank-label">Bank & Branch</span>
+                <span class="bank-val" id="bankBranch">HDFC Bank &bull; Cuttack</span>
+              </div>
+              <button class="copy-btn" data-copy-target="bankBranch">Copy</button>
+            </div>
+
+            <div class="bank-row">
+              <div class="bank-info">
+                <span class="bank-label">Account Number</span>
+                <span class="bank-val" id="bankAccNo">50100673684509</span>
+              </div>
+              <button class="copy-btn" data-copy-target="bankAccNo">Copy</button>
+            </div>
+
+            <div class="bank-row">
+              <div class="bank-info">
+                <span class="bank-label">IFSC Code</span>
+                <span class="bank-val" id="bankIfsc">HDFC0000236</span>
+              </div>
+              <button class="copy-btn" data-copy-target="bankIfsc">Copy</button>
+            </div>
+
+            <div class="bank-row">
+              <div class="bank-info">
+                <span class="bank-label">UPI VPA</span>
+                <span class="bank-val" id="bankUpi">7749089400@hdfc</span>
+              </div>
+              <button class="copy-btn" data-copy-target="bankUpi">Copy</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Settlement Notice Drawer -->
+        <div class="settlement-drawer">
+          <button class="drawer-trigger" id="drawerTrigger" aria-expanded="false">
+            <span>Transferred? Submit Settlement Notice</span>
+            <span class="drawer-icon">▼</span>
+          </button>
+
+          <div class="drawer-content" id="drawerContent">
+            <form id="remittanceForm">
+
+              <div class="form-group">
+                <label class="form-label" for="utrInput">Transaction Ref / UTR Number *</label>
+                <input type="text" id="utrInput" class="form-input mono" placeholder="e.g. 12-digit UPI UTR or Bank Ref"
+                  required autocomplete="off" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="amountInput">Transferred Amount (₹) *</label>
+                <input type="number" id="amountInput" class="form-input mono" step="0.01" min="1" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="payerNameInput">Remitter Name (Optional)</label>
+                <input type="text" id="payerNameInput" class="form-input" placeholder="Name as shown in bank account" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="notesInput">Remarks / Note (Optional)</label>
+                <input type="text" id="notesInput" class="form-input" placeholder="Any additional payment note" />
+              </div>
+
+              <button type="submit" class="gemini-submit-btn" id="submitRemittanceBtn">
+                <span>Confirm & Dispatch Receipt Request</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Verified Remittance Receipt State -->
+      <div id="receiptView" class="receipt-card" style="display: none;">
+        <div class="receipt-icon">✓</div>
+        <div class="receipt-title">Remittance Registered</div>
+        <div class="receipt-sub">
+          Your settlement notification has been transmitted directly to treasury desk. An executive verification record
+          has been created.
+        </div>
+
+        <div class="receipt-details">
+          <div class="receipt-row">
+            <span>Customer:</span>
+            <span id="receiptCustomer">-</span>
+          </div>
+          <div class="receipt-row">
+            <span>Claimed Amount:</span>
+            <span id="receiptAmount">₹0.00</span>
+          </div>
+          <div class="receipt-row">
+            <span>Transaction Ref / UTR:</span>
+            <span id="receiptUtr">-</span>
+          </div>
+          <div class="receipt-row">
+            <span>Order Reference:</span>
+            <span id="receiptRef">-</span>
+          </div>
+          <div class="receipt-row">
+            <span>Timestamp:</span>
+            <span id="receiptTime">-</span>
+          </div>
+          <div class="receipt-row">
+            <span>Clearance Status:</span>
+            <span style="color:#34d399;">Queued for Audit</span>
+          </div>
+        </div>
+
+        <button class="upi-app-btn" id="printReceiptBtn"
+          style="margin-top: 20px; background: rgba(255,255,255,0.08); color: #ffffff; border: 1px solid var(--border-subtle);">
+          <span>🖨️ Print Confirmation Slip</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Security Footprint -->
+    <footer class="gateway-footer">
+      <span>Industrial Remittance Gateway &bull; Zero Intermediary Surcharge</span><br />
+      <span>Direct Bank Clearance &bull; Encrypted Telemetry Active</span>
+    </footer>
+  </div>
+
+  <!-- Toast Element -->
+  <div class="gateway-toast" id="toast">
+    <span>✓</span> <span id="toastMsg">Copied to clipboard</span>
+  </div>
+
+  <script src="/modules/billing/js/payment-gateway.js"></script>
+</body>
+
+</html>

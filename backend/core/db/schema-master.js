@@ -1234,6 +1234,36 @@ CREATE INDEX IF NOT EXISTS idx_ledger_logs_token ON ledger_link_access_logs(ledg
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_customer ON ledger_link_access_logs(customer_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_created ON ledger_link_access_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_ledger_logs_source ON ledger_link_access_logs(source);
+
+-- Customer-Facing Payment Collection Links
+CREATE TABLE IF NOT EXISTS payment_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  link_code TEXT NOT NULL UNIQUE,
+  customer_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  description TEXT,
+  invoice_ids TEXT,
+  status TEXT DEFAULT 'ACTIVE',
+  claimed_utr TEXT,
+  claimed_amount REAL,
+  claimed_at DATETIME,
+  claimed_notes TEXT,
+  payer_name TEXT,
+  payer_phone TEXT,
+  expires_at DATETIME,
+  views_count INTEGER DEFAULT 0,
+  last_viewed_at DATETIME,
+  created_by_user_id TEXT,
+  settled_payment_id INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES contacts(id),
+  FOREIGN KEY (settled_payment_id) REFERENCES payments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_links_code ON payment_links(link_code);
+CREATE INDEX IF NOT EXISTS idx_payment_links_cust ON payment_links(customer_id);
+CREATE INDEX IF NOT EXISTS idx_payment_links_status ON payment_links(status);
 `;
 
 module.exports = { schema };

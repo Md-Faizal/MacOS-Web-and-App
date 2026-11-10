@@ -36,6 +36,16 @@ module.exports = function(router, handlers) {
   router.post('/export-opening-balance', handlers.exportOpeningBalancePDF);  // POST /api/billing/export-opening-balance - Generate opening balance PDF
   router.get('/print-opening-balance', handlers.printOpeningBalancePDF);  // GET /api/billing/print-opening-balance - Generate print PDF
   
+  // ============= PUBLIC PAYMENT GATEWAY =============
+  router.get('/public/pay/:code', handlers.getPublicPaymentLinkData);          // GET /api/billing/public/pay/:code - Customer Payment Gateway data
+  router.post('/public/pay/:code/confirm', handlers.confirmPublicPaymentLink); // POST /api/billing/public/pay/:code/confirm - Submit payment claim
+
+  // ============= PAYMENT LINKS MANAGEMENT =============
+  router.post('/payment-links', handlers.createPaymentLink);                   // POST /api/billing/payment-links - Generate short payment link
+  router.get('/payment-links', handlers.getPaymentLinks);                      // GET /api/billing/payment-links - List payment links & stats
+  router.post('/payment-links/:id/settle', handlers.settlePaymentLink);        // POST /api/billing/payment-links/:id/settle - Settle link into ledger
+  router.delete('/payment-links/:id', handlers.cancelPaymentLink);             // DELETE /api/billing/payment-links/:id - Cancel payment link
+
   // ============= PUBLIC ENDPOINTS =============
   router.get('/public/ledger/:customerId', handlers.getPublicLedger); // GET /api/billing/public/ledger/:customerId - Get public ledger data (token or ID)
   router.get('/public/ledger/token/:token', handlers.getPublicLedger);

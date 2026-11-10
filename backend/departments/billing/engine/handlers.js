@@ -6,6 +6,7 @@ const { getOrCreateCustomerLedgerToken, generateLedgerToken } = require('../../.
 const { encryptInvoiceLedgerReference } = require('../../../core/billing/invoice-ledger-ref');
 const dataBus = require('../../../core/sync/data-bus');
 const { findLinkedOrderDetails } = require('./invoice-order-details');
+const paymentGatewayService = require('../../../core/billing/payment-gateway-service');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -4038,6 +4039,105 @@ module.exports = function (db) {
         console.error('[Billing] saveAppSettings error:', error);
         res.status(500).json({ error: error.message });
       }
+    },
+
+    // ============= PUBLIC PAYMENT GATEWAY =============
+    getPublicPaymentLinkData: async (req, res) => {
+      try {
+        const { code } = req.params;
+        const data = await paymentGatewayService.getPublicPaymentLinkData(db, code, req);
+        if (!data) {
+          return res.status(404).json({ error: 'Payment link not found or has expired.' });
+        }
+        res.json(data);
+      } catch (err) {
+        console.error('[Billing] getPublicPaymentLinkData error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    confirmPublicPaymentLink: async (req, res) => {
+      try {
+        const { code } = req.params;
+        const { utr, amount, notes, payerName, payerPhone } = req.body;
+        const result = await paymentGatewayService.confirmPaymentRemittance(db, code, {
+          utr,
+          amount,
+          notes,
+          payerName,
+          payerPhone,
+          req
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] confirmPublicPaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
+    },
+
+    // ============= PAYMENT LINKS MANAGEMENT =============
+    createPaymentLink: async (req, res) => {
+      try {
+        const { customer_id, amount, description, invoice_ids, expires_in_days } = req.body;
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+        const link = paymentGatewayService.createPaymentLink(db, {
+          customerId: customer_id,
+          amount,
+          description,
+          invoiceIds: invoice_ids,
+          expiresInDays: expires_in_days,
+          userId
+        });
+        res.status(201).json({ success: true, link });
+      } catch (err) {
+        console.error('[Billing] createPaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
+    },
+
+    getPaymentLinks: async (req, res) => {
+      try {
+        const { customer_id, status, limit, offset } = req.query;
+        const result = paymentGatewayService.listPaymentLinks(db, {
+          customerId: customer_id,
+          status,
+          limit,
+          offset
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] getPaymentLinks error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+
+    settlePaymentLink: async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { payment_method, payment_date, notes } = req.body;
+        const userId = req.user ? (req.user.id || req.user.userId) : null;
+        const result = paymentGatewayService.settlePaymentLink(db, id, {
+          paymentMethod: payment_method,
+          paymentDate: payment_date,
+          notes,
+          userId
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] settlePaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
+    },
+
+    cancelPaymentLink: async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = paymentGatewayService.cancelPaymentLink(db, id);
+        res.json(result);
+      } catch (err) {
+        console.error('[Billing] cancelPaymentLink error:', err);
+        res.status(400).json({ error: err.message });
+      }
     }
   };
 };
@@ -4186,3 +4286,4 @@ function generateCreditNoteReference(db, customerId, paymentDate = new Date()) {
     return `CREDIT-${Date.now().toString().slice(-8)}`;
   }
 }
+                                                                                                      

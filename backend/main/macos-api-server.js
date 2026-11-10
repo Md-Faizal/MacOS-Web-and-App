@@ -1397,6 +1397,14 @@ const renderApiDocumentationHtml = (doc) => `<!doctype html>
 </body>
 </html>`;
 
+app.get(['/p/:code', '/pay/:code', '/payment-gateway', '/payment-gateway.html'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/payment-gateway.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/payment-gateway.html'));
+});
+
 app.get(['/customer-ledger', '/customer-ledger.html', '/ledger/:token', '/ledger', '/l/:token', '/l'], (req, res) => {
   const htmlPath = path.join(__dirname, '../../dist/customer-ledger.html');
   if (require('fs').existsSync(htmlPath)) {

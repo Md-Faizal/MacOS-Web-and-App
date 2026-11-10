@@ -1,7 +1,7 @@
 server {
     listen 80;
     listen [::]:80;
-    server_name mac.faizal.uk;
+    server_name mac.faizal.uk faizal.uk;
     root /home/ubuntu/MacOS-Production;
     index index.html;
 

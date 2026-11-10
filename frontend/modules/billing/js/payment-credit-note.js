@@ -58,6 +58,7 @@ class PaymentCreditNote {
     this.paymentMethod = 'cash';
     this.selectedBillDetails = null;
     this.startPolling();
+    window.currentPaymentManager = this;
   }
 
   isWorkerUser() {
@@ -138,6 +139,9 @@ class PaymentCreditNote {
           <button class="tab-btn-enhanced" data-tab="history">
             <span class="tab-icon">📊</span> Transaction History
           </button>
+          <button class="tab-btn-enhanced" data-tab="payment-links">
+            <span class="tab-icon">⚡</span> Payment Links
+          </button>
         </div>
 
         <!-- Record Payment Tab -->
@@ -184,6 +188,7 @@ class PaymentCreditNote {
                   <div class="input-with-button">
                     <input type="number" id="paymentAmount" class="form-input-enhanced" placeholder="0.00" step="0.01" min="0">
                     <button id="payFullBtn" class="quick-btn" title="Pay all outstanding dues">Pay Full Due</button>
+                    <button type="button" id="quickGenPaymentLinkBtn" class="quick-btn" style="background:rgba(67,97,238,0.12);color:#4361ee;border-color:rgba(67,97,238,0.3);" title="Create tiny gateway link for customer">⚡ Gateway Link</button>
                   </div>
                 </div>
                 
@@ -338,6 +343,94 @@ class PaymentCreditNote {
             </div>
           </div>
         </div>
+
+        <!-- Payment Links Tab -->
+        <div id="payment-links-tab" class="tab-content-enhanced">
+          <div class="payment-links-layout">
+            
+            <!-- Left: Generator Card -->
+            <div class="pl-card">
+              <div class="pl-card-title">
+                <span>⚡ Create Payment Link</span>
+                <span style="font-size: 10px; color: var(--text-secondary); text-transform: none;">faizal.uk/p/...</span>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Select Customer *</label>
+                <select id="plCustomerSelect" class="form-input-enhanced">
+                  <option value="">-- Choose a customer --</option>
+                  ${this.getUniqueCustomers().map(customer => `<option value="${customer}">${customer}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Payable Amount (₹) *</label>
+                <div class="input-with-button">
+                  <input type="number" id="plAmount" class="form-input-enhanced" placeholder="0.00" step="0.01" min="1">
+                  <button type="button" id="plFullDueBtn" class="quick-btn">Full Due</button>
+                </div>
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Description / Note</label>
+                <input type="text" id="plDescription" class="form-input-enhanced" placeholder="e.g. Statement Settlement" />
+              </div>
+
+              <div class="form-group-enhanced">
+                <label>Link Expiry</label>
+                <select id="plExpiry" class="form-input-enhanced">
+                  <option value="7" selected>7 Days</option>
+                  <option value="1">24 Hours</option>
+                  <option value="3">3 Days</option>
+                  <option value="30">30 Days</option>
+                  <option value="0">Never (Persistent)</option>
+                </select>
+              </div>
+
+              <button type="button" id="plGenerateBtn" class="btn btn-primary-enhanced" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #4361EE 0%, #7209B7 100%); border: none;">
+                ⚡ Generate Short Link
+              </button>
+
+              <!-- Generated Result Card -->
+              <div id="plResultCard" class="pl-result-card">
+                <div style="font-size: 11px; font-weight: 700; color: #4361EE; text-transform: uppercase;">✓ Link Generated</div>
+                <div id="plResultUrl" class="pl-result-url">https://faizal.uk/p/...</div>
+                <div class="pl-btn-group">
+                  <button type="button" class="pl-btn primary" id="plCopyBtn">📋 Copy Link</button>
+                  <button type="button" class="pl-btn whatsapp" id="plWhatsAppBtn">💬 WhatsApp</button>
+                  <a href="#" target="_blank" class="pl-btn" id="plOpenBtn">↗ Open</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Links & Remittance Ledger -->
+            <div class="pl-card">
+              <div class="pl-card-title">
+                <span>Recent Payment Links & Remittances</span>
+                <button type="button" class="pl-btn" id="plRefreshBtn" style="padding: 4px 8px; font-size: 10px;">🔄 Refresh</button>
+              </div>
+
+              <div class="pl-table-wrap">
+                <table class="pl-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Customer</th>
+                      <th>Amount</th>
+                      <th>Short Link</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="plTableBody">
+                    <tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">Loading payment links...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
       </div>
     `;
 
@@ -362,6 +455,45 @@ class PaymentCreditNote {
    * Attach enhanced event listeners
    */
   attachEventListeners() {
+    // Quick link generation button in record payment tab
+    document.getElementById('quickGenPaymentLinkBtn')?.addEventListener('click', () => {
+      const currentCust = document.getElementById('paymentCustomerSelect')?.value;
+      this.switchTab('payment-links');
+      if (currentCust) {
+        setTimeout(() => {
+          const plSelect = document.getElementById('plCustomerSelect');
+          if (plSelect) {
+            plSelect.value = currentCust;
+            const fullDueBtn = document.getElementById('plFullDueBtn');
+            fullDueBtn?.click();
+          }
+        }, 150);
+      }
+    });
+
+    // Payment links tab generator events
+    document.getElementById('plFullDueBtn')?.addEventListener('click', () => {
+      const customerName = document.getElementById('plCustomerSelect')?.value;
+      if (!customerName) return;
+      const customer = this.billingData.customers?.find(c => c.name === customerName);
+      if (customer && customer.current_due !== undefined) {
+        const plAmount = document.getElementById('plAmount');
+        if (plAmount) plAmount.value = Math.max(0, customer.current_due).toFixed(2);
+      }
+    });
+
+    document.getElementById('plCustomerSelect')?.addEventListener('change', () => {
+      document.getElementById('plFullDueBtn')?.click();
+    });
+
+    document.getElementById('plGenerateBtn')?.addEventListener('click', () => {
+      this.createPaymentLink();
+    });
+
+    document.getElementById('plRefreshBtn')?.addEventListener('click', () => {
+      this.loadPaymentLinks();
+    });
+
     // Tab switching
     document.querySelectorAll('.tab-btn-enhanced').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -408,6 +540,16 @@ class PaymentCreditNote {
     // Clear payment form
     document.getElementById('clearPaymentBtn')?.addEventListener('click', () => {
       this.clearPaymentForm();
+      if (this.pendingSettlementLinkId) {
+        try {
+          fetch(`/api/billing/payment-links/${this.pendingSettlementLinkId}/settle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_method: method, notes })
+          });
+        } catch (_) {}
+        this.pendingSettlementLinkId = null;
+      }
     });
 
     // Issue credit note
@@ -570,6 +712,9 @@ class PaymentCreditNote {
     // Load history if switching to history tab
     if (tabName === 'history') {
       this.loadTransactionHistory();
+    }
+    if (tabName === 'payment-links') {
+      this.loadPaymentLinks();
     }
   }
 
@@ -1626,6 +1771,197 @@ class PaymentCreditNote {
     }
     if (attachmentPreviewContainer) attachmentPreviewContainer.style.display = 'none';
   }
+
+  // ─── Payment Links Methods ──────────────────────────────────────────────────
+  async loadPaymentLinks() {
+    const tbody = document.getElementById('plTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#999;">Loading payment links...</td></tr>';
+
+    try {
+      const res = await fetch('/api/billing/payment-links');
+      if (!res.ok) throw new Error('Failed to fetch payment links');
+      const data = await res.json();
+      const links = data.links || [];
+
+      if (!links.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:25px;color:#999;">No payment links generated yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = links.map(link => {
+        const isClaimed = link.status === 'CLAIMED';
+        const isSettled = link.status === 'SETTLED';
+        const isExpired = link.status === 'EXPIRED';
+
+        let badgeClass = 'active';
+        let badgeLabel = 'Active';
+        if (isClaimed) {
+          badgeClass = 'claimed';
+          badgeLabel = `⚡ Claimed: UTR ${link.claimed_utr || 'Submitted'}`;
+        } else if (isSettled) {
+          badgeClass = 'settled';
+          badgeLabel = '✓ Settled';
+        } else if (isExpired) {
+          badgeClass = 'expired';
+          badgeLabel = 'Expired';
+        }
+
+        const dateStr = link.created_at ? link.created_at.slice(0, 10) : '-';
+        const shortUrl = link.share_url || `https://faizal.uk/p/${link.link_code}`;
+
+        let actionBtn = `<a href="${shortUrl}" target="_blank" class="pl-btn" style="padding:3px 7px;font-size:10px;">↗ Open</a>`;
+        if (isClaimed) {
+          actionBtn = `
+            <div style="display:flex;gap:4px;">
+              <button type="button" class="pl-verify-btn" onclick="window.currentPaymentManager?.verifyAndSettleLink(${link.id}, '${encodeURIComponent(link.customer_name)}', ${link.claimed_amount || link.amount}, '${link.claimed_utr || ''}', '${link.link_code}')">
+                ✓ Settle
+              </button>
+              <a href="${shortUrl}" target="_blank" class="pl-btn" style="padding:3px 6px;font-size:10px;">↗</a>
+            </div>
+          `;
+        }
+
+        return `
+          <tr>
+            <td style="white-space:nowrap;font-size:11px;color:#666;">${dateStr}</td>
+            <td style="font-weight:600;">${link.customer_name}</td>
+            <td style="font-weight:700;font-family:monospace;color:#111;">₹${Number(link.amount).toFixed(2)}</td>
+            <td>
+              <a href="${shortUrl}" target="_blank" style="font-family:monospace;font-size:11px;color:#4361EE;text-decoration:none;">
+                ${link.link_code}
+              </a>
+            </td>
+            <td>
+              <span class="pl-badge ${badgeClass}">${badgeLabel}</span>
+            </td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
+
+    } catch (err) {
+      log.error('loadPaymentLinks error:', err);
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc2626;">Failed to load links: ${err.message}</td></tr>`;
+    }
+  }
+
+  async createPaymentLink() {
+    const customerName = document.getElementById('plCustomerSelect')?.value;
+    const amount = parseFloat(document.getElementById('plAmount')?.value || 0);
+    const description = document.getElementById('plDescription')?.value || '';
+    const expiresInDays = parseInt(document.getElementById('plExpiry')?.value || '7', 10);
+
+    if (!customerName) {
+      this.showAlert('❌ Please select a customer', 'error');
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      this.showAlert('❌ Please enter a valid positive amount', 'error');
+      return;
+    }
+
+    const customer = this.billingData.customers?.find(c => c.name === customerName);
+    const customerId = customer ? customer.id : null;
+    if (!customerId) {
+      this.showAlert('❌ Customer ID could not be resolved', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('plGenerateBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+    }
+
+    try {
+      const res = await fetch('/api/billing/payment-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          amount,
+          description,
+          expires_in_days: expiresInDays
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create payment link');
+
+      this.showAlert('✓ Short payment link generated successfully', 'success');
+
+      // Show result card
+      const resultCard = document.getElementById('plResultCard');
+      const resultUrl = document.getElementById('plResultUrl');
+      const openBtn = document.getElementById('plOpenBtn');
+      const copyBtn = document.getElementById('plCopyBtn');
+      const waBtn = document.getElementById('plWhatsAppBtn');
+
+      const url = data.link?.share_url || `https://faizal.uk/p/${data.link?.link_code}`;
+      if (resultCard && resultUrl) {
+        resultUrl.textContent = url;
+        resultCard.style.display = 'block';
+        if (openBtn) openBtn.href = url;
+
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(url);
+            copyBtn.textContent = 'Copied ✓';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy Link'; }, 1500);
+          };
+        }
+
+        if (waBtn) {
+          const waText = encodeURIComponent(`Dear ${customerName},\n\nPlease use the following secure payment gateway link to settle your statement amount of ₹${amount.toFixed(2)}:\n${url}\n\nThank you,\nUtkal Chemical Aushadhalaya`);
+          waBtn.onclick = () => {
+            window.open(`https://api.whatsapp.com/send?text=${waText}`, '_blank');
+          };
+        }
+      }
+
+      this.loadPaymentLinks();
+
+    } catch (err) {
+      this.showAlert(`❌ ${err.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Generate Short Link';
+      }
+    }
+  }
+
+  verifyAndSettleLink(linkId, customerNameEnc, claimedAmount, claimedUtr, code) {
+    const customerName = decodeURIComponent(customerNameEnc);
+    this.switchTab('payment');
+
+    setTimeout(() => {
+      const select = document.getElementById('paymentCustomerSelect');
+      if (select) {
+        select.value = customerName;
+        select.dispatchEvent(new Event('change'));
+      }
+
+      const amountInput = document.getElementById('paymentAmount');
+      if (amountInput) amountInput.value = Number(claimedAmount).toFixed(2);
+
+      const methodSelect = document.getElementById('paymentMethod');
+      if (methodSelect) methodSelect.value = 'upi';
+
+      const refInput = document.getElementById('paymentReference');
+      if (refInput) refInput.value = claimedUtr || `PAY-${code}`;
+
+      const notesInput = document.getElementById('paymentNotes');
+      if (notesInput) notesInput.value = `Settled from payment gateway link: ${code}`;
+
+      this.pendingSettlementLinkId = linkId;
+
+      this.showAlert(`⚡ Pre-filled settlement form for ${customerName}. Verify and click 'Record Payment' to post to ledger.`, 'info');
+    }, 250);
+  }
+
 }
 
 // Make accessible globally

@@ -1,4 +1,4 @@
-﻿/* ===== PAYMENT/CREDIT-NOTE MODULE (ENHANCED) ===== */
+/* ===== PAYMENT/CREDIT-NOTE MODULE (ENHANCED) ===== */
 /* Modern, feature-rich payment and credit note management interface */
 
 /* CSS Variables */
@@ -26,6 +26,7 @@
     transform: translateX(400px);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -37,6 +38,7 @@
     transform: translateX(0);
     opacity: 1;
   }
+
   to {
     transform: translateX(400px);
     opacity: 0;
@@ -47,6 +49,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -57,6 +60,7 @@
     transform: translateY(-10px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -64,9 +68,12 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -809,6 +816,7 @@
 .transaction-history::-webkit-scrollbar-thumb:hover {
   background: var(--primary-color);
 }
+
 /* ===== EDIT MODAL STYLES ===== */
 .edit-modal-overlay {
   position: fixed;
@@ -1051,4 +1059,193 @@
     padding: 8px 16px;
     font-size: 13px;
   }
+}
+
+/* ===== PAYMENT LINKS GATEWAY MANAGEMENT ===== */
+.payment-links-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 20px;
+  margin-top: 15px;
+}
+
+@media (max-width: 900px) {
+  .payment-links-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pl-card {
+  background: var(--light-color, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.pl-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pl-result-card {
+  background: linear-gradient(135deg, rgba(67, 97, 238, 0.08) 0%, rgba(114, 9, 183, 0.04) 100%);
+  border: 1px solid rgba(67, 97, 238, 0.35);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 18px;
+  display: none;
+  animation: slideIn 0.3s ease;
+}
+
+.pl-result-url {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4361EE;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px dashed rgba(67, 97, 238, 0.4);
+  word-break: break-all;
+  margin: 10px 0;
+  user-select: all;
+}
+
+.pl-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pl-btn {
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #ccc);
+  background: #ffffff;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: var(--transition);
+}
+
+.pl-btn:hover {
+  background: #f4f4f5;
+  border-color: #999;
+}
+
+.pl-btn.primary {
+  background: #4361EE;
+  color: #ffffff;
+  border-color: #4361EE;
+}
+
+.pl-btn.primary:hover {
+  background: #3751cc;
+}
+
+.pl-btn.whatsapp {
+  background: #25D366;
+  color: #ffffff;
+  border-color: #25D366;
+}
+
+.pl-btn.whatsapp:hover {
+  background: #1eb857;
+}
+
+.pl-table-wrap {
+  overflow-x: auto;
+}
+
+.pl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pl-table th {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.pl-table td {
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  vertical-align: middle;
+}
+
+.pl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pl-badge.active {
+  background: rgba(67, 97, 238, 0.12);
+  color: #4361EE;
+  border: 1px solid rgba(67, 97, 238, 0.3);
+}
+
+.pl-badge.claimed {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.pl-badge.settled {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.pl-badge.expired {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.pl-verify-btn {
+  background: #16a34a;
+  color: #ffffff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25);
+  transition: all 0.2s ease;
+}
+
+.pl-verify-btn:hover {
+  background: #15803d;
+  transform: translateY(-1px);
 }
