@@ -4,873 +4,278 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#040406" />
-  <meta name="theme-color" content="#020204" />
+  <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
-  <title>Remittance Clearance &bull; Electronic Payment Order</title>
-  <title>Remittance Portal &bull; Utkal Chemical Aushadhalaya</title>
+  <title>Payment Clearance - Utkal Chemical Aushadhalaya</title>
   <link rel="stylesheet" href="/modules/billing/css/payment-gateway.css" />
 </head>
 
 <body>
 
-  <div class="gateway-container">
-    <div class="gateway-card" id="gatewayCard">
-      <!-- Background Cosmic Telemetry Canvas -->
-      <canvas id="starfieldCanvas"></canvas>
-      <!-- Background Cosmic Telemetry Canvas -->
-      <canvas id="starfieldCanvas"></canvas>
+  <div class="ambient-mesh"></div>
 
-      <!-- Skeleton Loading State -->
-      <div id="loadingView" class="skeleton-loader">
-        <div class="spinner"></div>
-        <div class="loading-text">Resolving electronic payment order...</div>
-        <div class="cockpit-container">
-          <div class="cockpit-shell" id="cockpitShell">
-            <div class="cockpit-container">
-              <div class="cockpit-shell" id="cockpitShell">
+  <!-- Minimalist Architectural Navigation -->
+  <header>
+    <div class="brand-cluster">
+      <div class="monogram-mark">UCA</div>
+      <div class="brand-meta">
+        <h1 id="companyName">Utkal Chemical Aushadhalaya</h1>
+        <p id="invoiceCoverRef">Loading invoice...</p>
+      </div>
+    </div>
+  </header>
 
-                <!-- Top Telemetry Flight Bar -->
-                <div class="flight-bar">
-                  <div class="flight-bar-brand">
-                    <span style="color:#4361EE;">//</span>
-                    <span id="companyName">UTKAL CHEMICAL AUSHADHALAYA</span>
-                  </div>
-                  <div class="flight-bar-ref" id="linkRefToken">SYS //
-                    PAY-&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;
-                  </div>
-                  <div class="flight-status-indicator">
-                    <span class="flight-status-dot"></span>
-                    <span id="statusText">PORTAL READY</span>
+  <main>
+    <!-- Loading State -->
+    <div id="loadingView" class="card state-container">
+      <div class="state-spinner"></div>
+      <div class="state-title">Loading Payment Details</div>
+      <div class="state-sub">Fetching customer balance and payment coordinates...</div>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorView" class="card state-container" style="display: none;">
+      <div class="receipt-mark" style="border-color: rgba(239, 68, 68, 0.3); color: #ef4444;">✕</div>
+      <div class="state-title" id="errorTitle">Payment Link Unavailable</div>
+      <div class="state-sub" id="errorMsg">This payment link has reached its expiration threshold or does not exist.
+      </div>
+    </div>
+
+    <!-- Active Checkout Grid -->
+    <div id="activeView" class="checkout-grid" style="display: none;">
+
+      <!-- Left Column: Payment & Bank Details -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">01 // Payment Details</span>
+        </div>
+
+        <!-- Amount Due Hero -->
+        <div class="amount-hero">
+          <div class="amount-label">Amount Payable</div>
+          <div class="amount-display" id="payableAmount">₹0.00</div>
+          <div class="account-meta">
+            Account: <strong id="customerName">-</strong>
+          </div>
+          <div class="order-memo" id="paymentMemo">Statement Settlement</div>
+        </div>
+
+        <!-- Multi-QR Tranche Switcher (> ₹1 Lakh) -->
+        <div class="tranche-box" id="trancheSection" style="display: none;">
+          <div class="tranche-header">
+            <span class="tranche-title">UPI Split Tranches</span>
+            <span id="trancheProgress" style="font-family: var(--mono); font-size: 10px; color: var(--text-3);">Part 1
+              of 1</span>
+          </div>
+          <div class="tranche-pills" id="tranchePills">
+            <!-- Populated if > ₹1 Lakh -->
+          </div>
+          <div class="tranche-notice">
+            UPI limits max ₹1,00,000 per transaction. Pay each tranche separately, or switch to <strong>Bank
+              Transfer</strong>.
+          </div>
+        </div>
+
+        <!-- Payment Mode Switcher -->
+        <div class="mode-switcher" role="tablist">
+          <button class="mode-btn active" id="tabBtnQr" role="tab" aria-selected="true">
+            UPI QR
+          </button>
+          <button class="mode-btn" id="tabBtnBank" role="tab" aria-selected="false">
+            Bank Transfer
+          </button>
+        </div>
+
+        <!-- Bank Coordinates Table (When Bank Transfer Tab Active) -->
+        <div id="bankSpecTable" class="bank-list" style="display: none;">
+          <div class="bank-row">
+            <div class="bank-meta">
+              <span class="bank-label">Beneficiary</span>
+              <span class="bank-value" id="bankHolder">MD FAIZAL</span>
+            </div>
+            <button class="copy-btn" data-copy-target="bankHolder">Copy</button>
+          </div>
+
+          <div class="bank-row">
+            <div class="bank-meta">
+              <span class="bank-label">Bank & Branch</span>
+              <span class="bank-value" id="bankBranch">HDFC Bank - Cuttack</span>
+            </div>
+            <button class="copy-btn" data-copy-target="bankBranch">Copy</button>
+          </div>
+
+          <div class="bank-row">
+            <div class="bank-meta">
+              <span class="bank-label">Account Number</span>
+              <span class="bank-value" id="bankAccNo">50100673684509</span>
+            </div>
+            <button class="copy-btn" data-copy-target="bankAccNo">Copy</button>
+          </div>
+
+          <div class="bank-row">
+            <div class="bank-meta">
+              <span class="bank-label">IFSC Code</span>
+              <span class="bank-value" id="bankIfsc">HDFC0000236</span>
+            </div>
+            <button class="copy-btn" data-copy-target="bankIfsc">Copy</button>
+          </div>
+
+          <div class="bank-row">
+            <div class="bank-meta">
+              <span class="bank-label">UPI VPA</span>
+              <span class="bank-value" id="bankUpi">7749089400@hdfc</span>
+            </div>
+            <button class="copy-btn" data-copy-target="bankUpi">Copy</button>
+          </div>
+        </div>
+
+        <!-- Remittance Notice Drawer -->
+        <div class="remittance-card">
+          <button class="drawer-trigger" id="accordionTrigger" aria-expanded="false">
+            <span>Submit Payment Reference (UTR)</span>
+            <span id="accordionArrow">▼</span>
+          </button>
+
+          <div class="drawer-content" id="accordionContent">
+            <form id="remittanceForm">
+                <!-- Dynamically populated tranche-aware UTR input fields -->
+                <div id="utrFieldsContainer">
+                  <div class="form-group" style="margin-bottom: 10px;">
+                    <label class="input-label" for="utrInput">Transaction Reference / UTR Number *</label>
+                    <input type="text" id="utrInput" class="input-mono" placeholder="Enter 12-digit UTR number" required
+                      autocomplete="off" />
                   </div>
                 </div>
-                <!-- Top Telemetry Flight Bar -->
-                <div class="flight-bar">
-                  <div class="flight-bar-brand">
-                    <span style="color:#4361EE;">//</span>
-                    <span id="companyName">UTKAL CHEMICAL AUSHADHALAYA</span>
-                  </div>
-                  <div class="flight-bar-ref" id="linkRefToken">SYS //
-                    PAY-&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
-                  <div class="flight-status-indicator">
-                    <span class="flight-status-dot"></span>
-                    <span id="statusText">PORTAL READY</span>
-                  </div>
+
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <label class="input-label" for="amountInput">Total Amount Transferred (₹) *</label>
+                  <input type="number" id="amountInput" class="input-mono" placeholder="Transferred Amount (₹)"
+                    step="0.01" min="1" required />
                 </div>
 
-                <!-- Loading State -->
-                <div id="loadingView" class="cockpit-loader">
-                  <div class="loader-spinner"></div>
-                  <div
-                    style="font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--text-muted); text-transform: uppercase;">
-                    INITIALIZING TELEMETRY PAYLOAD...
-                    <!-- Loading State -->
-                    <div id="loadingView" class="cockpit-loader">
-                      <div class="loader-spinner"></div>
-                      <div
-                        style="font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--text-muted); text-transform: uppercase;">
-                        INITIALIZING TELEMETRY PAYLOAD...
-                      </div>
-                    </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <label class="input-label" for="payerNameInput">Remitter Name (Optional)</label>
+                  <input type="text" id="payerNameInput" class="input-mono" placeholder="Name as per bank account" />
+                </div>
 
-                    <!-- Error State -->
-                    <div id="errorView" class="receipt-shell" style="display: none;">
-                      <div class="receipt-status-mark"
-                        style="border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,0.12);box-shadow:0 0 24px rgba(239,68,68,0.3);">
-                        ✕</div>
-                      <div class="receipt-heading" id="errorTitle">Order Not Found</div>
-                      <div class="receipt-subtext" id="errorMsg">This payment link has reached its expiration threshold
-                        or does not exist.</div>
-                    </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <label class="input-label" for="notesInput">Notes (Optional)</label>
+                  <input type="text" id="notesInput" class="input-mono" placeholder="Optional notes" />
+                </div>
 
-                    <!-- Active Cockpit Widescreen Grid -->
-                    <div id="activeView" class="cockpit-grid" style="display: none;">
+                <button type="submit" class="btn-primary" id="submitRemittanceBtn" style="margin-top: 14px;">
+                  Submit Reference
+                </button>
+            </form>
+          </div>
+        </div>
 
-                      <!-- Left Panel: Telemetry & Clearance Controls -->
-                      <div class="telemetry-panel">
+      </div>
 
-                        <div>
-                          <!-- Balance Hero -->
-                          <div class="telemetry-hero">
-                            <div class="telemetry-label">// TOTAL SETTLEMENT BALANCE</div>
-                            <div class="telemetry-amount" id="payableAmount">₹0.00</div>
-                            <div class="telemetry-target">
-                              ACCOUNT: <strong id="customerName">-</strong>
-                            </div>
-                            <div class="telemetry-memo" id="paymentMemo">SETTLEMENT RECORD</div>
-                          </div>
+      <!-- Right Column: Scan to Pay -->
+      <div class="card qr-card">
+        <div class="card-header" style="width: 100%;">
+          <span class="card-title">02 // Scan to Pay</span>
+          <span class="card-subtext" id="terminalTrancheStatus"></span>
+        </div>
 
-                          <!-- Error State -->
-                          <div id="errorView" class="receipt-card" style="display: none;">
-                            <div class="receipt-icon"
-                              style="border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,0.12);box-shadow:0 0 24px rgba(239,68,68,0.3);">
-                              ✕</div>
-                            <div class="receipt-title" id="errorTitle">Order Unavailable</div>
-                            <div class="receipt-sub" id="errorMsg">This payment link is invalid, expired, or has already
-                              been cleared.
-                              <!-- Multi-QR Tranche Switcher (> ₹1 Lakh) -->
-                              <div class="tranche-section" id="trancheSection" style="display: none;">
-                                <div class="tranche-header">
-                                  <span class="tranche-title">// UPI REGULATORY CEILING APPLIED (MAX ₹1,00,000 /
-                                    SCAN)</span>
-                                  <span id="trancheProgress"
-                                    style="font-family:var(--font-mono);font-size:10px;color:#9ca3af;">PART 1 OF
-                                    1</span>
-                                </div>
-                                <div id="errorView" class="receipt-shell" style="display: none;">
-                                  <div class="receipt-status-mark"
-                                    style="border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,0.12);box-shadow:0 0 24px rgba(239,68,68,0.3);">
-                                    ✕</div>
-                                  <div class="receipt-heading" id="errorTitle">Order Not Found</div>
-                                  <div class="receipt-subtext" id="errorMsg">This payment link has reached its
-                                    expiration threshold or
-                                    does not exist.</div>
-                                  <div class="tranche-pills" id="tranchePills">
-                                    <!-- Dynamically populated if > 1 Lakh -->
-                                  </div>
-                                  <div class="tranche-notice">
-                                    Select a tranche to scan and pay in parts, or switch to <strong>Direct Bank
-                                      Transfer</strong> for a single uncapped transfer.
-                                  </div>
-                                </div>
+        <div class="qr-box">
+          <img id="qrImage" alt="Dynamic UPI QR" src="" />
+        </div>
 
-                                <!-- Active Checkout View -->
-                                <div id="activeView" style="display: none;">
-                                  <!-- Active Cockpit Widescreen Grid -->
-                                  <div id="activeView" class="cockpit-grid" style="display: none;">
-                                    <!-- Payment Channel Switcher -->
-                                    <div class="channel-switcher" role="tablist">
-                                      <button class="channel-btn active" id="tabBtnQr" role="tab" aria-selected="true"
-                                        data-tab="qr">
-                                        <span>⚡ UPI QR SCANNER</span>
-                                      </button>
-                                      <button class="channel-btn" id="tabBtnBank" role="tab" aria-selected="false"
-                                        data-tab="bank">
-                                        <span>🏦 BANK REMITTANCE (NO LIMIT)</span>
-                                      </button>
-                                    </div>
+        <a href="#" id="launchUpiBtn" class="btn-app">
+          Open in UPI App
+        </a>
 
-                                    <!-- Left Panel: Telemetry & Clearance Controls -->
-                                    <div class="telemetry-panel">
-                                      <!-- Bank Coordinates Table (When Bank Tab Active) -->
-                                      <div id="bankSpecTable" class="bank-spec-table" style="display: none;">
+        <!-- Payment Aggregator Chips -->
+        <div class="aggregator-strip">
+          <a href="#" class="aggregator-chip" title="Google Pay"
+            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
+            <span class="aggregator-icon-wrap">
+              <img src="/modules/billing/assets/payment/gpay.png" alt="Google Pay" class="aggregator-icon" />
+            </span>
+            <span>GPay</span>
+          </a>
+          <a href="#" class="aggregator-chip" title="PhonePe"
+            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
+            <span class="aggregator-icon-wrap">
+              <img src="/modules/billing/assets/payment/phonepe.png" alt="PhonePe" class="aggregator-icon" />
+            </span>
+            <span>PhonePe</span>
+          </a>
+          <a href="#" class="aggregator-chip" title="Paytm"
+            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
+            <span class="aggregator-icon-wrap">
+              <img src="/modules/billing/assets/payment/paytm.png" alt="Paytm" class="aggregator-icon" />
+            </span>
+            <span>Paytm</span>
+          </a>
+          <a href="#" class="aggregator-chip" title="BHIM"
+            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
+            <span class="aggregator-icon-wrap">
+              <img src="/modules/billing/assets/payment/bhim.png" alt="BHIM" class="aggregator-icon" />
+            </span>
+            <span>BHIM</span>
+          </a>
+          <a href="#" class="aggregator-chip" title="CRED"
+            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
+            <span class="aggregator-icon-wrap">
+              <img src="/modules/billing/assets/payment/cred.png" alt="CRED" class="aggregator-icon" />
+            </span>
+            <span>CRED</span>
+          </a>
+        </div>
+      </div>
 
-                                        <div>
-                                          <!-- Balance Hero -->
-                                          <div class="telemetry-hero">
-                                            <div class="telemetry-label">// TOTAL SETTLEMENT BALANCE</div>
-                                            <div class="telemetry-amount" id="payableAmount">₹0.00</div>
-                                            <div class="telemetry-target">
-                                              ACCOUNT: <strong id="customerName">-</strong>
-                                            </div>
-                                            <div class="telemetry-memo" id="paymentMemo">SETTLEMENT RECORD</div>
-                                          </div>
-                                          <div class="bank-spec-row">
-                                            <div class="bank-spec-meta">
-                                              <span class="bank-spec-label">Beneficiary Name</span>
-                                              <span class="bank-spec-value" id="bankHolder">MD FAIZAL</span>
-                                            </div>
-                                            <button class="spec-copy-btn" data-copy-target="bankHolder">Copy</button>
-                                          </div>
+    </div>
 
-                                          <!-- Header -->
-                                          <header class="gateway-header">
-                                            <div class="brand-wrapper">
-                                              <span class="brand-name" id="companyName">UTKAL CHEMICAL
-                                                AUSHADHALAYA</span>
-                                              <span class="gateway-token" id="linkRefToken">REF:
-                                                PAY-&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
-                                            </div>
-                                            <div class="gemini-badge" id="statusBadge">
-                                              <span class="gemini-dot"></span>
-                                              <span id="statusText">Active Order</span>
-                                            </div>
-                                          </header>
-                                          <div class="bank-spec-row">
-                                            <div class="bank-spec-meta">
-                                              <span class="bank-spec-label">Bank & Branch</span>
-                                              <span class="bank-spec-value" id="bankBranch">HDFC Bank &bull;
-                                                Cuttack</span>
-                                            </div>
-                                            <button class="spec-copy-btn" data-copy-target="bankBranch">Copy</button>
-                                          </div>
+    <!-- Verified Remittance Receipt State -->
+    <div id="receiptView" class="card receipt-box" style="display: none;">
+      <div class="receipt-mark">✓</div>
+      <div class="state-title">Payment Reference Submitted</div>
+      <div class="state-sub">
+        Your payment reference has been recorded. Our accounts team will verify the transaction and update your ledger.
+      </div>
 
-                                          <!-- Payable Hero -->
-                                          <div class="amount-hero">
-                                            <div class="amount-label">Settlement Amount Payable</div>
-                                            <div class="amount-display" id="payableAmount">₹0.00</div>
-                                            <div class="customer-meta">
-                                              Target Account: <strong id="customerName">Customer</strong>
-                                            </div>
-                                            <div class="payment-memo" id="paymentMemo">Settlement of Outstanding
-                                              Statement Balance</div>
-                                          </div>
-                                          <div class="bank-spec-row">
-                                            <div class="bank-spec-meta">
-                                              <span class="bank-spec-label">Account Number</span>
-                                              <span class="bank-spec-value" id="bankAccNo">50100673684509</span>
-                                            </div>
-                                            <button class="spec-copy-btn" data-copy-target="bankAccNo">Copy</button>
-                                          </div>
+      <div class="receipt-grid">
+        <div class="receipt-item">
+          <span>Customer:</span>
+          <span id="receiptCustomer">-</span>
+        </div>
+        <div class="receipt-item">
+          <span>Amount:</span>
+          <span id="receiptAmount">₹0.00</span>
+        </div>
+          <div class="receipt-item" id="receiptInvoiceRow">
+            <span>Invoice(s) Covered:</span>
+            <span id="receiptInvoice">-</span>
+          </div>
+          <div class="receipt-item" id="receiptUtrRow">
+            <span>UTR / Ref:</span>
+            <span id="receiptUtr" style="text-align: right; max-width: 60%; word-break: break-all;">-</span>
+          </div>
+          <div class="receipt-item">
+            <span>Timestamp:</span>
+            <span id="receiptTime">-</span>
+          </div>
+        </div>
 
-                                          <!-- Segmented Mode Control -->
-                                          <div class="mode-switcher" role="tablist">
-                                            <button class="mode-btn active" id="tabBtnQr" role="tab"
-                                              aria-selected="true" data-tab="qr">
-                                              <span>⚡ Instant UPI QR</span>
-                                            </button>
-                                            <button class="mode-btn" id="tabBtnBank" role="tab" aria-selected="false"
-                                              data-tab="bank">
-                                              <span>🏦 Bank Remittance</span>
-                                            </button>
-                                          </div>
-                                          <div class="bank-spec-row">
-                                            <div class="bank-spec-meta">
-                                              <span class="bank-spec-label">IFSC Code</span>
-                                              <span class="bank-spec-value" id="bankIfsc">HDFC0000236</span>
-                                            </div>
-                                            <button class="spec-copy-btn" data-copy-target="bankIfsc">Copy</button>
-                                          </div>
+        <button class="btn-primary" id="printReceiptBtn" style="max-width: 200px; margin: 0 auto;">
+          Print Receipt
+        </button>
+      </div>
+  </main>
 
-                                          <!-- Tab 1: Instant UPI QR -->
-                                          <div class="tab-panel active" id="tabPanelQr" role="tabpanel">
-                                            <div class="qr-container">
-                                              <div class="qr-frame">
-                                                <img id="qrImage" class="qr-image" alt="Dynamic UPI Payment QR"
-                                                  src="" />
-                                                <!-- Multi-QR Tranche Switcher (> ₹1 Lakh) -->
-                                                <div class="tranche-section" id="trancheSection" style="display: none;">
-                                                  <div class="tranche-header">
-                                                    <span class="tranche-title">// UPI REGULATORY CEILING APPLIED (MAX
-                                                      ₹1,00,000 /
-                                                      SCAN)</span>
-                                                    <span id="trancheProgress"
-                                                      style="font-family:var(--font-mono);font-size:10px;color:#9ca3af;">PART
-                                                      1 OF 1</span>
-                                                  </div>
-                                                  <div class="tranche-pills" id="tranchePills">
-                                                    <!-- Dynamically populated if > 1 Lakh -->
-                                                  </div>
-                                                  <div class="tranche-notice">
-                                                    Select a tranche to scan and pay in parts, or switch to
-                                                    <strong>Direct Bank
-                                                      Transfer</strong> for a single uncapped transfer.
-                                                  </div>
-                                                </div>
-                                                <div class="qr-instructions">
-                                                  Point your camera or open any UPI app to scan and settle instantly.
-                                                </div>
-                                                <div class="bank-spec-row">
-                                                  <div class="bank-spec-meta">
-                                                    <span class="bank-spec-label">UPI VPA</span>
-                                                    <span class="bank-spec-value" id="bankUpi">7749089400@hdfc</span>
-                                                  </div>
-                                                  <button class="spec-copy-btn" data-copy-target="bankUpi">Copy</button>
-                                                </div>
+  <footer>
+    Utkal Chemical Aushadhalaya
+  </footer>
 
-                                                <!-- Deep Link Action for Mobile Users -->
-                                                <a href="#" id="launchUpiBtn" class="upi-app-btn">
-                                                  <span>⚡ Launch Installed UPI App</span>
-                                                </a>
-                                              </div>
-                                            </div>
+  <!-- Toast -->
+  <div class="toast-pill" id="toast">
+    <span id="toastMsg">Copied to clipboard</span>
+  </div>
 
-                                            <div class="supported-apps">
-                                              <span>GPay</span> &bull;
-                                              <span>PhonePe</span> &bull;
-                                              <span>Paytm</span> &bull;
-                                              <span>BHIM</span> &bull;
-                                              <span>CRED</span>
-                                              <!-- Payment Channel Switcher -->
-                                              <div class="channel-switcher" role="tablist">
-                                                <button class="channel-btn active" id="tabBtnQr" role="tab"
-                                                  aria-selected="true" data-tab="qr">
-                                                  <span>⚡ UPI QR SCANNER</span>
-                                                </button>
-                                                <button class="channel-btn" id="tabBtnBank" role="tab"
-                                                  aria-selected="false" data-tab="bank">
-                                                  <span>🏦 BANK REMITTANCE (NO LIMIT)</span>
-                                                </button>
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <!-- Remittance Notice Drawer -->
-                                          <div class="remittance-accordion">
-                                            <button class="accordion-trigger" id="accordionTrigger"
-                                              aria-expanded="false">
-                                              <span>[+] REGISTER REMITTANCE NOTICE (UTR)</span>
-                                              <span id="accordionArrow">▼</span>
-                                            </button>
-
-                                            <!-- Tab 2: Direct Bank Transfer Details -->
-                                            <div class="tab-panel" id="tabPanelBank" role="tabpanel">
-                                              <div class="bank-details-list">
-                                                <!-- Bank Coordinates Table (When Bank Tab Active) -->
-                                                <div id="bankSpecTable" class="bank-spec-table" style="display: none;">
-                                                  <div class="accordion-content" id="accordionContent">
-                                                    <form id="remittanceForm">
-                                                      <input type="text" id="utrInput" class="cockpit-input"
-                                                        placeholder="Transaction Reference / UTR Number *" required
-                                                        autocomplete="off" />
-                                                      <input type="number" id="amountInput" class="cockpit-input"
-                                                        placeholder="Transferred Amount (₹) *" step="0.01" min="1"
-                                                        required />
-                                                      <input type="text" id="payerNameInput" class="cockpit-input"
-                                                        placeholder="Remitter Name (Optional)" />
-                                                      <input type="text" id="notesInput" class="cockpit-input"
-                                                        placeholder="Notes / Remarks (Optional)" />
-                                                      <button type="submit" class="cockpit-submit-btn"
-                                                        id="submitRemittanceBtn">
-                                                        <span>DISPATCH SETTLEMENT RECEIPT</span>
-                                                      </button>
-                                                    </form>
-                                                  </div>
-                                                </div>
-
-                                                <div class="bank-spec-row">
-                                                  <div class="bank-spec-meta">
-                                                    <span class="bank-spec-label">Beneficiary Name</span>
-                                                    <span class="bank-spec-value" id="bankHolder">MD FAIZAL</span>
-                                                  </div>
-                                                  <button class="spec-copy-btn"
-                                                    data-copy-target="bankHolder">Copy</button>
-                                                </div>
-                                              </div>
-
-                                              <div class="bank-row">
-                                                <div class="bank-info">
-                                                  <span class="bank-label">Beneficiary Name</span>
-                                                  <span class="bank-val" id="bankHolder">MD FAIZAL</span>
-                                                  <div class="bank-spec-row">
-                                                    <div class="bank-spec-meta">
-                                                      <span class="bank-spec-label">Bank & Branch</span>
-                                                      <span class="bank-spec-value" id="bankBranch">HDFC Bank &bull;
-                                                        Cuttack</span>
-                                                    </div>
-                                                    <button class="spec-copy-btn"
-                                                      data-copy-target="bankBranch">Copy</button>
-                                                  </div>
-                                                  <button class="copy-btn" data-copy-target="bankHolder">Copy</button>
-                                                </div>
-                                                <!-- Right Panel: Interactive QR Telemetry Terminal -->
-                                                <div class="terminal-panel" id="terminalPanel">
-
-                                                  <div class="bank-row">
-                                                    <div class="bank-info">
-                                                      <span class="bank-label">Bank & Branch</span>
-                                                      <span class="bank-val" id="bankBranch">HDFC Bank &bull;
-                                                        Cuttack</span>
-                                                      <div class="bank-spec-row">
-                                                        <div class="bank-spec-meta">
-                                                          <span class="bank-spec-label">Account Number</span>
-                                                          <span class="bank-spec-value"
-                                                            id="bankAccNo">50100673684509</span>
-                                                        </div>
-                                                        <button class="spec-copy-btn"
-                                                          data-copy-target="bankAccNo">Copy</button>
-                                                      </div>
-                                                      <button class="copy-btn"
-                                                        data-copy-target="bankBranch">Copy</button>
-                                                    </div>
-                                                    <div class="terminal-header">
-                                                      <span>// QR APERTURE</span>
-                                                      <span class="terminal-tranche-label"
-                                                        id="terminalTrancheStatus">ACTIVE PAYLOAD</span>
-                                                    </div>
-
-                                                    <div class="bank-row">
-                                                      <div class="bank-info">
-                                                        <span class="bank-label">Account Number</span>
-                                                        <span class="bank-val" id="bankAccNo">50100673684509</span>
-                                                        <div class="bank-spec-row">
-                                                          <div class="bank-spec-meta">
-                                                            <span class="bank-spec-label">IFSC Code</span>
-                                                            <span class="bank-spec-value"
-                                                              id="bankIfsc">HDFC0000236</span>
-                                                          </div>
-                                                          <button class="spec-copy-btn"
-                                                            data-copy-target="bankIfsc">Copy</button>
-                                                        </div>
-                                                        <button class="copy-btn"
-                                                          data-copy-target="bankAccNo">Copy</button>
-                                                      </div>
-                                                      <!-- Holographic Aperture Frame -->
-                                                      <div class="aperture-frame" id="apertureFrame">
-                                                        <div class="qr-viewport" id="qrViewport">
-                                                          <img id="qrImage" class="qr-image-display"
-                                                            alt="Dynamic UPI QR" src="" />
-                                                          <div class="scanline-beam"></div>
-
-                                                          <div class="bank-row">
-                                                            <div class="bank-info">
-                                                              <span class="bank-label">IFSC Code</span>
-                                                              <span class="bank-val" id="bankIfsc">HDFC0000236</span>
-                                                              <div class="bank-spec-row">
-                                                                <div class="bank-spec-meta">
-                                                                  <span class="bank-spec-label">UPI VPA</span>
-                                                                  <span class="bank-spec-value"
-                                                                    id="bankUpi">7749089400@hdfc</span>
-                                                                </div>
-                                                                <button class="spec-copy-btn"
-                                                                  data-copy-target="bankUpi">Copy</button>
-                                                              </div>
-                                                              <button class="copy-btn"
-                                                                data-copy-target="bankIfsc">Copy</button>
-                                                              <!-- Shutter / Glitch Assembly Overlay -->
-                                                              <div class="assembly-overlay" id="assemblyOverlay">
-                                                                <div class="assembly-spinner"></div>
-                                                              </div>
-                                                            </div>
-                                                          </div>
-
-                                                        </div>
-                                                      </div>
-                                                      <!-- 1-Tap Mobile Launch -->
-                                                      <a href="#" id="launchUpiBtn" class="launch-app-btn">
-                                                        <span>⚡ LAUNCH INSTALLED UPI APP</span>
-                                                      </a>
-
-                                                      <div class="bank-row">
-                                                        <div class="bank-info">
-                                                          <span class="bank-label">UPI VPA</span>
-                                                          <span class="bank-val" id="bankUpi">7749089400@hdfc</span>
-                                                        </div>
-                                                        <button class="copy-btn"
-                                                          data-copy-target="bankUpi">Copy</button>
-                                                        <!-- Remittance Notice Drawer -->
-                                                        <div class="remittance-accordion">
-                                                          <button class="accordion-trigger" id="accordionTrigger"
-                                                            aria-expanded="false">
-                                                            <span>[+] REGISTER REMITTANCE NOTICE (UTR)</span>
-                                                            <span id="accordionArrow">▼</span>
-                                                          </button>
-                                                          <!-- Official Vector Brand Logos Strip -->
-                                                          <div class="vector-brand-strip">
-
-                                                            <div class="accordion-content" id="accordionContent">
-                                                              <form id="remittanceForm">
-                                                                <input type="text" id="utrInput" class="cockpit-input"
-                                                                  placeholder="Transaction Reference / UTR Number *"
-                                                                  required autocomplete="off" />
-                                                                <input type="number" id="amountInput"
-                                                                  class="cockpit-input"
-                                                                  placeholder="Transferred Amount (₹) *" step="0.01"
-                                                                  min="1" required />
-                                                                <input type="text" id="payerNameInput"
-                                                                  class="cockpit-input"
-                                                                  placeholder="Remitter Name (Optional)" />
-                                                                <input type="text" id="notesInput" class="cockpit-input"
-                                                                  placeholder="Notes / Remarks (Optional)" />
-                                                                <button type="submit" class="cockpit-submit-btn"
-                                                                  id="submitRemittanceBtn">
-                                                                  <span>DISPATCH SETTLEMENT RECEIPT</span>
-                                                                </button>
-                                                              </form>
-                                                            </div>
-                                                          </div>
-                                                          <!-- Google Pay Logo -->
-                                                          <a href="#" class="brand-icon-link" title="Google Pay"
-                                                            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                            <svg class="brand-icon-svg" viewBox="0 0 48 24" fill="none"
-                                                              xmlns="http://www.w3.org/2000/svg">
-                                                              <rect width="48" height="24" rx="4" fill="#18181b"
-                                                                stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                              <path
-                                                                d="M14.5 12.02c0-.35-.03-.7-.09-1.02H8v2.04h3.66c-.16.85-.64 1.57-1.36 2.05v1.7h2.2c1.29-1.18 2-2.92 2-4.77z"
-                                                                fill="#4285F4" />
-                                                              <path
-                                                                d="M8 18.5c1.78 0 3.28-.59 4.37-1.6l-2.2-1.7c-.59.4-1.35.63-2.17.63-1.67 0-3.08-1.13-3.59-2.65H2.15v1.75C3.24 16.99 5.46 18.5 8 18.5z"
-                                                                fill="#34A853" />
-                                                              <path
-                                                                d="M4.41 13.18c-.13-.39-.21-.8-.21-1.22 0-.42.08-.83.21-1.22V9H2.15C1.69 9.92 1.43 10.95 1.43 12.04s.26 2.12.72 3.04l2.26-1.9z"
-                                                                fill="#FBBC05" />
-                                                              <path
-                                                                d="M8 7.5c.97 0 1.84.33 2.52.99l1.89-1.89C11.27 5.54 9.77 5 8 5 5.46 5 3.24 6.51 2.15 8.65l2.26 1.76c.51-1.52 1.92-2.91 3.59-2.91z"
-                                                                fill="#EA4335" />
-                                                              <text x="18" y="15.5"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="700" font-size="10" fill="#ffffff"
-                                                                letter-spacing="-0.2">Pay</text>
-                                                            </svg>
-                                                          </a>
-
-                                                        </div>
-                                                      </div>
-                                                      <!-- PhonePe Logo -->
-                                                      <a href="#" class="brand-icon-link" title="PhonePe"
-                                                        onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                        <svg class="brand-icon-svg" viewBox="0 0 24 24" fill="none"
-                                                          xmlns="http://www.w3.org/2000/svg">
-                                                          <rect width="24" height="24" rx="5" fill="#5f259f" />
-                                                          <path
-                                                            d="M12.9 6.8c-1.5 0-2.8.9-3.4 2.2V6.9H7v11.3h2.5v-4.9c.6 1.2 1.9 2.1 3.4 2.1 2.6 0 4.6-2.1 4.6-4.3s-2-4.3-4.6-4.3zm-.3 6.6c-1.3 0-2.3-1-2.3-2.3s1-2.3 2.3-2.3c1.3 0 2.3 1 2.3 2.3 0 1.2-1 2.3-2.3 2.3z"
-                                                            fill="#ffffff" />
-                                                          <path d="M15.4 5.3L8.6 18.7h2.2L17.6 5.3h-2.2z" fill="#ffffff"
-                                                            opacity="0.9" />
-                                                        </svg>
-                                                      </a>
-
-                                                      <!-- Settlement Notice Drawer -->
-                                                      <div class="settlement-drawer">
-                                                        <button class="drawer-trigger" id="drawerTrigger"
-                                                          aria-expanded="false">
-                                                          <span>Transferred? Submit Settlement Notice</span>
-                                                          <span class="drawer-icon">▼</span>
-                                                        </button>
-                                                        <!-- Right Panel: Interactive QR Telemetry Terminal -->
-                                                        <div class="terminal-panel" id="terminalPanel">
-                                                          <!-- Paytm Logo -->
-                                                          <a href="#" class="brand-icon-link" title="Paytm"
-                                                            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                            <svg class="brand-icon-svg" viewBox="0 0 42 24" fill="none"
-                                                              xmlns="http://www.w3.org/2000/svg">
-                                                              <rect width="42" height="24" rx="4" fill="#002970"
-                                                                stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                              <text x="6" y="16.5"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="900" font-size="12" fill="#ffffff"
-                                                                letter-spacing="-0.5">pay</text>
-                                                              <text x="25" y="16.5"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="900" font-size="12" fill="#00b9f5"
-                                                                letter-spacing="-0.5">tm</text>
-                                                            </svg>
-                                                          </a>
-
-                                                          <div class="terminal-header">
-                                                            <span>// QR APERTURE</span>
-                                                            <span class="terminal-tranche-label"
-                                                              id="terminalTrancheStatus">ACTIVE
-                                                              PAYLOAD</span>
-                                                          </div>
-                                                          <!-- BHIM Logo -->
-                                                          <a href="#" class="brand-icon-link" title="BHIM"
-                                                            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                            <svg class="brand-icon-svg" viewBox="0 0 44 24" fill="none"
-                                                              xmlns="http://www.w3.org/2000/svg">
-                                                              <rect width="44" height="24" rx="4" fill="#18181b"
-                                                                stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                              <path d="M7 6l5 12h-3.5L5 6H7z" fill="#00833e" />
-                                                              <path d="M12.5 6l5 12h-3.5L10.5 6h2z" fill="#f37023" />
-                                                              <text x="18" y="16"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="900" font-size="11" fill="#ffffff"
-                                                                font-style="italic">BHIM</text>
-                                                            </svg>
-                                                          </a>
-
-                                                          <div class="drawer-content" id="drawerContent">
-                                                            <form id="remittanceForm">
-                                                              <!-- CRED Logo -->
-                                                              <a href="#" class="brand-icon-link" title="CRED"
-                                                                onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                                <svg class="brand-icon-svg" viewBox="0 0 24 24"
-                                                                  fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                  <rect width="24" height="24" rx="5" fill="#111215"
-                                                                    stroke="rgba(255,255,255,0.16)" stroke-width="1" />
-                                                                  <path
-                                                                    d="M6 7.5h12v9.5c0 1.2-4.5 4.5-6 4.5s-6-3.3-6-4.5V7.5z"
-                                                                    stroke="#ffffff" stroke-width="1.8"
-                                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                                                  <path
-                                                                    d="M9.5 10.5h5v5c0 .6-1.8 2-2.5 2s-2.5-1.4-2.5-2v-5z"
-                                                                    fill="#ffffff" />
-                                                                </svg>
-                                                              </a>
-
-                                                              <div class="form-group">
-                                                                <label class="form-label" for="utrInput">Transaction Ref
-                                                                  / UTR Number
-                                                                  *</label>
-                                                                <input type="text" id="utrInput" class="form-input mono"
-                                                                  placeholder="e.g. 12-digit UPI UTR or Bank Ref"
-                                                                  required autocomplete="off" />
-                                                                <!-- Holographic Aperture Frame -->
-                                                                <div class="aperture-frame" id="apertureFrame">
-                                                                  <div class="qr-viewport" id="qrViewport">
-                                                                    <img id="qrImage" class="qr-image-display"
-                                                                      alt="Dynamic UPI QR" src="" />
-                                                                    <div class="scanline-beam"></div>
-                                                                  </div>
-
-                                                                  <!-- Shutter / Glitch Assembly Overlay -->
-                                                                  <div class="assembly-overlay" id="assemblyOverlay">
-                                                                    <div class="assembly-spinner"></div>
-                                                                  </div>
-                                                                </div>
-                                                              </div>
-                                                          </div>
-
-                                                          <div class="form-group">
-                                                            <label class="form-label" for="amountInput">Transferred
-                                                              Amount (₹)
-                                                              *</label>
-                                                            <input type="number" id="amountInput"
-                                                              class="form-input mono" step="0.01" min="1" required />
-                                                          </div>
-                                                          <!-- 1-Tap Mobile Launch -->
-                                                          <a href="#" id="launchUpiBtn" class="launch-app-btn">
-                                                            <span>⚡ LAUNCH INSTALLED UPI APP</span>
-                                                          </a>
-                                                        </div>
-
-                                                        <div class="form-group">
-                                                          <label class="form-label" for="payerNameInput">Remitter Name
-                                                            (Optional)</label>
-                                                          <input type="text" id="payerNameInput" class="form-input"
-                                                            placeholder="Name as shown in bank account" />
-                                                        </div>
-                                                        <!-- Official Vector Brand Logos Strip -->
-                                                        <div class="vector-brand-strip">
-                                                          <!-- Verified Remittance Receipt State -->
-                                                          <div id="receiptView" class="receipt-shell"
-                                                            style="display: none;">
-                                                            <div class="receipt-status-mark">✓</div>
-                                                            <div class="receipt-heading">Remittance Registered</div>
-                                                            <div class="receipt-subtext">
-                                                              Your settlement notification has been transmitted directly
-                                                              to treasury desk. An executive verification record has
-                                                              been created.
-                                                            </div>
-
-                                                            <!-- Google Pay Logo -->
-                                                            <a href="#" class="brand-icon-link" title="Google Pay"
-                                                              onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                              <svg class="brand-icon-svg" viewBox="0 0 48 24"
-                                                                fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                <rect width="48" height="24" rx="4" fill="#18181b"
-                                                                  stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                                <path
-                                                                  d="M14.5 12.02c0-.35-.03-.7-.09-1.02H8v2.04h3.66c-.16.85-.64 1.57-1.36 2.05v1.7h2.2c1.29-1.18 2-2.92 2-4.77z"
-                                                                  fill="#4285F4" />
-                                                                <path
-                                                                  d="M8 18.5c1.78 0 3.28-.59 4.37-1.6l-2.2-1.7c-.59.4-1.35.63-2.17.63-1.67 0-3.08-1.13-3.59-2.65H2.15v1.75C3.24 16.99 5.46 18.5 8 18.5z"
-                                                                  fill="#34A853" />
-                                                                <path
-                                                                  d="M4.41 13.18c-.13-.39-.21-.8-.21-1.22 0-.42.08-.83.21-1.22V9H2.15C1.69 9.92 1.43 10.95 1.43 12.04s.26 2.12.72 3.04l2.26-1.9z"
-                                                                  fill="#FBBC05" />
-                                                                <path
-                                                                  d="M8 7.5c.97 0 1.84.33 2.52.99l1.89-1.89C11.27 5.54 9.77 5 8 5 5.46 5 3.24 6.51 2.15 8.65l2.26 1.76c.51-1.52 1.92-2.91 3.59-2.91z"
-                                                                  fill="#EA4335" />
-                                                                <text x="18" y="15.5"
-                                                                  font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                  font-weight="700" font-size="10" fill="#ffffff"
-                                                                  letter-spacing="-0.2">Pay</text>
-                                                              </svg>
-                                                            </a>
-                                                            <div class="receipt-grid">
-                                                              <div class="receipt-item">
-                                                                <span>Customer:</span>
-                                                                <span id="receiptCustomer">-</span>
-                                                              </div>
-                                                              <div class="receipt-item">
-                                                                <span>Claimed Amount:</span>
-                                                                <span id="receiptAmount">₹0.00</span>
-                                                              </div>
-                                                              <div class="receipt-item">
-                                                                <span>Transaction Ref / UTR:</span>
-                                                                <span id="receiptUtr">-</span>
-                                                              </div>
-                                                              <div class="receipt-item">
-                                                                <span>Order Reference:</span>
-                                                                <span id="receiptRef">-</span>
-                                                              </div>
-                                                              <div class="receipt-item">
-                                                                <span>Timestamp:</span>
-                                                                <span id="receiptTime">-</span>
-                                                              </div>
-                                                            </div>
-
-                                                            <div class="form-group">
-                                                              <label class="form-label" for="notesInput">Remarks / Note
-                                                                (Optional)</label>
-                                                              <input type="text" id="notesInput" class="form-input"
-                                                                placeholder="Any additional payment note" />
-                                                            </div>
-                                                            <!-- PhonePe Logo -->
-                                                            <a href="#" class="brand-icon-link" title="PhonePe"
-                                                              onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                              <svg class="brand-icon-svg" viewBox="0 0 24 24"
-                                                                fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                                <rect width="24" height="24" rx="5" fill="#5f259f" />
-                                                                <path
-                                                                  d="M12.9 6.8c-1.5 0-2.8.9-3.4 2.2V6.9H7v11.3h2.5v-4.9c.6 1.2 1.9 2.1 3.4 2.1 2.6 0 4.6-2.1 4.6-4.3s-2-4.3-4.6-4.3zm-.3 6.6c-1.3 0-2.3-1-2.3-2.3s1-2.3 2.3-2.3c1.3 0 2.3 1 2.3 2.3 0 1.2-1 2.3-2.3 2.3z"
-                                                                  fill="#ffffff" />
-                                                                <path d="M15.4 5.3L8.6 18.7h2.2L17.6 5.3h-2.2z"
-                                                                  fill="#ffffff" opacity="0.9" />
-                                                              </svg>
-                                                            </a>
-                                                            <button class="launch-app-btn" id="printReceiptBtn"
-                                                              style="margin: 24px auto 0; background: rgba(255,255,255,0.08); color: #ffffff; border: 1px solid var(--border-grid);">
-                                                              <span>🖨️ PRINT CONFIRMATION SLIP</span>
-                                                            </button>
-                                                          </div>
-
-                                                          <button type="submit" class="gemini-submit-btn"
-                                                            id="submitRemittanceBtn">
-                                                            <span>Confirm & Dispatch Receipt Request</span>
-                                                          </button>
-                                                          </form>
-                                                          <!-- Paytm Logo -->
-                                                          <a href="#" class="brand-icon-link" title="Paytm"
-                                                            onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                            <svg class="brand-icon-svg" viewBox="0 0 42 24" fill="none"
-                                                              xmlns="http://www.w3.org/2000/svg">
-                                                              <rect width="42" height="24" rx="4" fill="#002970"
-                                                                stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                              <text x="6" y="16.5"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="900" font-size="12" fill="#ffffff"
-                                                                letter-spacing="-0.5">pay</text>
-                                                              <text x="25" y="16.5"
-                                                                font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                                font-weight="900" font-size="12" fill="#00b9f5"
-                                                                letter-spacing="-0.5">tm</text>
-                                                            </svg>
-                                                          </a>
-                                                        </div>
-
-                                                        <!-- BHIM Logo -->
-                                                        <a href="#" class="brand-icon-link" title="BHIM"
-                                                          onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                          <svg class="brand-icon-svg" viewBox="0 0 44 24" fill="none"
-                                                            xmlns="http://www.w3.org/2000/svg">
-                                                            <rect width="44" height="24" rx="4" fill="#18181b"
-                                                              stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-                                                            <!-- BHIM dual diagonal triangles -->
-                                                            <path d="M7 6l5 12h-3.5L5 6H7z" fill="#00833e" />
-                                                            <path d="M12.5 6l5 12h-3.5L10.5 6h2z" fill="#f37023" />
-                                                            <text x="18" y="16"
-                                                              font-family="-apple-system,BlinkMacSystemFont,sans-serif"
-                                                              font-weight="900" font-size="11" fill="#ffffff"
-                                                              font-style="italic">BHIM</text>
-                                                          </svg>
-                                                        </a>
-                                                        <!-- Minimalist Footer -->
-                                                        <footer
-                                                          style="text-align: center; margin-top: 18px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase;">
-                                                          <span>mac.faizal.uk // CLEARANCE GATEWAY</span>
-                                                        </footer>
-                                                      </div>
-
-                                                      <!-- CRED Logo -->
-                                                      <a href="#" class="brand-icon-link" title="CRED"
-                                                        onclick="event.preventDefault(); document.getElementById('launchUpiBtn').click();">
-                                                        <svg class="brand-icon-svg" viewBox="0 0 24 24" fill="none"
-                                                          xmlns="http://www.w3.org/2000/svg">
-                                                          <rect width="24" height="24" rx="5" fill="#111215"
-                                                            stroke="rgba(255,255,255,0.16)" stroke-width="1" />
-                                                          <!-- CRED Geometric Shield -->
-                                                          <path d="M6 7.5h12v9.5c0 1.2-4.5 4.5-6 4.5s-6-3.3-6-4.5V7.5z"
-                                                            stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"
-                                                            stroke-linejoin="round" />
-                                                          <path d="M9.5 10.5h5v5c0 .6-1.8 2-2.5 2s-2.5-1.4-2.5-2v-5z"
-                                                            fill="#ffffff" />
-                                                        </svg>
-                                                      </a>
-                                                      <!-- Toast -->
-                                                      <div class="cockpit-toast" id="toast">
-                                                        <span id="toastMsg">COPIED TO CLIPBOARD</span>
-                                                      </div>
-
-                                                    </div>
-
-                                                  </div>
-
-                                                </div>
-
-                                                <!-- Verified Remittance Receipt State -->
-                                                <div id="receiptView" class="receipt-card" style="display: none;">
-                                                  <div class="receipt-icon">✓</div>
-                                                  <div class="receipt-title">Remittance Registered</div>
-                                                  <div class="receipt-sub">
-                                                    Your settlement notification has been transmitted directly to
-                                                    treasury desk. An
-                                                    executive verification record
-                                                    has been created.
-                                                    <div id="receiptView" class="receipt-shell" style="display: none;">
-                                                      <div class="receipt-status-mark">✓</div>
-                                                      <div class="receipt-heading">Remittance Registered</div>
-                                                      <div class="receipt-subtext">
-                                                        Your settlement notification has been transmitted directly to
-                                                        treasury desk.
-                                                        An executive verification record has been created.
-                                                      </div>
-
-                                                      <div class="receipt-details">
-                                                        <div class="receipt-row">
-
-                                                          <div class="receipt-grid">
-                                                            <div class="receipt-item">
-                                                              <span>Customer:</span>
-                                                              <span id="receiptCustomer">-</span>
-                                                            </div>
-                                                            <div class="receipt-row">
-                                                              <div class="receipt-item">
-                                                                <span>Claimed Amount:</span>
-                                                                <span id="receiptAmount">₹0.00</span>
-                                                              </div>
-                                                              <div class="receipt-row">
-                                                                <div class="receipt-item">
-                                                                  <span>Transaction Ref / UTR:</span>
-                                                                  <span id="receiptUtr">-</span>
-                                                                </div>
-                                                                <div class="receipt-row">
-                                                                  <div class="receipt-item">
-                                                                    <span>Order Reference:</span>
-                                                                    <span id="receiptRef">-</span>
-                                                                  </div>
-                                                                  <div class="receipt-row">
-                                                                    <div class="receipt-item">
-                                                                      <span>Timestamp:</span>
-                                                                      <span id="receiptTime">-</span>
-                                                                    </div>
-                                                                    <div class="receipt-row">
-                                                                      <span>Clearance Status:</span>
-                                                                      <span style="color:#34d399;">Queued for
-                                                                        Audit</span>
-                                                                    </div>
-                                                                  </div>
-
-                                                                  <button class="upi-app-btn" id="printReceiptBtn"
-                                                                    style="margin-top: 20px; background: rgba(255,255,255,0.08); color: #ffffff; border: 1px solid var(--border-subtle);">
-                                                                    <span>🖨️ Print Confirmation Slip</span>
-                                                                    <button class="launch-app-btn" id="printReceiptBtn"
-                                                                      style="margin: 24px auto 0; background: rgba(255,255,255,0.08); color: #ffffff; border: 1px solid var(--border-grid);">
-                                                                      <span>🖨️ PRINT CONFIRMATION SLIP</span>
-                                                                    </button>
-                                                                </div>
-
-                                                              </div>
-
-                                                              <!-- Security Footprint -->
-                                                              <footer class="gateway-footer">
-                                                                <span>Industrial Remittance Gateway &bull; Zero
-                                                                  Intermediary
-                                                                  Surcharge</span><br />
-                                                                <span>Direct Bank Clearance &bull; Encrypted Telemetry
-                                                                  Active</span>
-                                                                <!-- Minimalist Footer -->
-                                                                <footer
-                                                                  style="text-align: center; margin-top: 18px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase;">
-                                                                  <span>FAIZAL.UK // DIRECT BANK CLEARANCE &bull; ZERO
-                                                                    INTERMEDIARY</span>
-                                                                </footer>
-                                                            </div>
-
-                                                            <!-- Toast Element -->
-                                                            <div class="gateway-toast" id="toast">
-                                                              <span>✓</span> <span id="toastMsg">Copied to
-                                                                clipboard</span>
-                                                              <!-- Toast -->
-                                                              <div class="cockpit-toast" id="toast">
-                                                                <span id="toastMsg">COPIED TO CLIPBOARD</span>
-                                                              </div>
-
-                                                              <script
-                                                                src="/modules/billing/js/payment-gateway.js"></script>
-                                                              <script
-                                                                src="/modules/billing/js/payment-gateway.js"></script>
+  <script src="/modules/billing/js/payment-gateway.js"></script>
 </body>
 
 </html>

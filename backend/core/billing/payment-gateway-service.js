@@ -207,6 +207,62 @@ function ensurePaymentLinksTable(db) {
   }
 
   /**
+   * Resolve Invoices covered by this payment link
+   */
+  function resolveInvoicesCovered(db, customerId, invoiceIdsJson, description = '') {
+    const invoiceNumbers = [];
+
+    // 1. If explicit invoice_ids stored in link
+    if (invoiceIdsJson) {
+      try {
+        const parsed = typeof invoiceIdsJson === 'string' ? JSON.parse(invoiceIdsJson) : invoiceIdsJson;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const placeholders = parsed.map(() => '?').join(',');
+          const rows = db.prepare(`SELECT invoice_no FROM invoices WHERE id IN (${placeholders}) OR invoice_no IN (${placeholders})`).all(...parsed, ...parsed);
+          rows.forEach(r => { if (r.invoice_no && !invoiceNumbers.includes(r.invoice_no)) invoiceNumbers.push(r.invoice_no); });
+        }
+      } catch (_) {}
+    }
+
+    // 2. Check if description contains invoice numbers like INV-... or Bill-...
+    if (invoiceNumbers.length === 0 && description) {
+      const matches = description.match(/(?:INV|BILL)[-\sA-Z0-9]+/gi);
+      if (matches) {
+        matches.forEach(m => {
+          const clean = m.trim();
+          if (!invoiceNumbers.includes(clean)) invoiceNumbers.push(clean);
+        });
+      }
+    }
+
+    // 3. Fallback: Query recent invoices for this customer
+    if (invoiceNumbers.length === 0 && customerId) {
+      try {
+        const recent = db.prepare(`
+          SELECT invoice_no FROM invoices
+          WHERE customer_id = ?
+          ORDER BY id DESC LIMIT 2
+        `).all(customerId);
+        recent.forEach(r => { if (r.invoice_no && !invoiceNumbers.includes(r.invoice_no)) invoiceNumbers.push(r.invoice_no); });
+      } catch (_) {}
+    }
+
+    let label = '';
+    if (invoiceNumbers.length === 1) {
+      label = `Invoice: ${invoiceNumbers[0]}`;
+    } else if (invoiceNumbers.length > 1) {
+      label = `Invoices: ${invoiceNumbers.join(', ')}`;
+    } else {
+      label = 'Statement Settlement';
+    }
+
+    return {
+      invoice_numbers: invoiceNumbers,
+      invoice_label: label
+    };
+  }
+
+  /**
    * Public resolver for customer checkout page
    */
   async function getPublicPaymentLinkData(db, linkCode, req = null) {
@@ -333,6 +389,8 @@ function ensurePaymentLinksTable(db) {
       });
     }
 
+    const invoiceData = resolveInvoicesCovered(db, link.customer_id, link.invoice_ids, link.description);
+
     return {
       code: link.link_code,
       status: link.status,
@@ -341,6 +399,8 @@ function ensurePaymentLinksTable(db) {
       description: link.description,
       customer_name: link.customer_name,
       customer_phone: link.customer_phone,
+      invoices: invoiceData.invoice_numbers,
+      invoice_label: invoiceData.invoice_label,
       created_at: link.created_at,
       expires_at: link.expires_at,
       claimed_utr: link.claimed_utr,
