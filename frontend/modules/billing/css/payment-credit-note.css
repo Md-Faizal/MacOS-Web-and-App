@@ -1331,24 +1331,29 @@
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
   z-index: 2147483647 !important;
-  display: flex !important;
+  display: none !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 24px !important;
+  padding: 30px 20px 95px 20px !important;
+  /* safe clearance above macOS dock */
   box-sizing: border-box !important;
+}
+
+.pl-modal-overlay.active {
+  display: flex !important;
 }
 
 .pl-modal-card {
   background: #ffffff !important;
   color: #111827 !important;
   width: 100% !important;
-  max-width: 540px !important;
+  max-width: 520px !important;
+  max-height: calc(100vh - 130px) !important;
   border-radius: 14px !important;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  max-height: 90vh !important;
   position: relative !important;
   z-index: 2147483647 !important;
   animation: plModalAppear 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -1367,71 +1372,75 @@
 }
 
 .pl-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 14px 18px !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  background: #f9fafb !important;
 }
 
 .pl-modal-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #111827;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #111827 !important;
 }
 
 .pl-modal-close {
-  background: none;
-  border: none;
-  font-size: 22px;
-  line-height: 1;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 0 4px;
+  background: none !important;
+  border: none !important;
+  font-size: 22px !important;
+  line-height: 1 !important;
+  color: #6b7280 !important;
+  cursor: pointer !important;
+  padding: 0 4px !important;
 }
 
 .pl-modal-close:hover {
-  color: #111827;
+  color: #111827 !important;
 }
 
 .pl-modal-body {
-  padding: 18px 20px;
-  overflow-y: auto;
-  flex: 1;
+  padding: 16px 18px !important;
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
 }
 
 .pl-submission-summary {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  font-size: 12px !important;
 }
 
 .pl-summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
 }
 
 .pl-summary-label {
-  color: #64748b;
-  font-size: 11px;
+  color: #64748b !important;
+  font-size: 11px !important;
 }
 
 .pl-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 14px 20px;
-  border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 12px 18px !important;
+  border-top: 1px solid #e5e7eb !important;
+  background: #f9fafb !important;
 }

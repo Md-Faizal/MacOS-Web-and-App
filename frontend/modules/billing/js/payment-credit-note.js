@@ -431,97 +431,6 @@ class PaymentCreditNote {
 
           </div>
 
-          <!-- Remittance Review & Edit Modal -->
-          <div id="plReviewModal" class="pl-modal-overlay" style="display:none;">
-            <div class="pl-modal-card">
-              <div class="pl-modal-header">
-                <div class="pl-modal-title">
-                  <span>🔍 Review Remittance Submission</span>
-                  <span id="plModalStatusBadge" class="pl-badge claimed">Claimed</span>
-                </div>
-                <button type="button" class="pl-modal-close" onclick="window.currentPaymentManager?.closeReviewModal()">&times;</button>
-              </div>
-
-              <div class="pl-modal-body">
-                <!-- Read-only client submission summary -->
-                <div class="pl-submission-summary">
-                  <div class="pl-summary-row">
-                    <span class="pl-summary-label">Customer:</span>
-                    <strong id="plModalCustomer">-</strong>
-                  </div>
-                  <div class="pl-summary-row">
-                    <span class="pl-summary-label">Original Link Amount:</span>
-                    <span id="plModalOriginalAmount" style="font-family:monospace;font-weight:700;">₹0.00</span>
-                  </div>
-                  <div class="pl-summary-row">
-                    <span class="pl-summary-label">Remitter Name:</span>
-                    <span id="plModalPayerName">Not specified</span>
-                  </div>
-                  <div class="pl-summary-row">
-                    <span class="pl-summary-label">Submission Time:</span>
-                    <span id="plModalTime">-</span>
-                  </div>
-                  <div class="pl-summary-row" id="plModalNotesRow">
-                    <span class="pl-summary-label">Client Notes:</span>
-                    <span id="plModalClientNotes">None</span>
-                  </div>
-                </div>
-
-                <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#475569;margin:14px 0 8px;">
-                  Verification &amp; Ledger Adjustments
-                </div>
-
-                <!-- Auto-Generated Standard Payment Reference -->
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Standard Payment Voucher Ref (Auto-Generated)</label>
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <span id="plModalStdRef" style="font-family:monospace;font-size:12px;font-weight:700;color:#2563eb;background:#eff6ff;padding:5px 10px;border-radius:6px;border:1px solid #bfdbfe;letter-spacing:0.5px;">PAY-AUTO</span>
-                    <span style="font-size:10px;color:#64748b;">(Generated in sequential order, matching manual payments)</span>
-                  </div>
-                </div>
-
-                <!-- Editable fields -->
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Verified / Settled Amount (₹) *</label>
-                  <input type="number" id="plModalAmount" class="form-input-enhanced" step="0.01" min="1" required />
-                </div>
-
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Client Remittance Reference / UTR Number *</label>
-                  <input type="text" id="plModalUtr" class="form-input-enhanced" required />
-                  <span style="font-size:10px;color:#64748b;margin-top:2px;display:block;">Saved into payment audit notes &amp; claimed UTR</span>
-                </div>
-
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Payment Medium</label>
-                  <select id="plModalMedium" class="form-input-enhanced">
-                    <option value="upi" selected>UPI</option>
-                    <option value="bank_transfer">Bank Transfer / NEFT / IMPS</option>
-                    <option value="cash">Cash</option>
-                    <option value="cheque">Cheque</option>
-                  </select>
-                </div>
-
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Settlement Date</label>
-                  <input type="date" id="plModalDate" class="form-input-enhanced" />
-                </div>
-
-                <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Settlement Notes (Optional)</label>
-                  <input type="text" id="plModalNotes" class="form-input-enhanced" placeholder="Verified from bank statement" />
-                </div>
-              </div>
-
-              <div class="pl-modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="window.currentPaymentManager?.closeReviewModal()">Cancel</button>
-                <button type="button" class="btn" id="plModalSaveOnlyBtn" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">💾 Save Details Only</button>
-                <button type="button" class="btn btn-primary-enhanced" id="plModalApproveBtn" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;">
-                  ✓ Approve &amp; Settle to Ledger
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     `;
@@ -2175,25 +2084,121 @@ class PaymentCreditNote {
     }
   }
 
+  ensureReviewModal() {
+    let modal = document.getElementById('plReviewModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'plReviewModal';
+      modal.className = 'pl-modal-overlay';
+      modal.innerHTML = `
+        <div class="pl-modal-card">
+          <div class="pl-modal-header">
+            <div class="pl-modal-title">
+              <span>🔍 Review Remittance Submission</span>
+              <span id="plModalStatusBadge" class="pl-badge claimed">Claimed</span>
+            </div>
+            <button type="button" class="pl-modal-close" onclick="window.currentPaymentManager?.closeReviewModal()">&times;</button>
+          </div>
+
+          <div class="pl-modal-body">
+            <!-- Read-only client submission summary -->
+            <div class="pl-submission-summary">
+              <div class="pl-summary-row">
+                <span class="pl-summary-label">Customer:</span>
+                <strong id="plModalCustomer">-</strong>
+              </div>
+              <div class="pl-summary-row">
+                <span class="pl-summary-label">Original Link Amount:</span>
+                <span id="plModalOriginalAmount" style="font-family:monospace;font-weight:700;">₹0.00</span>
+              </div>
+              <div class="pl-summary-row">
+                <span class="pl-summary-label">Remitter Name:</span>
+                <span id="plModalPayerName">Not specified</span>
+              </div>
+              <div class="pl-summary-row">
+                <span class="pl-summary-label">Submission Time:</span>
+                <span id="plModalTime">-</span>
+              </div>
+              <div class="pl-summary-row" id="plModalNotesRow">
+                <span class="pl-summary-label">Client Notes:</span>
+                <span id="plModalClientNotes">None</span>
+              </div>
+            </div>
+
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#475569;margin:14px 0 8px;">
+              Verification &amp; Ledger Adjustments
+            </div>
+
+            <!-- Auto-Generated Standard Payment Reference -->
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Standard Payment Voucher Ref (Auto-Generated)</label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span id="plModalStdRef" style="font-family:monospace;font-size:12px;font-weight:700;color:#2563eb;background:#eff6ff;padding:5px 10px;border-radius:6px;border:1px solid #bfdbfe;letter-spacing:0.5px;">PAY-AUTO</span>
+                <span style="font-size:10px;color:#64748b;">(Generated in sequential order, matching manual payments)</span>
+              </div>
+            </div>
+
+            <!-- Editable fields -->
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Verified / Settled Amount (₹) *</label>
+              <input type="number" id="plModalAmount" class="form-input-enhanced" step="0.01" min="1" required />
+            </div>
+
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Client Remittance Reference / UTR Number *</label>
+              <input type="text" id="plModalUtr" class="form-input-enhanced" required />
+              <span style="font-size:10px;color:#64748b;margin-top:2px;display:block;">Saved into payment audit notes &amp; claimed UTR</span>
+            </div>
+
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Payment Medium</label>
+              <select id="plModalMedium" class="form-input-enhanced">
+                <option value="upi" selected>UPI</option>
+                <option value="bank_transfer">Bank Transfer / NEFT / IMPS</option>
+                <option value="cash">Cash</option>
+                <option value="cheque">Cheque</option>
+              </select>
+            </div>
+
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Settlement Date</label>
+              <input type="date" id="plModalDate" class="form-input-enhanced" />
+            </div>
+
+            <div class="form-group-enhanced" style="margin-bottom:12px;">
+              <label>Settlement Notes (Optional)</label>
+              <input type="text" id="plModalNotes" class="form-input-enhanced" placeholder="Verified from bank statement" />
+            </div>
+          </div>
+
+          <div class="pl-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="window.currentPaymentManager?.closeReviewModal()">Cancel</button>
+            <button type="button" class="btn" id="plModalSaveOnlyBtn" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">💾 Save Details Only</button>
+            <button type="button" class="btn btn-primary-enhanced" id="plModalApproveBtn" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#fff;border:none;">
+              ✓ Approve &amp; Settle to Ledger
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.onclick = (e) => {
+        if (e.target === modal) this.closeReviewModal();
+      };
+    } else if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
+    return modal;
+  }
+
   openReviewModal(linkId) {
     const link = (this.loadedPaymentLinks || []).find(l => Number(l.id) === Number(linkId));
     if (!link) return;
 
     this.activeReviewLinkId = linkId;
 
-    let modal = document.getElementById('plReviewModal');
+    const modal = this.ensureReviewModal();
     if (!modal) return;
-
-    // Move modal outside the application container directly to document.body
-    // to guarantee maximum z-index and ensure it is never clipped by window borders or overflow
-    if (modal.parentElement !== document.body) {
-      document.body.appendChild(modal);
-    }
-
-    // Dismiss when clicking outside modal card
-    modal.onclick = (e) => {
-      if (e.target === modal) this.closeReviewModal();
-    };
 
     document.getElementById('plModalCustomer').textContent = link.customer_name || '-';
     document.getElementById('plModalOriginalAmount').textContent = `₹${Number(link.amount).toFixed(2)}`;
@@ -2254,12 +2259,14 @@ class PaymentCreditNote {
       approveBtn.onclick = () => this.approveAndSettleModal();
     }
 
-    modal.style.display = 'flex';
+    modal.classList.add('active');
   }
 
   closeReviewModal() {
     const modal = document.getElementById('plReviewModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+      modal.classList.remove('active');
+    }
     this.activeReviewLinkId = null;
   }
 
