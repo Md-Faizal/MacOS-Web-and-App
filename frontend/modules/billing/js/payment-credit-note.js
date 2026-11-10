@@ -471,6 +471,15 @@ class PaymentCreditNote {
                   Verification &amp; Ledger Adjustments
                 </div>
 
+                <!-- Auto-Generated Standard Payment Reference -->
+                <div class="form-group-enhanced" style="margin-bottom:12px;">
+                  <label>Standard Payment Voucher Ref (Auto-Generated)</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="plModalStdRef" style="font-family:monospace;font-size:12px;font-weight:700;color:#2563eb;background:#eff6ff;padding:5px 10px;border-radius:6px;border:1px solid #bfdbfe;letter-spacing:0.5px;">PAY-AUTO</span>
+                    <span style="font-size:10px;color:#64748b;">(Generated in sequential order, matching manual payments)</span>
+                  </div>
+                </div>
+
                 <!-- Editable fields -->
                 <div class="form-group-enhanced" style="margin-bottom:12px;">
                   <label>Verified / Settled Amount (₹) *</label>
@@ -478,8 +487,9 @@ class PaymentCreditNote {
                 </div>
 
                 <div class="form-group-enhanced" style="margin-bottom:12px;">
-                  <label>Verified UTR / Transaction Reference *</label>
+                  <label>Client Remittance Reference / UTR Number *</label>
                   <input type="text" id="plModalUtr" class="form-input-enhanced" required />
+                  <span style="font-size:10px;color:#64748b;margin-top:2px;display:block;">Saved into payment audit notes &amp; claimed UTR</span>
                 </div>
 
                 <div class="form-group-enhanced" style="margin-bottom:12px;">
@@ -2171,8 +2181,19 @@ class PaymentCreditNote {
 
     this.activeReviewLinkId = linkId;
 
-    const modal = document.getElementById('plReviewModal');
+    let modal = document.getElementById('plReviewModal');
     if (!modal) return;
+
+    // Move modal outside the application container directly to document.body
+    // to guarantee maximum z-index and ensure it is never clipped by window borders or overflow
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
+
+    // Dismiss when clicking outside modal card
+    modal.onclick = (e) => {
+      if (e.target === modal) this.closeReviewModal();
+    };
 
     document.getElementById('plModalCustomer').textContent = link.customer_name || '-';
     document.getElementById('plModalOriginalAmount').textContent = `₹${Number(link.amount).toFixed(2)}`;
@@ -2186,6 +2207,25 @@ class PaymentCreditNote {
       statusBadge.className = `pl-badge ${link.status?.toLowerCase() || 'claimed'}`;
     }
 
+    // Prefetch auto-generated standard payment reference (PAY-xxxxx)
+    const stdRefEl = document.getElementById('plModalStdRef');
+    const paymentDateStr = link.claimed_at ? link.claimed_at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    if (stdRefEl) {
+      stdRefEl.textContent = 'Generating...';
+      fetch(`/api/billing/invoices/payments/next-reference?customer_id=${link.customer_id}&payment_date=${encodeURIComponent(paymentDateStr)}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d && d.reference_number) {
+            stdRefEl.textContent = d.reference_number;
+          } else {
+            stdRefEl.textContent = 'PAY-AUTO';
+          }
+        })
+        .catch(() => {
+          stdRefEl.textContent = 'PAY-AUTO';
+        });
+    }
+
     const amtInput = document.getElementById('plModalAmount');
     if (amtInput) amtInput.value = Number(link.claimed_amount || link.amount).toFixed(2);
 
@@ -2194,7 +2234,7 @@ class PaymentCreditNote {
 
     const dateInput = document.getElementById('plModalDate');
     if (dateInput) {
-      dateInput.value = link.claimed_at ? link.claimed_at.slice(0, 10) : new Date().toISOString().slice(0, 10);
+      dateInput.value = paymentDateStr;
     }
 
     const notesInput = document.getElementById('plModalNotes');
@@ -2293,13 +2333,19 @@ class PaymentCreditNote {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to settle remittance');
 
-      this.showAlert(`✓ Approved! Payment voucher created and posted to ledger.`, 'success');
+      const refNumber = data.reference_number || 'PAY-xxxxx';
+      this.showAlert(`✓ Approved! Standard payment voucher ${refNumber} recorded and posted to ledger.`, 'success');
       this.closeReviewModal();
       this.loadPaymentLinks();
 
+      // Invalidate API read cache immediately
+      if (this.billingApp?.api) {
+        this.billingApp.api.invalidateCache('/billing');
+      }
+
       // Broadcast update
       if (typeof window !== 'undefined' && window.CoreDataBus) {
-        window.CoreDataBus.publish('billing:payment', 'created', { id: data.payment_id });
+        window.CoreDataBus.publish('billing:payment', 'created', { id: data.payment_id, reference_number: refNumber });
         window.CoreDataBus.publish('billing:ledger', 'updated', {});
       }
     } catch (err) {

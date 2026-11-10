@@ -914,8 +914,10 @@ module.exports = function (db) {
         console.error('Error recalculating ledger:', error);
         res.status(500).json({ error: error.message });
       }
-    }
-  };
+  },
+
+    syncCustomerLedgerAndPriorDues
+};
 };
 
 // Helper function to get calendar year (Jan-Dec)

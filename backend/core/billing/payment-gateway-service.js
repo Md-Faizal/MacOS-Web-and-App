@@ -707,6 +707,7 @@ function settlePaymentLink(db, linkId, {
   paymentDate = null,
   amount = null,
   utr = null,
+  referenceNumber = null,
   notes = '',
   userId = null
 } = { }) {
@@ -721,12 +722,42 @@ function settlePaymentLink(db, linkId, {
   const effectiveAmount = (amount !== null && amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0)
     ? Number(amount)
     : (link.claimed_amount || link.amount);
-  const effectiveRef = (utr && String(utr).trim()) ? String(utr).trim() : (link.claimed_utr || `PL-${link.link_code}`);
+  const effectiveUtr = (utr && String(utr).trim()) ? String(utr).trim() : (link.claimed_utr || '');
   const effectiveDate = paymentDate || (link.claimed_at ? link.claimed_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
-  const fullNotes = [notes, link.claimed_notes ? `Customer Note: ${link.claimed_notes}` : '', `Gateway Code: ${link.link_code}`].filter(Boolean).join(' | ');
+
+  // Auto-generate standard PAY-xxxxx reference number (identical to manual payments)
+  let stdRef = referenceNumber && String(referenceNumber).trim();
+  if (!stdRef) {
+    try {
+      const paymentsCore = require('../invoices/payments');
+      const genRef = paymentsCore.helpers && paymentsCore.helpers.generatePaymentReference;
+      if (typeof genRef === 'function') {
+        stdRef = genRef(db, link.customer_id, new Date(effectiveDate));
+      }
+    } catch (_) { }
+  }
+
+  if (!stdRef) {
+    const yr = new Date(effectiveDate).getFullYear().toString().slice(-2);
+    const countResult = db.prepare(`
+      SELECT COUNT(*) as count FROM payments
+      WHERE type = 'PAYMENT' AND strftime('%Y', payment_date) = strftime('%Y', ?)
+    `).get(effectiveDate);
+    const seq = ((countResult?.count || 0) + 1).toString().padStart(4, '0');
+    stdRef = `PAY-${yr}${seq}`;
+  }
+
+  // Preserve customer UTR and gateway code inside notes
+  const notesParts = [
+    notes ? String(notes).trim() : '',
+    effectiveUtr ? `UTR: ${effectiveUtr}` : '',
+    link.claimed_notes ? `Customer Note: ${link.claimed_notes}` : '',
+    `Gateway Code: ${link.link_code}`
+  ].filter(Boolean);
+  const fullNotes = notesParts.join(' | ');
 
   const transaction = db.transaction(() => {
-    // 1. Insert formal payment into payments table
+    // 1. Insert formal payment into payments table using standard PAY-xxxxx reference
     const ins = db.prepare(`
       INSERT INTO payments (
         customer_id, type, amount, payment_medium, reference_number,
@@ -736,7 +767,7 @@ function settlePaymentLink(db, linkId, {
       link.customer_id,
       effectiveAmount,
       paymentMethod || 'upi',
-      effectiveRef,
+      stdRef,
       effectiveDate,
       fullNotes,
       userId || 'admin'
@@ -744,7 +775,7 @@ function settlePaymentLink(db, linkId, {
 
     const paymentId = ins.lastInsertRowid;
 
-    // 2. Mark link as SETTLED, updating claimed_amount and claimed_utr
+    // 2. Mark link as SETTLED, recording settled payment ID and verified UTR
     db.prepare(`
       UPDATE payment_links
       SET status = 'SETTLED',
@@ -753,30 +784,42 @@ function settlePaymentLink(db, linkId, {
           settled_payment_id = ?,
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(effectiveAmount, effectiveRef, paymentId, link.id);
+    `).run(effectiveAmount, effectiveUtr, paymentId, link.id);
 
-        return paymentId;
-      });
+    return paymentId;
+  });
 
-      const paymentId = transaction();
+  const paymentId = transaction();
 
-      // Broadcast sync events
-      if (dataBus && typeof dataBus.broadcast === 'function') {
-        try {
-          dataBus.broadcast('billing:payment', 'created', { id: paymentId, customer_id: link.customer_id, amount: effectiveAmount });
-          dataBus.broadcast('billing:ledger', 'updated', { customer_id: link.customer_id });
-          dataBus.broadcast('billing:payment_link', 'settled', { id: link.id, link_code: link.link_code, payment_id: paymentId });
-        } catch (_) { }
-      }
-
-      return {
-        success: true,
-        payment_id: paymentId,
-        link_id: link.id,
-        settled_amount: effectiveAmount,
-        reference_number: effectiveRef
-      };
+  // 3. Authoritatively sync customer ledger and prior dues (same as manual payment)
+  try {
+    const paymentsFactory = require('../invoices/payments');
+    const paymentsHandler = paymentsFactory(db);
+    if (paymentsHandler && typeof paymentsHandler.syncCustomerLedgerAndPriorDues === 'function') {
+      paymentsHandler.syncCustomerLedgerAndPriorDues(link.customer_id);
     }
+  } catch (syncErr) {
+    console.warn('[PaymentGateway] Ledger sync warning:', syncErr.message);
+  }
+
+  // Broadcast sync events
+  if (dataBus && typeof dataBus.broadcast === 'function') {
+    try {
+      dataBus.broadcast('billing:payment', 'created', { id: paymentId, customer_id: link.customer_id, amount: effectiveAmount, reference_number: stdRef });
+      dataBus.broadcast('billing:ledger', 'updated', { customer_id: link.customer_id });
+      dataBus.broadcast('billing:payment_link', 'settled', { id: link.id, link_code: link.link_code, payment_id: paymentId, reference_number: stdRef });
+    } catch (_) { }
+  }
+
+  return {
+    success: true,
+    payment_id: paymentId,
+    link_id: link.id,
+    settled_amount: effectiveAmount,
+    reference_number: stdRef,
+    utr: effectiveUtr
+  };
+}
 
     /**
      * Update payment link details (admin editing before approval)
