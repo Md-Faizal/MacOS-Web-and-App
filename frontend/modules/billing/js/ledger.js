@@ -941,9 +941,15 @@ class LedgerView {
         case 'overdue-desc':
           filtered.sort((a, b) => b.daysOverdue - a.daysOverdue);
           break;
-        case 'recent':
-          filtered.sort((a, b) => new Date(b.lastBillDate) - new Date(a.lastBillDate));
+        case 'recent': {
+          const latestActivityTs = (cust) => Math.max(
+            LedgerView.parseCivilDate(cust.lastOrderDate)?.dateObj?.getTime() || 0,
+            LedgerView.parseCivilDate(cust.lastBillDate)?.dateObj?.getTime() || 0,
+            LedgerView.parseCivilDate(cust.lastPaymentDate)?.dateObj?.getTime() || 0
+          );
+          filtered.sort((a, b) => latestActivityTs(b) - latestActivityTs(a));
           break;
+        }
         default:
           filtered.sort((a, b) => a.customerName.localeCompare(b.customerName));
       }
@@ -1006,9 +1012,29 @@ class LedgerView {
         
         const isActive = window.currentSelectedCustomer === c.customerName;
         
-        // Activity counters
-        const lastBillDays = this.getDaysAgo(c.lastBillDate);
-        const lastPmtDays = this.getDaysAgo(c.lastPaymentDate);
+        // Activity counters & traffic-light day zones (chronological order: ORD -> INV -> PMT)
+        const getZoneColor = (days, greenMax, normalMax) => {
+          if (days === null || days === undefined) return '#666666'; // N/A
+          if (days <= greenMax) return '#10b981'; // Green Zone
+          if (days <= normalMax) return '#ffffff'; // Normal White
+          return '#ef4444'; // Red Zone
+        };
+
+        const ordDiff = LedgerView.getCivilDaysDiff(c.lastOrderDate);
+        const invDiff = LedgerView.getCivilDaysDiff(c.lastBillDate);
+        const pmtDiff = LedgerView.getCivilDaysDiff(c.lastPaymentDate);
+
+        const lastOrderDays = ordDiff !== null ? `${ordDiff}D` : 'N/A';
+        const lastInvDays = invDiff !== null ? `${invDiff}D` : 'N/A';
+        const lastPmtDays = pmtDiff !== null ? `${pmtDiff}D` : 'N/A';
+
+        // ORD & INV: Green <= 7D, Normal 8-30D (monthly billing/activity cycle), Red > 30D
+        // PMT: Turnaround window Green <= 7D (min), Normal 8-21D (max), Red > 21D (when dues > 0; settled stays white)
+        const ordColor = getZoneColor(ordDiff, 7, 30);
+        const invColor = getZoneColor(invDiff, 7, 30);
+        const pmtColor = (pmtDiff !== null && pmtDiff > 21 && c.amountDue <= 0)
+          ? '#ffffff'
+          : getZoneColor(pmtDiff, 7, 21);
         
         const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
           ? window.renderWorkerBadge(c, { compact: true })
@@ -1035,14 +1061,18 @@ class LedgerView {
               <span style="font-weight: 600; color: ${c.amountDue < 0 ? '#10b981' : '#ffffff'};">₹${displayAmount.toFixed(0)}</span>
               <span style="padding: 2px 6px; border-radius: 2px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; ${c.active === 'ACTIVE' ? 'background: #d1fae5; color: #4ADE80; border: 1px solid #4ADE80;' : 'background: #fee2e2; color: #dc2626; border: 1px solid #dc2626;'}">${c.active === 'ACTIVE' ? '◆ ACTIVE' : '◇ INACTIVE'}</span>
             </div>
-            <div style="display: flex; gap: 10px; font-size: 9px; font-family: 'Courier New', monospace; color: #888888; border-top: 1px solid #222222; padding-top: 8px; margin-top: 4px;">
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="color: #666666;">BILL:</span>
-                <span style="color: ${lastBillDays === '0D' || lastBillDays === '1D' ? '#ffffff' : '#aaaaaa'}; font-weight: 600;">${lastBillDays || 'N/A'}</span>
+            <div style="display: flex; align-items: center; gap: 12px; font-size: 9px; font-family: 'Courier New', monospace; color: #888888; border-top: 1px solid #222222; padding-top: 8px; margin-top: 4px;">
+              <div style="display: flex; align-items: center; gap: 4px;" title="Last Order (${ordDiff !== null ? `${ordDiff} days ago` : 'None'}) · Green ≤7D · Normal 8–30D · Red >30D">
+                <span style="color: #666666;">ORD:</span>
+                <span style="color: ${ordColor}; font-weight: 700;">${lastOrderDays}</span>
               </div>
-              <div style="display: flex; align-items: center; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 4px;" title="Last Invoice (${invDiff !== null ? `${invDiff} days ago` : 'None'}) · Green ≤7D · Normal 8–30D · Red >30D">
+                <span style="color: #666666;">INV:</span>
+                <span style="color: ${invColor}; font-weight: 700;">${lastInvDays}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;" title="Last Payment (${pmtDiff !== null ? `${pmtDiff} days ago` : 'None'}) · Green ≤7D · Normal 8–21D · Red >21D (with due)">
                 <span style="color: #666666;">PMT:</span>
-                <span style="color: ${lastPmtDays === '0D' || lastPmtDays === '1D' ? '#10b981' : '#aaaaaa'}; font-weight: 600;">${lastPmtDays || 'N/A'}</span>
+                <span style="color: ${pmtColor}; font-weight: 700;">${lastPmtDays}</span>
               </div>
             </div>
           </div>
@@ -2280,9 +2310,10 @@ class LedgerView {
         ledgerCustomers = ledgerCustomers.filter(c => accessibleNames.has(c.customerName));
       }
 
-      // Get local bills and payments for additional metrics (scoped for worker)
+      // Get local bills, payments, and orders for additional metrics (scoped for worker)
       const bills = scoped ? scoped.bills : (this.billingApp.billingData.bills || []);
       const payments = scoped ? scoped.payments : (this.billingApp.billingData.payments || []);
+      const orders = scoped ? scoped.orders : (this.billingApp.billingData.orders || []);
       
       // Create map of customer data from ledger API
       const ledgerMap = {};
@@ -2290,19 +2321,29 @@ class LedgerView {
         ledgerMap[c.customerName] = c;
       });
 
-      // Create map of local bills and payments by customer (scoped for worker)
+      // Create map of local bills, payments, and orders by customer (scoped for worker)
       const localMap = {};
+      const ensureLocalEntry = (c) => {
+        if (!localMap[c]) localMap[c] = { customerName: c, bills: [], payments: [], orders: [] };
+      };
       bills.forEach(b => {
         const c = b.customer_name || b.customer || 'Unknown';
         if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
-        if (!localMap[c]) localMap[c] = { customerName: c, bills: [], payments: [] };
+        ensureLocalEntry(c);
         localMap[c].bills.push(b);
       });
       payments.forEach(p => {
         const c = p.customer_name || p.customer || 'Unknown';
         if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
-        if (!localMap[c]) localMap[c] = { customerName: c, bills: [], payments: [] };
+        ensureLocalEntry(c);
         localMap[c].payments.push(p);
+      });
+      orders.forEach(o => {
+        if (o.status && String(o.status).toLowerCase() === 'cancelled') return;
+        const c = o.customer_name || o.customer || 'Unknown';
+        if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
+        ensureLocalEntry(c);
+        localMap[c].orders.push(o);
       });
 
       // Merge ledger data with local metrics
@@ -2329,10 +2370,12 @@ class LedgerView {
           total_outstanding: ledgerCustomer.total_outstanding || 0, // Total (invoices + opening balance - payments)
           total_bills: ledgerCustomer.total_bills || 0,
           total_payments: ledgerCustomer.total_payments || 0,
+          lastOrderDate: ledgerCustomer.lastOrderDate || 'N/A',
           lastBillDate: ledgerCustomer.lastBillDate || 'N/A',
           lastPaymentDate: ledgerCustomer.lastPaymentDate || 'N/A',
           bills: localMap[name]?.bills || [],
           payments: localMap[name]?.payments || [],
+          orders: localMap[name]?.orders || [],
           ledger_token: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
           ledgerToken: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
           token: ledgerCustomer.ledger_token || ledgerCustomer.ledgerToken || ledgerCustomer.token || null,
@@ -2344,7 +2387,7 @@ class LedgerView {
       // These get calculated since they don't have a database row yet
       Object.keys(localMap).forEach(name => {
         if (!mergedData[name]) {
-          const metrics = this.calculateCustomerMetrics(localMap[name].bills, localMap[name].payments);
+          const metrics = this.calculateCustomerMetrics(localMap[name].bills, localMap[name].payments, localMap[name].orders);
           mergedData[name] = {
             customer_id: null,
             customerName: name,
@@ -2355,19 +2398,24 @@ class LedgerView {
             current_due: metrics.amountDue,
             total_outstanding: metrics.amountDue,
             daysOverdue: metrics.daysOverdue,
+            lastOrderDate: metrics.lastOrderDate,
             lastBillDate: metrics.lastBillDate,
             lastPaymentDate: metrics.lastPaymentDate,
+            daysSinceLastOrder: metrics.daysSinceLastOrder,
             daysSinceLastBill: metrics.daysSinceLastBill,
             daysSinceLastPayment: metrics.daysSinceLastPayment,
             bills: localMap[name].bills,
-            payments: localMap[name].payments
+            payments: localMap[name].payments,
+            orders: localMap[name].orders
           };
         } else {
           // For customers in ledger, calculate additional metrics from local data
-          const metrics = this.calculateCustomerMetrics(mergedData[name].bills, mergedData[name].payments);
+          const metrics = this.calculateCustomerMetrics(mergedData[name].bills, mergedData[name].payments, mergedData[name].orders);
           mergedData[name].daysOverdue = metrics.daysOverdue;
+          if (metrics.lastOrderDate !== 'N/A') mergedData[name].lastOrderDate = metrics.lastOrderDate;
           if (metrics.lastBillDate !== 'N/A') mergedData[name].lastBillDate = metrics.lastBillDate;
           if (metrics.lastPaymentDate !== 'N/A') mergedData[name].lastPaymentDate = metrics.lastPaymentDate;
+          mergedData[name].daysSinceLastOrder = metrics.daysSinceLastOrder;
           mergedData[name].daysSinceLastBill = metrics.daysSinceLastBill;
           mergedData[name].daysSinceLastPayment = metrics.daysSinceLastPayment;
         }
@@ -2389,21 +2437,32 @@ class LedgerView {
     const scoped = this.billingApp?.getScopedBillingData ? this.billingApp.getScopedBillingData() : null;
     const bills = scoped ? scoped.bills : (this.billingApp.billingData.bills || []);
     const payments = scoped ? scoped.payments : (this.billingApp.billingData.payments || []);
+    const orders = scoped ? scoped.orders : (this.billingApp.billingData.orders || []);
     const contacts = scoped ? scoped.contacts : (this.billingApp.billingData.contacts || []);
     const accessibleNames = scoped && isWorker ? new Set(contacts.map(c => c.name).filter(Boolean)) : null;
 
     const map = {};
+    const ensureEntry = (c) => {
+      if (!map[c]) map[c] = { customerName: c, bills: [], payments: [], orders: [] };
+    };
     bills.forEach(b => {
       const c = b.customer_name || b.customer || 'Unknown';
       if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
-      if (!map[c]) map[c] = { customerName: c, bills: [], payments: [] };
+      ensureEntry(c);
       map[c].bills.push(b);
     });
     payments.forEach(p => {
       const c = p.customer_name || p.customer || 'Unknown';
       if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
-      if (!map[c]) map[c] = { customerName: c, bills: [], payments: [] };
+      ensureEntry(c);
       map[c].payments.push(p);
+    });
+    orders.forEach(o => {
+      if (o.status && String(o.status).toLowerCase() === 'cancelled') return;
+      const c = o.customer_name || o.customer || 'Unknown';
+      if (isWorker && accessibleNames && !accessibleNames.has(c)) return;
+      ensureEntry(c);
+      map[c].orders.push(o);
     });
     Object.values(map).forEach(cd => {
       // Find exclusion flag & worker audit from contacts data
@@ -2416,7 +2475,7 @@ class LedgerView {
         cd.last_edited_by_name = contact.last_edited_by_name;
       }
       
-      Object.assign(cd, this.calculateCustomerMetrics(cd.bills, cd.payments));
+      Object.assign(cd, this.calculateCustomerMetrics(cd.bills, cd.payments, cd.orders));
     });
     return Object.values(map).sort((a, b) => a.customerName.localeCompare(b.customerName));
   }
@@ -2928,38 +2987,35 @@ class LedgerView {
     }
   }
 
-  calculateCustomerMetrics(bills, payments) {
+  calculateCustomerMetrics(bills, payments, orders = []) {
     const totalBilled = (bills || []).reduce((s, b) => s + (b.grand_total || b.total || b.amount || 0), 0);
     const totalPaid = (payments || []).filter(p => p.type === 'PAYMENT').reduce((s, p) => s + (p.amount || 0), 0);
     const totalCredits = (payments || []).filter(p => p.type === 'CREDIT_NOTE').reduce((s, p) => s + (p.credit_amount || 0), 0);
     const due = totalBilled - totalPaid - totalCredits;
 
-    // Find true chronological latest bill
-    let latestBillDate = null;
-    if (bills && bills.length > 0) {
-      const sortedBills = [...bills].sort((a, b) => {
-        const da = LedgerView.parseCivilDate(a.invoice_date || a.bill_date || a.created_at)?.dateObj?.getTime() || 0;
-        const db = LedgerView.parseCivilDate(b.invoice_date || b.bill_date || b.created_at)?.dateObj?.getTime() || 0;
-        return db - da;
-      });
-      const topBill = sortedBills[0];
-      const parsed = LedgerView.parseCivilDate(topBill.invoice_date || topBill.bill_date || topBill.created_at);
-      if (parsed) latestBillDate = parsed.isoDate;
-    }
+    const getLatestIsoDate = (records, pickDate) => {
+      if (!records || records.length === 0) return null;
+      let bestTs = -1;
+      let bestIso = null;
+      for (const rec of records) {
+        const parsed = LedgerView.parseCivilDate(pickDate(rec));
+        const ts = parsed?.dateObj?.getTime() || 0;
+        if (parsed && ts >= bestTs) {
+          bestTs = ts;
+          bestIso = parsed.isoDate;
+        }
+      }
+      return bestIso;
+    };
 
-    // Find true chronological latest payment
-    let latestPaymentDate = null;
-    if (payments && payments.length > 0) {
-      const sortedPayments = [...payments].sort((a, b) => {
-        const da = LedgerView.parseCivilDate(a.payment_date || a.date || a.created_at)?.dateObj?.getTime() || 0;
-        const db = LedgerView.parseCivilDate(b.payment_date || b.date || b.created_at)?.dateObj?.getTime() || 0;
-        return db - da;
-      });
-      const topPayment = sortedPayments[0];
-      const parsed = LedgerView.parseCivilDate(topPayment.payment_date || topPayment.date || topPayment.created_at);
-      if (parsed) latestPaymentDate = parsed.isoDate;
-    }
+    const latestOrderDate = getLatestIsoDate(
+      (orders || []).filter(o => !o.status || String(o.status).toLowerCase() !== 'cancelled'),
+      o => o.order_date || o.created_at
+    );
+    const latestBillDate = getLatestIsoDate(bills, b => b.invoice_date || b.bill_date || b.created_at);
+    const latestPaymentDate = getLatestIsoDate(payments, p => p.payment_date || p.date || p.created_at);
 
+    const daysO = latestOrderDate ? LedgerView.getCivilDaysDiff(latestOrderDate) : null;
     const daysB = latestBillDate ? LedgerView.getCivilDaysDiff(latestBillDate) : null;
     const daysP = latestPaymentDate ? LedgerView.getCivilDaysDiff(latestPaymentDate) : null;
     const overdue = due > 0 && daysB && daysB > 30 ? daysB - 30 : 0;
@@ -2969,8 +3025,10 @@ class LedgerView {
       total_debit: totalBilled,
       total_credit: totalPaid + totalCredits,
       daysOverdue: overdue, 
+      lastOrderDate: latestOrderDate || 'N/A',
       lastBillDate: latestBillDate || 'N/A', 
       lastPaymentDate: latestPaymentDate || 'N/A', 
+      daysSinceLastOrder: daysO,
       daysSinceLastBill: daysB, 
       daysSinceLastPayment: daysP 
     };

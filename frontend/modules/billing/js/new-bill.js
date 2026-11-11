@@ -2460,6 +2460,13 @@ class BillEditor {
 
     let html = '';
     this.currentBillProducts.forEach((product, index) => {
+      const gstReverse = Boolean(product.gst_reverse);
+      const normalizedMrp = parseFloat((parseFloat(product.mrp || product.rate || 0)).toFixed(2));
+      const normalizedRate = parseFloat((parseFloat(
+        (gstReverse && normalizedMrp > 0)
+          ? normalizedMrp
+          : (product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0 ? product.rate : (product.mrp || 0))
+      )).toFixed(2));
       const normalized = {
         id: product.id || product.product_id || index,
         name: product.name || product.product_name || 'Unknown',
@@ -2468,15 +2475,15 @@ class BillEditor {
         exp: product.exp || product.exp_date || '',
         qty: parseFloat((parseFloat(product.qty || 1)).toFixed(2)),
         free: parseFloat((parseFloat(product.free || 0)).toFixed(2)),
-        mrp: parseFloat((parseFloat(product.mrp || product.rate || 0)).toFixed(2)),
-        rate: parseFloat((parseFloat(product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0 ? product.rate : (product.mrp || 0))).toFixed(2)),
+        mrp: normalizedMrp,
+        rate: normalizedRate,
         disc1: parseFloat((parseFloat(product.disc1 || product.discount_1_percent || 0)).toFixed(2)),
         disc2: parseFloat((parseFloat(product.disc2 || product.discount_2_percent || 0)).toFixed(2)),
         sgst: parseFloat((parseFloat(product.sgst || 0)).toFixed(2)),
         cgst: parseFloat((parseFloat(product.cgst || 0)).toFixed(2)),
         gstTotal: parseFloat((parseFloat(product.gstTotal || product.gst_percent || 0)).toFixed(2)),
         isGold: product.isGold === true || product.is_gold === true || product.is_gold === 1 || String(product.classification).toLowerCase() === 'gold' || String(product.category).toLowerCase() === 'gold',
-        gst_reverse: product.gst_reverse || false
+        gst_reverse: gstReverse
       };
 
       const calculations = this.calculateProductDetails(normalized);
@@ -3375,331 +3382,331 @@ class BillEditor {
   }
 
   recalculateProductFields(product, fieldChanged = null) {
-    // Only recalculate rate if MRP or disc1 explicitly changed
-    if ((fieldChanged === 'mrp' || fieldChanged === 'disc1') && product.mrp > 0) {
-      product.rate = product.mrp - (product.mrp * (product.disc1 / 100));
-    }
-
-    // Recalculate free items if qty or scheme changed
-    if (fieldChanged === 'qty' || fieldChanged === 'scheme' || !fieldChanged) {
-      product.free = this.calculateFreeItems(product.qty, product.scheme);
-    }
-
-    // Synchronize tax fields (gstTotal, gst_percent, sgst, cgst)
-    if (product.gstTotal !== undefined && product.gstTotal !== null && !isNaN(product.gstTotal)) {
-      const totalTax = parseFloat(product.gstTotal) || 0;
-      product.gst_percent = totalTax;
-      product.sgst = parseFloat((totalTax / 2).toFixed(2));
-      product.cgst = parseFloat((totalTax / 2).toFixed(2));
-    } else if (product.gst_percent !== undefined && product.gst_percent !== null && !isNaN(product.gst_percent)) {
-      const totalTax = parseFloat(product.gst_percent) || 0;
-      product.gstTotal = totalTax;
-      product.sgst = parseFloat((totalTax / 2).toFixed(2));
-      product.cgst = parseFloat((totalTax / 2).toFixed(2));
-    } else if (product.sgst !== undefined || product.cgst !== undefined) {
-      const s = parseFloat(product.sgst) || 0;
-      const c = parseFloat(product.cgst !== undefined ? product.cgst : s) || 0;
-      product.sgst = s;
-      product.cgst = c;
-      product.gstTotal = parseFloat((s + c).toFixed(2));
-      product.gst_percent = product.gstTotal;
-    }
-  }
-
-  handleProductDatabaseUpdate(product, field, oldValue, newValue) {
-    // This is now replaced by showProductMasterUpdateModal for consistency
-    this.showProductMasterUpdateModal(product, field, oldValue, newValue)
-      .then(updateType => {
-        if (updateType === 'update-db') {
-          this.updateProductDatabase(product, field, newValue);
-        }
-      });
-  }
-
-  checkAndHandleBatchUpdate(product, newBatchNo) {
-    // Check if batch already exists via API
-    if (!this.apiEnabled) {
-      this.showNotification('Batch management requires API connection', 'warning');
-      return;
-    }
-
-    // API-based batch validation would be implemented here
-    // For now, just confirm the change
-    if (confirm(`Update batch to "${newBatchNo}" with MRP ₹${product.mrp}?`)) {
-      product.batch = newBatchNo;
-    }
-  }
-
-
-
-  calculateProductDetails(product) {
-    // Use shared BillCalculator for consistent calculation logic
-    return BillCalculator.calculateLineItem(product);
-  }
-
-  calculateFreeItems(qty, scheme) {
-    // Use shared BillCalculator for free items calculation
-    return BillCalculator.calculateFreeItems(qty, scheme);
-  }
-
-  calculateProductTotal(product) {
-    const details = this.calculateProductDetails(product);
-    return details.finalAmount;
-  }
-
-  updateBillSummary() {
-    log.debug('📊 updateBillSummary called with', this.currentBillProducts.length, 'products');
-
-    // Always recalculate using BillCalculator to ensure accuracy
-    // This is more reliable than using stored amounts which might be incorrect
-    const { lineItems, summary, total_quantity: totalQty } = BillCalculator.calculateProducts(this.currentBillProducts);
-    lineItems.forEach((lineCalc, idx) => {
-      log.debug(`  Product ${idx}: name=${this.currentBillProducts[idx].name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
-    });
-
-    log.debug(`📊 Summary Results:`, {
-      total_amount: summary.total_amount.toFixed(2),
-      total_discount: summary.total_discount.toFixed(2),
-      subtotal: summary.subtotal.toFixed(2),
-      total_sgst: summary.total_sgst.toFixed(2),
-      total_cgst: summary.total_cgst.toFixed(2),
-      total_gst: summary.total_gst.toFixed(2),
-      grand_total_unrounded: (summary.grand_total - summary.round_off).toFixed(2),
-      grand_total: summary.grand_total.toFixed(2),
-      round_off: summary.round_off.toFixed(2)
-    });
-
-    // Update summary sidebar with proper values
-    const updateElement = (id, value) => {
-      const elem = document.getElementById(id);
-      if (elem) elem.textContent = value;
-    };
-
-    const productCount = this.currentBillProducts.length;
-    updateElement('summaryProductCount', productCount);
-    updateElement('summaryTotalQty', totalQty.toFixed(2));
-    updateElement('summarySubtotal', '₹' + summary.total_amount.toFixed(2));
-    updateElement('summaryDiscount', '₹' + summary.total_discount.toFixed(2));
-    updateElement('summaryTaxable', '₹' + summary.subtotal.toFixed(2));
-    updateElement('summarySGST', '₹' + summary.total_sgst.toFixed(2));
-    updateElement('summaryCGST', '₹' + summary.total_cgst.toFixed(2));
-    updateElement('summaryGrandTotalUnrounded', '₹' + (summary.grand_total - summary.round_off).toFixed(2));
-
-    // Show rounding off if applicable
-    if (Math.abs(summary.round_off) > 0.01) {
-      updateElement('summaryRoundingOff', '₹' + summary.round_off.toFixed(2));
-    }
-
-    updateElement('summaryGrandTotal', '₹' + summary.grand_total.toFixed(2));
-
-    // Update header stats
-    updateElement('headerTotal', '₹' + summary.grand_total.toFixed(2));
-    updateElement('headerItems', productCount);
-
-    // Auto-link matching order as products change
-    this.debouncedAutoLinkOrderForBill();
-  }
-
-  getBillCustomer() {
-    const customerName = document.getElementById('customerName')?.value.trim().toLowerCase() || '';
-    if (!customerName) return null;
-    const contacts = (this.allContacts && this.allContacts.length)
-      ? this.allContacts
-      : (this.billingData?.customers || this.billingApp?.billingData?.customers || []);
-    return contacts.find(contact => String(contact.name || '').trim().toLowerCase() === customerName) || null;
-  }
-
-  getBillInvoiceNumber() {
-    if (this.billDataToEdit?.invoice_no) return String(this.billDataToEdit.invoice_no);
-    const existing = (this.billingData?.bills || []).find(bill =>
-      String(bill.id || bill.bill_id || '') === String(this.editingBillId || '')
-    );
-    return String(existing?.invoice_no || existing?.reference_no || '');
-  }
-
-  async loadOrdersForBill(customerId) {
-    const response = await fetch(`/api/billing/orders?customer_id=${encodeURIComponent(customerId)}&limit=500`);
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.error || `Unable to load customer orders (${response.status}).`);
-    }
-    return Array.isArray(result.data) ? result.data : [];
-  }
-
-  async loadLinkedOrderForBill() {
-    const customer = this.getBillCustomer();
-    const invoiceNumber = this.getBillInvoiceNumber();
-    if (!customer?.id || !invoiceNumber) return;
-    const orders = await this.loadOrdersForBill(customer.id);
-    const linkedOrder = orders.find(order =>
-      String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
-    );
-    if (!linkedOrder) return;
-    this.selectedOrderForBill = linkedOrder;
-    this.renderInvoiceOrderSummary();
-  }
-
-  getInvoiceMatchCandidate(customerId, invoiceNumber = '') {
-    const products = this.currentBillProducts.map(product => ({
-      product_id: product.product_id || product.id || null,
-      product_name: product.name || product.product_name || '',
-      qty: Number(product.qty || product.quantity || 0)
-    }));
-    const { summary } = BillCalculator.calculateProducts(this.currentBillProducts);
-    return {
-      id: invoiceNumber ? undefined : 'draft-invoice',
-      invoice_no: invoiceNumber || undefined,
-      customer_id: customerId,
-      invoice_date: document.getElementById('billDateTime')?.value || new Date().toISOString(),
-      grand_total: summary?.grand_total || 0,
-      items: products
-    };
-  }
-
-  debouncedAutoLinkOrderForBill() {
-    if (this.autoLinkDebounceTimer) {
-      clearTimeout(this.autoLinkDebounceTimer);
-    }
-    this.autoLinkDebounceTimer = setTimeout(() => {
-      this.autoLinkOrderForBill();
-    }, 400);
-  }
-
-  async autoLinkOrderForBill() {
-    if (this._orderUnlinkedByUser) return;
-    const customer = this.getBillCustomer();
-    if (!customer?.id) {
-      if (this.selectedOrderForBill) {
-        this.selectedOrderForBill = null;
-        this.renderInvoiceOrderSummary();
+      // Keep pre-discount rate aligned with MRP; BillCalculator applies GST reverse & disc1 without mutating stored base rate
+      if (fieldChanged === 'mrp' && product.mrp > 0) {
+        product.rate = product.mrp;
       }
-      return;
+
+      // Recalculate free items if qty or scheme changed
+      if (fieldChanged === 'qty' || fieldChanged === 'scheme' || !fieldChanged) {
+        product.free = this.calculateFreeItems(product.qty, product.scheme);
+      }
+
+      // Synchronize tax fields (gstTotal, gst_percent, sgst, cgst)
+      if (product.gstTotal !== undefined && product.gstTotal !== null && !isNaN(product.gstTotal)) {
+        const totalTax = parseFloat(product.gstTotal) || 0;
+        product.gst_percent = totalTax;
+        product.sgst = parseFloat((totalTax / 2).toFixed(2));
+        product.cgst = parseFloat((totalTax / 2).toFixed(2));
+      } else if (product.gst_percent !== undefined && product.gst_percent !== null && !isNaN(product.gst_percent)) {
+        const totalTax = parseFloat(product.gst_percent) || 0;
+        product.gstTotal = totalTax;
+        product.sgst = parseFloat((totalTax / 2).toFixed(2));
+        product.cgst = parseFloat((totalTax / 2).toFixed(2));
+      } else if (product.sgst !== undefined || product.cgst !== undefined) {
+        const s = parseFloat(product.sgst) || 0;
+        const c = parseFloat(product.cgst !== undefined ? product.cgst : s) || 0;
+        product.sgst = s;
+        product.cgst = c;
+        product.gstTotal = parseFloat((s + c).toFixed(2));
+        product.gst_percent = product.gstTotal;
+      }
     }
 
-    // If an order was manually selected/linked and not auto-matched, keep it unless customer changed
-    if (this.selectedOrderForBill && !this.selectedOrderForBill.auto_matched) {
-      if (String(this.selectedOrderForBill.customer_id) === String(customer.id)) {
+    handleProductDatabaseUpdate(product, field, oldValue, newValue) {
+      // This is now replaced by showProductMasterUpdateModal for consistency
+      this.showProductMasterUpdateModal(product, field, oldValue, newValue)
+        .then(updateType => {
+          if (updateType === 'update-db') {
+            this.updateProductDatabase(product, field, newValue);
+          }
+        });
+    }
+
+    checkAndHandleBatchUpdate(product, newBatchNo) {
+      // Check if batch already exists via API
+      if (!this.apiEnabled) {
+        this.showNotification('Batch management requires API connection', 'warning');
         return;
       }
-      this.selectedOrderForBill = null;
+
+      // API-based batch validation would be implemented here
+      // For now, just confirm the change
+      if (confirm(`Update batch to "${newBatchNo}" with MRP ₹${product.mrp}?`)) {
+        product.batch = newBatchNo;
+      }
     }
 
-    try {
-      const orders = await this.loadOrdersForBill(customer.id);
-      this.orderForBillCandidates = orders;
+
+
+    calculateProductDetails(product) {
+      // Use shared BillCalculator for consistent calculation logic
+      return BillCalculator.calculateLineItem(product);
+    }
+
+    calculateFreeItems(qty, scheme) {
+      // Use shared BillCalculator for free items calculation
+      return BillCalculator.calculateFreeItems(qty, scheme);
+    }
+
+    calculateProductTotal(product) {
+      const details = this.calculateProductDetails(product);
+      return details.finalAmount;
+    }
+
+    updateBillSummary() {
+      log.debug('📊 updateBillSummary called with', this.currentBillProducts.length, 'products');
+
+      // Always recalculate using BillCalculator to ensure accuracy
+      // This is more reliable than using stored amounts which might be incorrect
+      const { lineItems, summary, total_quantity: totalQty } = BillCalculator.calculateProducts(this.currentBillProducts);
+      lineItems.forEach((lineCalc, idx) => {
+        log.debug(`  Product ${idx}: name=${this.currentBillProducts[idx].name}, amount=${lineCalc.amount.toFixed(2)}, disc1=${lineCalc.discount_1_amount.toFixed(2)}, disc2=${lineCalc.discount_2_amount.toFixed(2)}, sgst=${lineCalc.sgst_amount.toFixed(2)}, cgst=${lineCalc.cgst_amount.toFixed(2)}, final=${lineCalc.final_amount.toFixed(2)}`);
+      });
+
+      log.debug(`📊 Summary Results:`, {
+        total_amount: summary.total_amount.toFixed(2),
+        total_discount: summary.total_discount.toFixed(2),
+        subtotal: summary.subtotal.toFixed(2),
+        total_sgst: summary.total_sgst.toFixed(2),
+        total_cgst: summary.total_cgst.toFixed(2),
+        total_gst: summary.total_gst.toFixed(2),
+        grand_total_unrounded: (summary.grand_total - summary.round_off).toFixed(2),
+        grand_total: summary.grand_total.toFixed(2),
+        round_off: summary.round_off.toFixed(2)
+      });
+
+      // Update summary sidebar with proper values
+      const updateElement = (id, value) => {
+        const elem = document.getElementById(id);
+        if (elem) elem.textContent = value;
+      };
+
+      const productCount = this.currentBillProducts.length;
+      updateElement('summaryProductCount', productCount);
+      updateElement('summaryTotalQty', totalQty.toFixed(2));
+      updateElement('summarySubtotal', '₹' + summary.total_amount.toFixed(2));
+      updateElement('summaryDiscount', '₹' + summary.total_discount.toFixed(2));
+      updateElement('summaryTaxable', '₹' + summary.subtotal.toFixed(2));
+      updateElement('summarySGST', '₹' + summary.total_sgst.toFixed(2));
+      updateElement('summaryCGST', '₹' + summary.total_cgst.toFixed(2));
+      updateElement('summaryGrandTotalUnrounded', '₹' + (summary.grand_total - summary.round_off).toFixed(2));
+
+      // Show rounding off if applicable
+      if (Math.abs(summary.round_off) > 0.01) {
+        updateElement('summaryRoundingOff', '₹' + summary.round_off.toFixed(2));
+      }
+
+      updateElement('summaryGrandTotal', '₹' + summary.grand_total.toFixed(2));
+
+      // Update header stats
+      updateElement('headerTotal', '₹' + summary.grand_total.toFixed(2));
+      updateElement('headerItems', productCount);
+
+      // Auto-link matching order as products change
+      this.debouncedAutoLinkOrderForBill();
+    }
+
+    getBillCustomer() {
+      const customerName = document.getElementById('customerName')?.value.trim().toLowerCase() || '';
+      if (!customerName) return null;
+      const contacts = (this.allContacts && this.allContacts.length)
+        ? this.allContacts
+        : (this.billingData?.customers || this.billingApp?.billingData?.customers || []);
+      return contacts.find(contact => String(contact.name || '').trim().toLowerCase() === customerName) || null;
+    }
+
+    getBillInvoiceNumber() {
+      if (this.billDataToEdit?.invoice_no) return String(this.billDataToEdit.invoice_no);
+      const existing = (this.billingData?.bills || []).find(bill =>
+        String(bill.id || bill.bill_id || '') === String(this.editingBillId || '')
+      );
+      return String(existing?.invoice_no || existing?.reference_no || '');
+    }
+
+  async loadOrdersForBill(customerId) {
+      const response = await fetch(`/api/billing/orders?customer_id=${encodeURIComponent(customerId)}&limit=500`);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || `Unable to load customer orders (${response.status}).`);
+      }
+      return Array.isArray(result.data) ? result.data : [];
+    }
+
+  async loadLinkedOrderForBill() {
+      const customer = this.getBillCustomer();
       const invoiceNumber = this.getBillInvoiceNumber();
+      if (!customer?.id || !invoiceNumber) return;
+      const orders = await this.loadOrdersForBill(customer.id);
+      const linkedOrder = orders.find(order =>
+        String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
+      );
+      if (!linkedOrder) return;
+      this.selectedOrderForBill = linkedOrder;
+      this.renderInvoiceOrderSummary();
+    }
 
-      // 1. Check if an order already explicitly references this invoice
-      let linkedOrder = null;
-      if (invoiceNumber) {
-        linkedOrder = orders.find(order =>
-          String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
-        );
-        if (linkedOrder) {
-          linkedOrder.auto_matched = false;
+    getInvoiceMatchCandidate(customerId, invoiceNumber = '') {
+      const products = this.currentBillProducts.map(product => ({
+        product_id: product.product_id || product.id || null,
+        product_name: product.name || product.product_name || '',
+        qty: Number(product.qty || product.quantity || 0)
+      }));
+      const { summary } = BillCalculator.calculateProducts(this.currentBillProducts);
+      return {
+        id: invoiceNumber ? undefined : 'draft-invoice',
+        invoice_no: invoiceNumber || undefined,
+        customer_id: customerId,
+        invoice_date: document.getElementById('billDateTime')?.value || new Date().toISOString(),
+        grand_total: summary?.grand_total || 0,
+        items: products
+      };
+    }
+
+    debouncedAutoLinkOrderForBill() {
+      if (this.autoLinkDebounceTimer) {
+        clearTimeout(this.autoLinkDebounceTimer);
+      }
+      this.autoLinkDebounceTimer = setTimeout(() => {
+        this.autoLinkOrderForBill();
+      }, 400);
+    }
+
+  async autoLinkOrderForBill() {
+      if (this._orderUnlinkedByUser) return;
+      const customer = this.getBillCustomer();
+      if (!customer?.id) {
+        if (this.selectedOrderForBill) {
+          this.selectedOrderForBill = null;
+          this.renderInvoiceOrderSummary();
         }
+        return;
       }
 
-      // 2. Background Auto-Matching (reusing order-invoice-matcher.mjs from Stage 3)
-      if (!linkedOrder && !this._orderUnlinkedByUser) {
-        const invoiceCandidate = this.getInvoiceMatchCandidate(customer.id, invoiceNumber);
-        const matchResult = findBestOrderMatchForInvoice(invoiceCandidate, orders);
-
-        if (matchResult?.order) {
-          log.info(`[NewBill] Background pre-linked matching order #${matchResult.order.order_number || matchResult.order.id} (Score: ${matchResult.score})`);
-          linkedOrder = {
-            ...matchResult.order,
-            auto_matched: true,
-            auto_match_details: matchResult
-          };
-        } else if (this.currentBillProducts.length === 0 && orders.length > 0) {
-          // If bill has no items yet, check if there is an unlinked active order
-          const unlinkedOrders = orders.filter(o => !o.bill_reference && o.status !== 'cancelled' && o.status !== 'completed');
-          if (unlinkedOrders.length === 1) {
-            const singleOrder = unlinkedOrders[0];
-            log.info(`[NewBill] Background pre-linked single pending order #${singleOrder.order_number || singleOrder.id}`);
-            linkedOrder = {
-              ...singleOrder,
-              auto_matched: true,
-              auto_match_details: { score: 50, reasons: ['Only unlinked order for customer'] }
-            };
-          }
+      // If an order was manually selected/linked and not auto-matched, keep it unless customer changed
+      if (this.selectedOrderForBill && !this.selectedOrderForBill.auto_matched) {
+        if (String(this.selectedOrderForBill.customer_id) === String(customer.id)) {
+          return;
         }
-      }
-
-      if (linkedOrder) {
-        this.selectedOrderForBill = linkedOrder;
-      } else if (this.selectedOrderForBill?.auto_matched) {
         this.selectedOrderForBill = null;
       }
 
-      this.renderInvoiceOrderSummary();
-    } catch (error) {
-      log.error('[NewBill] Error in autoLinkOrderForBill:', error);
+      try {
+        const orders = await this.loadOrdersForBill(customer.id);
+        this.orderForBillCandidates = orders;
+        const invoiceNumber = this.getBillInvoiceNumber();
+
+        // 1. Check if an order already explicitly references this invoice
+        let linkedOrder = null;
+        if (invoiceNumber) {
+          linkedOrder = orders.find(order =>
+            String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase()
+          );
+          if (linkedOrder) {
+            linkedOrder.auto_matched = false;
+          }
+        }
+
+        // 2. Background Auto-Matching (reusing order-invoice-matcher.mjs from Stage 3)
+        if (!linkedOrder && !this._orderUnlinkedByUser) {
+          const invoiceCandidate = this.getInvoiceMatchCandidate(customer.id, invoiceNumber);
+          const matchResult = findBestOrderMatchForInvoice(invoiceCandidate, orders);
+
+          if (matchResult?.order) {
+            log.info(`[NewBill] Background pre-linked matching order #${matchResult.order.order_number || matchResult.order.id} (Score: ${matchResult.score})`);
+            linkedOrder = {
+              ...matchResult.order,
+              auto_matched: true,
+              auto_match_details: matchResult
+            };
+          } else if (this.currentBillProducts.length === 0 && orders.length > 0) {
+            // If bill has no items yet, check if there is an unlinked active order
+            const unlinkedOrders = orders.filter(o => !o.bill_reference && o.status !== 'cancelled' && o.status !== 'completed');
+            if (unlinkedOrders.length === 1) {
+              const singleOrder = unlinkedOrders[0];
+              log.info(`[NewBill] Background pre-linked single pending order #${singleOrder.order_number || singleOrder.id}`);
+              linkedOrder = {
+                ...singleOrder,
+                auto_matched: true,
+                auto_match_details: { score: 50, reasons: ['Only unlinked order for customer'] }
+              };
+            }
+          }
+        }
+
+        if (linkedOrder) {
+          this.selectedOrderForBill = linkedOrder;
+        } else if (this.selectedOrderForBill?.auto_matched) {
+          this.selectedOrderForBill = null;
+        }
+
+        this.renderInvoiceOrderSummary();
+      } catch (error) {
+        log.error('[NewBill] Error in autoLinkOrderForBill:', error);
+      }
     }
-  }
 
-  renderInvoiceOrderSummary() {
-    const summary = document.getElementById('linkedInvoiceOrderSummary');
-    const button = document.getElementById('linkInvoiceOrderBtn');
-    if (!summary) return;
-    const order = this.selectedOrderForBill;
-    if (!order) {
-      summary.replaceChildren();
-      summary.style.display = 'none';
-      if (button) button.textContent = 'Link Order';
-      return;
-    }
+    renderInvoiceOrderSummary() {
+      const summary = document.getElementById('linkedInvoiceOrderSummary');
+      const button = document.getElementById('linkInvoiceOrderBtn');
+      if (!summary) return;
+      const order = this.selectedOrderForBill;
+      if (!order) {
+        summary.replaceChildren();
+        summary.style.display = 'none';
+        if (button) button.textContent = 'Link Order';
+        return;
+      }
 
-    const orderNo = this.escapeHtml(order.order_number || `Order ${order.id}`);
-    const orderDate = this.escapeHtml(String(order.order_date || '').slice(0, 10));
-    const lrNo = this.escapeHtml(order.lr_no || '—');
-    const lrDate = this.escapeHtml(String(order.lr_date || '').slice(0, 10) || '—');
-    const transport = this.escapeHtml(order.transport || '—');
-    const cases = Number.isInteger(Number(order.cases)) ? Number(order.cases) : '—';
+      const orderNo = this.escapeHtml(order.order_number || `Order ${order.id}`);
+      const orderDate = this.escapeHtml(String(order.order_date || '').slice(0, 10));
+      const lrNo = this.escapeHtml(order.lr_no || '—');
+      const lrDate = this.escapeHtml(String(order.lr_date || '').slice(0, 10) || '—');
+      const transport = this.escapeHtml(order.transport || '—');
+      const cases = Number.isInteger(Number(order.cases)) ? Number(order.cases) : '—';
 
-    let autoBadgeHtml = '';
-    if (order.auto_matched) {
-      const reasonText = order.auto_match_details?.reasons?.length ? ` (${order.auto_match_details.reasons[0]})` : '';
-      autoBadgeHtml = `<div style="margin-bottom:6px;"><span style="display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;">⚡ AUTO-MATCHED${reasonText}</span></div>`;
-    }
+      let autoBadgeHtml = '';
+      if (order.auto_matched) {
+        const reasonText = order.auto_match_details?.reasons?.length ? ` (${order.auto_match_details.reasons[0]})` : '';
+        autoBadgeHtml = `<div style="margin-bottom:6px;"><span style="display:inline-flex; align-items:center; gap:3px; background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; letter-spacing:0.4px;">⚡ AUTO-MATCHED${reasonText}</span></div>`;
+      }
 
-    summary.innerHTML = `
+      summary.innerHTML = `
       ${autoBadgeHtml}
       <div><strong>Linked order:</strong> ${orderNo}${orderDate ? ` · ${orderDate}` : ''}</div>
       <div style="margin-top:4px; color:#475569;">LR: ${lrNo} · ${lrDate} · ${transport} · Cases: ${cases}</div>
       <button type="button" id="unlinkInvoiceOrderBtn" style="margin-top:6px; padding:3px 8px; border:1px solid #cbd5e1; border-radius:3px; background:#fff; cursor:pointer; font-size:10px; color:#dc2626; font-weight:600;">✕ Unlink</button>
     `;
-    summary.style.display = 'block';
-    if (button) button.textContent = 'Change Order';
-    summary.querySelector('#unlinkInvoiceOrderBtn')?.addEventListener('click', () => this.unlinkOrderFromBill());
-  }
+      summary.style.display = 'block';
+      if (button) button.textContent = 'Change Order';
+      summary.querySelector('#unlinkInvoiceOrderBtn')?.addEventListener('click', () => this.unlinkOrderFromBill());
+    }
 
   async updateOrderInvoiceReference(order, invoiceNumber) {
-    const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bill_reference: invoiceNumber || '' })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.error || `Unable to update order link (${response.status}).`);
-    }
-    return result;
-  }
-
-  openInvoiceDispatchModal() {
-    const order = this.selectedOrderForBill;
-    if (!order) {
-      this.showNotification('Link an order to this invoice before editing its LR and transport details.', 'warning');
-      return;
+      const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_reference: invoiceNumber || '' })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || `Unable to update order link (${response.status}).`);
+      }
+      return result;
     }
 
-    document.getElementById('invoiceDispatchModal')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'invoiceDispatchModal';
-    overlay.className = 'variant-modal-overlay';
-    overlay.innerHTML = `
+    openInvoiceDispatchModal() {
+      const order = this.selectedOrderForBill;
+      if (!order) {
+        this.showNotification('Link an order to this invoice before editing its LR and transport details.', 'warning');
+        return;
+      }
+
+      document.getElementById('invoiceDispatchModal')?.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'invoiceDispatchModal';
+      overlay.className = 'variant-modal-overlay';
+      overlay.innerHTML = `
       <div class="variant-modal" style="max-width:420px;">
         <div class="variant-modal-header">
           <h3>Order LR & Transport</h3>
@@ -3728,109 +3735,109 @@ class BillEditor {
         </form>
       </div>
     `;
-    this.viewContainer.appendChild(overlay);
+      this.viewContainer.appendChild(overlay);
 
-    const close = () => overlay.remove();
-    overlay.querySelectorAll('[data-close-dispatch]').forEach(button => button.addEventListener('click', close));
-    overlay.addEventListener('click', event => {
-      if (event.target === overlay) close();
-    });
-    overlay.querySelector('#invoiceDispatchForm')?.addEventListener('submit', async event => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const saveButton = overlay.querySelector('#saveInvoiceDispatchBtn');
-      const errorElement = overlay.querySelector('#invoiceDispatchError');
-      const formData = new FormData(form);
-      saveButton.disabled = true;
-      errorElement.style.display = 'none';
-      try {
-        const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lr_no: String(formData.get('lr_no') || '').trim(),
-            lr_date: String(formData.get('lr_date') || '') || null,
-            transport: String(formData.get('transport') || '').trim()
-          })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || `Unable to save order details (${response.status}).`);
-        this.selectedOrderForBill = { ...order, ...result };
-        this.renderInvoiceOrderSummary();
-        close();
-        this.showNotification('Order LR and transport details saved.', 'success');
-      } catch (error) {
-        log.error('Unable to save invoice dispatch details:', error);
-        errorElement.textContent = error.message || 'Unable to save order details.';
-        errorElement.style.display = 'block';
-        saveButton.disabled = false;
-      }
-    });
-  }
+      const close = () => overlay.remove();
+      overlay.querySelectorAll('[data-close-dispatch]').forEach(button => button.addEventListener('click', close));
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) close();
+      });
+      overlay.querySelector('#invoiceDispatchForm')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const saveButton = overlay.querySelector('#saveInvoiceDispatchBtn');
+        const errorElement = overlay.querySelector('#invoiceDispatchError');
+        const formData = new FormData(form);
+        saveButton.disabled = true;
+        errorElement.style.display = 'none';
+        try {
+          const response = await fetch(`/api/billing/orders/${encodeURIComponent(order.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lr_no: String(formData.get('lr_no') || '').trim(),
+              lr_date: String(formData.get('lr_date') || '') || null,
+              transport: String(formData.get('transport') || '').trim()
+            })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || `Unable to save order details (${response.status}).`);
+          this.selectedOrderForBill = { ...order, ...result };
+          this.renderInvoiceOrderSummary();
+          close();
+          this.showNotification('Order LR and transport details saved.', 'success');
+        } catch (error) {
+          log.error('Unable to save invoice dispatch details:', error);
+          errorElement.textContent = error.message || 'Unable to save order details.';
+          errorElement.style.display = 'block';
+          saveButton.disabled = false;
+        }
+      });
+    }
 
   async saveInvoiceOrderLink(order) {
-    this._orderUnlinkedByUser = false;
-    const invoiceNumber = this.getBillInvoiceNumber();
-    const previousOrder = this.selectedOrderForBill;
-    if (invoiceNumber) {
-      const switchingLinkedOrder = previousOrder
-        && String(previousOrder.id) !== String(order.id)
-        && String(previousOrder.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase();
-      if (switchingLinkedOrder) {
-        await this.updateOrderInvoiceReference(previousOrder, '');
-      }
-      let savedOrder;
-      try {
-        savedOrder = await this.updateOrderInvoiceReference(order, invoiceNumber);
-      } catch (error) {
+      this._orderUnlinkedByUser = false;
+      const invoiceNumber = this.getBillInvoiceNumber();
+      const previousOrder = this.selectedOrderForBill;
+      if (invoiceNumber) {
+        const switchingLinkedOrder = previousOrder
+          && String(previousOrder.id) !== String(order.id)
+          && String(previousOrder.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase();
         if (switchingLinkedOrder) {
-          try {
-            await this.updateOrderInvoiceReference(previousOrder, invoiceNumber);
-          } catch (restoreError) {
-            log.error('Unable to restore the previous invoice-order link:', restoreError);
-            throw new Error(`${error.message} The previous order link could not be restored: ${restoreError.message}`);
-          }
+          await this.updateOrderInvoiceReference(previousOrder, '');
         }
-        throw error;
+        let savedOrder;
+        try {
+          savedOrder = await this.updateOrderInvoiceReference(order, invoiceNumber);
+        } catch (error) {
+          if (switchingLinkedOrder) {
+            try {
+              await this.updateOrderInvoiceReference(previousOrder, invoiceNumber);
+            } catch (restoreError) {
+              log.error('Unable to restore the previous invoice-order link:', restoreError);
+              throw new Error(`${error.message} The previous order link could not be restored: ${restoreError.message}`);
+            }
+          }
+          throw error;
+        }
+        this.selectedOrderForBill = { ...order, ...savedOrder };
+      } else {
+        this.selectedOrderForBill = order;
       }
-      this.selectedOrderForBill = { ...order, ...savedOrder };
-    } else {
-      this.selectedOrderForBill = order;
+      this.renderInvoiceOrderSummary();
     }
-    this.renderInvoiceOrderSummary();
-  }
 
   async unlinkOrderFromBill() {
-    const order = this.selectedOrderForBill;
-    if (!order) return;
-    try {
-      const invoiceNumber = this.getBillInvoiceNumber();
-      if (invoiceNumber) await this.updateOrderInvoiceReference(order, '');
-      this.selectedOrderForBill = null;
-      this._orderUnlinkedByUser = true;
-      this.renderInvoiceOrderSummary();
-      this.showNotification('Order unlinked from invoice.', 'success');
-    } catch (error) {
-      log.error('Unable to unlink order from invoice:', error);
-      this.showNotification(error.message || 'Unable to unlink order from invoice.', 'error');
+      const order = this.selectedOrderForBill;
+      if (!order) return;
+      try {
+        const invoiceNumber = this.getBillInvoiceNumber();
+        if (invoiceNumber) await this.updateOrderInvoiceReference(order, '');
+        this.selectedOrderForBill = null;
+        this._orderUnlinkedByUser = true;
+        this.renderInvoiceOrderSummary();
+        this.showNotification('Order unlinked from invoice.', 'success');
+      } catch (error) {
+        log.error('Unable to unlink order from invoice:', error);
+        this.showNotification(error.message || 'Unable to unlink order from invoice.', 'error');
+      }
     }
-  }
 
-  renderInvoiceOrderPicker(orders, currentInvoiceNumber, forcePicker = false) {
-    document.getElementById('invoiceOrderPickerModal')?.remove();
-    const availableOrders = orders.filter(order => {
-      const reference = String(order.bill_reference || '').trim().toLowerCase();
-      return !reference || reference === String(currentInvoiceNumber || '').trim().toLowerCase();
-    });
-    const choices = availableOrders.map(order => {
-      const amount = Number(order.total_amount || 0).toFixed(2);
-      const date = String(order.order_date || '').slice(0, 10);
-      return `<option value="${this.escapeHtml(order.id)}">${this.escapeHtml(order.order_number || `Order ${order.id}`)} · ${this.escapeHtml(date)} · ₹${amount}</option>`;
-    }).join('');
-    const overlay = document.createElement('div');
-    overlay.id = 'invoiceOrderPickerModal';
-    overlay.className = 'variant-modal-overlay';
-    overlay.innerHTML = `
+    renderInvoiceOrderPicker(orders, currentInvoiceNumber, forcePicker = false) {
+      document.getElementById('invoiceOrderPickerModal')?.remove();
+      const availableOrders = orders.filter(order => {
+        const reference = String(order.bill_reference || '').trim().toLowerCase();
+        return !reference || reference === String(currentInvoiceNumber || '').trim().toLowerCase();
+      });
+      const choices = availableOrders.map(order => {
+        const amount = Number(order.total_amount || 0).toFixed(2);
+        const date = String(order.order_date || '').slice(0, 10);
+        return `<option value="${this.escapeHtml(order.id)}">${this.escapeHtml(order.order_number || `Order ${order.id}`)} · ${this.escapeHtml(date)} · ₹${amount}</option>`;
+      }).join('');
+      const overlay = document.createElement('div');
+      overlay.id = 'invoiceOrderPickerModal';
+      overlay.className = 'variant-modal-overlay';
+      overlay.innerHTML = `
       <div class="variant-modal" style="max-width:520px;">
         <div class="variant-modal-header">
           <h3>Link an Order to This Invoice</h3>
@@ -3850,353 +3857,353 @@ class BillEditor {
         </div>
       </div>
     `;
-    this.viewContainer.appendChild(overlay);
-    const close = () => overlay.remove();
-    overlay.querySelectorAll('[data-close-order-picker]').forEach(button => button.addEventListener('click', close));
-    overlay.addEventListener('click', event => {
-      if (event.target === overlay) close();
-    });
-    overlay.querySelector('#confirmInvoiceOrderLink')?.addEventListener('click', async () => {
-      const orderId = overlay.querySelector('#invoiceOrderChoice')?.value;
-      const order = availableOrders.find(candidate => String(candidate.id) === String(orderId));
-      if (!order) {
-        this.showNotification('Select an order to link.', 'warning');
-        return;
-      }
-      try {
-        await this.saveInvoiceOrderLink(order);
-        close();
-        this.showNotification(`Linked ${order.order_number || 'order'} to invoice.`, 'success');
-      } catch (error) {
-        log.error('Unable to link order to invoice:', error);
-        this.showNotification(error.message || 'Unable to link order to invoice.', 'error');
-      }
-    });
-  }
-
-  async linkOrderToBill(forcePicker = false) {
-    const customer = this.getBillCustomer();
-    if (!customer?.id) {
-      this.showNotification('Select a registered customer before linking an order.', 'warning');
-      return;
+      this.viewContainer.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelectorAll('[data-close-order-picker]').forEach(button => button.addEventListener('click', close));
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) close();
+      });
+      overlay.querySelector('#confirmInvoiceOrderLink')?.addEventListener('click', async () => {
+        const orderId = overlay.querySelector('#invoiceOrderChoice')?.value;
+        const order = availableOrders.find(candidate => String(candidate.id) === String(orderId));
+        if (!order) {
+          this.showNotification('Select an order to link.', 'warning');
+          return;
+        }
+        try {
+          await this.saveInvoiceOrderLink(order);
+          close();
+          this.showNotification(`Linked ${order.order_number || 'order'} to invoice.`, 'success');
+        } catch (error) {
+          log.error('Unable to link order to invoice:', error);
+          this.showNotification(error.message || 'Unable to link order to invoice.', 'error');
+        }
+      });
     }
 
-    try {
-      const orders = await this.loadOrdersForBill(customer.id);
-      this.orderForBillCandidates = orders;
-      const invoiceNumber = this.getBillInvoiceNumber();
-      const existingOrder = invoiceNumber
-        ? orders.find(order => String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase())
-        : null;
-      if (existingOrder) {
-        this.selectedOrderForBill = existingOrder;
-        this.renderInvoiceOrderSummary();
-        if (!forcePicker) return;
+  async linkOrderToBill(forcePicker = false) {
+      const customer = this.getBillCustomer();
+      if (!customer?.id) {
+        this.showNotification('Select a registered customer before linking an order.', 'warning');
+        return;
       }
 
-      if (!forcePicker && !existingOrder) {
-        const match = findBestOrderMatchForInvoice(
-          this.getInvoiceMatchCandidate(customer.id, invoiceNumber),
-          orders
-        );
-        if (match?.order) {
-          await this.saveInvoiceOrderLink(match.order);
-          this.showNotification(
-            `Automatically linked ${match.order.order_number || 'order'} (match score ${match.score}).`,
-            'success'
+      try {
+        const orders = await this.loadOrdersForBill(customer.id);
+        this.orderForBillCandidates = orders;
+        const invoiceNumber = this.getBillInvoiceNumber();
+        const existingOrder = invoiceNumber
+          ? orders.find(order => String(order.bill_reference || '').trim().toLowerCase() === invoiceNumber.trim().toLowerCase())
+          : null;
+        if (existingOrder) {
+          this.selectedOrderForBill = existingOrder;
+          this.renderInvoiceOrderSummary();
+          if (!forcePicker) return;
+        }
+
+        if (!forcePicker && !existingOrder) {
+          const match = findBestOrderMatchForInvoice(
+            this.getInvoiceMatchCandidate(customer.id, invoiceNumber),
+            orders
           );
+          if (match?.order) {
+            await this.saveInvoiceOrderLink(match.order);
+            this.showNotification(
+              `Automatically linked ${match.order.order_number || 'order'} (match score ${match.score}).`,
+              'success'
+            );
+            return;
+          }
+        }
+
+        this.renderInvoiceOrderPicker(orders, invoiceNumber, forcePicker);
+      } catch (error) {
+        log.error('Unable to find an order for invoice:', error);
+        this.showNotification(error.message || 'Unable to load orders for this customer.', 'error');
+      }
+    }
+
+  async makeBill() {
+      if (this.currentBillProducts.length === 0) {
+        this.showNotification('Please add at least one product to the bill', 'warning');
+        return;
+      }
+
+      const customerName = document.getElementById('customerName').value;
+      if (!customerName) {
+        this.showNotification('Please enter customer name', 'warning');
+        return;
+      }
+      if (this.selectedOrderForBill) {
+        const customer = this.getBillCustomer();
+        if (!customer?.id || String(customer.id) !== String(this.selectedOrderForBill.customer_id)) {
+          this.showNotification('The linked order belongs to a different customer. Select a matching customer or unlink the order.', 'error');
           return;
         }
       }
 
-      this.renderInvoiceOrderPicker(orders, invoiceNumber, forcePicker);
-    } catch (error) {
-      log.error('Unable to find an order for invoice:', error);
-      this.showNotification(error.message || 'Unable to load orders for this customer.', 'error');
-    }
-  }
+      // Calculate totals and format products for API using BillCalculator
+      const formattedProducts = this.currentBillProducts.map((product) => {
+        return BillCalculator.frontendToDb(product);
+      });
 
-  async makeBill() {
-    if (this.currentBillProducts.length === 0) {
-      this.showNotification('Please add at least one product to the bill', 'warning');
-      return;
-    }
+      // Calculate bill summary using BillCalculator
+      const summary = BillCalculator.calculateBillSummary(formattedProducts);
 
-    const customerName = document.getElementById('customerName').value;
-    if (!customerName) {
-      this.showNotification('Please enter customer name', 'warning');
-      return;
-    }
-    if (this.selectedOrderForBill) {
-      const customer = this.getBillCustomer();
-      if (!customer?.id || String(customer.id) !== String(this.selectedOrderForBill.customer_id)) {
-        this.showNotification('The linked order belongs to a different customer. Select a matching customer or unlink the order.', 'error');
-        return;
+      // Calculate Due Date (preserve existing due_date when editing, avoid UTC timezone shift)
+      const billDateTimeVal = document.getElementById('billDateTime').value;
+      let dueDateVal = (this.billDataToEdit && this.billDataToEdit.due_date) ? this.billDataToEdit.due_date : '';
+      if (!dueDateVal && billDateTimeVal) {
+        const invDate = new Date(billDateTimeVal);
+        if (!isNaN(invDate.getTime())) {
+          const dueDate = new Date(invDate);
+          dueDate.setDate(dueDate.getDate() + 7);
+          const y = dueDate.getFullYear();
+          const m = String(dueDate.getMonth() + 1).padStart(2, '0');
+          const d = String(dueDate.getDate()).padStart(2, '0');
+          dueDateVal = `${y}-${m}-${d}`;
+        }
       }
-    }
+      const invoiceDateVal = billDateTimeVal;
 
-    // Calculate totals and format products for API using BillCalculator
-    const formattedProducts = this.currentBillProducts.map((product) => {
-      return BillCalculator.frontendToDb(product);
-    });
+      const subtotal = summary.subtotal;
 
-    // Calculate bill summary using BillCalculator
-    const summary = BillCalculator.calculateBillSummary(formattedProducts);
+      const totalDiscount = summary.total_discount;
+      const totalTax = summary.total_gst;
+      const roundingOff = summary.round_off;
+      const grandTotal = summary.grand_total;
 
-    // Calculate Due Date (preserve existing due_date when editing, avoid UTC timezone shift)
-    const billDateTimeVal = document.getElementById('billDateTime').value;
-    let dueDateVal = (this.billDataToEdit && this.billDataToEdit.due_date) ? this.billDataToEdit.due_date : '';
-    if (!dueDateVal && billDateTimeVal) {
-      const invDate = new Date(billDateTimeVal);
-      if (!isNaN(invDate.getTime())) {
-        const dueDate = new Date(invDate);
-        dueDate.setDate(dueDate.getDate() + 7);
-        const y = dueDate.getFullYear();
-        const m = String(dueDate.getMonth() + 1).padStart(2, '0');
-        const d = String(dueDate.getDate()).padStart(2, '0');
-        dueDateVal = `${y}-${m}-${d}`;
-      }
-    }
-    const invoiceDateVal = billDateTimeVal;
+      // Check if we're updating an existing bill or creating a new one
+      if (this.editingBillId) {
+        // UPDATE MODE - Update existing bill
+        const billIndex = (this.billingData?.bills || []).findIndex(b =>
+          b.id == this.editingBillId || b.bill_id == this.editingBillId || String(b.id) === String(this.editingBillId)
+        );
 
-    const subtotal = summary.subtotal;
+        const existingBill = (billIndex !== -1) ? this.billingData.bills[billIndex] : (this.billDataToEdit || {});
+        const updatedBill = {
+          ...existingBill,
+          id: this.editingBillId,
+          customer_name: customerName,
+          bill_date: invoiceDateVal,
+          due_date: dueDateVal,
+          invoice_date: invoiceDateVal,
 
-    const totalDiscount = summary.total_discount;
-    const totalTax = summary.total_gst;
-    const roundingOff = summary.round_off;
-    const grandTotal = summary.grand_total;
+          products: formattedProducts,
+          subtotal: subtotal,
+          total_discount: totalDiscount,
+          total_gst: totalTax,
+          round_off: roundingOff,
+          grand_total: grandTotal,
+          previous_due: 0,
+          updated_at: new Date().toISOString()
+        };
 
-    // Check if we're updating an existing bill or creating a new one
-    if (this.editingBillId) {
-      // UPDATE MODE - Update existing bill
-      const billIndex = (this.billingData?.bills || []).findIndex(b =>
-        b.id == this.editingBillId || b.bill_id == this.editingBillId || String(b.id) === String(this.editingBillId)
-      );
+        try {
+          if (this.apiEnabled) {
+            // Call API to update bill
+            const result = await this.api.updateBill(this.editingBillId, {
+              customer_name: customerName,
+              invoice_no: null, // Don't change invoice number
+              due_date: dueDateVal,
+              invoice_date: invoiceDateVal,
 
-      const existingBill = (billIndex !== -1) ? this.billingData.bills[billIndex] : (this.billDataToEdit || {});
-      const updatedBill = {
-        ...existingBill,
-        id: this.editingBillId,
-        customer_name: customerName,
-        bill_date: invoiceDateVal,
-        due_date: dueDateVal,
-        invoice_date: invoiceDateVal,
+              products: formattedProducts,
+              subtotal: subtotal,
+              total_discount: totalDiscount,
+              total_gst: totalTax,
+              round_off: roundingOff,
+              grand_total: grandTotal,
+              previous_due: 0
+            });
 
-        products: formattedProducts,
-        subtotal: subtotal,
-        total_discount: totalDiscount,
-        total_gst: totalTax,
-        round_off: roundingOff,
-        grand_total: grandTotal,
-        previous_due: 0,
-        updated_at: new Date().toISOString()
-      };
+            if (this.selectedOrderForBill) {
+              try {
+                const invoiceNumber = result.invoice_no || this.getBillInvoiceNumber();
+                if (!invoiceNumber) throw new Error('The updated invoice number is unavailable.');
+                await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
+              } catch (error) {
+                log.error('Invoice updated but order link failed:', error);
+                this.showNotification(`Invoice updated, but the order link failed: ${error.message}`, 'error');
+              }
+            }
 
-      try {
-        if (this.apiEnabled) {
-          // Call API to update bill
-          const result = await this.api.updateBill(this.editingBillId, {
-            customer_name: customerName,
-            invoice_no: null, // Don't change invoice number
-            due_date: dueDateVal,
-            invoice_date: invoiceDateVal,
 
-            products: formattedProducts,
-            subtotal: subtotal,
-            total_discount: totalDiscount,
-            total_gst: totalTax,
-            round_off: roundingOff,
-            grand_total: grandTotal,
-            previous_due: 0
+            // Update in memory
+            if (this.billingData?.bills) {
+              if (billIndex !== -1) {
+                this.billingData.bills[billIndex] = updatedBill;
+              } else {
+                this.billingData.bills.push(updatedBill);
+              }
+            }
+
+            if (window.CoreDataBus) {
+              try {
+                window.CoreDataBus.publish('billing:invoice', 'updated', updatedBill);
+                window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
+              } catch (_) { }
+            }
+
+            this.showNotification('✓ Bill Updated Successfully!', 'success');
+
+            // Reload data from API
+            if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
+              try {
+                await this.billingApp.loadBillingDataFromAPI();
+                log.debug('✅ Reloaded billing data from API after updating bill');
+              } catch (e) {
+                log.warn('⚠ Failed to reload billing data:', e.message);
+              }
+            }
+          } else {
+            // API is disabled
+            this.showNotification('Bill updates require API connection', 'error');
+            throw new Error('API is disabled');
+          }
+        } catch (error) {
+          // Bill update failed
+          this.showNotification(`Bill Update Failed: ${error.message}`, 'error');
+          log.error('Bill update error:', error);
+        }
+
+        // Clear editing state
+        this.editingBillId = null;
+        this.billDataToEdit = null;
+        const targetReturn = (this.returnToView === 'ledger') ? 'ledger' : 'existing';
+        this.returnToView = null;
+        this.switchView(targetReturn);
+      } else {
+        // CREATE MODE - Create new bill
+        // Server allocates reference_no atomically (no client-side generation needed)
+        // Frontend sends null and backend generates GST/NGST-based ref
+
+        const bill = {
+          customer_name: customerName,
+          invoice_no: null, // Server will generate this atomically
+          due_date: dueDateVal,
+          invoice_date: invoiceDateVal,
+
+          products: formattedProducts,
+          subtotal: subtotal,
+          total_discount: totalDiscount,
+          total_gst: totalTax,
+          round_off: roundingOff,
+          grand_total: grandTotal,
+          previous_due: 0
+        };
+
+
+
+        try {
+          log.debug('📝 Creating bill with products:', {
+            customerName,
+            productCount: formattedProducts.length,
+            products: formattedProducts.map(p => ({
+              name: p.product_name,
+              pack_value: p.pack_value,
+              pack_type: p.pack_type,
+              qty: p.qty,
+              variant_id: p.variant_id,
+              batch_id: p.batch_id
+            }))
           });
 
-          if (this.selectedOrderForBill) {
-            try {
-              const invoiceNumber = result.invoice_no || this.getBillInvoiceNumber();
-              if (!invoiceNumber) throw new Error('The updated invoice number is unavailable.');
-              await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
-            } catch (error) {
-              log.error('Invoice updated but order link failed:', error);
-              this.showNotification(`Invoice updated, but the order link failed: ${error.message}`, 'error');
+          if (this.apiEnabled) {
+            // Save to backend database via API
+            const result = await this.api.createBill(bill);
+
+            const billReference = result.reference_no || result.invoice_no || 'N/A';
+            const billId = result.id;
+            this.showNotification(`✓ Bill Created: ${billReference}`, 'success');
+            if (this.selectedOrderForBill) {
+              try {
+                const invoiceNumber = result.invoice_no || result.reference_no;
+                if (!invoiceNumber) throw new Error('The server did not return an invoice number.');
+                await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
+                this.selectedOrderForBill = { ...this.selectedOrderForBill, bill_reference: invoiceNumber };
+              } catch (error) {
+                log.error('Invoice created but order link failed:', error);
+                this.showNotification(`Invoice ${billReference} was created, but the order link failed: ${error.message}. You can link it from the invoice editor.`, 'error');
+              }
             }
-          }
 
+            // Store result in memory with all API fields
+            const storedBill = {
+              id: billId,
+              invoice_no: result.invoice_no,
+              reference_no: result.reference_no,
+              customer_id: result.customer_id,
+              customer_name: result.customer_name,
+              ...bill,
+              created_at: result.created_at,
+              items_count: result.items_count
+            };
+            this.billingData.bills.push(storedBill);
 
-          // Update in memory
-          if (this.billingData?.bills) {
-            if (billIndex !== -1) {
-              this.billingData.bills[billIndex] = updatedBill;
-            } else {
-              this.billingData.bills.push(updatedBill);
+            if (window.CoreDataBus) {
+              try {
+                window.CoreDataBus.publish('billing:invoice', 'created', storedBill);
+                window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, customer_id: result.customer_id });
+              } catch (_) { }
             }
-          }
 
-          if (window.CoreDataBus) {
-            try {
-              window.CoreDataBus.publish('billing:invoice', 'updated', updatedBill);
-              window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName });
-            } catch (_) { }
-          }
-
-          this.showNotification('✓ Bill Updated Successfully!', 'success');
-
-          // Reload data from API
-          if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
-            try {
-              await this.billingApp.loadBillingDataFromAPI();
-              log.debug('✅ Reloaded billing data from API after updating bill');
-            } catch (e) {
-              log.warn('⚠ Failed to reload billing data:', e.message);
+            // Reload billing data from API to ensure ledger/edit views have the latest
+            if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
+              try {
+                await this.billingApp.loadBillingDataFromAPI();
+                log.debug('✅ Reloaded billing data from API after creating bill');
+              } catch (e) {
+                log.warn('⚠ Failed to reload billing data:', e.message);
+              }
             }
+          } else {
+            // API is disabled - cannot create bill
+            this.showNotification('Bill creation requires API connection', 'error');
+            throw new Error('API is disabled');
           }
-        } else {
-          // API is disabled
-          this.showNotification('Bill updates require API connection', 'error');
-          throw new Error('API is disabled');
+
+          this.clearBillForm();
+          this.switchView('existing'); // Show the existing bills view
+        } catch (error) {
+          // API failed - bill creation failed
+          this.showNotification(`Bill Creation Failed: ${error.message}`, 'error');
+          log.error('Bill creation error:', error);
         }
-      } catch (error) {
-        // Bill update failed
-        this.showNotification(`Bill Update Failed: ${error.message}`, 'error');
-        log.error('Bill update error:', error);
-      }
-
-      // Clear editing state
-      this.editingBillId = null;
-      this.billDataToEdit = null;
-      const targetReturn = (this.returnToView === 'ledger') ? 'ledger' : 'existing';
-      this.returnToView = null;
-      this.switchView(targetReturn);
-    } else {
-      // CREATE MODE - Create new bill
-      // Server allocates reference_no atomically (no client-side generation needed)
-      // Frontend sends null and backend generates GST/NGST-based ref
-
-      const bill = {
-        customer_name: customerName,
-        invoice_no: null, // Server will generate this atomically
-        due_date: dueDateVal,
-        invoice_date: invoiceDateVal,
-
-        products: formattedProducts,
-        subtotal: subtotal,
-        total_discount: totalDiscount,
-        total_gst: totalTax,
-        round_off: roundingOff,
-        grand_total: grandTotal,
-        previous_due: 0
-      };
-
-
-
-      try {
-        log.debug('📝 Creating bill with products:', {
-          customerName,
-          productCount: formattedProducts.length,
-          products: formattedProducts.map(p => ({
-            name: p.product_name,
-            pack_value: p.pack_value,
-            pack_type: p.pack_type,
-            qty: p.qty,
-            variant_id: p.variant_id,
-            batch_id: p.batch_id
-          }))
-        });
-
-        if (this.apiEnabled) {
-          // Save to backend database via API
-          const result = await this.api.createBill(bill);
-
-          const billReference = result.reference_no || result.invoice_no || 'N/A';
-          const billId = result.id;
-          this.showNotification(`✓ Bill Created: ${billReference}`, 'success');
-          if (this.selectedOrderForBill) {
-            try {
-              const invoiceNumber = result.invoice_no || result.reference_no;
-              if (!invoiceNumber) throw new Error('The server did not return an invoice number.');
-              await this.updateOrderInvoiceReference(this.selectedOrderForBill, invoiceNumber);
-              this.selectedOrderForBill = { ...this.selectedOrderForBill, bill_reference: invoiceNumber };
-            } catch (error) {
-              log.error('Invoice created but order link failed:', error);
-              this.showNotification(`Invoice ${billReference} was created, but the order link failed: ${error.message}. You can link it from the invoice editor.`, 'error');
-            }
-          }
-
-          // Store result in memory with all API fields
-          const storedBill = {
-            id: billId,
-            invoice_no: result.invoice_no,
-            reference_no: result.reference_no,
-            customer_id: result.customer_id,
-            customer_name: result.customer_name,
-            ...bill,
-            created_at: result.created_at,
-            items_count: result.items_count
-          };
-          this.billingData.bills.push(storedBill);
-
-          if (window.CoreDataBus) {
-            try {
-              window.CoreDataBus.publish('billing:invoice', 'created', storedBill);
-              window.CoreDataBus.publish('billing:ledger', 'updated', { customer_name: customerName, customer_id: result.customer_id });
-            } catch (_) { }
-          }
-
-          // Reload billing data from API to ensure ledger/edit views have the latest
-          if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
-            try {
-              await this.billingApp.loadBillingDataFromAPI();
-              log.debug('✅ Reloaded billing data from API after creating bill');
-            } catch (e) {
-              log.warn('⚠ Failed to reload billing data:', e.message);
-            }
-          }
-        } else {
-          // API is disabled - cannot create bill
-          this.showNotification('Bill creation requires API connection', 'error');
-          throw new Error('API is disabled');
-        }
-
-        this.clearBillForm();
-        this.switchView('existing'); // Show the existing bills view
-      } catch (error) {
-        // API failed - bill creation failed
-        this.showNotification(`Bill Creation Failed: ${error.message}`, 'error');
-        log.error('Bill creation error:', error);
       }
     }
-  }
 
-  clearBillForm() {
-    const billDateTimeInput = document.getElementById('billDateTime');
-    if (billDateTimeInput) billDateTimeInput.value = this.formatDateTimeForInput(new Date());
-    const customerNameInput = document.getElementById('customerName');
-    if (customerNameInput) customerNameInput.value = '';
-    this.currentBillProducts = [];
-    this.qrScanHistory = [];
-    this.editingBillId = null;
-    this.billDataToEdit = null;
-    this.selectedOrderForBill = null;
-    this.orderForBillCandidates = [];
-    this._orderUnlinkedByUser = false;
-    this.renderInvoiceOrderSummary();
-    this.renderProductList();
-    this.updateBillSummary();
-    this.clearProductForm();
-  }
+    clearBillForm() {
+      const billDateTimeInput = document.getElementById('billDateTime');
+      if (billDateTimeInput) billDateTimeInput.value = this.formatDateTimeForInput(new Date());
+      const customerNameInput = document.getElementById('customerName');
+      if (customerNameInput) customerNameInput.value = '';
+      this.currentBillProducts = [];
+      this.qrScanHistory = [];
+      this.editingBillId = null;
+      this.billDataToEdit = null;
+      this.selectedOrderForBill = null;
+      this.orderForBillCandidates = [];
+      this._orderUnlinkedByUser = false;
+      this.renderInvoiceOrderSummary();
+      this.renderProductList();
+      this.updateBillSummary();
+      this.clearProductForm();
+    }
 
-  showProductMasterUpdateModal(product, field, oldValue, newValue) {
-    return new Promise((resolve) => {
-      const fieldLabels = {
-        'mrp': 'MRP',
-        'pack': 'Pack Size',
-        'batch': 'Batch Number',
-        'exp': 'Expiry Date'
-      };
+    showProductMasterUpdateModal(product, field, oldValue, newValue) {
+      return new Promise((resolve) => {
+        const fieldLabels = {
+          'mrp': 'MRP',
+          'pack': 'Pack Size',
+          'batch': 'Batch Number',
+          'exp': 'Expiry Date'
+        };
 
-      const fieldName = fieldLabels[field] || field;
-      const modal = document.createElement('div');
-      modal.className = 'mrp-update-modal-overlay'; // Reusing existing class for styling
-      modal.innerHTML = `
+        const fieldName = fieldLabels[field] || field;
+        const modal = document.createElement('div');
+        modal.className = 'mrp-update-modal-overlay'; // Reusing existing class for styling
+        modal.innerHTML = `
         <div class="mrp-update-modal">
           <div class="mrp-modal-header">
             <h3>Update Product Master</h3>
@@ -4226,145 +4233,145 @@ class BillEditor {
         </div>
       `;
 
-      this.viewContainer.appendChild(modal);
+        this.viewContainer.appendChild(modal);
 
-      const btnOneTime = modal.querySelector('.btn-mrp-one-time');
-      const btnUpdateDB = modal.querySelector('.btn-mrp-update-db');
-      const btnCancel = modal.querySelector('.btn-mrp-cancel');
-      const closeBtn = modal.querySelector('.mrp-modal-close');
+        const btnOneTime = modal.querySelector('.btn-mrp-one-time');
+        const btnUpdateDB = modal.querySelector('.btn-mrp-update-db');
+        const btnCancel = modal.querySelector('.btn-mrp-cancel');
+        const closeBtn = modal.querySelector('.mrp-modal-close');
 
-      const cleanup = () => modal.remove();
+        const cleanup = () => modal.remove();
 
-      btnOneTime.addEventListener('click', () => {
-        cleanup();
-        resolve('one-time');
-      });
+        btnOneTime.addEventListener('click', () => {
+          cleanup();
+          resolve('one-time');
+        });
 
-      btnUpdateDB.addEventListener('click', () => {
-        cleanup();
-        resolve('update-db');
-      });
+        btnUpdateDB.addEventListener('click', () => {
+          cleanup();
+          resolve('update-db');
+        });
 
-      btnCancel.addEventListener('click', () => {
-        cleanup();
-        resolve('cancel');
-      });
-
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
+        btnCancel.addEventListener('click', () => {
           cleanup();
           resolve('cancel');
-        }
-      });
-    });
-  }
+        });
 
-  showMRPUpdateModal(product, oldMRP, newMRP) {
-    // Backward compatibility - redirect to generic modal
-    return this.showProductMasterUpdateModal(product, 'mrp', oldMRP, newMRP);
-  }
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            cleanup();
+            resolve('cancel');
+          }
+        });
+      });
+    }
+
+    showMRPUpdateModal(product, oldMRP, newMRP) {
+      // Backward compatibility - redirect to generic modal
+      return this.showProductMasterUpdateModal(product, 'mrp', oldMRP, newMRP);
+    }
 
   async updateProductDatabase(product, field, newValue) {
-    if (!this.apiEnabled) {
-      this.showNotification('Product database updates require API connection', 'warning');
-      return;
-    }
-
-    try {
-      log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
-
-      // Get IDs
-      let variantId = product.variant_id || (this.currentProduct?.variant_id);
-      let batchId = product.batch_id || (this.currentProduct?.batch_id);
-      let batchNo = product.batch || product.batch_no || (this.currentProduct?.batch_no);
-      let productId = product.product_id || (this.currentProduct?.id);
-
-      // Check if we need to REPAIR the product metadata first
-      if (!variantId || !batchNo) {
-        log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
-        const repairData = await this.showRepairProductMetadataModal(product);
-
-        if (!repairData) {
-          log.debug('❌ Repair cancelled by user.');
-          return;
-        }
-
-        // CREATE missing metadata via API
-        if (!variantId) {
-          log.debug('🆕 Creating new variant...');
-          const varRes = await fetch('/api/products/variants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              product_id: productId,
-              pack_size_value: repairData.pack_value,
-              pack_size_type: repairData.pack_type
-            })
-          });
-          if (!varRes.ok) throw new Error('Failed to create variant');
-          const varData = await varRes.json();
-          variantId = varData.id;
-          log.debug('✅ Variant created:', variantId);
-        }
-
-        if (!batchId || !batchNo) {
-          log.debug('🆕 Creating new batch...');
-          const batRes = await fetch('/api/products/batches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              variant_id: variantId,
-              batch_no: repairData.batch_no,
-              mrp: product.mrp || 0
-            })
-          });
-          if (!batRes.ok) throw new Error('Failed to create batch');
-          const batData = await batRes.json();
-          batchId = batData.id;
-          batchNo = repairData.batch_no;
-          log.debug('✅ Batch created:', batchId);
-        }
-
-        // Update local object and currentProduct for subsequent use
-        if (this.currentProduct) {
-          this.currentProduct.variant_id = variantId;
-          this.currentProduct.batch_id = batchId;
-          this.currentProduct.batch_no = batchNo;
-        }
-        product.variant_id = variantId;
-        product.batch_id = batchId;
-        product.batch = batchNo;
+      if (!this.apiEnabled) {
+        this.showNotification('Product database updates require API connection', 'warning');
+        return;
       }
 
-      // Now proceed with the original update
-      if (field === 'mrp') {
-        await this.updateMRPinDatabase(product, newValue);
-      } else if (field === 'pack') {
-        if (variantId) {
-          await this.api.updateVariant(variantId, {
-            pack_size_value: newValue
-          });
-          this.showNotification(`✓ Pack size updated to ${newValue}`, 'success');
-        }
-      } else if (field === 'batch') {
-        if (batchId) {
-          await this.api.updateBatch(batchId, {
-            batch_no: newValue
-          });
-          this.showNotification(`✓ Batch number updated to ${newValue}`, 'success');
-        }
-      }
-    } catch (error) {
-      log.error('❌ Failed to update product database:', error);
-      this.showNotification(`Failed to update database: ${error.message}`, 'error');
-    }
-  }
+      try {
+        log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
 
-  showRepairProductMetadataModal(product) {
-    return new Promise((resolve) => {
-      const modal = document.createElement('div');
-      modal.className = 'mrp-update-modal-overlay';
-      modal.innerHTML = `
+        // Get IDs
+        let variantId = product.variant_id || (this.currentProduct?.variant_id);
+        let batchId = product.batch_id || (this.currentProduct?.batch_id);
+        let batchNo = product.batch || product.batch_no || (this.currentProduct?.batch_no);
+        let productId = product.product_id || (this.currentProduct?.id);
+
+        // Check if we need to REPAIR the product metadata first
+        if (!variantId || !batchNo) {
+          log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
+          const repairData = await this.showRepairProductMetadataModal(product);
+
+          if (!repairData) {
+            log.debug('❌ Repair cancelled by user.');
+            return;
+          }
+
+          // CREATE missing metadata via API
+          if (!variantId) {
+            log.debug('🆕 Creating new variant...');
+            const varRes = await fetch('/api/products/variants', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                product_id: productId,
+                pack_size_value: repairData.pack_value,
+                pack_size_type: repairData.pack_type
+              })
+            });
+            if (!varRes.ok) throw new Error('Failed to create variant');
+            const varData = await varRes.json();
+            variantId = varData.id;
+            log.debug('✅ Variant created:', variantId);
+          }
+
+          if (!batchId || !batchNo) {
+            log.debug('🆕 Creating new batch...');
+            const batRes = await fetch('/api/products/batches', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                variant_id: variantId,
+                batch_no: repairData.batch_no,
+                mrp: product.mrp || 0
+              })
+            });
+            if (!batRes.ok) throw new Error('Failed to create batch');
+            const batData = await batRes.json();
+            batchId = batData.id;
+            batchNo = repairData.batch_no;
+            log.debug('✅ Batch created:', batchId);
+          }
+
+          // Update local object and currentProduct for subsequent use
+          if (this.currentProduct) {
+            this.currentProduct.variant_id = variantId;
+            this.currentProduct.batch_id = batchId;
+            this.currentProduct.batch_no = batchNo;
+          }
+          product.variant_id = variantId;
+          product.batch_id = batchId;
+          product.batch = batchNo;
+        }
+
+        // Now proceed with the original update
+        if (field === 'mrp') {
+          await this.updateMRPinDatabase(product, newValue);
+        } else if (field === 'pack') {
+          if (variantId) {
+            await this.api.updateVariant(variantId, {
+              pack_size_value: newValue
+            });
+            this.showNotification(`✓ Pack size updated to ${newValue}`, 'success');
+          }
+        } else if (field === 'batch') {
+          if (batchId) {
+            await this.api.updateBatch(batchId, {
+              batch_no: newValue
+            });
+            this.showNotification(`✓ Batch number updated to ${newValue}`, 'success');
+          }
+        }
+      } catch (error) {
+        log.error('❌ Failed to update product database:', error);
+        this.showNotification(`Failed to update database: ${error.message}`, 'error');
+      }
+    }
+
+    showRepairProductMetadataModal(product) {
+      return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'mrp-update-modal-overlay';
+        modal.innerHTML = `
         <div class="mrp-update-modal">
           <div class="mrp-modal-header">
             <h3>Complete Product Setup</h3>
@@ -4405,78 +4412,78 @@ class BillEditor {
         </div>
       `;
 
-      this.viewContainer.appendChild(modal);
+        this.viewContainer.appendChild(modal);
 
-      const btnSave = modal.querySelector('.btn-mrp-update-db');
-      const btnCancel = modal.querySelector('.btn-mrp-cancel');
-      const closeBtn = modal.querySelector('.mrp-modal-close');
+        const btnSave = modal.querySelector('.btn-mrp-update-db');
+        const btnCancel = modal.querySelector('.btn-mrp-cancel');
+        const closeBtn = modal.querySelector('.mrp-modal-close');
 
-      const cleanup = () => modal.remove();
+        const cleanup = () => modal.remove();
 
-      btnSave.addEventListener('click', () => {
-        const pack_value = document.getElementById('repairPackValue').value.trim();
-        const pack_type = document.getElementById('repairPackType').value;
-        const batch_no = document.getElementById('repairBatchNo').value.trim();
+        btnSave.addEventListener('click', () => {
+          const pack_value = document.getElementById('repairPackValue').value.trim();
+          const pack_type = document.getElementById('repairPackType').value;
+          const batch_no = document.getElementById('repairBatchNo').value.trim();
 
-        if (!pack_value || !batch_no) {
-          this.showNotification('Pack Value and Batch Number are required', 'warning');
+          if (!pack_value || !batch_no) {
+            this.showNotification('Pack Value and Batch Number are required', 'warning');
+            return;
+          }
+
+          cleanup();
+          resolve({ pack_value, pack_type, batch_no });
+        });
+
+        btnCancel.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+
+        closeBtn.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+      });
+    }
+
+  async updateMRPinDatabase(product, newMRP) {
+      try {
+        const batch = product.batch || product.batch_no || (this.currentProduct?.batch_no);
+        const variantId = product.variant_id || (this.currentProduct?.variant_id);
+
+        if (!batch || !variantId) {
+          this.showNotification('Cannot update MRP: Batch info or Variant ID missing', 'error');
           return;
         }
 
-        cleanup();
-        resolve({ pack_value, pack_type, batch_no });
-      });
+        // Use the correct API endpoint as confirmed in routes.js
+        // POST /api/products/update-mrp expects { product_id, variant_id, batch_no, mrp }
+        const response = await fetch('/api/products/update-mrp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            product_id: product.product_id || (this.currentProduct?.id),
+            variant_id: variantId,
+            batch_no: batch,
+            mrp: parseFloat(newMRP)
+          })
+        });
 
-      btnCancel.addEventListener('click', () => {
-        cleanup();
-        resolve(null);
-      });
+        if (!response.ok) {
+          throw new Error(`API error: ${response.statusText}`);
+        }
 
-      closeBtn.addEventListener('click', () => {
-        cleanup();
-        resolve(null);
-      });
-    });
-  }
-
-  async updateMRPinDatabase(product, newMRP) {
-    try {
-      const batch = product.batch || product.batch_no || (this.currentProduct?.batch_no);
-      const variantId = product.variant_id || (this.currentProduct?.variant_id);
-
-      if (!batch || !variantId) {
-        this.showNotification('Cannot update MRP: Batch info or Variant ID missing', 'error');
-        return;
+        const result = await response.json();
+        log.debug('✅ MRP updated in database:', result);
+        this.showNotification(`✓ MRP updated for batch ${batch}`, 'success');
+      } catch (error) {
+        log.error('❌ Failed to update MRP in database:', error);
+        this.showNotification(`Failed to update MRP: ${error.message}`, 'error');
       }
-
-      // Use the correct API endpoint as confirmed in routes.js
-      // POST /api/products/update-mrp expects { product_id, variant_id, batch_no, mrp }
-      const response = await fetch('/api/products/update-mrp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          product_id: product.product_id || (this.currentProduct?.id),
-          variant_id: variantId,
-          batch_no: batch,
-          mrp: parseFloat(newMRP)
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      log.debug('✅ MRP updated in database:', result);
-      this.showNotification(`✓ MRP updated for batch ${batch}`, 'success');
-    } catch (error) {
-      log.error('❌ Failed to update MRP in database:', error);
-      this.showNotification(`Failed to update MRP: ${error.message}`, 'error');
     }
   }
-}
 
 // Export to global scope
 window.BillEditor = BillEditor;

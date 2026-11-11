@@ -1123,9 +1123,20 @@ function calculateBillItemsAndSummary(db, { customerId, customerName, items = []
       }
     }
 
+    const gstReverse = Boolean(rawItem.gst_reverse !== undefined ? rawItem.gst_reverse : rawItem.gstReverse);
+    const rawMrp = (rawItem.mrp !== undefined && rawItem.mrp !== null && !isNaN(rawItem.mrp) && Number(rawItem.mrp) > 0)
+      ? Number(rawItem.mrp)
+      : 0;
+    const rawRate = (rawItem.rate !== undefined && rawItem.rate !== null && !isNaN(rawItem.rate) && Number(rawItem.rate) > 0)
+      ? Number(rawItem.rate)
+      : 0;
+    const baseRateInput = (gstReverse && rawMrp > 0)
+      ? rawMrp
+      : (rawRate > 0 ? rawRate : (rawMrp > 0 ? rawMrp : Number(rawItem.price || 0)));
+
     const calculated = BillCalculator.calculateLineItem({
-      rate: rawItem.rate !== undefined ? rawItem.rate : (rawItem.mrp || rawItem.price || 0),
-      mrp: rawItem.mrp !== undefined ? rawItem.mrp : (rawItem.rate || 0),
+      rate: baseRateInput,
+      mrp: rawMrp > 0 ? rawMrp : baseRateInput,
       qty: rawItem.qty !== undefined ? rawItem.qty : (rawItem.quantity || 1),
       disc1: rawItem.disc1 !== undefined ? rawItem.disc1 : (rawItem.discount_1_percent || rawItem.discount1Percent || 0),
       disc2: rawItem.disc2 !== undefined ? rawItem.disc2 : (rawItem.discount_2_percent || rawItem.discount2Percent || 0),
@@ -1133,7 +1144,7 @@ function calculateBillItemsAndSummary(db, { customerId, customerName, items = []
       gstTotal: rawItem.gstTotal !== undefined ? rawItem.gstTotal : (rawItem.gst_percent || rawItem.gstPercent || 0),
       sgst: rawItem.sgst !== undefined ? rawItem.sgst : (rawItem.sgst_percent || 0),
       cgst: rawItem.cgst !== undefined ? rawItem.cgst : (rawItem.cgst_percent || 0),
-      gst_reverse: Boolean(rawItem.gst_reverse !== undefined ? rawItem.gst_reverse : rawItem.gstReverse)
+      gst_reverse: gstReverse
     });
 
     const freeCount = BillCalculator.calculateFreeItems(
@@ -1157,6 +1168,7 @@ function calculateBillItemsAndSummary(db, { customerId, customerName, items = []
       exp_date: expDate,
       scheme: rawItem.scheme || '',
       free: freeCount,
+      mrp: rawMrp > 0 ? Number(rawMrp.toFixed(2)) : Number((rawRate > 0 ? rawRate : (calculated.rate || 0)).toFixed(2)),
       rate: calculated.rate,
       discounted_rate: calculated.discounted_rate,
       qty: calculated.qty,

@@ -23,7 +23,7 @@ function getSuiteCoreBridge() {
   if (typeof require === 'function') {
     try {
       return require('./suite_core_bridge');
-    } catch (_) {}
+    } catch (_) { }
   }
   return null;
 }
@@ -64,12 +64,16 @@ class BillCalculator {
    * @returns {Object} Calculated values: amount, discount_1_amount, discount_2_amount, gst_amount, final_amount
    */
   static calculateLineItem(product) {
-    // Normalize input values - preserve explicit rate if provided, otherwise fallback to mrp
-    let rate = parseFloat((product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0) ? product.rate : (product.mrp || 0)) || 0;
+    const gstReverse = Boolean(product.gst_reverse || false);
+    const hasValidMrp = product.mrp !== undefined && product.mrp !== null && !isNaN(product.mrp) && Number(product.mrp) > 0;
+    const hasValidRate = product.rate !== undefined && product.rate !== null && !isNaN(product.rate) && Number(product.rate) > 0;
+    // When GST Reverse is active and MRP is present, derive from MRP so a previously stored calculated.rate never compounds -4.77% twice
+    let rate = (gstReverse && hasValidMrp)
+      ? (parseFloat(product.mrp) || 0)
+      : (parseFloat(hasValidRate ? product.rate : (product.mrp || 0)) || 0);
     const qty = parseInt(product.qty || 1) || 1;
     const disc1Percent = parseFloat(product.disc1 || product.discount_1_percent || 0) || 0;
     const disc2Percent = parseFloat(product.disc2 || product.discount_2_percent || 0) || 0;
-    const gstReverse = product.gst_reverse || false;
 
     // Resolve tax percentages cleanly and robustly
     let gstTotal = 0;
@@ -226,12 +230,15 @@ class BillCalculator {
     // Get the RELIABLE percentage from database (this is always correct)
     const gstTotal = parseFloat(dbItem.gst_percent || 0) || 0;
     const discountedAmount = (dbItem.rate * dbItem.qty) - parseFloat(dbItem.discount_1_amount || 0) - parseFloat(dbItem.discount_2_amount || 0);
-    
+
     // IMPORTANT: Don't trust stored sgst_amount/cgst_amount - they may have been calculated wrong
     // Instead, just split the gst_percent 50/50 (standard GST rule)
     // The gst_percent is the reliable value that was stored correctly
     const sgstPercent = gstTotal / 2;
     const cgstPercent = gstTotal / 2;
+    const gstReverse = Boolean(dbItem.gst_reverse);
+    const baseMrp = parseFloat(dbItem.mrp || 0) || parseFloat(dbItem.rate || 0) || 0;
+    const baseRate = (gstReverse && baseMrp > 0) ? baseMrp : (parseFloat(dbItem.rate || 0) || baseMrp);
 
     return {
       id: dbItem.id,
@@ -248,8 +255,8 @@ class BillCalculator {
       qty: parseInt(dbItem.qty) || 1,
       quantity: parseInt(dbItem.qty) || 1,
       free: parseInt(dbItem.free) || 0,
-      mrp: parseFloat(dbItem.mrp) || 0,
-      rate: parseFloat(dbItem.rate) || 0,
+      mrp: baseMrp,
+      rate: baseRate,
       scheme: dbItem.scheme || '',
       disc1: disc1Percent,
       disc2: disc2Percent,
@@ -259,7 +266,7 @@ class BillCalculator {
       cgst: cgstPercent,
       gstTotal: gstTotal,
       gst_percent: gstTotal,
-      gst_reverse: dbItem.gst_reverse || false,
+      gst_reverse: gstReverse,
       // Also include calculated amounts for reference
       amount: parseFloat(dbItem.amount) || 0,
       final_amount: parseFloat(dbItem.final_amount) || 0

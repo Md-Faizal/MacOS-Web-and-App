@@ -1,5 +1,5 @@
 // @ts-nocheck
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:EditBills') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Billing:EditBills') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
  * EditBillsPayments Module
@@ -14,7 +14,7 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 class EditBillsPayments {
-    showNotification(message, type = 'info') {
+  showNotification(message, type = 'info') {
     if (this.billingApp?.showNotification) {
       return this.billingApp.showNotification(message, type);
     }
@@ -38,7 +38,7 @@ class EditBillsPayments {
     this.apiEnabled = billingApp.apiEnabled;
     this.currentBillId = null;
     this.currentPaymentId = null;
-    
+
     // Edit mode properties
     this.editListItems = [];
     this.editBillProducts = [];
@@ -110,7 +110,7 @@ class EditBillsPayments {
     if (!dateInput) return '';
     const date = this.parseDateSafe(dateInput);
     if (!date) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -128,7 +128,7 @@ class EditBillsPayments {
     }
     const date = this.parseDateSafe(dateInput);
     if (!date) return '';
-    
+
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -150,7 +150,7 @@ class EditBillsPayments {
             ? apiContacts
             : (Array.isArray(apiContacts?.items) ? apiContacts.items : (Array.isArray(apiContacts?.data?.items) ? apiContacts.data.items : (Array.isArray(apiContacts?.data) ? apiContacts.data : [])));
           if (normalizedApi && normalizedApi.length > 0) return normalizedApi;
-        } catch (_) {}
+        } catch (_) { }
       }
       const response = await fetch(`${this.getApiBaseUrl()}/api/contacts`);
       if (response.ok) {
@@ -201,8 +201,8 @@ class EditBillsPayments {
       // Lookup customer by ID and get full details from contacts table
       if (billData.customer_id) {
         log.debug('🔍 Looking up customer ID:', billData.customer_id);
-        let customer = customers.find(c => 
-          c.id == billData.customer_id || 
+        let customer = customers.find(c =>
+          c.id == billData.customer_id ||
           String(c.id) === String(billData.customer_id) ||
           (c.name && billData.customer_name && c.name.trim().toLowerCase() === billData.customer_name.trim().toLowerCase())
         );
@@ -238,7 +238,7 @@ class EditBillsPayments {
       if (billData.products && billData.products.length > 0) {
         billData.products = billData.products.map(item => {
           // Find matching product from API
-          const apiProduct = products.find(p => 
+          const apiProduct = products.find(p =>
             p.name.toLowerCase() === (item.name || '').toLowerCase() ||
             p.id === item.product_id
           );
@@ -258,7 +258,7 @@ class EditBillsPayments {
               has_multiple_variants: apiProduct.variants && Array.isArray(apiProduct.variants) && apiProduct.variants.length > 1
             };
           }
-          
+
           return {
             ...item,
             has_multiple_variants: item.has_multiple_variants || false
@@ -289,7 +289,7 @@ class EditBillsPayments {
   normalizeBillDataFromAPI(apiResponse) {
     // Extract from nested response if needed
     let billData = apiResponse.data || apiResponse;
-    
+
     if (!billData) {
       log.warn('⚠️ Bill data is empty');
       return null;
@@ -297,13 +297,13 @@ class EditBillsPayments {
 
     // Ensure we have an ID for edit mode detection
     billData.id = billData.id || billData.bill_id || billData.invoice_id;
-    
+
     // Capture customer ID for lookup in contacts table
     billData.customer_id = billData.customer_id || billData.customerId || null;
-    
+
     // Normalize customer name field - try multiple variants
     billData.customer_name = billData.customer_name || billData.customer || billData.customerName || '';
-    
+
     log.debug('📋 API Response customer fields:', {
       raw_customer_id: apiResponse.customer_id,
       raw_customerId: apiResponse.customerId,
@@ -313,10 +313,10 @@ class EditBillsPayments {
       normalized_customer_id: billData.customer_id,
       normalized_customer_name: billData.customer_name
     });
-    
+
     // Normalize bill date field (strictly prioritize invoice_date over created_at)
     billData.bill_date = billData.invoice_date || billData.bill_date || billData.created_at || this.formatDateTimeForInput(new Date());
-    
+
     // Normalize items to products for BillEditor
     if (!billData.products && billData.items) {
       billData.products = billData.items;
@@ -326,53 +326,59 @@ class EditBillsPayments {
     }
 
     // Ensure each product has required fields for rendering
-    billData.products = billData.products.map(item => ({
-      // ID fields
-      id: item.id || item.item_id || Date.now(),
-      product_id: item.product_id,
-      
-      // Basic info
-      name: item.product_name || item.name || '',
-      pack: item.pack_value || item.pack || '',
-      pack_type: item.pack_type || '',
-      batch: item.batch_no || item.batch || '',
-      exp: item.exp_date || item.exp || '',
-      
-      // Pricing
-      mrp: parseFloat(item.mrp || 0),
-      rate: parseFloat(item.rate || 0),
-      qty: parseInt(item.quantity || 0),
-      free: parseInt(item.free || 0),
-      
-      // Discounts (as percentages from API)
-      disc1: parseFloat(item.discount_1 || item.disc1 || 0),
-      disc2: parseFloat(item.discount_2 || item.disc2 || 0),
-      
-      // Taxes (as percentages)
-      sgst: parseFloat(item.sgst_percent || item.sgst || 0),
-      cgst: parseFloat(item.cgst_percent || item.cgst || 0),
-      gstTotal: parseFloat(item.gst_percent || item.gstTotal || 0),
-      
-      // Scheme
-      scheme: item.scheme || '',
-      
-      // Pre-calculated amounts from database (for detecting edit mode in summary)
-      amount: parseFloat(item.amount || 0),
-      discount_1_amount: parseFloat(item.discount_1_amount || 0),
-      discount_2_amount: parseFloat(item.discount_2_amount || 0),
-      gst_amount: parseFloat(item.gst_amount || 0),
-      sgst_amount: parseFloat(item.sgst_amount || 0),
-      cgst_amount: parseFloat(item.cgst_amount || 0),
-      final_amount: parseFloat(item.final_amount || 0),
-      
-      // Database fields
-      variant_id: item.variant_id,
-      batch_id: item.batch_id,
-      isGold: item.is_gold === true || item.is_gold === 1 || item.is_gold === '1' || item.isGold === true || String(item.classification).toLowerCase() === 'gold' || false,
-      
-      // GST Reverse flag
-      gst_reverse: item.gst_reverse || false
-    }));
+    billData.products = billData.products.map(item => {
+      const gstReverse = Boolean(item.gst_reverse);
+      const mrp = parseFloat(item.mrp || 0) || parseFloat(item.rate || 0) || 0;
+      const rate = (gstReverse && mrp > 0) ? mrp : (parseFloat(item.rate || 0) || mrp);
+
+      return {
+        // ID fields
+        id: item.id || item.item_id || Date.now(),
+        product_id: item.product_id,
+
+        // Basic info
+        name: item.product_name || item.name || '',
+        pack: item.pack_value || item.pack || '',
+        pack_type: item.pack_type || '',
+        batch: item.batch_no || item.batch || '',
+        exp: item.exp_date || item.exp || '',
+
+        // Pricing
+        mrp: mrp,
+        rate: rate,
+        qty: parseInt(item.quantity || 0),
+        free: parseInt(item.free || 0),
+
+        // Discounts (as percentages from API)
+        disc1: parseFloat(item.discount_1 || item.disc1 || 0),
+        disc2: parseFloat(item.discount_2 || item.disc2 || 0),
+
+        // Taxes (as percentages)
+        sgst: parseFloat(item.sgst_percent || item.sgst || 0),
+        cgst: parseFloat(item.cgst_percent || item.cgst || 0),
+        gstTotal: parseFloat(item.gst_percent || item.gstTotal || 0),
+
+        // Scheme
+        scheme: item.scheme || '',
+
+        // Pre-calculated amounts from database (for detecting edit mode in summary)
+        amount: parseFloat(item.amount || 0),
+        discount_1_amount: parseFloat(item.discount_1_amount || 0),
+        discount_2_amount: parseFloat(item.discount_2_amount || 0),
+        gst_amount: parseFloat(item.gst_amount || 0),
+        sgst_amount: parseFloat(item.sgst_amount || 0),
+        cgst_amount: parseFloat(item.cgst_amount || 0),
+        final_amount: parseFloat(item.final_amount || 0),
+
+        // Database fields
+        variant_id: item.variant_id,
+        batch_id: item.batch_id,
+        isGold: item.is_gold === true || item.is_gold === 1 || item.is_gold === '1' || item.isGold === true || String(item.classification).toLowerCase() === 'gold' || false,
+
+        // GST Reverse flag
+        gst_reverse: gstReverse
+      };
+    });
 
     log.debug('✅ Bill data normalized successfully:', {
       id: billData.id,
@@ -395,13 +401,13 @@ class EditBillsPayments {
     try {
       const apiUrl = `${this.getApiBaseUrl()}/api/billing/preference/${encodeURIComponent(customerName)}/${encodeURIComponent(productName)}`;
       const response = await fetch(apiUrl);
-      
+
       if (response.ok) {
         const result = await response.json();
-        
+
         if (result.status === 'success' && result.data) {
           const memory = result.data;
-          
+
           // Auto-fill with saved customer preferences
           const disc1Input = document.getElementById('productDisc1');
           const disc2Input = document.getElementById('productDisc2');
@@ -439,7 +445,7 @@ class EditBillsPayments {
     const disc2Input = document.getElementById('productDisc2');
     const schemeSelect = document.getElementById('productScheme');
     const taxSelect = document.getElementById('productTax');
-    
+
     if (disc1Input && disc1Input.value === '') disc1Input.value = '0';
     if (disc2Input && disc2Input.value === '') disc2Input.value = '0';
     if (schemeSelect && schemeSelect.value === '') schemeSelect.value = '';
@@ -453,11 +459,11 @@ class EditBillsPayments {
     try {
       const apiUrl = `${this.getApiBaseUrl()}/api/contacts`;
       const response = await fetch(apiUrl);
-      
+
       if (response.ok) {
         const result = await response.json();
         const customers = result.data || result;
-        
+
         if (Array.isArray(customers) && customers.length > 0) {
           return customers;
         }
@@ -487,11 +493,11 @@ class EditBillsPayments {
       const trimmed = (search || '').trim();
       const apiUrl = `${this.getApiBaseUrl()}/api/products${trimmed ? `?search=${encodeURIComponent(trimmed)}` : ''}`;
       const response = await fetch(apiUrl);
-      
+
       if (response.ok) {
         const result = await response.json();
         const products = this.normalizeProducts(result);
-        
+
         if (Array.isArray(products) && products.length > 0) {
           return products;
         }
@@ -512,11 +518,11 @@ class EditBillsPayments {
       const trimmed = productName.trim();
       const apiUrl = `${this.getApiBaseUrl()}/api/products?search=${encodeURIComponent(trimmed)}`;
       const response = await fetch(apiUrl);
-      
+
       if (response.ok) {
         const result = await response.json();
         const products = this.normalizeProducts(result);
-        
+
         if (Array.isArray(products) && products.length > 0) {
           // Check exact match first, then Rust WASM top fuzzy match, or top returned product
           let product = products.find(p => p.name.toLowerCase() === trimmed.toLowerCase());
@@ -526,7 +532,7 @@ class EditBillsPayments {
               if (fuzzyRanked && fuzzyRanked.length > 0) {
                 product = fuzzyRanked[0];
               }
-            } catch (_) {}
+            } catch (_) { }
           }
           if (!product) {
             product = products[0];
@@ -640,17 +646,17 @@ class EditBillsPayments {
     if (selectedRadio) {
       const idx = parseInt(selectedRadio.value);
       const batchIdx = parseInt(selectedRadio.getAttribute('data-batch-index') || '0');
-      
+
       if (idx >= 0 && idx < this.variantsToSelect.length) {
         // Set flag to prevent modal re-opening
         this.isSelectingVariant = true;
         try {
           const selectedVariant = this.variantsToSelect[idx];
-          
+
           // CRITICAL: Update master reference metadata
           if (this.currentEditProduct) {
             this.currentEditProduct.variant_id = selectedVariant.id || null;
-            
+
             const selectedBatch = selectedVariant.batches && selectedVariant.batches[batchIdx] ? selectedVariant.batches[batchIdx] : null;
             if (selectedBatch) {
               this.currentEditProduct.mrp = selectedBatch.mrp;
@@ -680,25 +686,25 @@ class EditBillsPayments {
     // Normalize pack type mapping function
     const normalizePackType = (packType) => {
       if (!packType) return '';
-      
+
       const normalized = packType.trim().toUpperCase();
-      
+
       // Map various API values to database values
       if (normalized.includes('GM') || normalized.includes('GRAM')) return 'GM';
       if (normalized.includes('ML') || normalized.includes('MILL')) return 'ML';
       if (normalized.includes('TAB') || normalized.includes('TABLET')) return 'TAB';
       if (normalized.includes('GENERIC') || normalized.includes('GEN')) return 'GENERIC';
-      
+
       // If exact match found, return it (GM, ML, TAB, GENERIC)
       if (['GM', 'ML', 'TAB', 'GENERIC'].includes(normalized)) return normalized;
-      
+
       return '';
     };
 
     // Extract pack values from variant (try multiple field names)
     const packValue = variant.pack_size_value || variant.pack_value || variant.pack || variant.packValue;
     const packType = variant.pack_size_type || variant.pack_type || variant.packType;
-    
+
     if (packValue) {
       document.getElementById('productPack').value = packValue;
       if (packType) {
@@ -973,7 +979,7 @@ class EditBillsPayments {
   searchAndDisplayBills() {
     const searchQuery = document.getElementById('billSearch')?.value || '';
     const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices`;
-    
+
     fetch(apiUrl)
       .then(response => response.json())
       .then(bills => {
@@ -1036,7 +1042,7 @@ class EditBillsPayments {
   searchAndDisplayPayments() {
     const searchQuery = document.getElementById('paymentSearch')?.value || '';
     const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments`;
-    
+
     fetch(apiUrl)
       .then(response => response.json())
       .then(payments => {
@@ -1129,7 +1135,7 @@ class EditBillsPayments {
 
         this.currentBillId = billId;
         const form = document.getElementById('editBillForm');
-        
+
         form.innerHTML = `
           <div class="form-group">
             <label>Bill Number</label>
@@ -1257,10 +1263,10 @@ class EditBillsPayments {
 
         const bills = Array.isArray(billsData) ? billsData : [];
         const payments = Array.isArray(paymentsData) ? paymentsData : [];
-        
+
         const creditNotes = payments.filter(p => p.type === 'CREDIT_NOTE');
         const paymentItems = payments.filter(p => p.type === 'PAYMENT');
-        
+
         const allItems = [
           ...bills.map(b => ({ ...b, type: 'bill', typeLabel: 'Bill' })),
           ...paymentItems.map(p => ({ ...p, type: 'payment', typeLabel: 'Payment' })),
@@ -1323,7 +1329,7 @@ class EditBillsPayments {
           const itemId = item.bill_id || item.payment_id || item.id;
           const customerName = item.customer_name || item.customer || 'Unknown';
           const itemDate = new Date(item.bill_date || item.payment_date || item.created_at).toLocaleDateString();
-          
+
           // Get correct amount based on item type
           let amount = 0;
           if (item.type === 'bill') {
@@ -1333,7 +1339,7 @@ class EditBillsPayments {
           } else if (item.type === 'credit-note') {
             amount = item.credit_amount || 0;
           }
-          
+
           // Get reference number based on item type
           let refNo = 'N/A';
           if (item.type === 'bill') {
@@ -1343,7 +1349,7 @@ class EditBillsPayments {
             // For payments and credit notes, use reference_number
             refNo = item.reference_number || item.reference_no || item.ref_no || 'N/A';
           }
-          
+
           let typeColor = '#1db954';
           if (item.type === 'payment') typeColor = '#3b82f6';
           if (item.type === 'credit-note') typeColor = '#f59e0b';
@@ -1397,7 +1403,7 @@ class EditBillsPayments {
         `;
 
         this.viewContainer.innerHTML = html;
-        
+
         // Store items for searching
         this.editListItems = sortedItems;
 
@@ -1412,7 +1418,7 @@ class EditBillsPayments {
             if (itemElement) {
               const itemId = itemElement.getAttribute('data-item-id');
               const itemType = itemElement.getAttribute('data-item-type');
-              log.debug('📌 Item clicked via delegation:', {itemId, itemType});
+              log.debug('📌 Item clicked via delegation:', { itemId, itemType });
               this.handleEditItemSelection(itemId, itemType);
             }
           });
@@ -1470,13 +1476,13 @@ class EditBillsPayments {
    * Handle selection of bill/payment/credit note from list
    */
   handleEditItemSelection(itemId, itemType) {
-    log.debug('🔧 handleEditItemSelection called:', {itemId, itemType});
-    
+    log.debug('🔧 handleEditItemSelection called:', { itemId, itemType });
+
     if (itemType === 'bill') {
       // Convert itemId to number for comparison
       const itemIdNum = parseInt(itemId, 10);
       log.debug('📝 Fetching full bill details for ID:', itemIdNum);
-      
+
       // Fetch the full bill details from API in the same way as new bill page
       if (this.billingApp.billEditor) {
         const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${itemIdNum}?_t=${Date.now()}`;
@@ -1485,7 +1491,7 @@ class EditBillsPayments {
           .then(async (result) => {
             // Normalize and validate bill data from API
             let billData = this.normalizeBillDataFromAPI(result);
-            
+
             if (!billData) {
               alert('Error: Unable to load bill data');
               return;
@@ -1500,7 +1506,7 @@ class EditBillsPayments {
               customer: billData.customer_name,
               products: billData.products.length
             });
-            
+
             // Pass directly to BillEditor - same as new bill page
             // BillEditor will handle all rendering, listeners, and data initialization
             const originView = (this.billingApp?.currentView === 'ledger') ? 'ledger' : 'edit';
@@ -1523,20 +1529,20 @@ class EditBillsPayments {
     } else if (itemType === 'payment') {
       try {
         log.debug('🎯 Fetching payment ID from API:', itemId);
-        
+
         // Fetch payment directly from API
         const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${itemId}`;
         fetch(apiUrl)
           .then(response => response.json())
           .then(payments => {
             log.debug('✅ Payments from API:', payments);
-            
+
             if (!Array.isArray(payments) || payments.length === 0) {
               log.warn('❌ Payment not found in API');
               this.showNotification('Payment not found', 'error');
               return;
             }
-            
+
             const payment = payments[0];
             log.debug('📝 Rendering edit view for payment:', payment.id);
             this.renderEditPaymentView(payment);
@@ -1552,20 +1558,20 @@ class EditBillsPayments {
     } else if (itemType === 'credit-note') {
       try {
         log.debug('🎯 Fetching credit note ID from API:', itemId);
-        
+
         // Fetch credit note directly from API
         const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${itemId}`;
         fetch(apiUrl)
           .then(response => response.json())
           .then(payments => {
             log.debug('✅ Credit notes from API:', payments);
-            
+
             if (!Array.isArray(payments) || payments.length === 0) {
               log.warn('❌ Credit note not found in API');
               this.showNotification('Credit note not found', 'error');
               return;
             }
-            
+
             const creditNote = payments[0];
             log.debug('📝 Rendering edit view for credit note:', creditNote.id);
             this.renderEditCreditNoteView(creditNote);
@@ -1594,7 +1600,7 @@ class EditBillsPayments {
       .then(async (result) => {
         // Normalize and validate bill data from API
         let billData = this.normalizeBillDataFromAPI(result);
-        
+
         if (!billData) {
           alert('Error: Unable to load bill data');
           return;
@@ -1630,7 +1636,7 @@ class EditBillsPayments {
   renderEditPaymentView(paymentData) {
     try {
       log.debug('🚀 renderEditPaymentView called with:', paymentData);
-      
+
       // Track the payment being edited
       this.currentEditPaymentId = paymentData.payment_id || paymentData.id;
       this.currentEditPaymentType = 'PAYMENT';
@@ -1703,10 +1709,10 @@ class EditBillsPayments {
       // Populate with payment data
       if (paymentData) {
         document.getElementById('editPaymentCustomerName').value = paymentData.customer_name || 'Unknown';
-        
+
         const paymentDate = paymentData.payment_date || paymentData.created_at;
         document.getElementById('editPaymentDate').value = this.formatDateTimeForInput(paymentDate) || this.formatDateTimeForInput(new Date());
-        
+
         document.getElementById('editAmount').value = paymentData.amount || 0;
         document.getElementById('editReference').value = paymentData.reference_number || '';
         document.getElementById('editPaymentMethod').value = paymentData.payment_medium || 'cash';
@@ -1725,7 +1731,7 @@ class EditBillsPayments {
           this.deletePayment();
         }
       });
-      
+
       log.debug('✅ Edit payment form fully rendered and listeners attached');
     } catch (error) {
       log.error('❌ ERROR in renderEditPaymentView:', error);
@@ -1822,20 +1828,20 @@ class EditBillsPayments {
     // Populate with credit note data
     if (creditData) {
       document.getElementById('editCreditCustomerName').value = creditData.customer_name || 'Unknown';
-      
+
       const creditDate = creditData.payment_date || creditData.created_at;
       document.getElementById('editCreditDate').value = this.formatDateTimeForInput(creditDate) || this.formatDateTimeForInput(new Date());
-      
+
       document.getElementById('editCreditAmount').value = creditData.credit_amount || 0;
       document.getElementById('editCreditReason').value = creditData.reason || 'other';
       document.getElementById('editCreditReference').value = creditData.reference_number || '';
       document.getElementById('editCreditNotes').value = creditData.notes || creditData.description || '';
-      
+
       const existingAttachment = document.getElementById('existingCreditAttachment');
       const attachmentPreviewContainer = document.getElementById('editAttachmentPreviewContainer');
       const attachmentPreviewImg = document.getElementById('editAttachmentPreviewImg');
       const creditAttachment = document.getElementById('editCreditAttachment');
-      
+
       if (creditData.attachment_data) {
         if (existingAttachment) existingAttachment.value = creditData.attachment_data;
         if (attachmentPreviewImg) attachmentPreviewImg.src = creditData.attachment_data;
@@ -1844,7 +1850,7 @@ class EditBillsPayments {
         if (existingAttachment) existingAttachment.value = '';
         if (attachmentPreviewContainer) attachmentPreviewContainer.style.display = 'none';
       }
-      
+
       if (creditAttachment) {
         creditAttachment.value = '';
         creditAttachment.dataset.compressedData = '';
@@ -1882,16 +1888,16 @@ class EditBillsPayments {
       if (editCreditAttachment.parentNode) {
         editCreditAttachment.parentNode.replaceChild(newAttachment, editCreditAttachment);
       }
-      
+
       newBtn.addEventListener('click', (e) => {
         e.preventDefault();
         newAttachment.click();
       });
-      
+
       newAttachment.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
+
         // Validation
         const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!validTypes.includes(file.type)) {
@@ -1899,7 +1905,7 @@ class EditBillsPayments {
           e.target.value = '';
           return;
         }
-        
+
         if (file.size > 5 * 1024 * 1024) {
           alert('❌ Image must be less than 5MB');
           e.target.value = '';
@@ -2001,7 +2007,7 @@ class EditBillsPayments {
       .then(result => {
         if (result.status === 'success' && result.data) {
           const memory = result.data;
-          
+
           document.getElementById('editProductDisc1').value = memory.disc1 || '';
           document.getElementById('editProductDisc2').value = memory.disc2 || '';
           document.getElementById('editProductScheme').value = memory.scheme || '';
@@ -2018,7 +2024,7 @@ class EditBillsPayments {
   async addEditProductToBill() {
     const schemeValue = document.getElementById('editProductScheme')?.value;
     let scheme = schemeValue;
-    
+
     if (schemeValue === 'custom') {
       scheme = document.getElementById('editCustomSchemeValue')?.value;
       if (!scheme) {
@@ -2085,11 +2091,11 @@ class EditBillsPayments {
 
       if (changes.length > 0) {
         log.debug('🔍 Change detection triggered for:', changes);
-        const priorityField = changes[0]; 
-        const oldValue = priorityField === 'mrp' ? masterProduct.mrp : 
-                        (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
+        const priorityField = changes[0];
+        const oldValue = priorityField === 'mrp' ? masterProduct.mrp :
+          (priorityField === 'pack' ? masterPackValue : masterProduct.batch_no);
         const newValue = product[priorityField === 'pack' ? 'pack_value' : priorityField];
-        
+
         // Show change detection modal
         const result = await this.showProductMasterUpdateModal(product, priorityField, oldValue, newValue);
         if (result === 'cancel') {
@@ -2119,7 +2125,7 @@ class EditBillsPayments {
       document.getElementById('editProductDisc2').value = '0';
       document.getElementById('editProductTax').value = '0';
       document.getElementById('editProductScheme').value = '';
-      
+
       const customScheme = document.getElementById('editCustomSchemeValue');
       if (customScheme) customScheme.value = '';
       const customSchemeContainer = document.getElementById('editCustomSchemeContainer');
@@ -2133,7 +2139,7 @@ class EditBillsPayments {
   renderEditProductList() {
     const listSection = document.getElementById('editProductListSection');
     const listContainer = document.getElementById('editProductListContainer');
-    
+
     if (!listSection || !listContainer) return;
 
     if (this.editBillProducts.length === 0) {
@@ -2147,7 +2153,7 @@ class EditBillsPayments {
     this.editBillProducts.forEach((product, index) => {
       const isGold = product.isGold === true || product.is_gold === true || product.is_gold === 1 || String(product.classification).toLowerCase() === 'gold' || String(product.category).toLowerCase() === 'gold';
       const goldIndicator = isGold ? '🔶 GOLD' : '⚪ NON-GOLD';
-      
+
       const calc = BillCalculator.calculateLineItem({
         rate: parseFloat(product.rate || product.mrp || 0),
         mrp: parseFloat(product.mrp || product.rate || 0),
@@ -2257,7 +2263,7 @@ class EditBillsPayments {
         return;
       }
 
-      log.debug('📦 Opening variant selector from product card (edit mode):', { 
+      log.debug('📦 Opening variant selector from product card (edit mode):', {
         name: product.name || product.product_name,
         variants: product.variants?.length || 0
       });
@@ -2274,7 +2280,7 @@ class EditBillsPayments {
       if (response.ok) {
         const result = await response.json();
         const products = this.normalizeProducts(result);
-        
+
         if (Array.isArray(products) && products.length > 0) {
           const fullProduct = products.find(p => p.name.toLowerCase() === pName.toLowerCase());
           if (fullProduct && fullProduct.variants && fullProduct.variants.length > 0) {
@@ -2306,7 +2312,7 @@ class EditBillsPayments {
       if (typeof v === 'object' && v !== null && (v.pack_size_value !== undefined || v.pack_size_type !== undefined || v.batches !== undefined)) {
         return v;
       }
-      
+
       if (Array.isArray(v) && v.length >= 4) {
         return {
           id: v[0],
@@ -2316,7 +2322,7 @@ class EditBillsPayments {
           batches: v.batches || []
         };
       }
-      
+
       return {
         pack_size_value: v.pack_size_value || v['2'] || v.packValue,
         pack_size_type: v.pack_size_type || v['3'] || v.packType,
@@ -2405,7 +2411,7 @@ class EditBillsPayments {
     if (selectedRadio) {
       const idx = parseInt(selectedRadio.value);
       const batchIdx = parseInt(selectedRadio.getAttribute('data-batch-index') || '0');
-      
+
       if (idx >= 0 && idx < this.variantsToSelectFromCard.length) {
         const variant = this.variantsToSelectFromCard[idx];
         const product = this.editBillProducts.find(p => p.id === this.selectedProductIdForCard);
@@ -2518,7 +2524,7 @@ class EditBillsPayments {
     const saveEdit = async () => {
       if (isSaving) return;
       isSaving = true;
-      
+
       let newValue = input.value;
       if (fieldName === 'qty' || fieldName === 'mrp' || fieldName === 'disc1' || fieldName === 'disc2' || fieldName === 'sgst' || fieldName === 'cgst' || fieldName === 'gstTotal') {
         newValue = parseFloat(newValue) || 0;
@@ -2540,518 +2546,517 @@ class EditBillsPayments {
       }
 
       product[fieldName] = newValue;
-      if (fieldName === 'mrp' || fieldName === 'disc1') {
-        const base = parseFloat(product.mrp || product.rate || 0) || 0;
-        const d1 = parseFloat(product.disc1 || 0) || 0;
-        product.rate = base - (base * d1 / 100);
-      }
+        if (fieldName === 'mrp' && product.mrp > 0) {
+          product.rate = parseFloat(product.mrp) || 0;
+        }
 
-      // Synchronize tax fields
-      if (fieldName === 'gstTotal' || fieldName === 'gst_percent' || fieldName === 'tax') {
-        product.gstTotal = newValue;
-        product.gst_percent = newValue;
-        product.sgst = parseFloat((newValue / 2).toFixed(2));
-        product.cgst = parseFloat((newValue / 2).toFixed(2));
-      } else if (fieldName === 'sgst' || fieldName === 'cgst') {
-        product.sgst = newValue;
-        product.cgst = newValue;
-        product.gstTotal = newValue * 2;
-        product.gst_percent = newValue * 2;
-      }
+        // Synchronize tax fields
+        if (fieldName === 'gstTotal' || fieldName === 'gst_percent' || fieldName === 'tax') {
+          product.gstTotal = newValue;
+          product.gst_percent = newValue;
+          product.sgst = parseFloat((newValue / 2).toFixed(2));
+          product.cgst = parseFloat((newValue / 2).toFixed(2));
+        } else if (fieldName === 'sgst' || fieldName === 'cgst') {
+          product.sgst = newValue;
+          product.cgst = newValue;
+          product.gstTotal = newValue * 2;
+          product.gst_percent = newValue * 2;
+        }
 
+        this.renderEditProductList();
+        this.updateEditBillSummary();
+      };
+
+      input.addEventListener('blur', saveEdit);
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') saveEdit();
+      });
+    }
+
+    deleteEditProductFromBill(productId) {
+      this.editBillProducts = this.editBillProducts.filter(p => p.id !== productId);
       this.renderEditProductList();
       this.updateEditBillSummary();
-    };
+    }
 
-    input.addEventListener('blur', saveEdit);
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') saveEdit();
-    });
-  }
+    updateEditBillSummary() {
+      let totalProducts = this.editBillProducts.length;
+      let totalQty = 0;
+      let totalAmount = 0;
+      let totalDiscount = 0;
+      let totalSGST = 0;
+      let totalCGST = 0;
+      let totalGST = 0;
 
-  deleteEditProductFromBill(productId) {
-    this.editBillProducts = this.editBillProducts.filter(p => p.id !== productId);
-    this.renderEditProductList();
-    this.updateEditBillSummary();
-  }
+      // Use BillCalculator for consistent calculations (matching backend logic)
+      this.editBillProducts.forEach(product => {
+        totalQty += parseInt(product.qty) || 1;
 
-  updateEditBillSummary() {
-    let totalProducts = this.editBillProducts.length;
-    let totalQty = 0;
-    let totalAmount = 0;
-    let totalDiscount = 0;
-    let totalSGST = 0;
-    let totalCGST = 0;
-    let totalGST = 0;
+        // Calculate using BillCalculator for consistency
+        const calculated = BillCalculator.calculateLineItem({
+          rate: parseFloat(product.rate || product.mrp || 0),
+          mrp: parseFloat(product.mrp || product.rate || 0),
+          qty: parseInt(product.qty || 1),
+          disc1: parseFloat(product.disc1 || 0),      // PERCENTAGE from API
+          disc2: parseFloat(product.disc2 || 0),      // PERCENTAGE from API
+          sgst: parseFloat(product.sgst || 0),
+          cgst: parseFloat(product.cgst || 0),
+          gstTotal: parseFloat(product.gstTotal !== undefined ? product.gstTotal : (product.gst_percent !== undefined ? product.gst_percent : 0)),
+          gst_reverse: product.gst_reverse || false
+        });
 
-    // Use BillCalculator for consistent calculations (matching backend logic)
-    this.editBillProducts.forEach(product => {
-      totalQty += parseInt(product.qty) || 1;
-
-      // Calculate using BillCalculator for consistency
-      const calculated = BillCalculator.calculateLineItem({
-        rate: parseFloat(product.rate || product.mrp || 0),
-        mrp: parseFloat(product.mrp || product.rate || 0),
-        qty: parseInt(product.qty || 1),
-        disc1: parseFloat(product.disc1 || 0),      // PERCENTAGE from API
-        disc2: parseFloat(product.disc2 || 0),      // PERCENTAGE from API
-        sgst: parseFloat(product.sgst || 0),
-        cgst: parseFloat(product.cgst || 0),
-        gstTotal: parseFloat(product.gstTotal !== undefined ? product.gstTotal : (product.gst_percent !== undefined ? product.gst_percent : 0)),
-        gst_reverse: product.gst_reverse || false
+        totalAmount += calculated.amount;
+        totalDiscount += calculated.discount_1_amount + calculated.discount_2_amount;
+        totalSGST += calculated.sgst_amount;
+        totalCGST += calculated.cgst_amount;
+        totalGST += calculated.gst_amount;
       });
 
-      totalAmount += calculated.amount;
-      totalDiscount += calculated.discount_1_amount + calculated.discount_2_amount;
-      totalSGST += calculated.sgst_amount;
-      totalCGST += calculated.cgst_amount;
-      totalGST += calculated.gst_amount;
-    });
+      const subtotal = totalAmount;
+      const amountAfterDiscount = subtotal - totalDiscount;
+      const amountWithTax = amountAfterDiscount + totalGST;
+      const roundingOff = Math.round(amountWithTax) - amountWithTax;
+      const grandTotal = Math.round(amountWithTax);
 
-    const subtotal = totalAmount;
-    const amountAfterDiscount = subtotal - totalDiscount;
-    const amountWithTax = amountAfterDiscount + totalGST;
-    const roundingOff = Math.round(amountWithTax) - amountWithTax;
-    const grandTotal = Math.round(amountWithTax);
+      const updateElement = (id, value) => {
+        const elem = document.getElementById(id);
+        if (elem) elem.textContent = value;
+      };
 
-    const updateElement = (id, value) => {
-      const elem = document.getElementById(id);
-      if (elem) elem.textContent = value;
-    };
+      updateElement('editSummaryProductCount', totalProducts);
+      updateElement('editSummaryTotalQty', totalQty);
+      updateElement('editSummarySubtotal', '₹' + subtotal.toFixed(2));
+      updateElement('editSummaryDiscount', '₹' + totalDiscount.toFixed(2));
+      updateElement('editSummarySGST', '₹' + totalSGST.toFixed(2));
+      updateElement('editSummaryCGST', '₹' + totalCGST.toFixed(2));
 
-    updateElement('editSummaryProductCount', totalProducts);
-    updateElement('editSummaryTotalQty', totalQty);
-    updateElement('editSummarySubtotal', '₹' + subtotal.toFixed(2));
-    updateElement('editSummaryDiscount', '₹' + totalDiscount.toFixed(2));
-    updateElement('editSummarySGST', '₹' + totalSGST.toFixed(2));
-    updateElement('editSummaryCGST', '₹' + totalCGST.toFixed(2));
-    
-    if (roundingOff !== 0) {
-      updateElement('editSummaryRoundingOff', '₹' + roundingOff.toFixed(2));
+      if (roundingOff !== 0) {
+        updateElement('editSummaryRoundingOff', '₹' + roundingOff.toFixed(2));
+      }
+
+      updateElement('editSummaryGrandTotal', '₹' + grandTotal.toFixed(2));
     }
-    
-    updateElement('editSummaryGrandTotal', '₹' + grandTotal.toFixed(2));
-  }
 
   async updateBillData() {
-    if (this.editBillProducts.length === 0) {
-      alert('Please add at least one product to the bill');
-      return;
-    }
-
-    const customerName = document.getElementById('editCustomerName')?.value;
-    if (!customerName) {
-      alert('Please enter customer name');
-      return;
-    }
-
-    try {
-      // Transform products to API format (calculate all values using BillCalculator logic)
-      const items = this.editBillProducts.map((product, idx) => {
-        const item = {
-          id: product.id || null,  // Include item ID for UPDATE, null for new items
-          quantity: parseInt(product.qty) || 1,
-          rate: parseFloat(product.rate || 0),
-          discount_1: parseFloat(product.disc1 || 0),
-          discount_2: parseFloat(product.disc2 || 0),
-          gst_percent: parseFloat(product.gstTotal || 0),
-          sgst_percent: parseFloat(product.sgst || 0),
-          cgst_percent: parseFloat(product.cgst || 0),
-          scheme: product.scheme || null,
-          product_id: product.product_id,
-          variant_id: product.variant_id,
-          batch_id: product.batch_id,
-          product_name: product.name || product.product_name,
-          pack_value: product.pack || product.pack_value,
-          pack_type: product.pack_type,
-          batch_no: product.batch || product.batch_no,
-          exp_date: product.exp || product.exp_date,
-          mrp: parseFloat(product.mrp || 0),
-          free: parseInt(product.free || 0)
-        };
-        
-        log.debug(`📤 Item ${idx} SENDING to API:`, {
-          id: item.id,
-          qty: item.quantity,
-          rate: item.rate,
-          disc1: item.discount_1,
-          disc2: item.discount_2,
-          gst: item.gst_percent,
-          sgst: item.sgst_percent,
-          cgst: item.cgst_percent
-        });
-        
-        return item;
-      });
-
-      // Debug: Log what's being sent
-      log.debug('📤 SENDING TO UPDATE INVOICE:', {
-        invoiceId: this.currentBillId,
-        itemCount: items.length,
-        firstItem: items.length > 0 ? {
-          gst_percent: items[0].gst_percent,
-          sgst_percent: items[0].sgst_percent,
-          cgst_percent: items[0].cgst_percent,
-          rate: items[0].rate,
-          quantity: items[0].quantity
-        } : 'empty'
-      });
-
-      // Call new robust API to update invoice
-      const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${this.currentBillId}`;
-      const response = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, notes: null })
-      });
-      
-      const result = await response.json();
-      
-      if (result.success || result.invoice_id) {
-        this.showNotification('✓ Bill Updated Successfully!', 'success');
-        this.clearEditBillForm();
-        this.billingApp.switchView('edit');
-      } else {
-        alert('Failed to update bill: ' + (result.error || 'Unknown error'));
+      if (this.editBillProducts.length === 0) {
+        alert('Please add at least one product to the bill');
+        return;
       }
-    } catch (error) {
-      log.error('Error updating bill:', error);
-      alert('Failed to update bill: ' + error.message);
-    }
-  }
 
-  clearEditBillForm() {
-    if (document.getElementById('editBillDateTime')) {
-      document.getElementById('editBillDateTime').value = this.formatDateTimeForInput(new Date());
-      document.getElementById('editCustomerName').value = '';
-      this.editBillProducts = [];
-      this.renderEditProductList();
-      this.updateEditBillSummary();
-      this.clearEditProductForm();
+      const customerName = document.getElementById('editCustomerName')?.value;
+      if (!customerName) {
+        alert('Please enter customer name');
+        return;
+      }
+
+      try {
+        // Transform products to API format (calculate all values using BillCalculator logic)
+        const items = this.editBillProducts.map((product, idx) => {
+          const item = {
+            id: product.id || null,  // Include item ID for UPDATE, null for new items
+            quantity: parseInt(product.qty) || 1,
+            rate: parseFloat(product.rate || 0),
+            discount_1: parseFloat(product.disc1 || 0),
+            discount_2: parseFloat(product.disc2 || 0),
+            gst_percent: parseFloat(product.gstTotal || 0),
+            sgst_percent: parseFloat(product.sgst || 0),
+            cgst_percent: parseFloat(product.cgst || 0),
+            scheme: product.scheme || null,
+            product_id: product.product_id,
+            variant_id: product.variant_id,
+            batch_id: product.batch_id,
+            product_name: product.name || product.product_name,
+            pack_value: product.pack || product.pack_value,
+            pack_type: product.pack_type,
+            batch_no: product.batch || product.batch_no,
+            exp_date: product.exp || product.exp_date,
+            mrp: parseFloat(product.mrp || 0),
+          free: parseInt(product.free || 0),
+            gst_reverse: Boolean(product.gst_reverse)
+          };
+
+          log.debug(`📤 Item ${idx} SENDING to API:`, {
+            id: item.id,
+            qty: item.quantity,
+            rate: item.rate,
+            disc1: item.discount_1,
+            disc2: item.discount_2,
+            gst: item.gst_percent,
+            sgst: item.sgst_percent,
+            cgst: item.cgst_percent
+          });
+
+          return item;
+        });
+
+        // Debug: Log what's being sent
+        log.debug('📤 SENDING TO UPDATE INVOICE:', {
+          invoiceId: this.currentBillId,
+          itemCount: items.length,
+          firstItem: items.length > 0 ? {
+            gst_percent: items[0].gst_percent,
+            sgst_percent: items[0].sgst_percent,
+            cgst_percent: items[0].cgst_percent,
+            rate: items[0].rate,
+            quantity: items[0].quantity
+          } : 'empty'
+        });
+
+        // Call new robust API to update invoice
+        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/invoices/${this.currentBillId}`;
+        const response = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items, notes: null })
+        });
+
+        const result = await response.json();
+
+        if (result.success || result.invoice_id) {
+          this.showNotification('✓ Bill Updated Successfully!', 'success');
+          this.clearEditBillForm();
+          this.billingApp.switchView('edit');
+        } else {
+          alert('Failed to update bill: ' + (result.error || 'Unknown error'));
+        }
+      } catch (error) {
+        log.error('Error updating bill:', error);
+        alert('Failed to update bill: ' + error.message);
+      }
     }
-  }
+
+    clearEditBillForm() {
+      if (document.getElementById('editBillDateTime')) {
+        document.getElementById('editBillDateTime').value = this.formatDateTimeForInput(new Date());
+        document.getElementById('editCustomerName').value = '';
+        this.editBillProducts = [];
+        this.renderEditProductList();
+        this.updateEditBillSummary();
+        this.clearEditProductForm();
+      }
+    }
 
   /**
    * Open edit modal for a payment or credit note
    */
   async openPaymentEditModal(paymentId) {
-    try {
-      // Fetch the payment/credit note details
-      const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${paymentId}`;
-      const response = await fetch(apiUrl);
-      if (!response.ok) {
-        throw new Error('Failed to fetch payment details');
-      }
+      try {
+        // Fetch the payment/credit note details
+        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments?id=${paymentId}`;
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch payment details');
+        }
 
-      const payments = await response.json();
-      const payment = payments[0];
+        const payments = await response.json();
+        const payment = payments[0];
 
-      if (!payment) {
-        this.showNotification('Payment not found', 'error');
-        return;
-      }
+        if (!payment) {
+          this.showNotification('Payment not found', 'error');
+          return;
+        }
 
-      const modal = document.getElementById('editPaymentModal');
-      const modalTitle = document.getElementById('editModalTitle');
-      const customerNameSpan = document.getElementById('editCustomerName');
-      const transactionId = document.getElementById('editTransactionId');
-      const paymentFields = document.getElementById('editPaymentFields');
-      const creditFields = document.getElementById('editCreditNoteFields');
+        const modal = document.getElementById('editPaymentModal');
+        const modalTitle = document.getElementById('editModalTitle');
+        const customerNameSpan = document.getElementById('editCustomerName');
+        const transactionId = document.getElementById('editTransactionId');
+        const paymentFields = document.getElementById('editPaymentFields');
+        const creditFields = document.getElementById('editCreditNoteFields');
 
-      // Set customer name and transaction ID
-      customerNameSpan.textContent = payment.customer_name || 'Unknown';
-      transactionId.textContent = `#${payment.id}`;
+        // Set customer name and transaction ID
+        customerNameSpan.textContent = payment.customer_name || 'Unknown';
+        transactionId.textContent = `#${payment.id}`;
 
-      // Store payment ID for saving later
-      this.currentEditPaymentId = payment.id;
-      this.currentEditPaymentType = payment.type;
+        // Store payment ID for saving later
+        this.currentEditPaymentId = payment.id;
+        this.currentEditPaymentType = payment.type;
 
-      if (payment.type === 'PAYMENT') {
-        // Show payment fields, hide credit note fields
-        paymentFields.style.display = 'block';
-        creditFields.style.display = 'none';
-        modalTitle.textContent = 'Edit Payment';
+        if (payment.type === 'PAYMENT') {
+          // Show payment fields, hide credit note fields
+          paymentFields.style.display = 'block';
+          creditFields.style.display = 'none';
+          modalTitle.textContent = 'Edit Payment';
 
-        // Populate payment fields
-        document.getElementById('editAmount').value = payment.amount || 0;
-        document.getElementById('editPaymentMethod').value = payment.payment_medium || '';
-        
-        // Handle payment date - ensure proper format
-        let paymentDate = new Date().toISOString().split('T')[0];
-        if (payment.payment_date) {
-          // If it's already a date string like "2026-02-25"
-          if (payment.payment_date.includes('T')) {
-            paymentDate = payment.payment_date.split('T')[0];
+          // Populate payment fields
+          document.getElementById('editAmount').value = payment.amount || 0;
+          document.getElementById('editPaymentMethod').value = payment.payment_medium || '';
+
+          // Handle payment date - ensure proper format
+          let paymentDate = new Date().toISOString().split('T')[0];
+          if (payment.payment_date) {
+            // If it's already a date string like "2026-02-25"
+            if (payment.payment_date.includes('T')) {
+              paymentDate = payment.payment_date.split('T')[0];
+            } else {
+              paymentDate = payment.payment_date;
+            }
+          }
+          document.getElementById('editPaymentDate').value = paymentDate;
+
+          document.getElementById('editReference').value = payment.reference_number || '';
+          document.getElementById('editPaymentNotes').value = payment.notes || '';
+
+        } else if (payment.type === 'CREDIT_NOTE') {
+          // Show credit note fields, hide payment fields
+          paymentFields.style.display = 'none';
+          creditFields.style.display = 'block';
+          modalTitle.textContent = 'Edit Credit Note';
+
+          // Populate credit note fields
+          document.getElementById('editCreditAmount').value = payment.credit_amount || 0;
+          document.getElementById('editCreditReason').value = payment.reason || '';
+
+          // Handle credit date - ensure proper format
+          let creditDate = new Date().toISOString().split('T')[0];
+          if (payment.payment_date) {
+            // If it's already a date string like "2026-02-25"
+            if (payment.payment_date.includes('T')) {
+              creditDate = payment.payment_date.split('T')[0];
+            } else {
+              creditDate = payment.payment_date;
+            }
+          }
+          document.getElementById('editCreditDate').value = creditDate;
+          document.getElementById('editCreditReference').value = payment.reference_number || '';
+          document.getElementById('editCreditNotes').value = payment.notes || '';
+
+          const attachPreview = document.getElementById('editAttachmentPreviewContainer');
+          const attachImg = document.getElementById('editAttachmentPreviewImg');
+          const existAttach = document.getElementById('existingCreditAttachment');
+          const attachInput = document.getElementById('editCreditAttachment');
+
+          if (attachInput) {
+            attachInput.value = '';
+            attachInput.dataset.compressedData = '';
+          }
+
+          if (payment.attachment_data) {
+            if (existAttach) existAttach.value = payment.attachment_data;
+            if (attachImg) attachImg.src = payment.attachment_data;
+            if (attachPreview) attachPreview.style.display = 'block';
           } else {
-            paymentDate = payment.payment_date;
+            if (existAttach) existAttach.value = '';
+            if (attachPreview) attachPreview.style.display = 'none';
           }
         }
-        document.getElementById('editPaymentDate').value = paymentDate;
-        
-        document.getElementById('editReference').value = payment.reference_number || '';
-        document.getElementById('editPaymentNotes').value = payment.notes || '';
 
-      } else if (payment.type === 'CREDIT_NOTE') {
-        // Show credit note fields, hide payment fields
-        paymentFields.style.display = 'none';
-        creditFields.style.display = 'block';
-        modalTitle.textContent = 'Edit Credit Note';
+        // Show modal
+        modal.classList.remove('hidden');
 
-        // Populate credit note fields
-        document.getElementById('editCreditAmount').value = payment.credit_amount || 0;
-        document.getElementById('editCreditReason').value = payment.reason || '';
-        
-        // Handle credit date - ensure proper format
-        let creditDate = new Date().toISOString().split('T')[0];
-        if (payment.payment_date) {
-          // If it's already a date string like "2026-02-25"
-          if (payment.payment_date.includes('T')) {
-            creditDate = payment.payment_date.split('T')[0];
-          } else {
-            creditDate = payment.payment_date;
-          }
-        }
-        document.getElementById('editCreditDate').value = creditDate;
-        document.getElementById('editCreditReference').value = payment.reference_number || '';
-        document.getElementById('editCreditNotes').value = payment.notes || '';
-        
-        const attachPreview = document.getElementById('editAttachmentPreviewContainer');
-        const attachImg = document.getElementById('editAttachmentPreviewImg');
-        const existAttach = document.getElementById('existingCreditAttachment');
-        const attachInput = document.getElementById('editCreditAttachment');
-        
-        if (attachInput) {
-          attachInput.value = '';
-          attachInput.dataset.compressedData = '';
-        }
-        
-        if (payment.attachment_data) {
-          if (existAttach) existAttach.value = payment.attachment_data;
-          if (attachImg) attachImg.src = payment.attachment_data;
-          if (attachPreview) attachPreview.style.display = 'block';
-        } else {
-          if (existAttach) existAttach.value = '';
-          if (attachPreview) attachPreview.style.display = 'none';
-        }
+      } catch (error) {
+        log.error('Error opening edit modal:', error);
+        alert('Error loading payment details: ' + error.message);
       }
-
-      // Show modal
-      modal.classList.remove('hidden');
-
-    } catch (error) {
-      log.error('Error opening edit modal:', error);
-      alert('Error loading payment details: ' + error.message);
     }
-  }
 
   /**
    * Save payment/credit note edit
    */
   async savePaymentEdit() {
-    try {
-      if (!this.currentEditPaymentId) {
-        alert('Error: No payment selected for editing');
-        return;
-      }
-
-      const paymentId = this.currentEditPaymentId;
-      const paymentType = this.currentEditPaymentType;
-      const payload = {};
-
-      if (paymentType === 'PAYMENT') {
-        // Validate required fields
-        const amount = parseFloat(document.getElementById('editAmount').value);
-        if (!amount || amount <= 0) {
-          this.showNotification('Please enter a valid amount', 'warning');
+      try {
+        if (!this.currentEditPaymentId) {
+          alert('Error: No payment selected for editing');
           return;
         }
 
-        // Format date properly - convert from datetime-local to ISO date
-        let paymentDate = document.getElementById('editPaymentDate').value;
-        if (paymentDate && paymentDate.includes('T')) {
-          paymentDate = paymentDate.split('T')[0]; // Extract just the date part
-        }
-        if (!paymentDate) {
-          paymentDate = new Date().toISOString().split('T')[0];
-        }
+        const paymentId = this.currentEditPaymentId;
+        const paymentType = this.currentEditPaymentType;
+        const payload = {};
 
-        payload.amount = amount;
-        payload.payment_medium = document.getElementById('editPaymentMethod').value || 'cash';
-        payload.payment_date = paymentDate;
-        payload.reference_number = document.getElementById('editReference').value || null;
-        payload.notes = document.getElementById('editPaymentNotes').value || null;
+        if (paymentType === 'PAYMENT') {
+          // Validate required fields
+          const amount = parseFloat(document.getElementById('editAmount').value);
+          if (!amount || amount <= 0) {
+            this.showNotification('Please enter a valid amount', 'warning');
+            return;
+          }
 
-      } else if (paymentType === 'CREDIT_NOTE') {
-        // Validate required fields
-        const creditAmount = parseFloat(document.getElementById('editCreditAmount').value);
-        if (!creditAmount || creditAmount <= 0) {
-          this.showNotification('Please enter a valid credit amount', 'warning');
-          return;
-        }
+          // Format date properly - convert from datetime-local to ISO date
+          let paymentDate = document.getElementById('editPaymentDate').value;
+          if (paymentDate && paymentDate.includes('T')) {
+            paymentDate = paymentDate.split('T')[0]; // Extract just the date part
+          }
+          if (!paymentDate) {
+            paymentDate = new Date().toISOString().split('T')[0];
+          }
 
-        // Format date properly - convert from datetime-local to ISO date
-        let creditDate = document.getElementById('editCreditDate').value;
-        if (creditDate && creditDate.includes('T')) {
-          creditDate = creditDate.split('T')[0]; // Extract just the date part
-        }
-        if (!creditDate) {
-          creditDate = new Date().toISOString().split('T')[0];
-        }
+          payload.amount = amount;
+          payload.payment_medium = document.getElementById('editPaymentMethod').value || 'cash';
+          payload.payment_date = paymentDate;
+          payload.reference_number = document.getElementById('editReference').value || null;
+          payload.notes = document.getElementById('editPaymentNotes').value || null;
 
-        payload.credit_amount = creditAmount;
-        payload.reason = document.getElementById('editCreditReason').value || 'other';
-        payload.payment_date = creditDate;
-        payload.reference_number = document.getElementById('editCreditReference').value || null;
-        payload.notes = document.getElementById('editCreditNotes').value || null;
-        
-        const attachInput = document.getElementById('editCreditAttachment');
-        if (attachInput && attachInput.dataset.compressedData) {
-          payload.attachment_data = attachInput.dataset.compressedData;
-        } else if (attachInput && attachInput.files && attachInput.files.length > 0) {
-          // Fallback
-          const file = attachInput.files[0];
-          payload.attachment_data = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(file);
-          });
-        } else {
-          const existAttach = document.getElementById('existingCreditAttachment');
-          if (existAttach && existAttach.value) {
-            payload.attachment_data = existAttach.value;
+        } else if (paymentType === 'CREDIT_NOTE') {
+          // Validate required fields
+          const creditAmount = parseFloat(document.getElementById('editCreditAmount').value);
+          if (!creditAmount || creditAmount <= 0) {
+            this.showNotification('Please enter a valid credit amount', 'warning');
+            return;
+          }
+
+          // Format date properly - convert from datetime-local to ISO date
+          let creditDate = document.getElementById('editCreditDate').value;
+          if (creditDate && creditDate.includes('T')) {
+            creditDate = creditDate.split('T')[0]; // Extract just the date part
+          }
+          if (!creditDate) {
+            creditDate = new Date().toISOString().split('T')[0];
+          }
+
+          payload.credit_amount = creditAmount;
+          payload.reason = document.getElementById('editCreditReason').value || 'other';
+          payload.payment_date = creditDate;
+          payload.reference_number = document.getElementById('editCreditReference').value || null;
+          payload.notes = document.getElementById('editCreditNotes').value || null;
+
+          const attachInput = document.getElementById('editCreditAttachment');
+          if (attachInput && attachInput.dataset.compressedData) {
+            payload.attachment_data = attachInput.dataset.compressedData;
+          } else if (attachInput && attachInput.files && attachInput.files.length > 0) {
+            // Fallback
+            const file = attachInput.files[0];
+            payload.attachment_data = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(file);
+            });
           } else {
-             payload.attachment_data = null; // Explicitly send null if removed
+            const existAttach = document.getElementById('existingCreditAttachment');
+            if (existAttach && existAttach.value) {
+              payload.attachment_data = existAttach.value;
+            } else {
+              payload.attachment_data = null; // Explicitly send null if removed
+            }
           }
         }
+
+        log.debug('📤 Sending update payload:', payload);
+
+        // Send update to API
+        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
+        const response = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to update payment');
+        }
+
+        const result = await response.json();
+        log.debug('✓ Update successful:', result);
+
+        this.showNotification('✓ Transaction updated successfully', 'success');
+
+        // Reload data from API
+        if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
+          await this.billingApp.loadBillingDataFromAPI();
+        }
+
+        // Go back to list view
+        this.renderEditBillListView();
+
+      } catch (error) {
+        log.error('❌ Error saving payment edit:', error);
+        this.showNotification('Error updating transaction: ' + error.message, 'error');
       }
-
-      log.debug('📤 Sending update payload:', payload);
-
-      // Send update to API
-      const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
-      const response = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to update payment');
-      }
-
-      const result = await response.json();
-      log.debug('✓ Update successful:', result);
-
-      this.showNotification('✓ Transaction updated successfully', 'success');
-
-      // Reload data from API
-      if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI();
-      }
-
-      // Go back to list view
-      this.renderEditBillListView();
-
-    } catch (error) {
-      log.error('❌ Error saving payment edit:', error);
-      this.showNotification('Error updating transaction: ' + error.message, 'error');
     }
-  }
 
   /**
    * Delete a payment or credit note by ID
    */
   async deletePaymentItem(paymentId) {
-    if (!confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
-      return;
+      if (!confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
+        return;
+      }
+
+      try {
+        // Optimistic removal from in-memory billing data
+        if (this.billingApp?.billingData?.payments) {
+          this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
+            p => String(p.id) !== String(paymentId)
+          );
+        }
+
+        const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
+        const response = await fetch(apiUrl, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to delete payment');
+        }
+
+        log.debug('✓ Delete successful');
+        if (this.billingApp?.showNotification) {
+          this.billingApp.showNotification('Transaction deleted successfully', 'success');
+        }
+
+        if (this.billingApp?.api) {
+          this.billingApp.api.invalidateCache('/billing');
+        }
+
+        if (typeof window !== 'undefined' && window.CoreDataBus) {
+          window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId });
+          window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
+        }
+
+        // Reload data from API with forceRefresh
+        if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
+          await this.billingApp.loadBillingDataFromAPI({ forceRefresh: true });
+        }
+
+        // Sync ledger if mounted
+        const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
+        if (ledgerInstance) {
+          await ledgerInstance.syncWithServer(true);
+        }
+
+        // Refresh payment-credit view if mounted
+        const paymentView = this.billingApp?._subviewInstances?.get('payment-credit');
+        if (paymentView && typeof paymentView.loadRecentTransactions === 'function') {
+          paymentView.billingData = this.billingApp.billingData;
+          paymentView.loadRecentTransactions();
+          paymentView.updateStatsDisplay?.();
+        }
+
+        // Go back to list view
+        this.renderEditBillListView();
+
+      } catch (error) {
+        log.error('❌ Error deleting payment:', error);
+        this.showNotification('Error deleting transaction: ' + error.message, 'error');
+      }
     }
 
-    try {
-      // Optimistic removal from in-memory billing data
-      if (this.billingApp?.billingData?.payments) {
-        this.billingApp.billingData.payments = this.billingApp.billingData.payments.filter(
-          p => String(p.id) !== String(paymentId)
-        );
+    /**
+     * Delete a payment or credit note (from edit view - wrapper)
+     */
+    deletePayment() {
+      if (!this.currentEditPaymentId) {
+        alert('Error: No payment selected for deletion');
+        return;
       }
-
-      const apiUrl = `${this.getApiBaseUrl()}/api/billing/invoices/payments/${paymentId}`;
-      const response = await fetch(apiUrl, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete payment');
-      }
-
-      log.debug('✓ Delete successful');
-      if (this.billingApp?.showNotification) {
-        this.billingApp.showNotification('Transaction deleted successfully', 'success');
-      }
-
-      if (this.billingApp?.api) {
-        this.billingApp.api.invalidateCache('/billing');
-      }
-
-      if (typeof window !== 'undefined' && window.CoreDataBus) {
-        window.CoreDataBus.publish('billing:payment', 'deleted', { id: paymentId });
-        window.CoreDataBus.publish('billing:ledger', 'updated', { id: paymentId });
-      }
-
-      // Reload data from API with forceRefresh
-      if (this.billingApp && this.billingApp.loadBillingDataFromAPI) {
-        await this.billingApp.loadBillingDataFromAPI({ forceRefresh: true });
-      }
-
-      // Sync ledger if mounted
-      const ledgerInstance = this.billingApp?._subviewInstances?.get('ledger');
-      if (ledgerInstance) {
-        await ledgerInstance.syncWithServer(true);
-      }
-
-      // Refresh payment-credit view if mounted
-      const paymentView = this.billingApp?._subviewInstances?.get('payment-credit');
-      if (paymentView && typeof paymentView.loadRecentTransactions === 'function') {
-        paymentView.billingData = this.billingApp.billingData;
-        paymentView.loadRecentTransactions();
-        paymentView.updateStatsDisplay?.();
-      }
-
-      // Go back to list view
-      this.renderEditBillListView();
-
-    } catch (error) {
-      log.error('❌ Error deleting payment:', error);
-      this.showNotification('Error deleting transaction: ' + error.message, 'error');
+      this.deletePaymentItem(this.currentEditPaymentId);
     }
-  }
+    showProductMasterUpdateModal(product, field, oldValue, newValue) {
+      return new Promise((resolve) => {
+        const fieldLabels = {
+          'mrp': 'MRP',
+          'pack': 'Pack Size',
+          'batch': 'Batch Number',
+          'exp': 'Expiry Date'
+        };
 
-  /**
-   * Delete a payment or credit note (from edit view - wrapper)
-   */
-  deletePayment() {
-    if (!this.currentEditPaymentId) {
-      alert('Error: No payment selected for deletion');
-      return;
-    }
-    this.deletePaymentItem(this.currentEditPaymentId);
-  }
-  showProductMasterUpdateModal(product, field, oldValue, newValue) {
-    return new Promise((resolve) => {
-      const fieldLabels = {
-        'mrp': 'MRP',
-        'pack': 'Pack Size',
-        'batch': 'Batch Number',
-        'exp': 'Expiry Date'
-      };
-      
-      const fieldName = fieldLabels[field] || field;
-      const modal = document.createElement('div');
-      modal.className = 'mrp-update-modal-overlay';
-      modal.innerHTML = `
+        const fieldName = fieldLabels[field] || field;
+        const modal = document.createElement('div');
+        modal.className = 'mrp-update-modal-overlay';
+        modal.innerHTML = `
         <div class="mrp-update-modal">
           <div class="mrp-modal-header">
             <h3>Update Product Master</h3>
@@ -3081,145 +3086,145 @@ class EditBillsPayments {
         </div>
       `;
 
-      this.viewContainer.appendChild(modal);
+        this.viewContainer.appendChild(modal);
 
-      const btnOneTime = modal.querySelector('.btn-mrp-one-time');
-      const btnUpdateDB = modal.querySelector('.btn-mrp-update-db');
-      const btnCancel = modal.querySelector('.btn-mrp-cancel');
-      const closeBtn = modal.querySelector('.mrp-modal-close');
+        const btnOneTime = modal.querySelector('.btn-mrp-one-time');
+        const btnUpdateDB = modal.querySelector('.btn-mrp-update-db');
+        const btnCancel = modal.querySelector('.btn-mrp-cancel');
+        const closeBtn = modal.querySelector('.mrp-modal-close');
 
-      const cleanup = () => modal.remove();
+        const cleanup = () => modal.remove();
 
-      btnOneTime.addEventListener('click', () => {
-        cleanup();
-        resolve('one-time');
-      });
+        btnOneTime.addEventListener('click', () => {
+          cleanup();
+          resolve('one-time');
+        });
 
-      btnUpdateDB.addEventListener('click', () => {
-        cleanup();
-        resolve('update-db');
-      });
+        btnUpdateDB.addEventListener('click', () => {
+          cleanup();
+          resolve('update-db');
+        });
 
-      btnCancel.addEventListener('click', () => {
-        cleanup();
-        resolve('cancel');
-      });
-
-      closeBtn.addEventListener('click', () => {
-        cleanup();
-        resolve('cancel');
-      });
-
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
+        btnCancel.addEventListener('click', () => {
           cleanup();
           resolve('cancel');
-        }
+        });
+
+        closeBtn.addEventListener('click', () => {
+          cleanup();
+          resolve('cancel');
+        });
+
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            cleanup();
+            resolve('cancel');
+          }
+        });
       });
-    });
-  }
+    }
 
   async updateProductDatabase(product, field, newValue) {
-    if (!this.apiEnabled) {
-      alert('Product database updates require API connection');
-      return;
-    }
-
-    try {
-      log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
-      
-      // Get IDs
-      let variantId = product.variant_id || (this.currentEditProduct?.variant_id);
-      let batchId = product.batch_id || (this.currentEditProduct?.batch_id);
-      let batchNo = product.batch || product.batch_no || (this.currentEditProduct?.batch_no);
-      let productId = product.product_id || (this.currentEditProduct?.id || this.currentEditProduct?.product_id);
-
-      // Check if we need to REPAIR the product metadata first
-      if (!variantId || !batchNo) {
-        log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
-        const repairData = await this.showRepairProductMetadataModal(product);
-        
-        if (!repairData) {
-          log.debug('❌ Repair cancelled by user.');
-          return;
-        }
-
-        // CREATE missing metadata via API
-        if (!variantId) {
-          log.debug('🆕 Creating new variant...');
-          const varRes = await fetch('/api/products/variants', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              product_id: productId,
-              pack_size_value: repairData.pack_value,
-              pack_size_type: repairData.pack_type
-            })
-          });
-          if (!varRes.ok) throw new Error('Failed to create variant');
-          const varData = await varRes.json();
-          variantId = varData.id;
-          log.debug('✅ Variant created:', variantId);
-        }
-
-        if (!batchId || !batchNo) {
-          log.debug('🆕 Creating new batch...');
-          const batRes = await fetch('/api/products/batches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              variant_id: variantId,
-              batch_no: repairData.batch_no,
-              mrp: product.mrp || 0
-            })
-          });
-          if (!batRes.ok) throw new Error('Failed to create batch');
-          const batData = await batRes.json();
-          batchId = batData.id;
-          batchNo = repairData.batch_no;
-          log.debug('✅ Batch created:', batchId);
-        }
-
-        // Update local object and currentEditProduct for subsequent use
-        if (this.currentEditProduct) {
-          this.currentEditProduct.variant_id = variantId;
-          this.currentEditProduct.batch_id = batchId;
-          this.currentEditProduct.batch_no = batchNo;
-        }
-        product.variant_id = variantId;
-        product.batch_id = batchId;
-        product.batch = batchNo;
+      if (!this.apiEnabled) {
+        alert('Product database updates require API connection');
+        return;
       }
 
-      // Now proceed with the original update
-      if (field === 'mrp') {
-        await this.updateMRPinDatabase(product, newValue);
-      } else if (field === 'pack') {
-        if (variantId) {
-          await this.api.updateVariant(variantId, {
-            pack_size_value: newValue
-          });
-          alert(`✓ Pack size updated in database to ${newValue}`);
-        }
-      } else if (field === 'batch') {
-        if (batchId) {
-          await this.api.updateBatch(batchId, {
-            batch_no: newValue
-          });
-          alert(`✓ Batch number updated in database to ${newValue}`);
-        }
-      }
-    } catch (error) {
-      log.error('❌ Failed to update product database:', error);
-      alert(`Failed to update database: ${error.message}`);
-    }
-  }
+      try {
+        log.debug(`🔄 Updating product master: ${field} -> ${newValue}`, product);
 
-  showRepairProductMetadataModal(product) {
-    return new Promise((resolve) => {
-      const modal = document.createElement('div');
-      modal.className = 'mrp-update-modal-overlay';
-      modal.innerHTML = `
+        // Get IDs
+        let variantId = product.variant_id || (this.currentEditProduct?.variant_id);
+        let batchId = product.batch_id || (this.currentEditProduct?.batch_id);
+        let batchNo = product.batch || product.batch_no || (this.currentEditProduct?.batch_no);
+        let productId = product.product_id || (this.currentEditProduct?.id || this.currentEditProduct?.product_id);
+
+        // Check if we need to REPAIR the product metadata first
+        if (!variantId || !batchNo) {
+          log.warn('⚠ Missing critical metadata for product update. Triggering Repair Modal...');
+          const repairData = await this.showRepairProductMetadataModal(product);
+
+          if (!repairData) {
+            log.debug('❌ Repair cancelled by user.');
+            return;
+          }
+
+          // CREATE missing metadata via API
+          if (!variantId) {
+            log.debug('🆕 Creating new variant...');
+            const varRes = await fetch('/api/products/variants', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                product_id: productId,
+                pack_size_value: repairData.pack_value,
+                pack_size_type: repairData.pack_type
+              })
+            });
+            if (!varRes.ok) throw new Error('Failed to create variant');
+            const varData = await varRes.json();
+            variantId = varData.id;
+            log.debug('✅ Variant created:', variantId);
+          }
+
+          if (!batchId || !batchNo) {
+            log.debug('🆕 Creating new batch...');
+            const batRes = await fetch('/api/products/batches', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                variant_id: variantId,
+                batch_no: repairData.batch_no,
+                mrp: product.mrp || 0
+              })
+            });
+            if (!batRes.ok) throw new Error('Failed to create batch');
+            const batData = await batRes.json();
+            batchId = batData.id;
+            batchNo = repairData.batch_no;
+            log.debug('✅ Batch created:', batchId);
+          }
+
+          // Update local object and currentEditProduct for subsequent use
+          if (this.currentEditProduct) {
+            this.currentEditProduct.variant_id = variantId;
+            this.currentEditProduct.batch_id = batchId;
+            this.currentEditProduct.batch_no = batchNo;
+          }
+          product.variant_id = variantId;
+          product.batch_id = batchId;
+          product.batch = batchNo;
+        }
+
+        // Now proceed with the original update
+        if (field === 'mrp') {
+          await this.updateMRPinDatabase(product, newValue);
+        } else if (field === 'pack') {
+          if (variantId) {
+            await this.api.updateVariant(variantId, {
+              pack_size_value: newValue
+            });
+            alert(`✓ Pack size updated in database to ${newValue}`);
+          }
+        } else if (field === 'batch') {
+          if (batchId) {
+            await this.api.updateBatch(batchId, {
+              batch_no: newValue
+            });
+            alert(`✓ Batch number updated in database to ${newValue}`);
+          }
+        }
+      } catch (error) {
+        log.error('❌ Failed to update product database:', error);
+        alert(`Failed to update database: ${error.message}`);
+      }
+    }
+
+    showRepairProductMetadataModal(product) {
+      return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'mrp-update-modal-overlay';
+        modal.innerHTML = `
         <div class="mrp-update-modal">
           <div class="mrp-modal-header">
             <h3>Complete Product Setup</h3>
@@ -3260,76 +3265,76 @@ class EditBillsPayments {
         </div>
       `;
 
-      this.viewContainer.appendChild(modal);
+        this.viewContainer.appendChild(modal);
 
-      const btnSave = modal.querySelector('.btn-mrp-update-db');
-      const btnCancel = modal.querySelector('.btn-mrp-cancel');
-      const closeBtn = modal.querySelector('.mrp-modal-close');
+        const btnSave = modal.querySelector('.btn-mrp-update-db');
+        const btnCancel = modal.querySelector('.btn-mrp-cancel');
+        const closeBtn = modal.querySelector('.mrp-modal-close');
 
-      const cleanup = () => modal.remove();
+        const cleanup = () => modal.remove();
 
-      btnSave.addEventListener('click', () => {
-        const pack_value = document.getElementById('repairPackValue').value.trim();
-        const pack_type = document.getElementById('repairPackType').value;
-        const batch_no = document.getElementById('repairBatchNo').value.trim();
+        btnSave.addEventListener('click', () => {
+          const pack_value = document.getElementById('repairPackValue').value.trim();
+          const pack_type = document.getElementById('repairPackType').value;
+          const batch_no = document.getElementById('repairBatchNo').value.trim();
 
-        if (!pack_value || !batch_no) {
-          alert('Pack Value and Batch Number are required');
+          if (!pack_value || !batch_no) {
+            alert('Pack Value and Batch Number are required');
+            return;
+          }
+
+          cleanup();
+          resolve({ pack_value, pack_type, batch_no });
+        });
+
+        btnCancel.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+
+        closeBtn.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+      });
+    }
+
+  async updateMRPinDatabase(product, newMRP) {
+      try {
+        const batchNo = product.batch || product.batch_no || (this.currentEditProduct?.batch_no);
+        const variantId = product.variant_id || (this.currentEditProduct?.variant_id);
+
+        if (!batchNo || !variantId) {
+          alert('Cannot update MRP: Batch info or Variant ID missing');
           return;
         }
 
-        cleanup();
-        resolve({ pack_value, pack_type, batch_no });
-      });
+        const response = await fetch('/api/products/update-mrp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            product_id: product.product_id || (this.currentEditProduct?.id || this.currentEditProduct?.product_id),
+            variant_id: variantId,
+            batch_no: batchNo,
+            mrp: parseFloat(newMRP)
+          })
+        });
 
-      btnCancel.addEventListener('click', () => {
-        cleanup();
-        resolve(null);
-      });
+        if (!response.ok) {
+          throw new Error(`API error: ${response.statusText}`);
+        }
 
-      closeBtn.addEventListener('click', () => {
-        cleanup();
-        resolve(null);
-      });
-    });
-  }
-
-  async updateMRPinDatabase(product, newMRP) {
-    try {
-      const batchNo = product.batch || product.batch_no || (this.currentEditProduct?.batch_no);
-      const variantId = product.variant_id || (this.currentEditProduct?.variant_id);
-      
-      if (!batchNo || !variantId) {
-        alert('Cannot update MRP: Batch info or Variant ID missing');
-        return;
+        const result = await response.json();
+        log.debug('✅ MRP updated in database:', result);
+        alert(`✓ MRP updated in database for batch ${batchNo}`);
+      } catch (error) {
+        log.error('❌ Failed to update MRP in database:', error);
+        alert(`Failed to update MRP in database: ${error.message}`);
       }
-
-      const response = await fetch('/api/products/update-mrp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          product_id: product.product_id || (this.currentEditProduct?.id || this.currentEditProduct?.product_id),
-          variant_id: variantId,
-          batch_no: batchNo,
-          mrp: parseFloat(newMRP)
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      log.debug('✅ MRP updated in database:', result);
-      alert(`✓ MRP updated in database for batch ${batchNo}`);
-    } catch (error) {
-      log.error('❌ Failed to update MRP in database:', error);
-      alert(`Failed to update MRP in database: ${error.message}`);
     }
   }
-}
 
 // Export to global scope
 window.EditBillsPayments = EditBillsPayments;
