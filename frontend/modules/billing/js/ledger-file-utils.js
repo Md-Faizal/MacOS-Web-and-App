@@ -43,74 +43,123 @@ class LedgerFileUtils {
     });
   }
 
+  static async removeHandle(customerName) {
+    if (!customerName) return;
+    try {
+      const db = await this.initDB();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(this.STORE_NAME);
+        const request = store.delete(customerName);
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject(event.target.error);
+      });
+    } catch (err) {
+      console.warn('Failed to remove stale directory handle:', err);
+    }
+  }
+
+  static sanitizeFileName(fileName) {
+    const raw = String(fileName || 'export.pdf').trim();
+    const cleaned = raw.replace(/[<>:"/\\|?*\x00-\x1f]+/g, '_').replace(/[. ]+$/, '');
+    return cleaned || 'export.pdf';
+  }
+
   static async verifyPermission(handle, mode = 'readwrite') {
     if (!handle) return false;
     const options = { mode };
-    // Check if permission was already granted
-    if ((await handle.queryPermission(options)) === 'granted') {
-      return true;
+      try {
+        // Check if permission was already granted
+        if ((await handle.queryPermission(options)) === 'granted') {
+          return true;
+        }
+        // Request permission - MUST be called from an active user gesture
+        if ((await handle.requestPermission(options)) === 'granted') {
+          return true;
+        }
+      } catch (err) {
+        console.warn('Directory handle permission check failed:', err);
+      }
+      return false;
     }
-    // Request permission - MUST be called from a user gesture
-    if ((await handle.requestPermission(options)) === 'granted') {
-      return true;
-    }
-    return false;
-  }
 
   /**
    * Main export handler
    */
   static async exportToLocation(customerName, fileName, blob, options = {}) {
+    const safeFileName = this.sanitizeFileName(fileName);
+    let staleFolderCleared = false;
+
     try {
       // 1. Try to get remembered directory handle (only when we have a customer key)
       if (customerName) {
-        const handle = await this.getHandle(customerName);
-        
-        if (handle) {
-          // Attempt to verify/request permission (requires user gesture context)
-          const hasPermission = await this.verifyPermission(handle);
-          if (hasPermission) {
-            const targetFileName = options.incrementFileName
-              ? await this.getAvailableFileName(handle, fileName)
-              : fileName;
-            const fileHandle = await handle.getFileHandle(targetFileName, { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            return { success: true, folder: handle.name, fileName: targetFileName };
+            try {
+              const handle = await this.getHandle(customerName);
+
+              if (handle) {
+                // Attempt to verify/request permission
+                const hasPermission = await this.verifyPermission(handle);
+                if (hasPermission) {
+                  const targetFileName = options.incrementFileName
+                    ? await this.getAvailableFileName(handle, safeFileName)
+                    : safeFileName;
+                  const fileHandle = await handle.getFileHandle(targetFileName, { create: true });
+                  const writable = await fileHandle.createWritable();
+                  await writable.write(blob);
+                  await writable.close();
+                  return { success: true, folder: handle.name, fileName: targetFileName };
+                }
+              }
+            } catch (dirError) {
+              if (dirError.name === 'AbortError') {
+                return { success: false, cancelled: true };
+              }
+              // Saved folder was deleted, moved, or became inaccessible on disk; purge stale handle and fall through
+              console.warn(`Remembered export directory unavailable for "${customerName}", falling back:`, dirError);
+              if (dirError.name === 'NotFoundError') {
+                await this.removeHandle(customerName);
+                staleFolderCleared = true;
+              }
+            }
           }
+
+          // 2. If no handle OR permission denied OR stale directory OR no customer name, use showSaveFilePicker (Save As)
+          if (window.showSaveFilePicker) {
+            try {
+              const pickerOptions = {
+                suggestedName: safeFileName,
+                types: [{
+                  description: 'PDF Document',
+                  accept: { 'application/pdf': ['.pdf'] },
+                }],
+              };
+
+              const saveHandle = await window.showSaveFilePicker(pickerOptions);
+              const writable = await saveHandle.createWritable();
+              await writable.write(blob);
+              await writable.close();
+              return { success: true, fileName: saveHandle.name || safeFileName, staleFolderCleared };
+            } catch (pickerError) {
+              if (pickerError.name === 'AbortError') {
+                return { success: false, cancelled: true };
+              }
+              // e.g. SecurityError when user activation expired during async PDF generation; degrade to download fallback
+              console.warn('showSaveFilePicker failed, falling back to browser download:', pickerError);
+            }
+          }
+
+          // 3. Absolute fallback: trigger traditional download
+          this.fallbackDownload(safeFileName, blob);
+          return { success: true, fallback: true, fileName: safeFileName, staleFolderCleared };
+
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            return { success: false, cancelled: true };
+          }
+          console.error('Export Error:', error);
+          throw error;
         }
       }
-
-      // 2. If no handle OR permission denied OR no customer name, use showSaveFilePicker (Save As)
-      if (window.showSaveFilePicker) {
-        const pickerOptions = {
-          suggestedName: fileName,
-          types: [{
-            description: 'PDF Document',
-            accept: { 'application/pdf': ['.pdf'] },
-          }],
-        };
-        
-        const saveHandle = await window.showSaveFilePicker(pickerOptions);
-        const writable = await saveHandle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        return { success: true, fileName: saveHandle.name || fileName };
-      }
-
-      // 3. Absolute fallback: trigger traditional download
-      this.fallbackDownload(fileName, blob);
-      return { success: true, fallback: true, fileName };
-      
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        return { success: false, cancelled: true };
-      }
-      console.error('Export Error:', error);
-      throw error;
-    }
-  }
 
   static async getAvailableFileName(directoryHandle, fileName) {
     const extensionIndex = fileName.lastIndexOf('.');
@@ -157,7 +206,7 @@ class LedgerFileUtils {
       console.warn('LedgerFileUtils.pickDirectory: customerName is required to save a folder preference.');
       return null;
     }
-    
+
     try {
       const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
       await this.saveHandle(customerName, handle);
