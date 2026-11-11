@@ -1067,6 +1067,8 @@
   grid-template-columns: 380px 1fr;
   gap: 20px;
   margin-top: 15px;
+  padding: 0 20px 20px 20px;
+  box-sizing: border-box;
 }
 
 @media (max-width: 900px) {
@@ -1330,7 +1332,7 @@
   background: rgba(0, 0, 0, 0.75) !important;
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
-  z-index: 2147483647 !important;
+  z-index: 2147483640 !important;
   display: none !important;
   align-items: center !important;
   justify-content: center !important;
@@ -1355,7 +1357,7 @@
   display: flex !important;
   flex-direction: column !important;
   position: relative !important;
-  z-index: 2147483647 !important;
+  z-index: 1 !important;
   animation: plModalAppear 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -1396,7 +1398,7 @@
   font-size: 22px !important;
   line-height: 1 !important;
   color: #6b7280 !important;
-  cursor: pointer !important;
+  cursor: pointer;
   padding: 0 4px !important;
 }
 
