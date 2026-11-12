@@ -1,9 +1,11 @@
 const createActivityLogger = require('../audit/activity-logger');
 const dataBus = require('../sync/data-bus');
 const { decryptInvoiceLedgerReference } = require('../billing/invoice-ledger-ref');
+const createManifestHandlers = require('./manifest-handlers');
 
-module.exports = function(db) {
+module.exports = function (db) {
   const activityLogger = createActivityLogger(db);
+  const manifestHandlers = createManifestHandlers(db);
 
   // Helper to fetch full order with items and details
   const getFullOrderById = (id) => {
@@ -19,7 +21,7 @@ module.exports = function(db) {
       WHERE o.id = ?
     `);
     const order = orderStmt.get(id);
-    
+
     if (!order) return null;
 
     const itemsStmt = db.prepare(`
@@ -129,7 +131,7 @@ module.exports = function(db) {
         status = 'pending',
         items = []
       } = req.body;
-      
+
       if (!customer_id) {
         return res.status(400).json({ error: 'customer_id is required' });
       }
@@ -160,7 +162,7 @@ module.exports = function(db) {
         // Check for existing order_number to provide idempotence (GLOBAL search)
         const checkStmt = db.prepare('SELECT id, customer_id FROM orders WHERE order_number = ?');
         const existingOrder = checkStmt.get(finalOrderNumber);
-        
+
         if (existingOrder) {
           if (existingOrder.customer_id !== customer_id) {
             return res.status(409).json({ error: `Order number ${finalOrderNumber} is already used by another customer.` });
@@ -275,7 +277,7 @@ module.exports = function(db) {
 
     getOrders: (req, res) => {
       const { customer_id, current_stage, limit = 100, offset = 0 } = req.query;
-      
+
       let sql = `
         SELECT o.*,
                COALESCE(u_creator.role, 'owner') as created_by_role,
@@ -309,12 +311,12 @@ module.exports = function(db) {
 
       try {
         console.log('📋 GET /api/orders - Query:', { sql, params: params.slice(0, -2) });
-        
+
         const stmt = db.prepare(sql);
         const rows = stmt.all(...params);
-        
+
         console.log('📋 GET /api/orders - Results:', { totalRows: rows.length, rows });
-        
+
         // Parse JSON fields and fetch items with variant/batch details
         const orders = rows.map(row => {
           const itemsStmt = db.prepare(`
@@ -326,14 +328,14 @@ module.exports = function(db) {
             WHERE oi.order_id = ?
           `);
           const items = itemsStmt.all(row.id);
-          
+
           return {
             ...row,
             checklist_items: typeof row.checklist_items === 'string' ? JSON.parse(row.checklist_items || '{}') : row.checklist_items,
             items: items
           };
         });
-        
+
         res.json({ data: orders });
       } catch (err) {
         console.error('❌ GET /api/orders - Error:', err);
@@ -491,7 +493,7 @@ module.exports = function(db) {
       try {
         const stmt = db.prepare(sql);
         const result = stmt.run(...values);
-        
+
         if (result.changes === 0) {
           return res.status(404).json({ error: 'Order not found' });
         }
@@ -522,7 +524,7 @@ module.exports = function(db) {
             );
           });
         }
-        
+
         const fullOrder = getFullOrderById(id);
 
         // Audit Log
@@ -559,11 +561,11 @@ module.exports = function(db) {
 
         const deleteOrderStmt = db.prepare('DELETE FROM orders WHERE id = ?');
         const result = deleteOrderStmt.run(id);
-        
+
         if (result.changes === 0) {
           return res.status(404).json({ error: 'Order not found' });
         }
-        
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'orders',
@@ -582,7 +584,7 @@ module.exports = function(db) {
 
     getOrderSummary: (req, res) => {
       const { start_date, end_date, customer_id, current_stage } = req.query;
-      
+
       let sql = `
         SELECT 
           COUNT(*) as total_orders,
@@ -633,7 +635,7 @@ module.exports = function(db) {
       try {
         const { order_date = new Date().toISOString() } = req.query;
         const nextRef = generateOrderNumber(db, new Date(order_date));
-        
+
         res.json({
           success: true,
           order_number: nextRef,
@@ -643,8 +645,10 @@ module.exports = function(db) {
         console.error('Error getting next order number:', error);
         res.status(500).json({ error: error.message });
       }
-    }
-  };
+  },
+
+    ...manifestHandlers
+};
 };
 
 /**
@@ -657,7 +661,7 @@ function generateOrderNumber(db, orderDate = new Date()) {
     const yrShort = String(year).slice(-2);
     const yrStart = new Date(year, 0, 1).toISOString().split('T')[0];
     const yrEnd = new Date(year, 11, 31, 23, 59, 59, 999).toISOString().split('T')[0];
-    
+
     // Global count for ALL orders in this calendar year
     const countResult = db.prepare(`
       SELECT COUNT(*) as count
@@ -665,10 +669,10 @@ function generateOrderNumber(db, orderDate = new Date()) {
       WHERE date(order_date) >= date(?)
         AND date(order_date) <= date(?)
     `).get(yrStart, yrEnd);
-    
+
     const sequence = (countResult?.count || 0) + 1;
     const sequenceStr = String(sequence).padStart(4, '0');
-    
+
     return `ORD-${yrShort}${sequenceStr}`;
   } catch (err) {
     console.error('Error generating order number:', err);

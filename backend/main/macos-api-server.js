@@ -200,7 +200,7 @@ const staticOptions = {
     if (contentType) {
       res.setHeader('Content-Type', contentType);
     }
-    
+
     // Industrial Standard: Prevent caching of HTML files to ensure auth checks run
     if (ext === '.html') {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -294,16 +294,16 @@ app.use((req, res, next) => {
   }
 
   const hasBrowserSession = !!req.cookies?.auth_session;
-  const isAuthEntry = req.path === '/api/auth/login' || 
-                      req.path === '/api/auth/register' || 
-                      req.path === '/api/auth/logout' || 
-                      req.path === '/api/auth/worker-google';
+  const isAuthEntry = req.path === '/api/auth/login' ||
+    req.path === '/api/auth/register' ||
+    req.path === '/api/auth/logout' ||
+    req.path === '/api/auth/worker-google';
   const mutatingApiRequest = req.path.startsWith('/api/') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
   const isPublicApi = req.path.startsWith('/api/billing/public/') ||
-                      req.path.startsWith('/api/products/public/') ||
-                      req.path.startsWith('/api/orders/public/') ||
-                      req.path.startsWith('/api/product-list/public/') ||
-                      (req.method === 'POST' && req.path === '/api/logs/app');
+    req.path.startsWith('/api/products/public/') ||
+    req.path.startsWith('/api/orders/public/') ||
+    req.path.startsWith('/api/product-list/public/') ||
+    (req.method === 'POST' && req.path === '/api/logs/app');
   const hasBearerAuth = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ');
 
   if (hasBrowserSession && mutatingApiRequest && !isAuthEntry && !isPublicApi && !hasBearerAuth) {
@@ -468,10 +468,10 @@ app.use((req, res, next) => {
     try { return new URL(req.headers.referer || '').origin; } catch { return null; }
   })();
   const isPublicApi = req.path.startsWith('/api/billing/public/') ||
-                      req.path.startsWith('/api/products/public/') ||
-                      req.path.startsWith('/api/orders/public/') ||
-                      req.path.startsWith('/api/product-list/public/') ||
-                      (req.method === 'POST' && req.path === '/api/logs/app');
+    req.path.startsWith('/api/products/public/') ||
+    req.path.startsWith('/api/orders/public/') ||
+    req.path.startsWith('/api/product-list/public/') ||
+    (req.method === 'POST' && req.path === '/api/logs/app');
   if (!isPublicApi && !isOriginAllowed(origin)) {
     return res.status(403).json({ error: 'Request origin is not allowed' });
   }
@@ -562,6 +562,11 @@ const routes = [
 // Mount QR smart links directly under /q
 app.use('/q', qrRouter);
 app.use('/api/android/update', androidUpdateRouter);
+const ordersModule = require('../core/orders');
+app.use('/api/orders', (req, res, next) => {
+  if (req.path.startsWith('/public/')) return next();
+  authModule.authMiddleware(req, res, next);
+}, ordersModule.router);
 
 // Auth Routes
 app.post('/api/auth/login', authModule.login);
@@ -655,9 +660,9 @@ for (const route of routes) {
   if (route.path === '/api/cloud') {
     app.use(route.path, (req, res, next) => {
       // Exempt public sharing and internal media streams from global auth
-      if (req.path.startsWith('/share/') || 
-          req.path.startsWith('/download/') || 
-          req.path.startsWith('/thumbnail/')) {
+      if (req.path.startsWith('/share/') ||
+        req.path.startsWith('/download/') ||
+        req.path.startsWith('/thumbnail/')) {
         return next();
       }
       authModule.authMiddleware(req, res, next);
@@ -666,11 +671,11 @@ for (const route of routes) {
   } else if (route.path === '/api/billing') {
     app.use(route.path, (req, res, next) => {
       // Exempt public ledger access and SSE stream
-      if (req.path.startsWith('/public/') || req.path === '/events') {
-        return next();
-      }
-      authModule.authMiddleware(req, res, next);
-    }, route.router);
+        if (req.path.startsWith('/public/') || req.path.startsWith('/orders/public/') || req.path === '/events') {
+          return next();
+        }
+        authModule.authMiddleware(req, res, next);
+      }, route.router);
   } else if (route.path === '/api/products') {
     app.use(route.path, (req, res, next) => {
       // Exempt public product details
@@ -708,7 +713,7 @@ for (const route of routes) {
     app.use(route.path, (req, res, next) => {
       // Allow viewing generated PDFs, reading vault records, and direct document rendering exports
       if ((req.method === 'GET' && (req.path.includes('/pdf') || req.path.startsWith('/vault/'))) ||
-          req.path.startsWith('/vault/export/')) {
+        req.path.startsWith('/vault/export/')) {
         return next();
       }
       authModule.authMiddleware(req, res, next);
@@ -766,23 +771,23 @@ app.get('/api/system/info', (req, res) => {
   const os = require('os');
   const platform = process.platform;
   const hostname = os.hostname();
-  
+
   if (platform === 'win32') {
     exec('wmic computersystem get model,manufacturer /format:list', (error, stdout) => {
       if (error) return res.json({ model: 'Windows PC', platform: 'win32', hostname });
-      
+
       const lines = stdout.split('\n');
       let manufacturer = '';
       let model = '';
-      
+
       lines.forEach(line => {
         if (line.startsWith('Manufacturer=')) manufacturer = line.split('=')[1].trim();
         if (line.startsWith('Model=')) model = line.split('=')[1].trim();
       });
-      
+
       // Clean up common generic strings
       if (model.includes('To be filled by O.E.M.')) model = '';
-      
+
       const fullModel = [manufacturer, model].filter(Boolean).join(' ');
       res.json({ model: fullModel || 'Windows PC', platform: 'win32', hostname });
     });
@@ -1291,16 +1296,16 @@ const renderApiDocumentationHtml = (doc) => `<!doctype html>
           <div class="domain-body">
             <div class="route-list">
               ${domain.routes.map(route => {
-                const [method, ...rest] = route.split(' ');
-                const path = rest.join(' ');
-                return `
+  const [method, ...rest] = route.split(' ');
+  const path = rest.join(' ');
+  return `
                   <div class="route-item" data-route="${route.toLowerCase()}">
                     <span class="method-tag ${method.toLowerCase()}">${method}</span>
                     <span class="route-path">${path}</span>
                     <button class="copy-btn" type="button" data-copy="${route}">Copy</button>
                   </div>
                 `;
-              }).join('')}
+}).join('')}
             </div>
           </div>
         </section>
@@ -1405,6 +1410,14 @@ app.get(['/p/:code', '/pay/:code', '/payment-gateway', '/payment-gateway.html'],
   return res.sendFile(path.join(__dirname, '../../frontend/payment-gateway.html'));
 });
 
+app.get(['/plant/:token', '/plant', '/order-fulfillment/:token', '/order-fulfillment.html', '/order-fulfillment'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/order-fulfillment.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/order-fulfillment.html'));
+});
+
 app.get(['/customer-ledger', '/customer-ledger.html', '/ledger/:token', '/ledger', '/l/:token', '/l'], (req, res) => {
   const htmlPath = path.join(__dirname, '../../dist/customer-ledger.html');
   if (require('fs').existsSync(htmlPath)) {
@@ -1481,7 +1494,7 @@ function startServer(port, attemptsLeft = 20) {
     if (err && err.code === 'EADDRINUSE' && attemptsLeft > 0) {
       const nextPort = port + 1;
       console.warn(`[Server] Port ${port} in use, retrying on ${nextPort}...`);
-      try { server.close(); } catch (_) {}
+      try { server.close(); } catch (_) { }
       startServer(nextPort, attemptsLeft - 1);
       return;
     }

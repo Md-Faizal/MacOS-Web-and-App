@@ -187,6 +187,11 @@ class OrdersView {
       viewBtn.disabled = this.selectedOrderIds.size < 2;
       viewBtn.style.display = this.selectedOrderIds.size < 2 ? 'none' : '';
     }
+    const plantMultiBtn = document.getElementById('multiOrderPlantLinkBtn');
+    if (plantMultiBtn) {
+      plantMultiBtn.disabled = this.selectedOrderIds.size < 2;
+      plantMultiBtn.style.display = this.selectedOrderIds.size < 2 ? 'none' : '';
+    }
   }
 
   // Show condensed view for selected orders
@@ -403,7 +408,9 @@ class OrdersView {
           </div>`;
       }
       individualOrdersHtml += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
-      individualOrdersHtml += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
+      individualOrdersHtml += `<button onclick="window.currentOrdersView?.showPlantLinkModal(${order.id})" style="padding: 8px 16px; background: #059669; color: #ffffff; border: 2px solid #059669; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📱 PLANT LINK</button>`;
+      individualOrdersHtml += `<button onclick="window.currentOrdersView?.showPlantLinkModal(${order.id})" style="padding: 8px 16px; background: #059669; color: #ffffff; border: 2px solid #059669; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📱 PLANT LINK</button>
+          <button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
       individualOrdersHtml += `</div>`;
       individualOrdersHtml += `</div></div>`;
     });
@@ -432,6 +439,7 @@ class OrdersView {
     }
     content += `</div>`;
     content += `<div style="display: flex; justify-content: flex-end; gap: 8px;">`;
+    content += `<button onclick="window.currentOrdersView?.showPlantLinkModal(null, [${orders.map(o => o.id).join(',')}])" style="padding: 8px 16px; background: #059669; color: #ffffff; border: 2px solid #059669; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📱 COMBINE & SHARE PLANT LINK</button>`;
     content += `<button onclick="navigator.clipboard.writeText('${escapedItems}').then(() => window.showNotification ? window.showNotification('Items copied to clipboard!', 'success', { app: 'Billing', title: 'Orders' }) : null).catch(() => window.showNotification ? window.showNotification('Failed to copy items', 'error', { app: 'Billing', title: 'Orders' }) : null)" style="padding: 8px 16px; background: #0066cc; color: #ffffff; border: 2px solid #0066cc; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">📋 COPY ITEMS</button>`;
     content += `<button onclick="document.getElementById('orderModal').remove(); void 0;" style="padding: 8px 16px; background: #ffffff; color: #000000; border: 2px solid #000000; border-radius: 2px; cursor: pointer; font-size: 11px; font-weight: 700; transition: all 0.2s;">CLOSE</button>`;
     content += `</div>`;
@@ -895,6 +903,9 @@ class OrdersView {
             <button id="ordersStage2Btn" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border: 2px solid #000000; background: #ffffff; color: #000000; cursor: pointer; border-radius: 2px; transition: all 0.2s;">STAGE 2</button>
             <button id="ordersStage3Btn" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border: 2px solid #000000; background: #ffffff; color: #000000; cursor: pointer; border-radius: 2px; transition: all 0.2s;">STAGE 3</button>
             <div class="orders-spacer-inline" style="flex: 1;"></div>
+            <button id="plantLinksDashboardBtn" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border: 2px solid #000000; background: #ffffff; color: #000000; cursor: pointer; border-radius: 2px; transition: all 0.2s;">📱 PLANT LINKS</button>
+            <div class="orders-spacer-inline" style="flex: 1;"></div>
+            <button id="multiOrderPlantLinkBtn" class="orders-view-selected-btn" style="font-size: 11px; padding: 6px 10px; background: #059669; color: #ffffff; border: 2px solid #059669; border-radius: 2px; cursor: pointer; transition: all 0.15s; font-weight: 700; display: none;"><span class="orders-btn-desktop-text">📱 COMBINE & SHARE PLANT LINK</span><span class="orders-btn-mobile-text" style="display: none;">📱 PLANT LINK</span></button>
             <button id="multiOrderViewBtn" class="orders-view-selected-btn" style="font-size: 11px; padding: 6px 10px; background: #000000; color: #ffffff; border: 2px solid #000000; border-radius: 2px; cursor: pointer; transition: all 0.15s; font-weight: 700; display: none;"><span class="orders-btn-desktop-text">◆ VIEW SELECTED</span><span class="orders-btn-mobile-text" style="display: none;">◆ VIEW</span></button>
             <button id="newOrderBtn" style="padding: 6px 10px; font-size: 11px; font-weight: 700; border: 2px solid #000000; background: #000000; color: #ffffff; cursor: pointer; display: none; border-radius: 2px; transition: all 0.2s;">+ NEW ORDER</button>
           </div>
@@ -1027,6 +1038,18 @@ class OrdersView {
     // Setup event listeners
     this.setupStageFilterButtons();
     this.updateStageButtonStates();
+
+    const plantDashBtn = document.getElementById('plantLinksDashboardBtn');
+    if (plantDashBtn) {
+      plantDashBtn.onclick = () => this.showPlantLinksDashboardModal();
+    }
+    const multiPlantBtn = document.getElementById('multiOrderPlantLinkBtn');
+    if (multiPlantBtn) {
+      multiPlantBtn.onclick = () => {
+        const selectedIds = Array.from(this.selectedOrderIds).map(Number);
+        this.showPlantLinkModal(null, selectedIds);
+      };
+    }
 
     // Check for deep link parameters
     if (this.params && this.params.customerId) {
@@ -1751,6 +1774,7 @@ class OrdersView {
             detailsDiv.innerHTML = `
             <div style="display: flex; gap: 4px; flex-wrap: wrap;">
               <button onclick="window.currentOrdersView.viewOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #000000; color: #ffffff; border: 1px solid #000000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">◆ VIEW</button>
+              <button onclick="event.stopPropagation(); window.currentOrdersView.showPlantLinkModal('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #059669; color: #ffffff; border: 1px solid #059669; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 700; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">📱 PLANT LINK</button>
               <button onclick="window.currentOrdersView.editOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #ffffff; color: #000000; border: 1px solid #000000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">✎ EDIT</button>
               <button onclick="window.currentOrdersView.deleteOrder('${orderId}')" style="font-size: 10px; padding: 6px 10px; background: #ff4444; color: #ffffff; border: 1px solid #cc0000; border-radius: 2px; cursor: pointer; font-size: 10px; font-weight: 600; font-family: 'Courier New', monospace; letter-spacing: 0.3px;">✕ DELETE</button>
             </div>
@@ -2255,6 +2279,10 @@ class OrdersView {
       const footer = this.createBaseElement('div', { display: 'flex', justifyContent: 'flex-end', gap: '8px' });
 
       if (stage !== ORDER_CONSTANTS.STAGES.DELIVERY) {
+        const plantBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#059669', color: '#fff', border: '2px solid #059669', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, '📱 PLANT LINK');
+        plantBtn.onclick = () => this.showPlantLinkModal(order.id);
+        footer.appendChild(plantBtn);
+
         const copyBtn = this.createBaseElement('button', { padding: '8px 16px', background: '#0066cc', color: '#fff', border: '2px solid #0066cc', borderRadius: '2px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }, '📋 COPY ITEMS');
         copyBtn.onclick = () => {
           const contentLines = items.map((item, idx) => {
@@ -3135,6 +3163,16 @@ class OrdersView {
               <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px;">
                 ${variantDisplay ? `<span class="order-item-variant" data-idx="${idx}" title="Double-click to change variant" style="font-size:9px; color:#0066cc; background:#e8f1fb; padding:1px 5px; border-radius:2px; cursor:pointer;">${Utils.escapeHtml(variantDisplay)}</span>` : ''}
                 <span class="order-item-batch" data-idx="${idx}" title="Double-click to change batch" style="font-size:9px; color:#666; background:#f0f0f0; padding:1px 5px; border-radius:2px; cursor:pointer;">Batch: ${Utils.escapeHtml(batchDisplay)}</span>
+                          ${item.packed_batch_no && item.batch_no && item.packed_batch_no !== item.batch_no ? `
+                            <span style="font-size:9px; color:#b45309; background:#fef3c7; border:1px solid #fde68a; padding:1px 5px; border-radius:2px; font-weight:700;">
+                              ⚠️ Plant Swapped: ${Utils.escapeHtml(item.packed_batch_no)}
+                            </span>
+                          ` : ''}
+                          ${item.plant_notes ? `
+                            <span style="font-size:9px; color:#1e293b; background:#f1f5f9; padding:1px 5px; border-radius:2px; font-family:'Courier New', monospace;">
+                              Plant: ${Utils.escapeHtml(item.plant_notes)}
+                            </span>
+                          ` : ''}
                 <span style="font-size:10px; font-weight:600; color:#444;">₹${price}</span>
                 <button type="button" class="item-note-btn" data-idx="${idx}" title="Write note about this product" style="padding:1px 6px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:3px; cursor:pointer; font-size:9px; font-weight:600; display:inline-flex; align-items:center; gap:2px; line-height:1.4;">
                   📝 + Note
@@ -3281,6 +3319,16 @@ class OrdersView {
                 <h4 style="font-size:11px; font-weight:600; margin-bottom:8px;">QC NOTES</h4>
                 <textarea id="qcNotes" style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ddd; border-radius:3px; min-height:140px; font-size:11px;" placeholder="Damaged items, missing qty, etc...">${this.currentOrderData.qc_notes || ''}</textarea>
 
+                ${this.currentOrderData.plant_notes || this.currentOrderData.plant_cases ? `
+                  <div style="margin-top:14px; padding:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:4px; box-sizing:border-box;">
+                    <div style="font-size:11px; font-weight:700; color:#065f46; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                      <span>📦</span> PLANT DISPATCH REPORT (${this.currentOrderData.plant_cases || 1} Cartons/Cases)
+                    </div>
+                    <div style="font-size:11px; color:#064e3b; line-height:1.5; background:#ffffff; padding:8px 10px; border-radius:3px; border:1px solid #d1fae5; font-family:'Courier New', monospace; box-sizing:border-box;">
+                      ${Utils.escapeHtml(this.currentOrderData.plant_notes || 'No extra remarks')}
+                    </div>
+                  </div>
+                ` : ''}
                 <!-- Stage 1 Notes Display below QC Notes -->
                 ${this.currentOrderData.order_notes && this.currentOrderData.order_notes.trim() ? `
                   <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; box-sizing:border-box;">
@@ -4608,6 +4656,332 @@ class OrdersView {
       }
 
       this.saveOrderDraft();
+    }
+
+    
+    async showPlantLinkModal(orderId, orderIds = []) {
+      const targetIds = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [Number(orderId)] : []);
+      if (targetIds.length === 0) {
+        if (window.showNotification) window.showNotification('Please select at least one order', 'warning', { app: 'Billing', title: 'Plant Link' });
+        return;
+      }
+
+      // Fetch active manifests to see if user wants to append to an existing active link
+      let activeManifests = [];
+      try {
+        const res = await fetch('/api/billing/orders/manifests?status=active');
+        if (res.ok) {
+          const data = await res.json();
+          activeManifests = data.manifests || [];
+        }
+      } catch (_) {}
+
+      const ordersPreview = this.orders.filter(o => targetIds.includes(Number(o.id)));
+      const orderLabels = ordersPreview.map(o => `${o.order_number} (${o.customer_name || 'Customer'})`).join(', ');
+
+      const modal = document.createElement('div');
+      modal.id = 'plantLinkModal';
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      `;
+
+      const activeManifestOptions = activeManifests.map(m => 
+        `<option value="${m.id}">${m.token} - ${m.title || 'Manifest'} (${(m.orders || []).length} orders inside)</option>`
+      ).join('');
+
+      modal.innerHTML = `
+        <div style="background: #09090b; color: #ffffff; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; width: 90%; max-width: 520px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="background: #10b981; color: #000; font-family: monospace; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 3px;">PLANT</span>
+              <h2 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.3px;">Share Plant Fulfillment Link</h2>
+            </div>
+            <button id="closePlantModalBtn" style="background: none; border: none; color: #a1a1aa; font-size: 18px; cursor: pointer;">✕</button>
+          </div>
+
+          <div style="margin-bottom: 16px; background: #18181b; padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); font-size: 12px;">
+            <div style="color: #a1a1aa; font-size: 10px; font-family: monospace; text-transform: uppercase; margin-bottom: 4px;">Orders Included (${targetIds.length}):</div>
+            <div style="font-weight: 700; color: #f4f4f5; line-height: 1.4;">${orderLabels || `Orders #${targetIds.join(', ')}`}</div>
+          </div>
+
+          <div style="margin-bottom: 20px;" id="manifestOptionsSection">
+            <label style="display: block; font-size: 11px; font-family: monospace; color: #a1a1aa; margin-bottom: 8px;">DISPATCH DESTINATION</label>
+            ${activeManifests.length > 0 ? `
+              <div style="margin-bottom: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin-bottom: 8px;">
+                  <input type="radio" name="manifestMode" value="new" checked />
+                  <span>Generate New Plant Link</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+                  <input type="radio" name="manifestMode" value="append" />
+                  <span>Combine into Active Plant Link (Eliminates multiple texts)</span>
+                </label>
+              </div>
+              <div id="appendSelectorWrap" style="display: none; margin-bottom: 12px;">
+                <select id="activeManifestSelect" style="width: 100%; background: #000; color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 8px; font-size: 12px; font-family: monospace;">
+                  ${activeManifestOptions}
+                </select>
+              </div>
+            ` : `
+              <div style="font-size: 11px; color: #71717a; margin-bottom: 12px;">A living mobile portal link will be created for the plant worker.</div>
+            `}
+          </div>
+
+          <div id="manifestResultBox" style="display: none; background: #18181b; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 16px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 11px; font-family: monospace; color: #10b981; font-weight: 700;">✓ LINK ACTIVE & READY</span>
+              <span id="manifestTokenBadge" style="font-size: 11px; font-family: monospace; color: #a1a1aa;"></span>
+            </div>
+            <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+              <input type="text" id="manifestUrlInput" readonly style="flex: 1; background: #000; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 8px 10px; font-size: 12px; font-family: monospace; color: #fff;" />
+              <button id="copyManifestUrlBtn" style="background: #27272a; color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 8px 14px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">📋 COPY</button>
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="whatsappShareBtn" style="flex: 1; min-width: 140px; background: #25D366; color: #000; border: none; border-radius: 4px; padding: 10px 14px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <span>💬</span> SHARE DISPATCH ON WHATSAPP
+              </button>
+              <button id="whatsappUpdateBtn" style="display: none; flex: 1; min-width: 140px; background: #f59e0b; color: #000; border: none; border-radius: 4px; padding: 10px 14px; font-size: 11px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <span>⚡</span> WHATSAPP: 'PAGE UPDATED'
+              </button>
+              <a id="openPortalLink" href="#" target="_blank" style="background: #fff; color: #000; text-decoration: none; border-radius: 4px; padding: 10px 14px; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;">
+                👁️ OPEN
+              </a>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px;" id="modalActionsRow">
+            <button id="generateLinkBtn" style="background: #10b981; color: #000; border: none; border-radius: 4px; padding: 10px 20px; font-size: 12px; font-weight: 800; cursor: pointer;">
+              GENERATE LINK
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const closeBtn = modal.querySelector('#closePlantModalBtn');
+      closeBtn.onclick = () => modal.remove();
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+      const modeRadios = modal.querySelectorAll('input[name="manifestMode"]');
+      const appendSelectorWrap = modal.querySelector('#appendSelectorWrap');
+      modeRadios.forEach(r => {
+        r.addEventListener('change', () => {
+          if (appendSelectorWrap) {
+            appendSelectorWrap.style.display = r.value === 'append' ? 'block' : 'none';
+          }
+        });
+      });
+
+      const generateLinkBtn = modal.querySelector('#generateLinkBtn');
+      generateLinkBtn.onclick = async () => {
+        generateLinkBtn.disabled = true;
+        generateLinkBtn.textContent = 'GENERATING...';
+
+        let selectedManifestId = null;
+        const appendRadio = modal.querySelector('input[name="manifestMode"][value="append"]');
+        if (appendRadio && appendRadio.checked) {
+          const sel = modal.querySelector('#activeManifestSelect');
+          selectedManifestId = sel ? Number(sel.value) : null;
+        }
+
+        try {
+          const res = await fetch('/api/billing/orders/manifest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              order_ids: targetIds,
+              manifest_id: selectedManifestId
+            })
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to generate plant link');
+          }
+
+          const data = await res.json();
+          const manifest = data.manifest;
+
+          modal.querySelector('#manifestOptionsSection').style.display = 'none';
+          generateLinkBtn.style.display = 'none';
+
+          const resultBox = modal.querySelector('#manifestResultBox');
+          resultBox.style.display = 'block';
+
+          modal.querySelector('#manifestTokenBadge').textContent = `Token: ${manifest.token}`;
+          const urlInput = modal.querySelector('#manifestUrlInput');
+          urlInput.value = manifest.share_url;
+
+          modal.querySelector('#copyManifestUrlBtn').onclick = () => {
+            navigator.clipboard.writeText(manifest.share_url).then(() => {
+              if (window.showNotification) window.showNotification('Plant link copied to clipboard!', 'success', { app: 'Billing', title: 'Plant Link' });
+            });
+          };
+
+          const openLink = modal.querySelector('#openPortalLink');
+          openLink.href = manifest.share_url;
+
+          // WhatsApp dispatch message
+          const ordersStr = (manifest.orders || ordersPreview).map(o => o.order_number).join(', ');
+          const whatsappText = encodeURIComponent(`📦 Dispatch Manifest ${manifest.token}\nOrders: ${ordersStr}\nPlease open the link to check item availability and match warehouse batches:\n${manifest.share_url}`);
+          modal.querySelector('#whatsappShareBtn').onclick = () => {
+            window.open(`https://api.whatsapp.com/send?text=${whatsappText}`, '_blank');
+          };
+
+          // WhatsApp update message (if appended/updated)
+          const updateBtn = modal.querySelector('#whatsappUpdateBtn');
+          if (!data.isNew || selectedManifestId) {
+            updateBtn.style.display = 'inline-flex';
+            const updateText = encodeURIComponent(`⚠️ UPDATE: Dispatch Manifest ${manifest.token}\nWe have updated item quantities / added an order to the active link.\nPlease refresh your page to see the highlighted changes:\n${manifest.share_url}`);
+            updateBtn.onclick = () => {
+              window.open(`https://api.whatsapp.com/send?text=${updateText}`, '_blank');
+            };
+          }
+
+          if (window.showNotification) window.showNotification('Plant link generated successfully!', 'success', { app: 'Billing', title: 'Plant Link' });
+        } catch (err) {
+          if (window.showNotification) window.showNotification(err.message, 'error', { app: 'Billing', title: 'Plant Link' });
+          generateLinkBtn.disabled = false;
+          generateLinkBtn.textContent = 'GENERATE LINK';
+        }
+      };
+    }
+
+    async showPlantLinksDashboardModal() {
+      const modal = document.createElement('div');
+      modal.id = 'plantLinksDashboardModal';
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      `;
+
+      modal.innerHTML = `
+        <div style="background: #09090b; color: #ffffff; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; width: 95%; max-width: 860px; max-height: 85vh; display: flex; flex-direction: column; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="background: #10b981; color: #000; font-family: monospace; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 3px;">PLANT</span>
+              <h2 style="margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.3px;">Plant Dispatch Links Dashboard</h2>
+            </div>
+            <button id="closeDashModalBtn" style="background: none; border: none; color: #a1a1aa; font-size: 18px; cursor: pointer;">✕</button>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-shrink: 0;">
+            <div style="font-size: 12px; color: #a1a1aa;">Track real-time factory fulfillment status, batch matches, and QC readiness</div>
+            <button id="dashRefreshBtn" style="background: #27272a; color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer;">↻ Refresh</button>
+          </div>
+
+          <div id="manifestsTableContainer" style="flex: 1; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;">
+            <div style="padding: 40px; text-align: center; color: #71717a; font-size: 12px; font-family: monospace;">Loading plant links...</div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const closeBtn = modal.querySelector('#closeDashModalBtn');
+      closeBtn.onclick = () => modal.remove();
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+      const refreshBtn = modal.querySelector('#dashRefreshBtn');
+      const tableContainer = modal.querySelector('#manifestsTableContainer');
+
+      const fetchAndRender = async () => {
+        tableContainer.innerHTML = '<div style="padding: 40px; text-align: center; color: #71717a; font-size: 12px; font-family: monospace;">Loading plant links...</div>';
+        try {
+          const res = await fetch('/api/billing/orders/manifests?status=all');
+          if (!res.ok) throw new Error('Failed to load manifests');
+          const data = await res.json();
+          const manifests = data.manifests || [];
+
+          if (manifests.length === 0) {
+            tableContainer.innerHTML = '<div style="padding: 40px; text-align: center; color: #71717a; font-size: 12px; font-family: monospace;">No plant dispatch links found.</div>';
+            return;
+          }
+
+          let tableHtml = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace;">
+              <thead>
+                <tr style="background: #18181b; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: #a1a1aa; font-size: 11px;">
+                  <th style="padding: 10px 12px;">TOKEN / TITLE</th>
+                  <th style="padding: 10px 12px;">ORDERS</th>
+                  <th style="padding: 10px 12px;">CREATED</th>
+                  <th style="padding: 10px 12px;">STATUS</th>
+                  <th style="padding: 10px 12px;">PLANT PROGRESS</th>
+                  <th style="padding: 10px 12px; text-align: right;">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+
+          manifests.forEach(m => {
+            const ordersStr = (m.orders || []).map(o => o.order_number).join(', ') || '-';
+            const createdStr = m.created_at ? new Date(m.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+            
+            let statusBadge = '<span style="color: #34d399; background: rgba(16,185,129,0.15); padding: 2px 6px; border-radius: 3px;">Active</span>';
+            if (m.is_locked) {
+              statusBadge = '<span style="color: #f87171; background: rgba(239,68,68,0.15); padding: 2px 6px; border-radius: 3px;">Settled</span>';
+            } else if (m.status === 'submitted') {
+              statusBadge = '<span style="color: #60a5fa; background: rgba(59,130,246,0.15); padding: 2px 6px; border-radius: 3px;">Submitted to QC</span>';
+            }
+
+            const prog = m.progress || { total_items: 0, checked_items: 0 };
+            const progPercent = prog.total_items > 0 ? Math.round((prog.checked_items / prog.total_items) * 100) : 0;
+            const progressDisplay = `${prog.checked_items} / ${prog.total_items} (${progPercent}%)`;
+
+            tableHtml += `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.15s;">
+                <td style="padding: 10px 12px;">
+                  <div style="font-weight: 700; color: #fff;">${m.token}</div>
+                  <div style="font-size: 10px; color: #71717a;">${m.title || ''}</div>
+                </td>
+                <td style="padding: 10px 12px; color: #d4d4d8;">${ordersStr}</td>
+                <td style="padding: 10px 12px; color: #a1a1aa; font-size: 11px;">${createdStr}</td>
+                <td style="padding: 10px 12px;">${statusBadge}</td>
+                <td style="padding: 10px 12px; color: #fff;">
+                  ${progressDisplay}
+                  <div style="font-size: 10px; color: #71717a;">${prog.available || 0} full | ${prog.partial || 0} part | ${prog.out_of_stock || 0} out</div>
+                </td>
+                <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">
+                  <button onclick="navigator.clipboard.writeText('${m.share_url}').then(() => window.showNotification ? window.showNotification('Copied link!', 'success', { app: 'Billing', title: 'Plant Link' }) : null)" style="background: #27272a; color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; padding: 4px 8px; font-size: 10px; cursor: pointer; margin-right: 4px;">📋 Copy</button>
+                  <a href="${m.share_url}" target="_blank" style="background: #ffffff; color: #000; text-decoration: none; border-radius: 3px; padding: 4px 8px; font-size: 10px; font-weight: 700; margin-right: 4px;">👁️ Open</a>
+                  <button onclick="window.currentOrdersView?.deleteManifest('${m.id}')" style="background: #dc2626; color: #fff; border: none; border-radius: 3px; padding: 4px 8px; font-size: 10px; cursor: pointer;">✕</button>
+                </td>
+              </tr>
+            `;
+          });
+
+          tableHtml += '</tbody></table>';
+          tableContainer.innerHTML = tableHtml;
+        } catch (err) {
+          tableContainer.innerHTML = `<div style="padding: 40px; text-align: center; color: #ef4444; font-size: 12px;">Error: ${err.message}</div>`;
+        }
+      };
+
+      refreshBtn.onclick = fetchAndRender;
+      fetchAndRender();
+    }
+
+    async deleteManifest(manifestId) {
+      if (!confirm('Are you sure you want to close and delete this plant link?')) return;
+      try {
+        const res = await fetch(`/api/billing/orders/manifests/${manifestId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete manifest');
+        if (window.showNotification) window.showNotification('Plant link deleted', 'success', { app: 'Billing', title: 'Plant Link' });
+        const modal = document.getElementById('plantLinksDashboardModal');
+        if (modal) {
+          const refreshBtn = modal.querySelector('#dashRefreshBtn');
+          if (refreshBtn) refreshBtn.click();
+        }
+      } catch (err) {
+        if (window.showNotification) window.showNotification(err.message, 'error', { app: 'Billing', title: 'Plant Link' });
+      }
     }
 
     injectOrdersStyles() {

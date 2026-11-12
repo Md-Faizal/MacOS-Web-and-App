@@ -664,6 +664,11 @@ CREATE TABLE IF NOT EXISTS orders (
   cases INTEGER DEFAULT 1,
   total_amount REAL DEFAULT 0,
   status TEXT DEFAULT 'pending',
+  share_token TEXT,
+  plant_status TEXT DEFAULT 'pending',
+  plant_submitted_at DATETIME,
+  plant_notes TEXT,
+  plant_cases INTEGER DEFAULT 0,
   created_by_user_id TEXT,
   last_edited_by_user_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -682,6 +687,13 @@ CREATE TABLE IF NOT EXISTS order_items (
   received_quantity INTEGER DEFAULT 0,
   unit_price REAL NOT NULL,
   line_total REAL NOT NULL,
+  plant_status TEXT DEFAULT 'pending',
+  packed_quantity REAL,
+  packed_batch_id INTEGER,
+  packed_batch_no TEXT,
+  packed_expiry TEXT,
+  plant_notes TEXT,
+  last_known_quantity REAL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
@@ -1264,6 +1276,36 @@ CREATE TABLE IF NOT EXISTS payment_links (
 CREATE INDEX IF NOT EXISTS idx_payment_links_code ON payment_links(link_code);
 CREATE INDEX IF NOT EXISTS idx_payment_links_cust ON payment_links(customer_id);
 CREATE INDEX IF NOT EXISTS idx_payment_links_status ON payment_links(status);
+
+-- Plant Dispatch Manifests: Group 1 or more orders into a single living plant link
+CREATE TABLE IF NOT EXISTS plant_manifests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT NOT NULL UNIQUE,
+  title TEXT,
+  status TEXT DEFAULT 'active',
+  cases_count INTEGER DEFAULT 0,
+  plant_notes TEXT,
+  version INTEGER DEFAULT 1,
+  submitted_at DATETIME,
+  created_by_user_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS plant_manifest_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  manifest_id INTEGER NOT NULL,
+  order_id INTEGER NOT NULL,
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(manifest_id, order_id),
+  FOREIGN KEY (manifest_id) REFERENCES plant_manifests(id) ON DELETE CASCADE,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_plant_manifests_token ON plant_manifests(token);
+CREATE INDEX IF NOT EXISTS idx_plant_manifests_status ON plant_manifests(status);
+CREATE INDEX IF NOT EXISTS idx_plant_manifest_orders_manifest ON plant_manifest_orders(manifest_id);
+CREATE INDEX IF NOT EXISTS idx_plant_manifest_orders_order ON plant_manifest_orders(order_id);
 `;
 
 module.exports = { schema };

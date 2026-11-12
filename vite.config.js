@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
               req.url = '/customer-ledger.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
             } else if (pathName === '/payment-gateway' || pathName === '/pay' || pathName.startsWith('/p/') || pathName.startsWith('/pay/')) {
               req.url = '/payment-gateway.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
+            } else if (pathName === '/order-fulfillment' || pathName === '/plant' || pathName.startsWith('/plant/') || pathName.startsWith('/order-fulfillment/')) {
+              req.url = '/order-fulfillment.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
             }
             next();
           });
@@ -57,6 +59,7 @@ export default defineConfig(({ mode }) => {
           offline: resolve(__dirname, 'frontend/offline.html'),
           'customer-ledger': resolve(__dirname, 'frontend/customer-ledger.html'),
           'payment-gateway': resolve(__dirname, 'frontend/payment-gateway.html'),
+          'order-fulfillment': resolve(__dirname, 'frontend/order-fulfillment.html'),
           'public-product': resolve(__dirname, 'frontend/public-product.html')
         }
       }
