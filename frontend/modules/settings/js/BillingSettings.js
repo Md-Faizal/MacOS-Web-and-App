@@ -20,6 +20,29 @@ export class BillingSettingsComponent {
             company_address_shipping: 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
             company_shipping_phone: '7749089400',
             company_shipping_default_sender: 'shipping',
+            company_shipping_origins: JSON.stringify([
+                {
+                    id: 'shipping',
+                    label: 'Warehouse (Cuttack)',
+                    address: 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+                    phone: '7749089400',
+                    is_default: true
+                },
+                {
+                    id: 'factory',
+                    label: 'Factory (Aska)',
+                    address: 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+                    phone: '06822273304 / 943933330',
+                    is_default: false
+                },
+                {
+                    id: 'office',
+                    label: 'Office (Bhubaneswar)',
+                    address: 'D1, Basera Complex, Dumduma, BBSR - 751019',
+                    phone: '06822273304 / 943933330',
+                    is_default: false
+                }
+            ]),
             invoice_show_dues_widget: 'true',
             invoice_auto_sign_disclaimer: 'true',
             invoice_authority_sign_no_qr: 'false',
@@ -78,6 +101,43 @@ export class BillingSettingsComponent {
         const shippingAddr = this.settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001';
         const shippingPhone = this.settings.company_shipping_phone || '7749089400';
         const defaultSender = this.settings.company_shipping_default_sender || 'shipping';
+
+        let shippingOrigins = [];
+        try {
+            if (this.settings.company_shipping_origins) {
+                shippingOrigins = typeof this.settings.company_shipping_origins === 'string'
+                    ? JSON.parse(this.settings.company_shipping_origins)
+                    : this.settings.company_shipping_origins;
+            }
+        } catch (e) {
+            console.warn('Failed to parse company_shipping_origins:', e);
+        }
+
+        if (!Array.isArray(shippingOrigins) || shippingOrigins.length === 0) {
+            shippingOrigins = [
+                {
+                    id: 'shipping',
+                    label: 'Warehouse (Cuttack)',
+                    address: shippingAddr,
+                    phone: shippingPhone,
+                    is_default: true
+                },
+                {
+                    id: 'factory',
+                    label: 'Factory (Aska)',
+                    address: factoryAddr,
+                    phone: companyPhone,
+                    is_default: false
+                },
+                {
+                    id: 'office',
+                    label: 'Office (Bhubaneswar)',
+                    address: officeAddr,
+                    phone: companyPhone,
+                    is_default: false
+                }
+            ];
+        }
 
         this.container.innerHTML = `
             <div class="billing-settings-root appearance-page-root">
@@ -289,25 +349,6 @@ export class BillingSettingsComponent {
                             <input type="text" id="settingCompanyOfficeAddr" class="billing-input" value="${this.escapeHtml(officeAddr)}" placeholder="e.g. D1, Basera Complex, Dumduma, BBSR - 751019" />
                         </div>
 
-                        <div class="billing-field-group" style="grid-column: span 2;">
-                            <label class="billing-label" for="settingCompanyShippingAddr">Warehouse / Shipping & Dispatch Address (Used for Contacts Shipping Slips)</label>
-                            <input type="text" id="settingCompanyShippingAddr" class="billing-input" value="${this.escapeHtml(shippingAddr)}" placeholder="e.g. Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001" />
-                        </div>
-
-                        <div class="billing-field-group">
-                            <label class="billing-label" for="settingCompanyShippingPhone">Dispatch / Shipping Contact Phone</label>
-                            <input type="text" id="settingCompanyShippingPhone" class="billing-input" value="${this.escapeHtml(shippingPhone)}" placeholder="e.g. 7749089400" />
-                        </div>
-
-                        <div class="billing-field-group">
-                            <label class="billing-label" for="settingCompanyDefaultSender">Default Shipping Slip Sender Origin</label>
-                            <select id="settingCompanyDefaultSender" class="billing-input" style="cursor: pointer;">
-                                <option value="shipping" ${defaultSender === 'shipping' ? 'selected' : ''}>Warehouse / Dispatch Hub (Cuttack)</option>
-                                <option value="factory" ${defaultSender === 'factory' ? 'selected' : ''}>Registered Factory (Aska)</option>
-                                <option value="office" ${defaultSender === 'office' ? 'selected' : ''}>Head Office (Bhubaneswar)</option>
-                            </select>
-                        </div>
-
                         <div class="billing-field-group">
                             <label class="billing-label" for="settingCompanyAyush">AYUSH Drug Mfg Lic (Form 25D)</label>
                             <input type="text" id="settingCompanyAyush" class="billing-input" value="${this.escapeHtml(this.settings.company_ayush_license || 'OR-02/AYUR')}" placeholder="e.g. OR-02/AYUR" />
@@ -322,6 +363,52 @@ export class BillingSettingsComponent {
                             <label class="billing-label" for="settingCompanyEmail">Official Compliance / Billing Email</label>
                             <input type="email" id="settingCompanyEmail" class="billing-input" value="${this.escapeHtml(this.settings.company_email || 'compliance@utkalchemical.com')}" placeholder="e.g. compliance@utkalchemical.com" />
                         </div>
+                    </div>
+                </div>
+
+                <!-- 2b. Dispatch & Shipping Origins -->
+                <div class="billing-card">
+                    <div class="billing-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="billing-card-title">
+                                <span>📦</span>
+                                <span>Shipping & Dispatch Origins</span>
+                            </div>
+                            <div class="billing-card-subtitle">
+                                Configure origin dispatch points for Contacts Shipping Slips. Select a default or add new dispatch locations.
+                            </div>
+                        </div>
+                        <button type="button" id="addNewShippingOriginBtn" class="billing-save-btn" style="padding: 6px 14px; font-size: 11px; white-space: nowrap; cursor: pointer;">
+                            <span>+ Add Dispatch Origin</span>
+                        </button>
+                    </div>
+
+                    <div id="shippingOriginsList" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+                        ${shippingOrigins.map((orig, idx) => `
+                            <div class="shipping-origin-row" data-id="${this.escapeHtml(orig.id || 'orig_' + idx)}" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; font-weight: 700; color: ${orig.is_default ? '#38bdf8' : '#94a3b8'};">
+                                        <input type="radio" name="origin_default_radio" class="origin-default-radio" ${orig.is_default ? 'checked' : ''} style="cursor: pointer; accent-color: #0284c7;" />
+                                        <span>${orig.is_default ? '★ Default Origin' : 'Make Default'}</span>
+                                    </label>
+                                    <button type="button" class="btn-remove-origin" style="border: none; background: transparent; color: #ef4444; font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 4px;" title="Delete this origin">🗑️ Delete</button>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div>
+                                        <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Origin Label / Name</label>
+                                        <input type="text" class="billing-input origin-label-input" value="${this.escapeHtml(orig.label || '')}" placeholder="e.g. Warehouse (Cuttack)" />
+                                    </div>
+                                    <div>
+                                        <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Contact Phone</label>
+                                        <input type="text" class="billing-input origin-phone-input" value="${this.escapeHtml(orig.phone || '')}" placeholder="e.g. 7749089400" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Full Origin / Dispatch Address</label>
+                                    <input type="text" class="billing-input origin-address-input" value="${this.escapeHtml(orig.address || '')}" placeholder="e.g. Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001" />
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
 
@@ -971,6 +1058,95 @@ export class BillingSettingsComponent {
                 if (navItem) navItem.click();
             });
         }
+
+        // 10. Shipping & Dispatch Origins List Handlers
+        const originsList = this.container.querySelector('#shippingOriginsList');
+        const addOriginBtn = this.container.querySelector('#addNewShippingOriginBtn');
+
+        const bindOriginRowEvents = (row) => {
+            const radio = row.querySelector('.origin-default-radio');
+            const removeBtn = row.querySelector('.btn-remove-origin');
+
+            if (radio) {
+                radio.addEventListener('change', () => {
+                    this.container.querySelectorAll('.origin-default-radio').forEach(r => {
+                        const isCur = (r === radio && radio.checked);
+                        r.checked = isCur;
+                        const labelSpan = r.parentElement?.querySelector('span');
+                        if (labelSpan) {
+                            labelSpan.textContent = isCur ? '★ Default Origin' : 'Make Default';
+                        }
+                        if (r.parentElement) {
+                            r.parentElement.style.color = isCur ? '#38bdf8' : '#94a3b8';
+                        }
+                    });
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    const allRows = this.container.querySelectorAll('.shipping-origin-row');
+                    if (allRows.length <= 1) {
+                        alert('At least one shipping origin must remain configured.');
+                        return;
+                    }
+                    const wasDefault = row.querySelector('.origin-default-radio')?.checked;
+                    row.remove();
+                    if (wasDefault) {
+                        const firstRow = this.container.querySelector('.shipping-origin-row');
+                        if (firstRow) {
+                            const firstRadio = firstRow.querySelector('.origin-default-radio');
+                            if (firstRadio) firstRadio.checked = true;
+                            const firstSpan = firstRow.querySelector('label span');
+                            if (firstSpan) firstSpan.textContent = '★ Default Origin';
+                            const labelParent = firstRow.querySelector('label');
+                            if (labelParent) labelParent.style.color = '#38bdf8';
+                        }
+                    }
+                });
+            }
+        };
+
+        if (originsList) {
+            originsList.querySelectorAll('.shipping-origin-row').forEach(bindOriginRowEvents);
+        }
+
+        if (addOriginBtn && originsList) {
+            addOriginBtn.addEventListener('click', () => {
+                const uniqueId = 'orig_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+                const hasExisting = originsList.querySelectorAll('.shipping-origin-row').length > 0;
+                const newRow = document.createElement('div');
+                newRow.className = 'shipping-origin-row';
+                newRow.setAttribute('data-id', uniqueId);
+                newRow.style.cssText = 'background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px;';
+                newRow.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; font-weight: 700; color: ${!hasExisting ? '#38bdf8' : '#94a3b8'};">
+                            <input type="radio" name="origin_default_radio" class="origin-default-radio" ${!hasExisting ? 'checked' : ''} style="cursor: pointer; accent-color: #0284c7;" />
+                            <span>${!hasExisting ? '★ Default Origin' : 'Make Default'}</span>
+                        </label>
+                        <button type="button" class="btn-remove-origin" style="border: none; background: transparent; color: #ef4444; font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 4px;" title="Delete this origin">🗑️ Delete</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Origin Label / Name</label>
+                            <input type="text" class="billing-input origin-label-input" value="" placeholder="e.g. Counter / Transport Hub" />
+                        </div>
+                        <div>
+                            <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Contact Phone</label>
+                            <input type="text" class="billing-input origin-phone-input" value="" placeholder="e.g. Phone number" />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="billing-label" style="font-size: 10px; margin-bottom: 3px;">Full Origin / Dispatch Address</label>
+                        <input type="text" class="billing-input origin-address-input" value="" placeholder="Address, City, State, PIN" />
+                    </div>
+                `;
+                originsList.appendChild(newRow);
+                bindOriginRowEvents(newRow);
+                newRow.querySelector('.origin-label-input')?.focus();
+            });
+        }
     }
 
     updateLivePreview() {
@@ -1020,6 +1196,25 @@ export class BillingSettingsComponent {
         const invoiceClassicSign = this.container.querySelector('#toggleInvoiceClassicSign')?.classList.contains('active') ? 'true' : 'false';
         const showMmid = this.container.querySelector('#toggleShowMmid')?.classList.contains('active') ? 'true' : 'false';
 
+        // Collect dynamic shipping & dispatch origins
+        const originRows = this.container.querySelectorAll('.shipping-origin-row');
+        const collectedOrigins = [];
+        originRows.forEach((row, i) => {
+            const id = row.getAttribute('data-id') || ('orig_' + i);
+            const label = row.querySelector('.origin-label-input')?.value?.trim() || '';
+            const phone = row.querySelector('.origin-phone-input')?.value?.trim() || '';
+            const address = row.querySelector('.origin-address-input')?.value?.trim() || '';
+            const is_default = Boolean(row.querySelector('.origin-default-radio')?.checked);
+            if (label || address) {
+                collectedOrigins.push({ id, label, phone, address, is_default });
+            }
+        });
+        if (collectedOrigins.length > 0 && !collectedOrigins.some(o => o.is_default)) {
+            collectedOrigins[0].is_default = true;
+        }
+        const defaultOrig = collectedOrigins.find(o => o.is_default) || collectedOrigins[0];
+        const shippingOriginsJson = JSON.stringify(collectedOrigins);
+
         const newSettings = {
             ...this.settings,
             invoice_duplex_print: isDuplex,
@@ -1033,9 +1228,10 @@ export class BillingSettingsComponent {
             company_pan: (this.container.querySelector('#settingCompanyPan')?.value?.trim() || 'AIDPF4446J').toUpperCase(),
             company_address_factory: this.container.querySelector('#settingCompanyFactAddr')?.value?.trim() || '',
             company_address_office: this.container.querySelector('#settingCompanyOfficeAddr')?.value?.trim() || '',
-            company_address_shipping: this.container.querySelector('#settingCompanyShippingAddr')?.value?.trim() || '',
-            company_shipping_phone: this.container.querySelector('#settingCompanyShippingPhone')?.value?.trim() || '',
-            company_shipping_default_sender: this.container.querySelector('#settingCompanyDefaultSender')?.value || 'shipping',
+            company_shipping_origins: shippingOriginsJson,
+            company_address_shipping: defaultOrig ? defaultOrig.address : (this.container.querySelector('#settingCompanyShippingAddr')?.value?.trim() || ''),
+            company_shipping_phone: defaultOrig ? defaultOrig.phone : (this.container.querySelector('#settingCompanyShippingPhone')?.value?.trim() || ''),
+            company_shipping_default_sender: defaultOrig ? defaultOrig.id : 'shipping',
             company_email: this.container.querySelector('#settingCompanyEmail')?.value?.trim() || '',
             company_ayush_license: this.container.querySelector('#settingCompanyAyush')?.value?.trim() || '',
             company_gmp_ref: this.container.querySelector('#settingCompanyGmp')?.value?.trim() || '',

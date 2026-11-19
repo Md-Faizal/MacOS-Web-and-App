@@ -22,18 +22,22 @@ test('creates shipments table and is idempotent', () => {
     assert.ok(names.includes('recipient_pincode'));
     assert.ok(names.includes('sender_address'));
     assert.ok(names.includes('boxes_count'));
+    assert.ok(names.includes('invoice_ref'));
+    assert.ok(names.includes('tracking_token'));
     assert.ok(names.includes('route_note'));
     assert.ok(names.includes('status'));
 
     db.prepare(`
       INSERT INTO shipments (
-        shipment_uid, contact_id, contact_name, recipient_address,
-        recipient_pincode, sender_address, boxes_count, route_note
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('SHIP-2611-0001', 1, 'Test Chemist', 'Main Road, Aska', '761110', 'Cuttack', 2, 'Jagannath Bus');
+        shipment_uid, tracking_token, contact_id, contact_name, recipient_address,
+        recipient_pincode, sender_address, boxes_count, invoice_ref, route_note
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('SHIP-2611-0001', 'abc12345', 1, 'Test Chemist', 'Main Road, Aska', '761110', 'Cuttack', 2, 'INV-2026-001', 'Jagannath Bus');
 
     const row = db.prepare('SELECT * FROM shipments WHERE shipment_uid = ?').get('SHIP-2611-0001');
     assert.equal(row.contact_name, 'Test Chemist');
+    assert.equal(row.tracking_token, 'abc12345');
+    assert.equal(row.invoice_ref, 'INV-2026-001');
     assert.equal(row.recipient_pincode, '761110');
     assert.equal(row.boxes_count, 2);
     assert.equal(row.route_note, 'Jagannath Bus');

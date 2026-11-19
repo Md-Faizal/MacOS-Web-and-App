@@ -52,13 +52,16 @@ test('contacts shipment endpoints: create, list, and public track lookup', async
   assert.ok(createResData);
   assert.equal(createResData.success, true);
   assert.ok(createResData.shipment.shipment_uid.startsWith('SHIP-'));
+  assert.ok(createResData.shipment.tracking_token);
+  assert.equal(createResData.shipment.tracking_token.length, 8);
   assert.equal(createResData.shipment.contact_name, 'Maa Tarini Medical Store');
   assert.equal(createResData.shipment.boxes_count, 2);
   assert.equal(createResData.shipment.invoice_ref, 'INV-2026-089');
   assert.equal(createResData.shipment.route_note, 'Jagannath Bus / Berhampur Stand');
-  assert.ok(createResData.tracking_url.includes('/track/shipment?id=SHIP-'));
+  assert.ok(createResData.tracking_url.includes(`/s/${createResData.shipment.tracking_token}`));
 
   const generatedUid = createResData.shipment.shipment_uid;
+  const generatedToken = createResData.shipment.tracking_token;
 
   // 2. Test getContactShipments handler
   let listResData = null;
@@ -73,10 +76,11 @@ test('contacts shipment endpoints: create, list, and public track lookup', async
   assert.equal(listResData.success, true);
   assert.equal(listResData.shipments.length, 1);
   assert.equal(listResData.shipments[0].shipment_uid, generatedUid);
+  assert.equal(listResData.shipments[0].tracking_token, generatedToken);
 
-  // 3. Test getShipmentPublic handler
+  // 3. Test getShipmentPublic handler by short tracking token
   let publicResData = null;
-  const mockReqPublic = { params: { uid: generatedUid } };
+  const mockReqPublic = { params: { uid: generatedToken } };
   const mockResPublic = {
     json: (data) => { publicResData = data; return mockResPublic; },
     status: (code) => mockResPublic
@@ -88,6 +92,19 @@ test('contacts shipment endpoints: create, list, and public track lookup', async
   assert.equal(publicResData.shipment.contact_name, 'Maa Tarini Medical Store');
   assert.equal(publicResData.shipment.recipient_pincode, '761110');
   assert.equal(publicResData.shipment.sender_phone, '7749089400');
+  assert.equal(publicResData.shipment.invoice_ref, 'INV-2026-089');
+
+  // Also test lookup by original shipment_uid
+  let publicResDataUid = null;
+  const mockReqPublicUid = { params: { uid: generatedUid } };
+  const mockResPublicUid = {
+    json: (data) => { publicResDataUid = data; return mockResPublicUid; },
+    status: (code) => mockResPublicUid
+  };
+  handlers.getShipmentPublic(mockReqPublicUid, mockResPublicUid);
+  assert.ok(publicResDataUid);
+  assert.equal(publicResDataUid.success, true);
+  assert.equal(publicResDataUid.shipment.tracking_token, generatedToken);
 
   db.close();
 });

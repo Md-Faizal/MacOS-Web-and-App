@@ -3960,7 +3960,33 @@ module.exports = function (db) {
           'company_address_office': 'D1, Basera Complex, Dumduma, BBSR - 751019',
           'company_address_shipping': 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
           'company_shipping_phone': '7749089400',
-          'company_shipping_default_sender': 'shipping',
+          'company_shipping_default_sender': 'origin_cuttack',
+          'company_shipping_origins': JSON.stringify([
+            {
+              id: 'origin_cuttack',
+              label: 'Warehouse (Cuttack)',
+              name: 'UTKAL CHEMICAL AUSHADHALAYA',
+              address: 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+              phone: '7749089400',
+              is_default: true
+            },
+            {
+              id: 'origin_aska',
+              label: 'Factory (Aska)',
+              name: 'UTKAL CHEMICAL AUSHADHALAYA',
+              address: 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+              phone: '06822273304 / 943933330',
+              is_default: false
+            },
+            {
+              id: 'origin_bbsr',
+              label: 'Office (Bhubaneswar)',
+              name: 'UTKAL CHEMICAL AUSHADHALAYA',
+              address: 'D1, Basera Complex, Dumduma, BBSR - 751019',
+              phone: '06822273304 / 943933330',
+              is_default: false
+            }
+          ]),
           'invoice_show_dues_widget': 'true',
           'invoice_auto_sign_disclaimer': 'true',
           'payment_qr_image': '',

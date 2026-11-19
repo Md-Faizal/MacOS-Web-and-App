@@ -270,7 +270,11 @@
   <script>
     (async function() {
       const params = new URLSearchParams(window.location.search);
-      const uid = params.get('id') || params.get('uid');
+      let uid = params.get('id') || params.get('uid');
+      if (!uid) {
+        const pathMatch = window.location.pathname.match(/\/(?:s|shipment|track\/shipment)\/([^\/?#]+)/i);
+        if (pathMatch) uid = decodeURIComponent(pathMatch[1]);
+      }
 
       if (!uid) {
         document.getElementById('loaderArea').innerHTML = `

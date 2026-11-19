@@ -21,19 +21,25 @@ function up(db) {
         sender_phone TEXT,
         boxes_count INTEGER DEFAULT 1,
         invoice_ref TEXT,
+        tracking_token TEXT,
         route_note TEXT,
-        status TEXT DEFAULT 'GENERATED',
+        status DEFAULT 'GENERATED',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_shipments_uid ON shipments(shipment_uid);
+      CREATE INDEX IF NOT EXISTS idx_shipments_token ON shipments(tracking_token);
       CREATE INDEX IF NOT EXISTS idx_shipments_contact ON shipments(contact_id);
       CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments(created_at);
     `);
 
     if (!hasColumn(db, 'shipments', 'invoice_ref')) {
       db.exec('ALTER TABLE shipments ADD COLUMN invoice_ref TEXT');
+    }
+    if (!hasColumn(db, 'shipments', 'tracking_token')) {
+      db.exec('ALTER TABLE shipments ADD COLUMN tracking_token TEXT');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_shipments_token ON shipments(tracking_token)');
     }
   });
 

@@ -8,6 +8,7 @@ const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOS
  */
 
 import { renderWorkerBadge } from '/shared/worker-badges.js';
+import { findBestInvoiceMatchForOrder } from '../../../shared/order-invoice-matcher.mjs';
 
 class ContactsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
@@ -809,12 +810,13 @@ class ContactsApp extends AppWindow {
     });
   }
 
-  async generateSlipQR(uid) {
+  async generateSlipQR(tokenOrUid) {
     try {
       await this.ensureQRCodeLibrary();
       if (window.QRCode && window.QRCode.toCanvas) {
         const portalUrl = (this.appSettings && this.appSettings.portal_base_url) || window.location.origin;
-        const targetUrl = `${portalUrl}/track/shipment?id=${encodeURIComponent(uid)}`;
+        // Use short customer-facing tracking URL /s/:token
+        const targetUrl = `${portalUrl}/s/${encodeURIComponent(tokenOrUid)}`;
         const canvas = document.createElement('canvas');
         await window.QRCode.toCanvas(canvas, targetUrl, {
           width: 140,
@@ -859,29 +861,57 @@ class ContactsApp extends AppWindow {
     const settings = this.appSettings || {};
     const companyName = settings.company_name || 'UTKAL CHEMICAL AUSHADHALAYA';
 
-    const origins = {
-      shipping: {
-        label: 'Warehouse (Cuttack)',
-        name: companyName,
-        address: settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
-        phone: settings.company_shipping_phone || '7749089400'
-      },
-      factory: {
-        label: 'Factory (Aska)',
-        name: companyName,
-        address: settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
-        phone: settings.company_phone || '06822273304 / 943933330'
-      },
-      office: {
-        label: 'Office (Bhubaneswar)',
-        name: companyName,
-        address: settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019',
-        phone: settings.company_phone || '06822273304 / 943933330'
+    let dynamicOrigins = [];
+    try {
+      if (settings.company_shipping_origins) {
+        dynamicOrigins = typeof settings.company_shipping_origins === 'string'
+          ? JSON.parse(settings.company_shipping_origins)
+          : settings.company_shipping_origins;
       }
-    };
+    } catch (e) {
+      log.warn('Failed to parse company_shipping_origins:', e);
+    }
 
-    let selectedOriginKey = settings.company_shipping_default_sender || 'shipping';
-    if (!origins[selectedOriginKey]) selectedOriginKey = 'shipping';
+    if (!Array.isArray(dynamicOrigins) || dynamicOrigins.length === 0) {
+      dynamicOrigins = [
+        {
+          id: 'shipping',
+          label: 'Warehouse (Cuttack)',
+          address: settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+          phone: settings.company_shipping_phone || '7749089400',
+          is_default: true
+        },
+        {
+          id: 'factory',
+          label: 'Factory (Aska)',
+          address: settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+          phone: settings.company_phone || '06822273304 / 943933330',
+          is_default: false
+        },
+        {
+          id: 'office',
+          label: 'Office (Bhubaneswar)',
+          address: settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019',
+          phone: settings.company_phone || '06822273304 / 943933330',
+          is_default: false
+        }
+      ];
+    }
+
+    const origins = {};
+    dynamicOrigins.forEach((orig, idx) => {
+      const key = orig.id || `orig_${idx}`;
+      origins[key] = {
+        id: key,
+        label: orig.label || 'Dispatch Hub',
+        name: companyName,
+        address: orig.address || '',
+        phone: orig.phone || ''
+      };
+    });
+
+    const defaultOrigObj = dynamicOrigins.find(o => o.is_default) || dynamicOrigins[0];
+    let selectedOriginKey = (defaultOrigObj && defaultOrigObj.id && origins[defaultOrigObj.id]) ? defaultOrigObj.id : Object.keys(origins)[0];
 
     const rawAddress = contact.address || '';
     const pinMatch = rawAddress.match(/\b([1-9][0-9]{5})\b/);
@@ -891,9 +921,10 @@ class ContactsApp extends AppWindow {
     const yy = String(now.getFullYear()).slice(-2);
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const previewUid = `SHIP-${yy}${mm}-` + Math.floor(1000 + Math.random() * 9000);
+    const previewToken = Math.random().toString(36).substring(2, 6) + Math.random().toString(36).substring(2, 6);
 
     let currentFormat = 'thermal';
-    let qrDataUrl = await this.generateSlipQR(previewUid);
+    let qrDataUrl = await this.generateSlipQR(previewToken);
 
     const existing = document.getElementById('shippingStudioOverlay');
     if (existing) existing.remove();
@@ -901,7 +932,8 @@ class ContactsApp extends AppWindow {
     const overlay = document.createElement('div');
     overlay.id = 'shippingStudioOverlay';
     overlay.className = 'contact-modal-overlay';
-    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2147483647; padding: 16px; box-sizing: border-box;';
+    // Use standard modal z-index (1000001) so #macos-cursor (2147483647) paints on top and remains visible
+    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000001; padding: 16px; box-sizing: border-box;';
 
     overlay.innerHTML = `
       <div class="shipping-studio-modal" style="width: 100%; max-width: 900px; max-height: 92vh; height: 750px; background: #ffffff; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(0,0,0,0.1);">
@@ -1000,8 +1032,16 @@ class ContactsApp extends AppWindow {
                   <input type="number" id="studioBoxesCount" class="billing-input" value="1" min="1" max="99" style="width: 100%; font-weight: 700; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
                 </div>
                 <div style="flex: 1;">
-                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Invoice / Bill Ref (Optional)</span>
-                  <input type="text" id="studioInvoiceRef" class="billing-input" placeholder="e.g. INV-2026-089" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 10px; font-weight: 600; color: #64748b;">Invoice / Bill Ref (Optional)</span>
+                    <span id="studioInvoiceStatusText" style="font-size: 9.5px; color: #0284c7; font-weight: 600;"></span>
+                  </div>
+                  <div style="position: relative; margin-top: 2px;">
+                    <input type="text" id="studioInvoiceRef" class="billing-input" placeholder="e.g. INV-2026-089" style="width: 100%; padding: 6px 26px 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600;" />
+                    <button type="button" id="studioClearInvBtn" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: #94a3b8; font-size: 16px; font-weight: 700; cursor: pointer; padding: 2px; line-height: 1; display: none;" title="Clear invoice link">&times;</button>
+                  </div>
+                  <div id="studioInvoiceAutoMatchBadge" style="display: none; margin-top: 4px;"></div>
+                  <div id="studioRecentInvoicesContainer" style="display: none; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;"></div>
                 </div>
               </div>
               <div>
@@ -1116,7 +1156,6 @@ class ContactsApp extends AppWindow {
 
             <div style="width: 72px; text-align: center; flex-shrink: 0;">
               ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 64px; height: 64px; border: 1px solid #000000; display: block; margin: 0 auto;" />` : ''}
-              <div style="font-size: 7px; font-weight: 800; margin-top: 2px;">SCAN TO CALL</div>
             </div>
           </div>
 
@@ -1130,6 +1169,128 @@ class ContactsApp extends AppWindow {
     };
 
     renderPreview();
+
+    // Auto-fetch recent invoices & auto-link matching bill
+    (async () => {
+      try {
+        const [invRes, orderRes] = await Promise.all([
+          fetch(`/api/billing?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`/api/billing/orders?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const invoices = Array.isArray(invRes) ? invRes : (invRes.items || invRes.data || []);
+        const orders = Array.isArray(orderRes) ? orderRes : (orderRes.orders || orderRes.items || orderRes.data || []);
+
+        const invInput = overlay.querySelector('#studioInvoiceRef');
+        const clearBtn = overlay.querySelector('#studioClearInvBtn');
+        const badgeContainer = overlay.querySelector('#studioInvoiceAutoMatchBadge');
+        const recentContainer = overlay.querySelector('#studioRecentInvoicesContainer');
+
+        let bestMatch = null;
+        if (orders.length > 0 && invoices.length > 0 && typeof findBestInvoiceMatchForOrder === 'function') {
+          bestMatch = findBestInvoiceMatchForOrder(orders[0], invoices, orders);
+        }
+
+        let chosenInvoice = null;
+        let matchPct = 0;
+        let matchNote = '';
+
+        if (bestMatch && bestMatch.invoice) {
+          chosenInvoice = bestMatch.invoice;
+          matchPct = Math.min(100, Math.round((bestMatch.score / 100) * 100));
+          matchNote = bestMatch.reasons?.[0] || 'Order match';
+        } else if (invoices.length > 0) {
+          chosenInvoice = invoices[0];
+          matchPct = 100;
+          matchNote = 'Latest customer invoice';
+        }
+
+        const updateInvBadge = (invNo, amount, pct, note) => {
+          if (!badgeContainer) return;
+          if (!invNo) {
+            badgeContainer.style.display = 'none';
+            badgeContainer.innerHTML = '';
+            if (clearBtn) clearBtn.style.display = 'none';
+            return;
+          }
+          if (clearBtn) clearBtn.style.display = 'block';
+          badgeContainer.style.display = 'block';
+          badgeContainer.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; background: #e0f2fe; border: 1px solid #bae6fd; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
+              <div style="color: #0369a1; font-weight: 700; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span>⚡ Auto-linked:</span>
+                <span style="font-family: monospace;">${escapeHtml(invNo)}</span>
+                ${amount ? `<span>(₹${Number(amount).toLocaleString('en-IN')})</span>` : ''}
+                <span style="background: #0284c7; color: #fff; padding: 1px 6px; border-radius: 4px; font-size: 9.5px;">${pct}% match</span>
+              </div>
+            </div>
+          `;
+        };
+
+        if (chosenInvoice && invInput && !invInput.value) {
+          const invNo = chosenInvoice.invoice_no || chosenInvoice.id;
+          const amount = chosenInvoice.final_amount || chosenInvoice.grand_total || chosenInvoice.total_amount || 0;
+          invInput.value = invNo;
+          updateInvBadge(invNo, amount, matchPct, matchNote);
+          renderPreview();
+        }
+
+        if (clearBtn) {
+          clearBtn.addEventListener('click', () => {
+            if (invInput) invInput.value = '';
+            updateInvBadge('', 0, 0, '');
+            renderPreview();
+          });
+        }
+
+        if (invInput) {
+          invInput.addEventListener('input', () => {
+            const val = invInput.value.trim();
+            if (!val) {
+              updateInvBadge('', 0, 0, '');
+            } else {
+              const matched = invoices.find(i => (i.invoice_no === val || String(i.id) === val));
+              if (matched) {
+                const amt = matched.final_amount || matched.grand_total || matched.total_amount || 0;
+                updateInvBadge(val, amt, 100, 'Matched record');
+              } else {
+                if (badgeContainer) badgeContainer.style.display = 'none';
+                if (clearBtn) clearBtn.style.display = 'block';
+              }
+            }
+            renderPreview();
+          });
+        }
+
+        if (recentContainer && invoices.length > 0) {
+          recentContainer.style.display = 'flex';
+          recentContainer.innerHTML = `
+            <span style="font-size: 10px; color: #64748b; font-weight: 600; align-self: center;">Recent bills:</span>
+            ${invoices.slice(0, 3).map(inv => {
+              const num = escapeHtml(inv.invoice_no || inv.id);
+              const amt = Math.round(Number(inv.final_amount || inv.grand_total || inv.total_amount || 0));
+              return `
+                <button type="button" class="studio-inv-pick-chip" data-inv="${num}" data-amt="${amt}" style="font-size: 10px; font-family: monospace; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s;">
+                  ${num} (₹${amt})
+                </button>
+              `;
+            }).join('')}
+          `;
+
+          recentContainer.querySelectorAll('.studio-inv-pick-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+              const num = chip.getAttribute('data-inv');
+              const amt = chip.getAttribute('data-amt');
+              if (invInput) invInput.value = num;
+              updateInvBadge(num, amt, 100, 'Selected invoice');
+              renderPreview();
+            });
+          });
+        }
+      } catch (err) {
+        log.warn('Could not auto-fetch invoices for shipping studio:', err);
+      }
+    })();
 
     // Event Bindings
     overlay.querySelectorAll('.studio-format-pill').forEach(btn => {
@@ -1211,6 +1372,7 @@ class ContactsApp extends AppWindow {
       }
 
       let finalUid = previewUid;
+      let finalToken = previewToken;
       try {
         const shipRes = await fetch(`${this.apiUrl}/${contact.id}/shipments`, {
           method: 'POST',
@@ -1230,15 +1392,20 @@ class ContactsApp extends AppWindow {
 
         if (shipRes.ok) {
           const shipData = await shipRes.json();
-          if (shipData.shipment && shipData.shipment.shipment_uid) {
-            finalUid = shipData.shipment.shipment_uid;
+          if (shipData.shipment) {
+            if (shipData.shipment.shipment_uid) {
+              finalUid = shipData.shipment.shipment_uid;
+            }
+            if (shipData.shipment.tracking_token) {
+              finalToken = shipData.shipment.tracking_token;
+            }
           }
         }
       } catch (err) {
         log.warn('Failed to register shipment:', err);
       }
 
-      const finalQr = await this.generateSlipQR(finalUid);
+      const finalQr = await this.generateSlipQR(finalToken);
 
       const isThermal = currentFormat === 'thermal';
       const printWindow = window.open('', '_blank');
@@ -1476,7 +1643,6 @@ class ContactsApp extends AppWindow {
                   </div>
                   <div class="slip-qr-wrap">
                     ${finalQr ? `<img src="${finalQr}" />` : ''}
-                    <div class="slip-qr-lbl">SCAN TO CALL</div>
                   </div>
                 </div>
               </div>

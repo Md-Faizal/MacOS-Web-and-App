@@ -656,8 +656,12 @@ module.exports = function(db) {
         `);
 
         try {
-          const hasInv = db.prepare(`PRAGMA table_info(shipments)`).all().some(c => c.name === 'invoice_ref');
-          if (!hasInv) db.exec('ALTER TABLE shipments ADD COLUMN invoice_ref TEXT');
+          const cols = db.prepare(`PRAGMA table_info(shipments)`).all().map(c => c.name);
+          if (!cols.includes('invoice_ref')) db.exec('ALTER TABLE shipments ADD COLUMN invoice_ref TEXT');
+          if (!cols.includes('tracking_token')) {
+            db.exec('ALTER TABLE shipments ADD COLUMN tracking_token TEXT');
+            db.exec('CREATE INDEX IF NOT EXISTS idx_shipments_token ON shipments(tracking_token)');
+          }
         } catch (_) {}
 
         const now = new Date();
@@ -669,16 +673,23 @@ module.exports = function(db) {
         const nextSeq = String((countRow ? countRow.count : 0) + 1).padStart(4, '0');
         const shipment_uid = `${prefix}-${nextSeq}`;
 
+        const tokenChars = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ';
+        let tracking_token = '';
+        for (let i = 0; i < 8; i++) {
+          tracking_token += tokenChars[Math.floor(Math.random() * tokenChars.length)];
+        }
+
         const insert = db.prepare(`
           INSERT INTO shipments (
-            shipment_uid, contact_id, contact_name, recipient_address,
+            shipment_uid, tracking_token, contact_id, contact_name, recipient_address,
             recipient_phone, recipient_pincode, sender_address, sender_phone,
             boxes_count, invoice_ref, route_note, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATED')
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATED')
         `);
 
         insert.run(
           shipment_uid,
+          tracking_token,
           id,
           contact_name || 'Customer',
           recipient_address || '',
@@ -696,10 +707,10 @@ module.exports = function(db) {
         let portalBaseUrl = 'https://mac.faizal.uk';
         try {
           const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'portal_base_url'`).get();
-          if (setting && setting.setting_value) portalBaseUrl = setting.setting_value;
+          if (setting && setting.setting_value) portalBaseUrl = setting.setting_value.replace(/\/+$/, '');
         } catch (_) {}
 
-        const tracking_url = `${portalBaseUrl}/track/shipment?id=${shipment_uid}`;
+        const tracking_url = `${portalBaseUrl}/s/${tracking_token}`;
 
         res.json({
           success: true,
@@ -726,7 +737,7 @@ module.exports = function(db) {
     getShipmentPublic: (req, res) => {
       try {
         const { uid } = req.params;
-        const row = db.prepare(`SELECT * FROM shipments WHERE shipment_uid = ?`).get(uid);
+        const row = db.prepare(`SELECT * FROM shipments WHERE tracking_token = ? OR shipment_uid = ?`).get(uid, uid);
         if (!row) {
           return res.status(404).json({ error: 'Shipment not found' });
         }

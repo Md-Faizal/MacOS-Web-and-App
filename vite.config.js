@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => {
               req.url = '/payment-gateway.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
             } else if (pathName === '/order-fulfillment' || pathName === '/plant' || pathName.startsWith('/plant/') || pathName.startsWith('/order-fulfillment/')) {
               req.url = '/order-fulfillment.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
-            } else if (pathName === '/track/shipment' || pathName === '/shipment' || pathName.startsWith('/track/shipment') || pathName.startsWith('/shipment/')) {
+            } else if (pathName === '/track/shipment' || pathName === '/shipment' || pathName.startsWith('/track/shipment') || pathName.startsWith('/shipment/') || pathName === '/s' || pathName.startsWith('/s/')) {
               req.url = '/shipment-track.html' + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '');
             }
             next();

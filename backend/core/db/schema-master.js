@@ -644,6 +644,7 @@ CREATE TABLE IF NOT EXISTS ledger (
 CREATE TABLE IF NOT EXISTS shipments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   shipment_uid TEXT NOT NULL UNIQUE,
+  tracking_token TEXT UNIQUE,
   contact_id INTEGER NOT NULL,
   contact_name TEXT NOT NULL,
   recipient_address TEXT NOT NULL,
@@ -660,6 +661,7 @@ CREATE TABLE IF NOT EXISTS shipments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_shipments_uid ON shipments(shipment_uid);
+CREATE INDEX IF NOT EXISTS idx_shipments_token ON shipments(tracking_token);
 CREATE INDEX IF NOT EXISTS idx_shipments_contact ON shipments(contact_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments(created_at);
 
@@ -698,29 +700,6 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (customer_id) REFERENCES contacts(id)
 );
-
--- Shipments: Logistics shipping slips and dispatch parcel tracking
-CREATE TABLE IF NOT EXISTS shipments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  shipment_uid TEXT NOT NULL UNIQUE,
-  contact_id INTEGER NOT NULL,
-  contact_name TEXT NOT NULL,
-  recipient_address TEXT NOT NULL,
-  recipient_phone TEXT,
-  recipient_pincode TEXT,
-  sender_address TEXT NOT NULL,
-  sender_phone TEXT,
-  boxes_count INTEGER DEFAULT 1,
-  invoice_ref TEXT,
-  route_note TEXT,
-  status TEXT DEFAULT 'GENERATED',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_shipments_uid ON shipments(shipment_uid);
-CREATE INDEX IF NOT EXISTS idx_shipments_contact ON shipments(contact_id);
-CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments(created_at);
 
 -- Order Items: Line items in each order
 CREATE TABLE IF NOT EXISTS order_items (

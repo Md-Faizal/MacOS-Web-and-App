@@ -1450,7 +1450,7 @@ app.get(['/public/product', '/public/product/:sku', '/public/batch/:batchId'], (
   return res.sendFile(path.join(__dirname, '../../frontend/public-product.html'));
 });
 
-app.get(['/track/shipment', '/shipment', '/shipment/:uid', '/shipment-track.html'], (req, res) => {
+app.get(['/s/:token', '/s', '/track/shipment', '/shipment', '/shipment/:uid', '/shipment-track.html'], (req, res) => {
   const htmlPath = path.join(__dirname, '../../dist/shipment-track.html');
   if (require('fs').existsSync(htmlPath)) {
     return res.sendFile(htmlPath);
