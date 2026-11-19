@@ -830,11 +830,22 @@ class ContactsApp extends AppWindow {
     return '';
   }
 
+  escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   printSlip(contactId) {
     this.openShippingStudio(contactId);
   }
 
   async openShippingStudio(contactId) {
+    const escapeHtml = (str) => this.escapeHtml(str);
     const contact = this.contacts.find(c => c.id === contactId);
     if (!contact) {
       this.showNotification('Contact not found', 'error');
