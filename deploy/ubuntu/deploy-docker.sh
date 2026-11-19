@@ -122,6 +122,10 @@ if [ ! -f "database/MacOS.db" ] || [ ! -s "database/MacOS.db" ]; then
     echo "   The database is a Docker bind-mount volume — it must be managed separately."
     echo "   To restore: copy a backup to database/MacOS.db and re-run deploy."
     echo "   Continuing startup — server will initialise a fresh schema if needed."
+else
+    # Pre-deploy SQLite WAL checkpoint ensures zero dirty WAL pages or lock contentions during container swap
+    echo "🔍 Pre-deploy SQLite WAL checkpoint..."
+    sqlite3 database/MacOS.db 'PRAGMA wal_checkpoint(PASSIVE);' 2>/dev/null || true
 fi
 
 # Auto-heal: Ensure .env exists and has required production authentication secrets

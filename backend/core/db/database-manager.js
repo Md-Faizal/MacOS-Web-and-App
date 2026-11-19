@@ -73,15 +73,34 @@ class DatabaseManager {
    */
   connectDatabase() {
     try {
-      this.db = new Database(this.dbPath);
+      this.db = new Database(this.dbPath, { timeout: 10000 });
       // ENABLE EXTENDED CONCURRENCY MODES
       this.db.pragma('journal_mode = WAL');
       this.db.pragma('synchronous = NORMAL');
+      this.db.pragma('busy_timeout = 10000');
       
       const env = process.env.NODE_ENV || 'development';
       console.log(`✓ Connected to database: ${this.dbPath} (${env}) [WAL Mode]`);
       return this.db;
     } catch (error) {
+      if (error.message && error.message.includes('malformed')) {
+        console.warn('⚠️  SQLite reported malformed on connect — attempting automatic WAL recovery...');
+        try {
+          const recoveryDb = new Database(this.dbPath, { timeout: 10000 });
+          recoveryDb.pragma('wal_checkpoint(TRUNCATE)');
+          const check = recoveryDb.pragma('integrity_check');
+          if (check && check[0] && check[0].integrity_check === 'ok') {
+            recoveryDb.pragma('journal_mode = WAL');
+            recoveryDb.pragma('synchronous = NORMAL');
+            recoveryDb.pragma('busy_timeout = 10000');
+            this.db = recoveryDb;
+            console.log('✓ Automatic WAL recovery succeeded');
+            return this.db;
+          }
+        } catch (recoverErr) {
+          console.error('✗ Automatic WAL recovery failed:', recoverErr.message);
+        }
+      }
       throw new Error(`Failed to connect to database: ${error.message}`);
     }
   }
