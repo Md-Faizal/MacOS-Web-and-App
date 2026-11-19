@@ -630,6 +630,7 @@ module.exports = function(db) {
           sender_address,
           sender_phone,
           boxes_count,
+          invoice_ref,
           route_note
         } = req.body;
 
@@ -646,12 +647,18 @@ module.exports = function(db) {
             sender_address TEXT NOT NULL,
             sender_phone TEXT,
             boxes_count INTEGER DEFAULT 1,
+            invoice_ref TEXT,
             route_note TEXT,
             status TEXT DEFAULT 'GENERATED',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
           );
         `);
+
+        try {
+          const hasInv = db.prepare(`PRAGMA table_info(shipments)`).all().some(c => c.name === 'invoice_ref');
+          if (!hasInv) db.exec('ALTER TABLE shipments ADD COLUMN invoice_ref TEXT');
+        } catch (_) {}
 
         const now = new Date();
         const yy = String(now.getFullYear()).slice(-2);
@@ -666,8 +673,8 @@ module.exports = function(db) {
           INSERT INTO shipments (
             shipment_uid, contact_id, contact_name, recipient_address,
             recipient_phone, recipient_pincode, sender_address, sender_phone,
-            boxes_count, route_note, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATED')
+            boxes_count, invoice_ref, route_note, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATED')
         `);
 
         insert.run(
@@ -680,6 +687,7 @@ module.exports = function(db) {
           sender_address || '',
           sender_phone || '',
           parseInt(boxes_count, 10) || 1,
+          invoice_ref || '',
           route_note || ''
         );
 

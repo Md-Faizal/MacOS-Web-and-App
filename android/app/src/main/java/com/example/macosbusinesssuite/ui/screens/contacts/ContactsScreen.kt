@@ -1405,10 +1405,16 @@ fun printShippingSlip(context: android.content.Context, contact: Contact) {
               font-weight: 800;
               margin-top: 1mm;
             }
-            .slip-box-count {
-              font-size: 11pt;
+            .slip-inv-ref {
+              font-size: 10pt;
               font-weight: 800;
               text-align: right;
+            }
+            .slip-box-count {
+              font-size: 10.5pt;
+              font-weight: 800;
+              text-align: right;
+              margin-top: 1mm;
             }
             .slip-to-section {
               flex: 1;
@@ -1503,6 +1509,7 @@ fun printShippingSlip(context: android.content.Context, contact: Contact) {
                   <div class="slip-sender-ph">Ph: ${fromPhone}</div>
                 </div>
                 <div>
+                  <div class="slip-inv-ref">Inv: ________________</div>
                   <div class="slip-box-count">Box: 1 of 1</div>
                 </div>
               </div>

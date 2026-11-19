@@ -684,6 +684,14 @@ for (const route of routes) {
       }
       authModule.authMiddleware(req, res, next);
     }, route.router);
+  } else if (route.path === '/api/contacts') {
+    app.use(route.path, (req, res, next) => {
+      // Exempt public shipment tracking lookup from QR codes
+      if (req.path.startsWith('/shipments/') && req.path.endsWith('/track')) {
+        return next();
+      }
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
   } else if (route.path === '/api/logs') {
     // Allow unauthenticated POST to /api/logs/app so clients can report errors before login;
     // protect other inspection routes with auth middleware.

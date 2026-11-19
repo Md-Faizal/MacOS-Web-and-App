@@ -980,18 +980,22 @@ class ContactsApp extends AppWindow {
               </div>
             </div>
 
-            <!-- 4. Package & Optional Route Note -->
+            <!-- 4. Package & Transit Notes -->
             <div>
               <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Package & Transit Notes</label>
-              <div style="display: flex; gap: 8px;">
+              <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                 <div style="width: 85px;">
                   <span style="font-size: 10px; font-weight: 600; color: #64748b;">Total Boxes</span>
                   <input type="number" id="studioBoxesCount" class="billing-input" value="1" min="1" max="99" style="width: 100%; font-weight: 700; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
                 </div>
                 <div style="flex: 1;">
-                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Optional Route / Bus Note</span>
-                  <input type="text" id="studioRouteNote" class="billing-input" placeholder="e.g. Sita Transport / Jagannath Bus" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Invoice / Bill Ref (Optional)</span>
+                  <input type="text" id="studioInvoiceRef" class="billing-input" placeholder="e.g. INV-2026-089" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
                 </div>
+              </div>
+              <div>
+                <span style="font-size: 10px; font-weight: 600; color: #64748b;">Optional Route / Bus Note</span>
+                <input type="text" id="studioRouteNote" class="billing-input" placeholder="e.g. Sita Transport / Jagannath Bus" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
               </div>
             </div>
 
@@ -1035,6 +1039,7 @@ class ContactsApp extends AppWindow {
       const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
       const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
       const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+      const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
       const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
 
       const isThermal = currentFormat === 'thermal';
@@ -1053,7 +1058,8 @@ class ContactsApp extends AppWindow {
             </div>
             <div style="text-align: right; flex-shrink: 0;">
               <div style="font-size: 11px; font-family: monospace; font-weight: 800; background: #000000; color: #ffffff; padding: 2px 6px; border-radius: 4px;">${previewUid}</div>
-              <div style="font-size: 11px; font-weight: 800; margin-top: 4px;">Box: 1 of ${boxes}</div>
+              <div style="font-size: 9.5px; font-weight: 800; margin-top: 2px;">${invRef ? 'Inv: ' + this.escapeHtml(invRef) : 'Inv: ________________'}</div>
+              <div style="font-size: 10.5px; font-weight: 800; margin-top: 2px;">Box: 1 of ${boxes}</div>
             </div>
           </div>
 
@@ -1144,7 +1150,7 @@ class ContactsApp extends AppWindow {
       });
     });
 
-    ['studioRecName', 'studioRecAddr', 'studioRecPin', 'studioRecPhone', 'studioBoxesCount', 'studioRouteNote'].forEach(id => {
+    ['studioRecName', 'studioRecAddr', 'studioRecPin', 'studioRecPhone', 'studioBoxesCount', 'studioInvoiceRef', 'studioRouteNote'].forEach(id => {
       const el = overlay.querySelector('#' + id);
       if (el) {
         el.addEventListener('input', () => {
@@ -1172,6 +1178,7 @@ class ContactsApp extends AppWindow {
       const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
       const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
       const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+      const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
       const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
       const syncBack = overlay.querySelector('#studioSyncBack')?.checked;
 
@@ -1205,6 +1212,7 @@ class ContactsApp extends AppWindow {
             sender_address: orig.address,
             sender_phone: orig.phone,
             boxes_count: parseInt(boxes, 10) || 1,
+            invoice_ref: invRef,
             route_note: route
           })
         });
@@ -1299,11 +1307,17 @@ class ContactsApp extends AppWindow {
                 border-radius: 2mm;
                 text-align: right;
               }
-              .slip-box-count {
-                font-size: ${isThermal ? '9pt' : '11pt'};
+              .slip-inv-ref {
+                font-size: ${isThermal ? '8pt' : '10pt'};
                 font-weight: 800;
                 text-align: right;
-                margin-top: 1.5mm;
+                margin-top: 1mm;
+              }
+              .slip-box-count {
+                font-size: ${isThermal ? '8.5pt' : '10.5pt'};
+                font-weight: 800;
+                text-align: right;
+                margin-top: 1mm;
               }
               .slip-to-section {
                 flex: 1;
@@ -1425,6 +1439,7 @@ class ContactsApp extends AppWindow {
                   </div>
                   <div>
                     <div class="slip-tag-badge">${finalUid}</div>
+                    <div class="slip-inv-ref">${invRef ? 'Inv: ' + this.escapeHtml(invRef) : 'Inv: ________________'}</div>
                     <div class="slip-box-count">Box: 1 of ${boxes}</div>
                   </div>
                 </div>

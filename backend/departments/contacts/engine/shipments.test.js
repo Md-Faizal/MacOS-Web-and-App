@@ -39,6 +39,7 @@ test('contacts shipment endpoints: create, list, and public track lookup', async
       sender_address: 'Beside Sai Hospital Annex, Mangalabagh, Cuttack - 753001',
       sender_phone: '7749089400',
       boxes_count: 2,
+      invoice_ref: 'INV-2026-089',
       route_note: 'Jagannath Bus / Berhampur Stand'
     }
   };
@@ -53,6 +54,7 @@ test('contacts shipment endpoints: create, list, and public track lookup', async
   assert.ok(createResData.shipment.shipment_uid.startsWith('SHIP-'));
   assert.equal(createResData.shipment.contact_name, 'Maa Tarini Medical Store');
   assert.equal(createResData.shipment.boxes_count, 2);
+  assert.equal(createResData.shipment.invoice_ref, 'INV-2026-089');
   assert.equal(createResData.shipment.route_note, 'Jagannath Bus / Berhampur Stand');
   assert.ok(createResData.tracking_url.includes('/track/shipment?id=SHIP-'));
 

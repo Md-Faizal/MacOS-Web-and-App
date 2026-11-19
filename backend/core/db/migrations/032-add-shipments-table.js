@@ -1,3 +1,11 @@
+function hasColumn(db, tableName, columnName) {
+  try {
+    return db.prepare(`PRAGMA table_info(${tableName})`).all().some(c => c.name === columnName);
+  } catch (_) {
+    return false;
+  }
+}
+
 function up(db) {
   const migrate = db.transaction(() => {
     db.exec(`
@@ -12,6 +20,7 @@ function up(db) {
         sender_address TEXT NOT NULL,
         sender_phone TEXT,
         boxes_count INTEGER DEFAULT 1,
+        invoice_ref TEXT,
         route_note TEXT,
         status TEXT DEFAULT 'GENERATED',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -22,6 +31,10 @@ function up(db) {
       CREATE INDEX IF NOT EXISTS idx_shipments_contact ON shipments(contact_id);
       CREATE INDEX IF NOT EXISTS idx_shipments_created ON shipments(created_at);
     `);
+
+    if (!hasColumn(db, 'shipments', 'invoice_ref')) {
+      db.exec('ALTER TABLE shipments ADD COLUMN invoice_ref TEXT');
+    }
   });
 
   migrate();

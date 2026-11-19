@@ -235,6 +235,10 @@
           <span class="details-label">Box Count</span>
           <span class="details-value" id="pkgBoxes">1 of 1</span>
         </div>
+        <div class="details-row" id="invRefRow" style="display: none;">
+          <span class="details-label">Invoice Ref</span>
+          <span class="details-value" id="invRef" style="font-weight: 800; color: #0284c7;">--</span>
+        </div>
         <div class="details-row" id="routeNoteRow" style="display: none;">
           <span class="details-label">Route / Bus Note</span>
           <span class="details-value" id="routeNote">--</span>
@@ -305,6 +309,11 @@
 
         document.getElementById('pkgBoxes').textContent = (s.boxes_count || 1) + ' Box(es)';
         
+        if (s.invoice_ref) {
+          document.getElementById('invRef').textContent = s.invoice_ref;
+          document.getElementById('invRefRow').style.display = 'flex';
+        }
+
         if (s.route_note) {
           document.getElementById('routeNote').textContent = s.route_note;
           document.getElementById('routeNoteRow').style.display = 'flex';
