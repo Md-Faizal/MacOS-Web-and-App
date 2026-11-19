@@ -32,6 +32,8 @@ class ContactsApp extends AppWindow {
     this.isLoading = true;
     this.selectedContactId = null;
     this.editingContactId = null;
+    this.appSettings = null;
+    this.loadAppSettings();
     this.setupContactsUI();
     this.loadContactsFromAPI();
 
@@ -782,175 +784,699 @@ class ContactsApp extends AppWindow {
     return '₹' + formatted + '.' + decPart;
   }
 
+  async loadAppSettings() {
+    try {
+      const res = await fetch('/api/settings/app-settings');
+      if (res.ok) {
+        this.appSettings = await res.json();
+      } else {
+        const res2 = await fetch('/api/billing/settings/app-settings');
+        if (res2.ok) this.appSettings = await res2.json();
+      }
+    } catch (err) {
+      log.warn('Could not load app settings for contacts:', err);
+    }
+  }
+
+  async ensureQRCodeLibrary() {
+    if (typeof window.QRCode !== 'undefined') return window.QRCode;
+    return new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = '/modules/product-list/js/qrcode.min.js';
+      s.onload = () => resolve(window.QRCode);
+      s.onerror = () => resolve(null);
+      document.head.appendChild(s);
+    });
+  }
+
+  async generateSlipQR(uid) {
+    try {
+      await this.ensureQRCodeLibrary();
+      if (window.QRCode && window.QRCode.toCanvas) {
+        const portalUrl = (this.appSettings && this.appSettings.portal_base_url) || window.location.origin;
+        const targetUrl = `${portalUrl}/track/shipment?id=${encodeURIComponent(uid)}`;
+        const canvas = document.createElement('canvas');
+        await window.QRCode.toCanvas(canvas, targetUrl, {
+          width: 140,
+          margin: 1,
+          errorCorrectionLevel: 'M',
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+        return canvas.toDataURL('image/png');
+      }
+    } catch (err) {
+      log.warn('Failed to generate QR data URL:', err);
+    }
+    return '';
+  }
+
   printSlip(contactId) {
+    this.openShippingStudio(contactId);
+  }
+
+  async openShippingStudio(contactId) {
     const contact = this.contacts.find(c => c.id === contactId);
-    if (!contact) return;
-
-    const fromName = "UTKAL CHEMICAL AUSHADHALAYA";
-    const fromAddress = "Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, 753001";
-    const fromPhone = "7749089400";
-    
-    const toName = contact.name;
-    const toAddress = contact.address || "No address provided";
-    const toPhone = contact.phone || "";
-
-    const slipHtml = `
-      <div class="shipping-slip">
-        <div class="slip-border">
-          <div class="slip-header">SHIPPING SLIP</div>
-          <div class="slip-grid">
-            <div class="slip-to">
-              <div class="slip-label">TO:</div>
-              <div class="slip-value name">${toName}</div>
-              <div class="slip-value address">${toAddress}</div>
-              ${toPhone ? `<div class="slip-value">Ph: ${toPhone}</div>` : ''}
-            </div>
-            <div class="slip-from">
-              <div class="slip-label">FROM:</div>
-              <div class="slip-value name">${fromName}</div>
-              <div class="slip-value">${fromAddress}</div>
-              <div class="slip-value">Ph: ${fromPhone}</div>
-            </div>
-          </div>
-        </div>
-        <div class="cutting-line">
-          <span>✂️</span>
-        </div>
-      </div>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      this.showNotification('Please allow popups to print the shipping slip.', 'warning');
+    if (!contact) {
+      this.showNotification('Contact not found', 'error');
       return;
     }
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Shipping Slip - ${toName}</title>
-          <style>
-            @page { size: A4; margin: 0; }
-            body { 
-              margin: 0; 
-              padding: 0; 
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              background: #f0f0f0;
-            }
-            .print-container { 
-              width: 210mm; 
-              height: 297mm; 
-              background: white;
-              margin: 0 auto;
-              position: relative;
-            }
-            .shipping-slip { 
-              width: 100%; 
-              height: 148.5mm; 
-              padding: 10mm 15mm; 
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: flex-start;
-              position: relative;
-            }
-            .slip-border { 
-              border: 4px solid #000; 
-              width: 100%; 
-              flex: 1;
-              padding: 8mm 12mm; 
-              box-sizing: border-box; 
-              display: flex; 
-              flex-direction: column;
-              background: white;
-            }
-            .slip-header { 
-              text-align: center; 
-              font-size: 22pt; 
-              font-weight: 900; 
-              border-bottom: 4px solid #000; 
-              margin-bottom: 6mm; 
-              padding-bottom: 4mm;
-              letter-spacing: 2px;
-            }
-            .slip-grid { 
-              display: flex; 
-              flex-direction: column; 
-              gap: 4mm;
-              flex: 1;
-              justify-content: space-between;
-            }
-            .slip-to { 
-              flex: 1;
-              margin-bottom: 4mm;
-            }
-            .slip-from { 
-              border-top: 1px solid #ddd; 
-              padding-top: 5mm; 
-            }
-            .slip-label { 
-              font-size: 12pt; 
-              font-weight: bold; 
-              color: #333; 
-              margin-bottom: 2mm;
-              text-decoration: underline;
-            }
-            .slip-value { 
-              font-size: 15pt; 
-              margin-bottom: 1mm; 
-              line-height: 1.2;
-            }
-            .slip-value.name { 
-              font-size: 22pt; 
-              font-weight: 900; 
-              margin-bottom: 3mm;
-              text-transform: uppercase;
-            }
-            .slip-value.address {
-              font-size: 16pt;
-              word-wrap: break-word;
-            }
-            .cutting-line {
-              position: absolute;
-              bottom: 0;
-              left: 5mm;
-              right: 5mm;
-              border-bottom: 2px dashed #000;
-              text-align: center;
-              height: 0;
-            }
-            .cutting-line span {
-              position: absolute;
-              top: -12pt;
-              left: 50%;
-              transform: translateX(-50%);
-              background: white;
-              padding: 0 10px;
-              font-size: 18pt;
-            }
+    if (!this.appSettings) {
+      await this.loadAppSettings();
+    }
 
-            @media print {
-              body { background: white; }
-              .print-container { margin: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-container">
-            ${slipHtml}
+    const settings = this.appSettings || {};
+    const companyName = settings.company_name || 'UTKAL CHEMICAL AUSHADHALAYA';
+
+    const origins = {
+      shipping: {
+        label: 'Warehouse (Cuttack)',
+        name: companyName,
+        address: settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+        phone: settings.company_shipping_phone || '7749089400'
+      },
+      factory: {
+        label: 'Factory (Aska)',
+        name: companyName,
+        address: settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+        phone: settings.company_phone || '06822273304 / 943933330'
+      },
+      office: {
+        label: 'Office (Bhubaneswar)',
+        name: companyName,
+        address: settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019',
+        phone: settings.company_phone || '06822273304 / 943933330'
+      }
+    };
+
+    let selectedOriginKey = settings.company_shipping_default_sender || 'shipping';
+    if (!origins[selectedOriginKey]) selectedOriginKey = 'shipping';
+
+    const rawAddress = contact.address || '';
+    const pinMatch = rawAddress.match(/\b([1-9][0-9]{5})\b/);
+    let initialPin = pinMatch ? pinMatch[1] : '';
+
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const previewUid = `SHIP-${yy}${mm}-` + Math.floor(1000 + Math.random() * 9000);
+
+    let currentFormat = 'thermal';
+    let qrDataUrl = await this.generateSlipQR(previewUid);
+
+    const existing = document.getElementById('shippingStudioOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'shippingStudioOverlay';
+    overlay.className = 'contact-modal-overlay';
+    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2147483647; padding: 16px; box-sizing: border-box;';
+
+    overlay.innerHTML = `
+      <div class="shipping-studio-modal" style="width: 100%; max-width: 900px; max-height: 92vh; height: 750px; background: #ffffff; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(0,0,0,0.1);">
+        
+        <!-- Studio Header -->
+        <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 9px; background: #0284c7; color: white; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold;">
+              📦
+            </div>
+            <div>
+              <div style="font-size: 16px; font-weight: 800; color: #0f172a; letter-spacing: -0.2px;">Shipping Slip Studio</div>
+              <div style="font-size: 12px; color: #64748b;">Industrial-grade parcel dispatch label with live QR phone dialing</div>
+            </div>
           </div>
-          <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-              }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+          <button type="button" id="studioCloseBtn" style="border: none; background: transparent; font-size: 24px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 6px; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Studio Body -->
+        <div style="flex: 1; display: flex; overflow: hidden; flex-direction: row;" class="studio-body-container">
+          
+          <!-- Left Controls Column -->
+          <div style="width: 400px; min-width: 340px; border-right: 1px solid #e2e8f0; background: #f8fafc; padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- 1. Print Format Selector -->
+            <div>
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Print Standard & Media</label>
+              <div style="display: flex; gap: 6px;" id="studioFormatBtns">
+                <button type="button" class="studio-format-pill" data-fmt="thermal" style="flex: 1; padding: 8px 10px; font-size: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; border: 1.5px solid #0284c7; background: #0284c7; color: #ffffff; text-align: center; transition: all 0.2s;">
+                  🏷️ 4" × 6" Thermal
+                </button>
+                <button type="button" class="studio-format-pill" data-fmt="a4" style="flex: 1; padding: 8px 10px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; border: 1.5px solid #cbd5e1; background: #ffffff; color: #475569; text-align: center; transition: all 0.2s;">
+                  📄 A4 Half-Sheet
+                </button>
+              </div>
+            </div>
+
+            <!-- 2. Shipper Origin -->
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Shipped From (Return Origin)</label>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 5px;" id="studioOriginGroup">
+                ${Object.entries(origins).map(([key, orig]) => `
+                  <label class="studio-origin-card" data-key="${key}" style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1.5px solid ${key === selectedOriginKey ? '#0284c7' : '#e2e8f0'}; background: ${key === selectedOriginKey ? '#f0f9ff' : '#ffffff'}; cursor: pointer;">
+                    <input type="radio" name="studioOrigin" value="${key}" ${key === selectedOriginKey ? 'checked' : ''} style="margin-top: 3px; accent-color: #0284c7;">
+                    <div style="flex: 1;">
+                      <div style="font-size: 12px; font-weight: 700; color: #0f172a;">${orig.label}</div>
+                      <div style="font-size: 10px; color: #64748b; line-height: 1.3;">${orig.address}</div>
+                      <div style="font-size: 10px; color: #0284c7; font-weight: 600;">Ph: ${orig.phone}</div>
+                    </div>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- 3. Consignee Details -->
+            <div>
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Consignee / Deliver To</label>
+              
+              <div style="display: flex; flex-direction: column; gap: 7px;">
+                <div>
+                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Customer / Firm Name</span>
+                  <input type="text" id="studioRecName" class="billing-input" value="${this.escapeHtml(contact.name || '')}" style="width: 100%; font-weight: 700; text-transform: uppercase; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                </div>
+
+                <div>
+                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Full Destination Address</span>
+                  <textarea id="studioRecAddr" class="billing-input" rows="3" style="width: 100%; font-size: 12px; line-height: 1.35; resize: vertical; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">${this.escapeHtml(rawAddress)}</textarea>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <div style="flex: 1;">
+                    <span style="font-size: 10px; font-weight: 600; color: #64748b;">Postal PIN Code</span>
+                    <input type="text" id="studioRecPin" class="billing-input" value="${this.escapeHtml(initialPin)}" placeholder="6-digit PIN" maxlength="6" style="width: 100%; font-weight: 800; font-family: monospace; letter-spacing: 1px; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                  </div>
+                  <div style="flex: 1.4;">
+                    <span style="font-size: 10px; font-weight: 600; color: #64748b;">Phone Number</span>
+                    <input type="text" id="studioRecPhone" class="billing-input" value="${this.escapeHtml(contact.phone || '')}" placeholder="Contact phone" style="width: 100%; font-weight: 700; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                  </div>
+                </div>
+
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #475569; cursor: pointer; margin-top: 2px;">
+                  <input type="checkbox" id="studioSyncBack" checked style="accent-color: #0284c7;" />
+                  <span>Update contact profile with these details</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 4. Package & Optional Route Note -->
+            <div>
+              <label style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Package & Transit Notes</label>
+              <div style="display: flex; gap: 8px;">
+                <div style="width: 85px;">
+                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Total Boxes</span>
+                  <input type="number" id="studioBoxesCount" class="billing-input" value="1" min="1" max="99" style="width: 100%; font-weight: 700; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                </div>
+                <div style="flex: 1;">
+                  <span style="font-size: 10px; font-weight: 600; color: #64748b;">Optional Route / Bus Note</span>
+                  <input type="text" id="studioRouteNote" class="billing-input" placeholder="e.g. Sita Transport / Jagannath Bus" style="width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Live Preview Column -->
+          <div style="flex: 1; background: #f1f5f9; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; align-self: flex-start;">
+              Live Label Preview
+            </div>
+            <div id="slipPreviewFrame" style="width: 100%; max-width: 440px; transition: all 0.2s;">
+              <!-- Dynamic Slip Card Container -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Studio Footer -->
+        <div style="background: #ffffff; border-top: 1px solid #e2e8f0; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+          <div style="font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #16a34a;"></span>
+            <span id="studioFooterStatus">Ready to print</span>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" id="studioCancelBtn" style="padding: 8px 18px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; font-weight: 600; font-size: 13px; cursor: pointer;">Cancel</button>
+            <button type="button" id="studioPrintBtn" style="padding: 8px 24px; border-radius: 8px; border: none; background: #0284c7; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);">
+              <span>🖨️</span> <span>Print Shipping Slip</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    const renderPreview = () => {
+      const orig = origins[selectedOriginKey] || origins.shipping;
+      const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
+      const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
+      const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
+      const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
+      const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+      const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
+
+      const isThermal = currentFormat === 'thermal';
+      const container = overlay.querySelector('#slipPreviewFrame');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="background: #ffffff; border: 3px solid #000000; box-shadow: 0 8px 24px rgba(0,0,0,0.12); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #000000; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; ${isThermal ? 'min-height: 480px;' : 'min-height: 380px;'}">
+          
+          <!-- Header: Sender & Tag -->
+          <div style="border-bottom: 2px solid #000000; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+            <div style="flex: 1;">
+              <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">${this.escapeHtml(orig.name)}</div>
+              <div style="font-size: 10px; font-weight: 600; line-height: 1.25; margin-top: 2px;">${this.escapeHtml(orig.address)}</div>
+              <div style="font-size: 10px; font-weight: 800; margin-top: 2px;">Ph: ${this.escapeHtml(orig.phone)}</div>
+            </div>
+            <div style="text-align: right; flex-shrink: 0;">
+              <div style="font-size: 11px; font-family: monospace; font-weight: 800; background: #000000; color: #ffffff; padding: 2px 6px; border-radius: 4px;">${previewUid}</div>
+              <div style="font-size: 11px; font-weight: 800; margin-top: 4px;">Box: 1 of ${boxes}</div>
+            </div>
+          </div>
+
+          <!-- Deliver To Section -->
+          <div style="flex: 1; border-bottom: 2px solid #000000; padding-bottom: 8px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 14px; font-weight: 900; text-decoration: underline;">TO:</span>
+              ${recPin ? `
+                <div style="background: #000000; color: #ffffff; font-weight: 900; font-size: 13px; letter-spacing: 1.5px; padding: 2px 8px; border-radius: 4px;">
+                  PIN: ${this.escapeHtml(recPin)}
+                </div>
+              ` : ''}
+            </div>
+
+            <div style="font-size: 17px; font-weight: 900; text-transform: uppercase; line-height: 1.15; margin-bottom: 4px;">
+              ${this.escapeHtml(recName)}
+            </div>
+
+            <div style="font-size: 12.5px; font-weight: 600; line-height: 1.35; margin-bottom: 6px; word-break: break-word;">
+              ${this.escapeHtml(recAddr)}
+            </div>
+
+            ${recPhone ? `
+              <div style="font-size: 13px; font-weight: 800; letter-spacing: 0.3px;">
+                PHONE: ${this.escapeHtml(recPhone)}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Transit Note & QR Block -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 2px;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div>
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: #475569;">Route / Bus / Transport Note:</div>
+                <div style="font-size: 11px; font-weight: 800; padding: 2px 0;">
+                  ${route ? this.escapeHtml(route) : '<span style="border-bottom: 1.5px dashed #000; display: inline-block; width: 90%;">&nbsp;</span>'}
+                </div>
+              </div>
+              <div style="font-size: 8.5px; font-weight: 800; border: 1px solid #000000; padding: 3px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; width: fit-content;">
+                <span>⚠️</span> <span>FRAGILE - AYURVEDIC MEDICINES</span>
+              </div>
+            </div>
+
+            <div style="width: 72px; text-align: center; flex-shrink: 0;">
+              ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 64px; height: 64px; border: 1px solid #000000; display: block; margin: 0 auto;" />` : ''}
+              <div style="font-size: 7px; font-weight: 800; margin-top: 2px;">SCAN TO CALL</div>
+            </div>
+          </div>
+
+        </div>
+        ${!isThermal ? `
+          <div style="margin-top: 14px; border-bottom: 2px dashed #94a3b8; text-align: center; height: 10px; position: relative;">
+            <span style="position: absolute; top: -6px; left: 50%; transform: translateX(-50%); background: #f1f5f9; padding: 0 8px; font-size: 11px; font-weight: bold; color: #64748b;">✂️ CUT HERE</span>
+          </div>
+        ` : ''}
+      `;
+    };
+
+    renderPreview();
+
+    // Event Bindings
+    overlay.querySelectorAll('.studio-format-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        overlay.querySelectorAll('.studio-format-pill').forEach(b => {
+          b.style.background = '#ffffff';
+          b.style.color = '#475569';
+          b.style.borderColor = '#cbd5e1';
+          b.style.fontWeight = '600';
+        });
+        btn.style.background = '#0284c7';
+        btn.style.color = '#ffffff';
+        btn.style.borderColor = '#0284c7';
+        btn.style.fontWeight = '700';
+        currentFormat = btn.getAttribute('data-fmt');
+        renderPreview();
+      });
+    });
+
+    overlay.querySelectorAll('input[name="studioOrigin"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        selectedOriginKey = e.target.value;
+        overlay.querySelectorAll('.studio-origin-card').forEach(card => {
+          const isSelected = card.getAttribute('data-key') === selectedOriginKey;
+          card.style.borderColor = isSelected ? '#0284c7' : '#e2e8f0';
+          card.style.background = isSelected ? '#f0f9ff' : '#ffffff';
+        });
+        renderPreview();
+      });
+    });
+
+    ['studioRecName', 'studioRecAddr', 'studioRecPin', 'studioRecPhone', 'studioBoxesCount', 'studioRouteNote'].forEach(id => {
+      const el = overlay.querySelector('#' + id);
+      if (el) {
+        el.addEventListener('input', () => {
+          if (id === 'studioRecAddr') {
+            const addrVal = el.value;
+            const match = addrVal.match(/\b([1-9][0-9]{5})\b/);
+            const pinEl = overlay.querySelector('#studioRecPin');
+            if (match && pinEl && !pinEl.value) {
+              pinEl.value = match[1];
+            }
+          }
+          renderPreview();
+        });
+      }
+    });
+
+    const closeStudio = () => overlay.remove();
+    overlay.querySelector('#studioCloseBtn').addEventListener('click', closeStudio);
+    overlay.querySelector('#studioCancelBtn').addEventListener('click', closeStudio);
+
+    overlay.querySelector('#studioPrintBtn').addEventListener('click', async () => {
+      const orig = origins[selectedOriginKey] || origins.shipping;
+      const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
+      const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
+      const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
+      const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
+      const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+      const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
+      const syncBack = overlay.querySelector('#studioSyncBack')?.checked;
+
+      const printBtn = overlay.querySelector('#studioPrintBtn');
+      printBtn.disabled = true;
+      printBtn.innerHTML = `<span>⏳</span> <span>Generating...</span>`;
+
+      if (syncBack) {
+        try {
+          fetch(`${this.apiUrl}/${contact.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              address: recAddr,
+              phone: recPhone
+            })
+          }).catch(err => log.warn('Sync back contact failed:', err));
+        } catch (_) {}
+      }
+
+      let finalUid = previewUid;
+      try {
+        const shipRes = await fetch(`${this.apiUrl}/${contact.id}/shipments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contact_name: recName,
+            recipient_address: recAddr,
+            recipient_phone: recPhone,
+            recipient_pincode: recPin,
+            sender_address: orig.address,
+            sender_phone: orig.phone,
+            boxes_count: parseInt(boxes, 10) || 1,
+            route_note: route
+          })
+        });
+
+        if (shipRes.ok) {
+          const shipData = await shipRes.json();
+          if (shipData.shipment && shipData.shipment.shipment_uid) {
+            finalUid = shipData.shipment.shipment_uid;
+          }
+        }
+      } catch (err) {
+        log.warn('Failed to register shipment:', err);
+      }
+
+      const finalQr = await this.generateSlipQR(finalUid);
+
+      const isThermal = currentFormat === 'thermal';
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        this.showNotification('Please allow popups to print the shipping slip.', 'warning');
+        printBtn.disabled = false;
+        printBtn.innerHTML = `<span>🖨️</span> <span>Print Shipping Slip</span>`;
+        return;
+      }
+
+      const printHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Shipping Slip - ${this.escapeHtml(recName)}</title>
+            <style>
+              @page {
+                ${isThermal ? 'size: 100mm 150mm; margin: 0;' : 'size: A4 portrait; margin: 0;'}
+              }
+              *, *:before, *:after { box-sizing: border-box; }
+              html, body {
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background: #ffffff;
+                color: #000000;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .print-wrapper {
+                ${isThermal ? 'width: 100mm; height: 150mm; padding: 4mm;' : 'width: 210mm; padding: 10mm; margin: 0 auto;'}
+                box-sizing: border-box;
+              }
+              .slip-border {
+                border: 3.5px solid #000000;
+                width: 100%;
+                ${isThermal ? 'height: 142mm;' : 'height: 130mm;'}
+                padding: ${isThermal ? '4mm' : '8mm 12mm'};
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                box-sizing: border-box;
+                background: #ffffff;
+              }
+              .slip-header-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                border-bottom: 2.5px solid #000000;
+                padding-bottom: ${isThermal ? '2mm' : '4mm'};
+              }
+              .slip-brand-name {
+                font-size: ${isThermal ? '11pt' : '14pt'};
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .slip-sender-addr {
+                font-size: ${isThermal ? '8pt' : '10pt'};
+                font-weight: 600;
+                margin-top: 1mm;
+                line-height: 1.25;
+              }
+              .slip-sender-ph {
+                font-size: ${isThermal ? '8.5pt' : '10.5pt'};
+                font-weight: 800;
+                margin-top: 1mm;
+              }
+              .slip-tag-badge {
+                font-size: ${isThermal ? '9.5pt' : '12pt'};
+                font-family: monospace;
+                font-weight: 900;
+                background: #000000;
+                color: #ffffff;
+                padding: 1mm 2.5mm;
+                border-radius: 2mm;
+                text-align: right;
+              }
+              .slip-box-count {
+                font-size: ${isThermal ? '9pt' : '11pt'};
+                font-weight: 800;
+                text-align: right;
+                margin-top: 1.5mm;
+              }
+              .slip-to-section {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                border-bottom: 2.5px solid #000000;
+                padding: ${isThermal ? '2mm 0' : '4mm 0'};
+              }
+              .slip-to-top {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1.5mm;
+              }
+              .slip-to-label {
+                font-size: ${isThermal ? '12pt' : '15pt'};
+                font-weight: 900;
+                text-decoration: underline;
+              }
+              .slip-pin-badge {
+                background: #000000;
+                color: #ffffff;
+                font-weight: 900;
+                font-size: ${isThermal ? '11pt' : '14pt'};
+                letter-spacing: 1px;
+                padding: 1.5mm 3.5mm;
+                border-radius: 2mm;
+              }
+              .slip-to-name {
+                font-size: ${isThermal ? '14pt' : '20pt'};
+                font-weight: 900;
+                text-transform: uppercase;
+                line-height: 1.15;
+                margin-bottom: 1.5mm;
+              }
+              .slip-to-address {
+                font-size: ${isThermal ? '10.5pt' : '14pt'};
+                font-weight: 600;
+                line-height: 1.3;
+                margin-bottom: 2mm;
+                word-wrap: break-word;
+              }
+              .slip-to-phone {
+                font-size: ${isThermal ? '11pt' : '15pt'};
+                font-weight: 900;
+                letter-spacing: 0.5px;
+              }
+              .slip-bottom-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-top: ${isThermal ? '2mm' : '4mm'};
+                gap: 3mm;
+              }
+              .slip-transit-left {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 2mm;
+              }
+              .slip-route-text {
+                font-size: ${isThermal ? '8.5pt' : '11pt'};
+                font-weight: 800;
+              }
+              .slip-fragile {
+                font-size: ${isThermal ? '7.5pt' : '9.5pt'};
+                font-weight: 800;
+                border: 1.5px solid #000000;
+                padding: 1mm 2mm;
+                border-radius: 1.5mm;
+                display: inline-block;
+                width: fit-content;
+              }
+              .slip-qr-wrap {
+                width: ${isThermal ? '22mm' : '28mm'};
+                text-align: center;
+                flex-shrink: 0;
+              }
+              .slip-qr-wrap img {
+                width: ${isThermal ? '19mm' : '24mm'};
+                height: ${isThermal ? '19mm' : '24mm'};
+                border: 1px solid #000000;
+                display: block;
+                margin: 0 auto;
+              }
+              .slip-qr-lbl {
+                font-size: ${isThermal ? '6pt' : '7.5pt'};
+                font-weight: 800;
+                margin-top: 1mm;
+              }
+              .cut-line {
+                margin-top: 6mm;
+                border-bottom: 2px dashed #000000;
+                text-align: center;
+                position: relative;
+                height: 0;
+              }
+              .cut-line span {
+                position: absolute;
+                top: -10pt;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #ffffff;
+                padding: 0 8px;
+                font-size: 11pt;
+                font-weight: bold;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="print-wrapper">
+              <div class="slip-border">
+                <div class="slip-header-row">
+                  <div>
+                    <div class="slip-brand-name">${this.escapeHtml(orig.name)}</div>
+                    <div class="slip-sender-addr">${this.escapeHtml(orig.address)}</div>
+                    <div class="slip-sender-ph">Ph: ${this.escapeHtml(orig.phone)}</div>
+                  </div>
+                  <div>
+                    <div class="slip-tag-badge">${finalUid}</div>
+                    <div class="slip-box-count">Box: 1 of ${boxes}</div>
+                  </div>
+                </div>
+
+                <div class="slip-to-section">
+                  <div class="slip-to-top">
+                    <span class="slip-to-label">TO:</span>
+                    ${recPin ? `<div class="slip-pin-badge">PIN: ${this.escapeHtml(recPin)}</div>` : ''}
+                  </div>
+                  <div class="slip-to-name">${this.escapeHtml(recName)}</div>
+                  <div class="slip-to-address">${this.escapeHtml(recAddr)}</div>
+                  ${recPhone ? `<div class="slip-to-phone">PHONE: ${this.escapeHtml(recPhone)}</div>` : ''}
+                </div>
+
+                <div class="slip-bottom-row">
+                  <div class="slip-transit-left">
+                    <div class="slip-route-text">
+                      Route / Bus / Transport Note: ${route ? `<strong>${this.escapeHtml(route)}</strong>` : '<span style="border-bottom: 1.5px dashed #000; display: inline-block; width: 60mm;">&nbsp;</span>'}
+                    </div>
+                    <div class="slip-fragile">
+                      ⚠️ FRAGILE - AYURVEDIC MEDICINES - HANDLE WITH CARE
+                    </div>
+                  </div>
+                  <div class="slip-qr-wrap">
+                    ${finalQr ? `<img src="${finalQr}" />` : ''}
+                    <div class="slip-qr-lbl">SCAN TO CALL</div>
+                  </div>
+                </div>
+              </div>
+              ${!isThermal ? `
+                <div class="cut-line">
+                  <span>✂️ CUT HERE ✂️</span>
+                </div>
+              ` : ''}
+            </div>
+            <script>
+              window.onload = () => {
+                setTimeout(() => {
+                  window.print();
+                }, 400);
+              };
+            </script>
+          </body>
+        </html>
+      `;
+
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+
+      overlay.remove();
+      this.showNotification('Shipping Slip Printed', `Logged shipment as ${finalUid}`, 'success');
+    });
   }
 
 

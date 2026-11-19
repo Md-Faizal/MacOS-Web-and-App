@@ -1442,6 +1442,14 @@ app.get(['/public/product', '/public/product/:sku', '/public/batch/:batchId'], (
   return res.sendFile(path.join(__dirname, '../../frontend/public-product.html'));
 });
 
+app.get(['/track/shipment', '/shipment', '/shipment/:uid', '/shipment-track.html'], (req, res) => {
+  const htmlPath = path.join(__dirname, '../../dist/shipment-track.html');
+  if (require('fs').existsSync(htmlPath)) {
+    return res.sendFile(htmlPath);
+  }
+  return res.sendFile(path.join(__dirname, '../../frontend/shipment-track.html'));
+});
+
 app.get('/api', (req, res) => {
   const userAgent = String(req.get('user-agent') || '');
   const browserLike = /mozilla|chrome|safari|firefox|edg|opera/i.test(userAgent);

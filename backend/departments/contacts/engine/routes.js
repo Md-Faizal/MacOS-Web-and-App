@@ -1,4 +1,7 @@
 module.exports = function(router, handlers) {
+  // Public shipment tracking lookup (must be before /:id)
+  router.get('/shipments/:uid/track', handlers.getShipmentPublic);
+
   router.get('/', handlers.getContacts);
   router.post('/', handlers.createContact);
   router.get('/:id', handlers.getContact);
@@ -13,6 +16,10 @@ module.exports = function(router, handlers) {
   router.get('/:customerId/activity-status', handlers.checkAndUpdateActivityStatus);
   router.post('/activity/update-all', handlers.updateAllActivityStatuses);
   router.get('/:id/tracking', handlers.getContactTracking);
+
+  // Shipment logging endpoints
+  router.post('/:id/shipments', handlers.createShipment);
+  router.get('/:id/shipments', handlers.getContactShipments);
   
   return router;
 };

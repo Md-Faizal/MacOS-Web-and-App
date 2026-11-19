@@ -617,6 +617,116 @@ module.exports = function(db) {
         console.error('Error fetching contact tracking:', error);
         res.status(500).json({ error: error.message });
       }
+    },
+
+    createShipment: (req, res) => {
+      try {
+        const { id } = req.params;
+        const {
+          contact_name,
+          recipient_address,
+          recipient_phone,
+          recipient_pincode,
+          sender_address,
+          sender_phone,
+          boxes_count,
+          route_note
+        } = req.body;
+
+        // Ensure shipments table exists
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS shipments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shipment_uid TEXT NOT NULL UNIQUE,
+            contact_id INTEGER NOT NULL,
+            contact_name TEXT NOT NULL,
+            recipient_address TEXT NOT NULL,
+            recipient_phone TEXT,
+            recipient_pincode TEXT,
+            sender_address TEXT NOT NULL,
+            sender_phone TEXT,
+            boxes_count INTEGER DEFAULT 1,
+            route_note TEXT,
+            status TEXT DEFAULT 'GENERATED',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+          );
+        `);
+
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const prefix = `SHIP-${yy}${mm}`;
+
+        const countRow = db.prepare(`SELECT COUNT(*) as count FROM shipments WHERE shipment_uid LIKE ?`).get(`${prefix}%`);
+        const nextSeq = String((countRow ? countRow.count : 0) + 1).padStart(4, '0');
+        const shipment_uid = `${prefix}-${nextSeq}`;
+
+        const insert = db.prepare(`
+          INSERT INTO shipments (
+            shipment_uid, contact_id, contact_name, recipient_address,
+            recipient_phone, recipient_pincode, sender_address, sender_phone,
+            boxes_count, route_note, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATED')
+        `);
+
+        insert.run(
+          shipment_uid,
+          id,
+          contact_name || 'Customer',
+          recipient_address || '',
+          recipient_phone || '',
+          recipient_pincode || '',
+          sender_address || '',
+          sender_phone || '',
+          parseInt(boxes_count, 10) || 1,
+          route_note || ''
+        );
+
+        const created = db.prepare(`SELECT * FROM shipments WHERE shipment_uid = ?`).get(shipment_uid);
+
+        let portalBaseUrl = 'https://mac.faizal.uk';
+        try {
+          const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'portal_base_url'`).get();
+          if (setting && setting.setting_value) portalBaseUrl = setting.setting_value;
+        } catch (_) {}
+
+        const tracking_url = `${portalBaseUrl}/track/shipment?id=${shipment_uid}`;
+
+        res.json({
+          success: true,
+          shipment: created,
+          tracking_url
+        });
+      } catch (error) {
+        console.error('Error creating shipment:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    getContactShipments: (req, res) => {
+      try {
+        const { id } = req.params;
+        const rows = db.prepare(`SELECT * FROM shipments WHERE contact_id = ? ORDER BY created_at DESC`).all(id);
+        res.json({ success: true, shipments: rows || [] });
+      } catch (error) {
+        console.error('Error fetching contact shipments:', error);
+        res.status(500).json({ error: error.message });
+      }
+    },
+
+    getShipmentPublic: (req, res) => {
+      try {
+        const { uid } = req.params;
+        const row = db.prepare(`SELECT * FROM shipments WHERE shipment_uid = ?`).get(uid);
+        if (!row) {
+          return res.status(404).json({ error: 'Shipment not found' });
+        }
+        res.json({ success: true, shipment: row });
+      } catch (error) {
+        console.error('Error fetching public shipment:', error);
+        res.status(500).json({ error: error.message });
+      }
     }
   };
 };

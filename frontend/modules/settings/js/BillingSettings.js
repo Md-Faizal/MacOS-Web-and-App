@@ -17,6 +17,9 @@ export class BillingSettingsComponent {
             company_phone: '06822273304 / 943933330',
             company_address_factory: 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
             company_address_office: 'D1, Basera Complex, Dumduma, BBSR - 751019',
+            company_address_shipping: 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+            company_shipping_phone: '7749089400',
+            company_shipping_default_sender: 'shipping',
             invoice_show_dues_widget: 'true',
             invoice_auto_sign_disclaimer: 'true',
             invoice_authority_sign_no_qr: 'false',
@@ -72,6 +75,9 @@ export class BillingSettingsComponent {
         const companyPhone = this.settings.company_phone || '06822273304 / 943933330';
         const factoryAddr = this.settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110';
         const officeAddr = this.settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019';
+        const shippingAddr = this.settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001';
+        const shippingPhone = this.settings.company_shipping_phone || '7749089400';
+        const defaultSender = this.settings.company_shipping_default_sender || 'shipping';
 
         this.container.innerHTML = `
             <div class="billing-settings-root appearance-page-root">
@@ -281,6 +287,25 @@ export class BillingSettingsComponent {
                         <div class="billing-field-group" style="grid-column: span 2;">
                             <label class="billing-label" for="settingCompanyOfficeAddr">Office / Correspondence Address</label>
                             <input type="text" id="settingCompanyOfficeAddr" class="billing-input" value="${this.escapeHtml(officeAddr)}" placeholder="e.g. D1, Basera Complex, Dumduma, BBSR - 751019" />
+                        </div>
+
+                        <div class="billing-field-group" style="grid-column: span 2;">
+                            <label class="billing-label" for="settingCompanyShippingAddr">Warehouse / Shipping & Dispatch Address (Used for Contacts Shipping Slips)</label>
+                            <input type="text" id="settingCompanyShippingAddr" class="billing-input" value="${this.escapeHtml(shippingAddr)}" placeholder="e.g. Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyShippingPhone">Dispatch / Shipping Contact Phone</label>
+                            <input type="text" id="settingCompanyShippingPhone" class="billing-input" value="${this.escapeHtml(shippingPhone)}" placeholder="e.g. 7749089400" />
+                        </div>
+
+                        <div class="billing-field-group">
+                            <label class="billing-label" for="settingCompanyDefaultSender">Default Shipping Slip Sender Origin</label>
+                            <select id="settingCompanyDefaultSender" class="billing-input" style="cursor: pointer;">
+                                <option value="shipping" ${defaultSender === 'shipping' ? 'selected' : ''}>Warehouse / Dispatch Hub (Cuttack)</option>
+                                <option value="factory" ${defaultSender === 'factory' ? 'selected' : ''}>Registered Factory (Aska)</option>
+                                <option value="office" ${defaultSender === 'office' ? 'selected' : ''}>Head Office (Bhubaneswar)</option>
+                            </select>
                         </div>
 
                         <div class="billing-field-group">
@@ -1008,6 +1033,9 @@ export class BillingSettingsComponent {
             company_pan: (this.container.querySelector('#settingCompanyPan')?.value?.trim() || 'AIDPF4446J').toUpperCase(),
             company_address_factory: this.container.querySelector('#settingCompanyFactAddr')?.value?.trim() || '',
             company_address_office: this.container.querySelector('#settingCompanyOfficeAddr')?.value?.trim() || '',
+            company_address_shipping: this.container.querySelector('#settingCompanyShippingAddr')?.value?.trim() || '',
+            company_shipping_phone: this.container.querySelector('#settingCompanyShippingPhone')?.value?.trim() || '',
+            company_shipping_default_sender: this.container.querySelector('#settingCompanyDefaultSender')?.value || 'shipping',
             company_email: this.container.querySelector('#settingCompanyEmail')?.value?.trim() || '',
             company_ayush_license: this.container.querySelector('#settingCompanyAyush')?.value?.trim() || '',
             company_gmp_ref: this.container.querySelector('#settingCompanyGmp')?.value?.trim() || '',

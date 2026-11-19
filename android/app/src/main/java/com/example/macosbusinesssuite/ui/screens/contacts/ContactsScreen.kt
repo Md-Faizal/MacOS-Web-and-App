@@ -1337,12 +1337,14 @@ fun InfoSection(
 
 fun printShippingSlip(context: android.content.Context, contact: Contact) {
     val fromName = "UTKAL CHEMICAL AUSHADHALAYA"
-    val fromAddress = "Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, 753001"
+    val fromAddress = "Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001"
     val fromPhone = "7749089400"
 
     val toName = contact.name
     val toAddress = if (!contact.address.isNullOrBlank()) contact.address else "No address provided"
     val toPhone = contact.phone ?: ""
+    val pinMatch = Regex("\\b([1-9][0-9]{5})\\b").find(toAddress)
+    val pinCode = pinMatch?.value ?: ""
 
     val htmlContent = """
       <!DOCTYPE html>
@@ -1357,129 +1359,175 @@ fun printShippingSlip(context: android.content.Context, contact: Contact) {
               margin: 0; 
               padding: 0; 
               width: 210mm;
-              height: 297mm;
+              height: 297mm; 
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               background: #ffffff;
+              color: #000000;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
             .print-container { 
               width: 210mm; 
-              height: 297mm; 
-              background: #ffffff;
+              padding: 10mm; 
               margin: 0 auto;
-              position: relative;
-            }
-            .shipping-slip { 
-              width: 210mm; 
-              height: 148.5mm; 
-              padding: 10mm 15mm 0mm 15mm; 
-              position: relative;
-              display: flex;
-              flex-direction: column;
             }
             .slip-border { 
-              border: 4px solid #000000; 
-              width: 180mm; 
-              height: 126mm; 
-              padding: 6mm 10mm; 
-              display: flex; 
-              flex-direction: column;
-              justify-content: space-between;
-              background: #ffffff;
-              margin: 0 auto;
-            }
-            .slip-header { 
-              text-align: center; 
-              font-size: 20pt; 
-              font-weight: 900; 
-              border-bottom: 4px solid #000000; 
-              margin-bottom: 4mm; 
-              padding-bottom: 3mm;
-              letter-spacing: 2px;
-            }
-            .slip-grid { 
+              border: 3.5px solid #000000; 
+              width: 100%; 
+              height: 132mm; 
+              padding: 8mm 12mm; 
               display: flex; 
               flex-direction: column; 
-              flex: 1;
+              justify-content: space-between; 
+              background: #ffffff;
+            }
+            .slip-header-row {
+              display: flex;
               justify-content: space-between;
+              align-items: flex-start;
+              border-bottom: 2.5px solid #000000;
+              padding-bottom: 4mm;
             }
-            .slip-to { 
+            .slip-brand-name {
+              font-size: 14pt;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .slip-sender-addr {
+              font-size: 10pt;
+              font-weight: 600;
+              margin-top: 1mm;
+              line-height: 1.25;
+            }
+            .slip-sender-ph {
+              font-size: 10.5pt;
+              font-weight: 800;
+              margin-top: 1mm;
+            }
+            .slip-box-count {
+              font-size: 11pt;
+              font-weight: 800;
+              text-align: right;
+            }
+            .slip-to-section {
               flex: 1;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              border-bottom: 2.5px solid #000000;
+              padding: 4mm 0;
             }
-            .slip-from { 
-              border-top: 1px solid #cccccc; 
-              padding-top: 3mm;
-              margin-top: 2mm;
+            .slip-to-top {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 2mm;
             }
-            .slip-label { 
-              font-size: 11pt; 
-              font-weight: bold; 
-              color: #333333; 
-              margin-bottom: 1.5mm;
+            .slip-to-label {
+              font-size: 15pt;
+              font-weight: 900;
               text-decoration: underline;
             }
-            .slip-value { 
-              font-size: 14pt; 
-              margin-bottom: 1mm; 
-              line-height: 1.25;
-              color: #000000;
+            .slip-pin-badge {
+              background: #000000;
+              color: #ffffff;
+              font-weight: 900;
+              font-size: 14pt;
+              letter-spacing: 1px;
+              padding: 1.5mm 3.5mm;
+              border-radius: 2mm;
             }
-            .slip-value.name { 
-              font-size: 20pt; 
-              font-weight: 900; 
-              margin-bottom: 2mm;
+            .slip-to-name {
+              font-size: 20pt;
+              font-weight: 900;
               text-transform: uppercase;
-              color: #000000;
+              line-height: 1.15;
+              margin-bottom: 1.5mm;
             }
-            .slip-value.address {
-              font-size: 15pt;
+            .slip-to-address {
+              font-size: 13.5pt;
+              font-weight: 600;
+              line-height: 1.3;
+              margin-bottom: 2mm;
               word-wrap: break-word;
             }
+            .slip-to-phone {
+              font-size: 14.5pt;
+              font-weight: 900;
+              letter-spacing: 0.5px;
+            }
+            .slip-bottom-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding-top: 4mm;
+            }
+            .slip-route-text {
+              font-size: 11pt;
+              font-weight: 800;
+            }
+            .slip-fragile {
+              font-size: 9.5pt;
+              font-weight: 800;
+              border: 1.5px solid #000000;
+              padding: 1.5mm 3mm;
+              border-radius: 1.5mm;
+            }
             .cutting-line {
-              position: absolute;
-              bottom: 3mm;
-              left: 5mm;
-              right: 5mm;
+              margin-top: 6mm;
               border-bottom: 2px dashed #000000;
               height: 0;
               text-align: center;
+              position: relative;
             }
             .cutting-line span {
               position: absolute;
-              top: -11pt;
+              top: -10pt;
               left: 50%;
               transform: translateX(-50%);
               background: #ffffff;
               padding: 0 8px;
-              font-size: 16pt;
-              line-height: 1;
+              font-size: 12pt;
+              font-weight: bold;
             }
           </style>
         </head>
         <body>
           <div class="print-container">
-            <div class="shipping-slip">
-              <div class="slip-border">
-                <div class="slip-header">SHIPPING SLIP</div>
-                <div class="slip-grid">
-                  <div class="slip-to">
-                    <div class="slip-label">TO:</div>
-                    <div class="slip-value name">${toName}</div>
-                    <div class="slip-value address">${toAddress}</div>
-                    ${if (toPhone.isNotEmpty()) "<div class=\"slip-value\">Ph: ${toPhone}</div>" else ""}
-                  </div>
-                  <div class="slip-from">
-                    <div class="slip-label">FROM:</div>
-                    <div class="slip-value name">${fromName}</div>
-                    <div class="slip-value">${fromAddress}</div>
-                    <div class="slip-value">Ph: ${fromPhone}</div>
-                  </div>
+            <div class="slip-border">
+              <div class="slip-header-row">
+                <div>
+                  <div class="slip-brand-name">${fromName}</div>
+                  <div class="slip-sender-addr">${fromAddress}</div>
+                  <div class="slip-sender-ph">Ph: ${fromPhone}</div>
+                </div>
+                <div>
+                  <div class="slip-box-count">Box: 1 of 1</div>
                 </div>
               </div>
-              <div class="cutting-line">
-                <span>✂️</span>
+
+              <div class="slip-to-section">
+                <div class="slip-to-top">
+                  <span class="slip-to-label">TO:</span>
+                  ${if (pinCode.isNotEmpty()) "<div class=\"slip-pin-badge\">PIN: " + pinCode + "</div>" else ""}
+                </div>
+                <div class="slip-to-name">${toName}</div>
+                <div class="slip-to-address">${toAddress}</div>
+                ${if (toPhone.isNotEmpty()) "<div class=\"slip-to-phone\">PHONE: " + toPhone + "</div>" else ""}
               </div>
+
+              <div class="slip-bottom-row">
+                <div class="slip-route-text">
+                  Route / Bus Note: <span style="border-bottom: 1.5px dashed #000; display: inline-block; width: 60mm;">&nbsp;</span>
+                </div>
+                <div class="slip-fragile">
+                  ⚠️ FRAGILE - AYURVEDIC MEDICINES - HANDLE WITH CARE
+                </div>
+              </div>
+            </div>
+            <div class="cutting-line">
+              <span>✂️ CUT HERE ✂️</span>
             </div>
           </div>
         </body>
@@ -1487,10 +1535,15 @@ fun printShippingSlip(context: android.content.Context, contact: Contact) {
     """.trimIndent()
 
     try {
+        val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+        if (printManager == null) {
+            android.widget.Toast.makeText(context, "Print service is not available", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val webView = android.webkit.WebView(context)
         webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun onPageFinished(view: android.webkit.WebView, url: String) {
-                val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as android.print.PrintManager
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                 val printAdapter = webView.createPrintDocumentAdapter("Shipping_Slip_${contact.name.replace(" ", "_")}")
                 val printAttributes = android.print.PrintAttributes.Builder()
                     .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
@@ -1499,7 +1552,7 @@ fun printShippingSlip(context: android.content.Context, contact: Contact) {
                 printManager.print("Shipping Slip - ${contact.name}", printAdapter, printAttributes)
             }
         }
-        webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+            webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
     } catch (e: Exception) {
         android.widget.Toast.makeText(context, "Failed to open print preview", android.widget.Toast.LENGTH_SHORT).show()
     }
