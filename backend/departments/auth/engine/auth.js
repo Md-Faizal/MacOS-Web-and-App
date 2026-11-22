@@ -818,8 +818,35 @@ module.exports = function (db, permissionsHelper = null) {
           } catch (e) { }
         }
 
+        const localQuestion = auth ? (auth.security_question || null) : null;
+
+        // If local user lacks question or user is only upstream, check Central Hub in live HTTP context
+        if (!localQuestion && identifier && req.headers && (req.headers.host || req.headers['user-agent'])) {
+          nexusGateway.getSecurityQuestion(identifier).then(centralRes => {
+            if (centralRes.success && centralRes.question) {
+              return res.json({
+                question: centralRes.question,
+                answer: null,
+                hasSecurityQuestion: true
+              });
+            }
+            res.json({
+              question: localQuestion,
+              answer: answerPlain,
+              hasSecurityQuestion: !!(auth && (auth.security_question || auth.security_answer_hash))
+            });
+          }).catch(() => {
+            res.json({
+              question: localQuestion,
+              answer: answerPlain,
+              hasSecurityQuestion: !!(auth && (auth.security_question || auth.security_answer_hash))
+            });
+          });
+          return;
+        }
+
         res.json({
-          question: auth ? (auth.security_question || null) : null,
+          question: localQuestion,
           answer: answerPlain,
           hasSecurityQuestion: !!(auth && (auth.security_question || auth.security_answer_hash))
         });
@@ -864,6 +891,19 @@ module.exports = function (db, permissionsHelper = null) {
           }
         } else if (answer) {
           if (!auth.security_answer_hash) {
+            // Check Central Hub if not configured locally
+            if (req.headers && (req.headers.host || req.headers['user-agent'])) {
+              nexusGateway.verifySecurityAnswer(targetIdentifier, answer).then(centralRes => {
+                if (centralRes.success) {
+                  const deviceId = req.user?.deviceId || null;
+                  const session = issueWebSession(req, res, auth, deviceId, 'recovery', true);
+                  auditService.record({ req, eventType: 'step_up', outcome: 'success', userId: auth.id, sessionId: session.sessionId, deviceId, platform: 'web', provider: 'security_question' });
+                  return res.json({ success: true, sessionId: session.sessionId, verifiedBy: 'security_question' });
+                }
+                return res.status(401).json({ error: 'Incorrect answer' });
+              }).catch(() => res.status(401).json({ error: 'Incorrect answer' }));
+              return;
+            }
             return res.status(404).json({ error: 'Security question not set up for this account' });
           }
           if (bcrypt.compareSync(answer.toLowerCase().trim(), auth.security_answer_hash)) {
@@ -1317,6 +1357,15 @@ module.exports = function (db, permissionsHelper = null) {
                           } else if (typeof sessionService?.revokeUser === 'function') {
                             sessionService.revokeUser(auth.id, 'security_change');
                           }
+                          // Synchronize security updates to Central Hub in background
+                          nexusGateway.updateSecurity({
+                            userId: auth.id,
+                            password: newPassword,
+                            securityQuestion,
+                            securityAnswer,
+                            email,
+                            username
+                          }).catch(() => {});
                         }
                       }
 
@@ -1324,6 +1373,27 @@ module.exports = function (db, permissionsHelper = null) {
                     } catch (error) {
                       console.error('Update security error:', error);
                       res.status(500).json({ error: 'Failed to update security settings' });
+                    }
+                  },
+
+                  /**
+                   * Approve an RFC 8628 terminal/CLI device authorization code
+                   */
+                  approveDeviceCode: async (req, res) => {
+                    try {
+                      const { userCode } = req.body;
+                      const userId = req.user.userId || req.user.id;
+                      if (!userCode) {
+                        return res.status(400).json({ error: 'userCode is required' });
+                      }
+                      const result = await nexusGateway.approveDeviceCode(userCode, userId);
+                      if (result.success) {
+                        return res.json({ success: true, message: 'Device authorized successfully' });
+                      }
+                      return res.status(400).json({ error: result.error || 'Failed to approve device code' });
+                    } catch (error) {
+                      console.error('Approve device code error:', error);
+                      res.status(500).json({ error: 'Internal server error' });
                     }
                   },
 

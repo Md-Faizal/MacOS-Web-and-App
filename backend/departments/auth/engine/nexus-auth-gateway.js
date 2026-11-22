@@ -165,6 +165,100 @@ class NexusAuthGateway {
       return { success: false, error: err.response?.data?.error || err.message };
     }
   }
+
+  /**
+   * Synchronize security credentials (password, security question & answer) to Central Hub
+   */
+  async updateSecurity({ userId, password, securityQuestion, securityAnswer, email, username }) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.post(
+        '/internal/update-security',
+        {
+          user_id: userId,
+          password: password || undefined,
+          security_question: securityQuestion || undefined,
+          security_answer: securityAnswer || undefined,
+          email: email || undefined,
+          username: username || undefined,
+        },
+        {
+          headers: {
+            'x-nexus-internal-key': this.internalKey,
+          },
+        }
+      );
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * Fetch configured security question from Central Hub for challenge
+   */
+  async getSecurityQuestion(identifier) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.get('/internal/security-question', {
+        params: { identifier },
+        headers: {
+          'x-nexus-internal-key': this.internalKey,
+        },
+      });
+      return { success: true, question: response.data?.question, userId: response.data?.user_id };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * Verify security question answer on Central Hub
+   */
+  async verifySecurityAnswer(identifier, answer) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.post(
+        '/internal/verify-security-answer',
+        {
+          identifier,
+          answer,
+        },
+        {
+          headers: {
+            'x-nexus-internal-key': this.internalKey,
+          },
+        }
+      );
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * Approve an RFC 8628 terminal/CLI device flow code via Central Hub
+   */
+  async approveDeviceCode(userCode, userId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.post(
+        '/internal/device/approve',
+        {
+          user_code: userCode,
+          user_id: userId,
+        },
+        {
+          headers: {
+            'x-nexus-internal-key': this.internalKey,
+          },
+        }
+      );
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
 }
 
 module.exports = NexusAuthGateway;

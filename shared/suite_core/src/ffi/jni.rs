@@ -113,3 +113,30 @@ pub extern "system" fn Java_com_example_macosbusinesssuite_domain_calculation_Bi
 
     0
 }
+
+/// JNI bridge function for instant RBAC scope check in Android Kotlin.
+/// Returns 1 if allowed, 0 if denied.
+#[no_mangle]
+pub extern "system" fn Java_com_example_macosbusinesssuite_domain_auth_AuthEngine_isScopeAllowedFast(
+    mut env: JNIEnv,
+    _class: JClass,
+    role: jni::objects::JString,
+    scope: jni::objects::JString,
+) -> i32 {
+    let role_str: String = match env.get_string(&role) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let scope_str: String = match env.get_string(&scope) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+
+    let roles = vec![role_str];
+    if crate::auth::evaluate_scope(&roles, &[], &scope_str) {
+        1
+    } else {
+        0
+    }
+}
+

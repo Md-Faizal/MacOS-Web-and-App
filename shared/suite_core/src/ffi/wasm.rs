@@ -1331,6 +1331,91 @@ pub unsafe extern "C" fn suite_render_letterhead_svg(ptr: *const u8, len: usize)
     }
 }
 
+// ─── Shared Enterprise Auth Wasm Engine ──────────────────────────────────────
+
+#[derive(Deserialize)]
+struct EvaluateScopeRequest {
+    #[serde(default)]
+    roles: Vec<String>,
+    #[serde(default)]
+    scopes: Vec<String>,
+    requested_scope: String,
+}
+
+#[derive(Serialize)]
+struct EvaluateScopeResponse {
+    allowed: bool,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_evaluate_scope(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<EvaluateScopeRequest>(slice) {
+        Ok(req) => {
+            let allowed = crate::auth::evaluate_scope(&req.roles, &req.scopes, &req.requested_scope);
+            package_response(&EvaluateScopeResponse { allowed })
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                allowed: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                allowed: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct InspectTokenRequest {
+    token: String,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_inspect_token(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<InspectTokenRequest>(slice) {
+        Ok(req) => match crate::auth::inspect_jwt_payload_unverified(&req.token) {
+            Ok(claims) => {
+                #[derive(Serialize)]
+                struct SuccessResp {
+                    valid: bool,
+                    claims: crate::auth::VerifiedTokenClaims,
+                }
+                package_response(&SuccessResp {
+                    valid: true,
+                    claims,
+                })
+            }
+            Err(e) => {
+                #[derive(Serialize)]
+                struct ErrResp {
+                    valid: bool,
+                    error: String,
+                }
+                package_response(&ErrResp {
+                    valid: false,
+                    error: e,
+                })
+            }
+        },
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                valid: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                valid: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
 
 
 

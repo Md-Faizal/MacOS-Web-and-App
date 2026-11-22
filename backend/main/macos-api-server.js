@@ -597,6 +597,7 @@ app.post('/api/auth/webauthn/authentication-verify', authModule.verifyWebAuthnAu
 app.get('/api/auth/webauthn/credentials', authModule.authMiddleware, authModule.listWebAuthnCredentials);
 app.delete('/api/auth/webauthn/credentials/:credentialId', authModule.authMiddleware, authModule.deleteWebAuthnCredential);
 app.post('/api/auth/update-security', authModule.authMiddleware, authModule.updateSecurity);
+app.post('/api/auth/device/approve', authModule.authMiddleware, authModule.approveDeviceCode);
 
 // Owner administration routes
 app.get('/api/admin/users', authModule.authMiddleware, adminAuth.ownerOnly, adminAuth.listUsers);
