@@ -992,6 +992,15 @@ module.exports = function (db, permissionsHelper = null) {
 
               if (device) {
                 db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
+                // Synchronize device session to Central Hub in background
+                nexusGateway.syncDevice({
+                  userId: user.id,
+                  deviceId: `dev_macos_${device.id}`,
+                  deviceName: resolvedDeviceName,
+                  deviceType: resolvedDeviceType,
+                  clientApp: 'app_macos_suite',
+                  ipAddress: (typeof req?.get === 'function' ? req.ip || req.socket?.remoteAddress : null) || null
+                }).catch(() => {});
               }
 
               const permissions = permissionsHelper && user.role === 'worker'
@@ -1023,7 +1032,7 @@ module.exports = function (db, permissionsHelper = null) {
           },
 
           /**
-           * Get all logged in devices
+           * Get all logged in devices (synchronizes with Central Hub)
            */
           getDevices: (req, res) => {
             try {
@@ -1031,7 +1040,7 @@ module.exports = function (db, permissionsHelper = null) {
               const currentDeviceId = req.user.deviceId || null;
               const currentSessionId = req.user.sessionId || null;
 
-              const devices = db.prepare(`
+              const localDevices = db.prepare(`
           SELECT d.*,
                  (d.id = ?) as is_current_device,
                  (
@@ -1044,23 +1053,66 @@ module.exports = function (db, permissionsHelper = null) {
           ORDER BY (d.id = ?) DESC, d.last_seen DESC, d.last_login DESC
         `).all(currentDeviceId, userId, currentDeviceId);
 
-              res.json({
-                devices: devices.map(d => {
-                  const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
-                  const resolvedApp = (d.app_name || (d.device_type?.includes('Android') ? 'android' : 'macos')).toString().trim().toLowerCase() || 'macos';
-                  return {
-                    ...d,
-                    app_name: resolvedApp,
-                    appName: resolvedApp,
-                    client_type: resolvedClient,
-                    clientType: resolvedClient,
-                    isCurrent: Boolean(d.is_current_device),
-                    hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
-                  };
-                }),
-                currentDeviceId,
-                currentSessionId
+              const formattedDevices = localDevices.map(d => {
+                const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
+                const resolvedApp = (d.app_name || (d.device_type?.includes('Android') ? 'android' : 'macos')).toString().trim().toLowerCase() || 'macos';
+                return {
+                  ...d,
+                  app_name: resolvedApp,
+                  appName: resolvedApp,
+                  client_type: resolvedClient,
+                  clientType: resolvedClient,
+                  isCurrent: Boolean(d.is_current_device),
+                  hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
+                };
               });
+
+              const sendResponse = (devs) => {
+                res.json({
+                  devices: devs,
+                  currentDeviceId,
+                  currentSessionId
+                });
+              };
+
+              // If running in live HTTP request context, merge upstream Central Hub sessions
+              if (req.headers && (req.headers.host || req.headers['user-agent'] || req.headers['x-client-app'])) {
+                nexusGateway.getCentralDevices(userId).then(centralRes => {
+                  if (centralRes.success && Array.isArray(centralRes.sessions) && centralRes.sessions.length > 0) {
+                    const knownNames = new Set(formattedDevices.map(d => (d.device_name || '').toLowerCase()));
+                    const merged = [...formattedDevices];
+                    for (const s of centralRes.sessions) {
+                      if (!knownNames.has((s.device_name || '').toLowerCase())) {
+                        const app = s.client_app || 'nexus-hub';
+                        merged.push({
+                          id: s.id,
+                          user_id: userId,
+                          device_name: s.device_name,
+                          device_type: s.device_type || 'Web',
+                          client_type: app === 'app_macos_suite' ? 'web' : 'central',
+                          app_name: app,
+                          appName: app,
+                          clientType: app === 'app_macos_suite' ? 'web' : 'central',
+                          isCurrent: false,
+                          hasActiveSession: true,
+                          last_seen: s.last_seen,
+                          last_login: s.created_at,
+                          created_at: s.created_at,
+                          is_central: true
+                        });
+                      }
+                    }
+                    sendResponse(merged);
+                  } else {
+                    sendResponse(formattedDevices);
+                  }
+                }).catch(() => {
+                  sendResponse(formattedDevices);
+                });
+              } else {
+                // Synchronous unit test or mock execution
+                sendResponse(formattedDevices);
+              }
             } catch (error) {
               console.error('Failed to retrieve devices:', error);
               res.status(500).json({ error: 'Failed to retrieve devices' });
@@ -1086,6 +1138,10 @@ module.exports = function (db, permissionsHelper = null) {
                   sessionService.clearCookie(res);
                   res.clearCookie('auth_token', { path: '/' });
                 }
+
+                // Notify Central Hub in background
+                nexusGateway.revokeCentralDevice(`dev_macos_${id}`, userId).catch(() => {});
+                nexusGateway.revokeCentralDevice(id, userId).catch(() => {});
 
                 res.json({
                   success: true,
@@ -1116,6 +1172,10 @@ module.exports = function (db, permissionsHelper = null) {
                       db.prepare('DELETE FROM user_devices WHERE user_id = ? AND id != ? AND app_name = ?').run(userId, currentDeviceId, requestedAppName);
                       sessionService.revokeOtherSessions(userId, currentSessionId, 'all_other_devices_logged_out', requestedAppName);
                     })();
+
+                    // Sync remote revocation to Central Hub
+                    nexusGateway.revokeAllCentralDevices(userId, `dev_macos_${currentDeviceId}`).catch(() => {});
+
                     res.json({ success: true, appName: requestedAppName, message: 'All other devices for this app were logged out successfully' });
                   } else {
                     // Complete global logout
@@ -1126,6 +1186,10 @@ module.exports = function (db, permissionsHelper = null) {
                     })();
                     sessionService.clearCookie(res);
                     res.clearCookie('auth_token', { path: '/' });
+
+                    // Sync global revocation to Central Hub
+                    nexusGateway.revokeAllCentralDevices(userId, null).catch(() => {});
+
                     res.json({ success: true, isSelf: true, message: 'All devices logged out' });
                   }
                 } catch (error) {

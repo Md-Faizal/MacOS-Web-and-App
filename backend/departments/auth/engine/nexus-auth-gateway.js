@@ -80,6 +80,91 @@ class NexusAuthGateway {
       return { success: false, error: err.response?.data?.error || err.message };
     }
   }
+  /**
+   * Register or heartbeat a device on Central Hub
+   */
+  async syncDevice({ userId, deviceId, deviceName, deviceType, clientApp, ipAddress }) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.post(
+        '/internal/sync-device',
+        {
+          user_id: userId,
+          device_id: deviceId,
+          device_name: deviceName,
+          device_type: deviceType,
+          client_app: clientApp,
+          ip_address: ipAddress,
+        },
+        {
+          headers: {
+            'x-nexus-internal-key': this.internalKey,
+          },
+        }
+      );
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * List sessions/devices registered in Central Hub for a user
+   */
+  async getCentralDevices(userId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.get('/internal/sessions', {
+        params: { user_id: userId },
+        headers: {
+          'x-nexus-internal-key': this.internalKey,
+        },
+      });
+      return { success: true, sessions: response.data?.sessions || [] };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * Revoke an individual device on Central Hub
+   */
+  async revokeCentralDevice(deviceId, userId) {
+    try {
+      const client = this.getHttpClient();
+      const response = await client.delete(`/internal/sessions/${encodeURIComponent(deviceId)}`, {
+        params: userId ? { user_id: userId } : undefined,
+        headers: {
+          'x-nexus-internal-key': this.internalKey,
+        },
+      });
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
+
+  /**
+   * Revoke all other devices on Central Hub (and bump token version)
+   */
+  async revokeAllCentralDevices(userId, keepDeviceId) {
+    try {
+      const client = this.getHttpClient();
+      const params = { user_id: userId };
+      if (keepDeviceId) {
+        params.keep_device_id = keepDeviceId;
+      }
+      const response = await client.delete('/internal/sessions', {
+        params,
+        headers: {
+          'x-nexus-internal-key': this.internalKey,
+        },
+      });
+      return { success: true, data: response.data };
+    } catch (err) {
+      return { success: false, error: err.response?.data?.error || err.message };
+    }
+  }
 }
 
 module.exports = NexusAuthGateway;
