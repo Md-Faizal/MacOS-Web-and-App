@@ -1,6 +1,7 @@
 #![allow(non_snake_case, dead_code)]
 
 pub mod analytics;
+pub mod auth;
 pub mod catalog;
 pub mod documents;
 pub mod ffi;

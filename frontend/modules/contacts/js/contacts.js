@@ -1,5 +1,5 @@
 // @ts-nocheck
-const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Contacts') : { debug: () => {}, info: () => {}, warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = (typeof window !== 'undefined' && window.MacOSLogger) ? window.MacOSLogger.createScope('Contacts') : { debug: () => { }, info: () => { }, warn: console.warn.bind(console), error: console.error.bind(console) };
 
 /**
  * ContactsApp - A macOS Contacts application with detailed contact management
@@ -14,7 +14,7 @@ class ContactsApp extends AppWindow {
   constructor(containerId, callbacks = {}) {
     const width = window.innerWidth;
     let config = { appId: 'contacts', appName: 'Contacts', containerId: containerId, callbacks: callbacks };
-    
+
     if (width < 768) {
       const mobileSizes = AppWindow.calculateMobileSizing();
       config = { ...config, width: mobileSizes.width, height: mobileSizes.height };
@@ -23,7 +23,7 @@ class ContactsApp extends AppWindow {
     } else {
       config = { ...config, width: '600px', height: '500px' };
     }
-    
+
     super(config);
 
     // Try to use backend API, fallback to localStorage if not available
@@ -126,7 +126,7 @@ class ContactsApp extends AppWindow {
     this.sidebar = contentArea.querySelector('.contacts-sidebar');
     this.contactsList = contentArea.querySelector('#contactsList');
     this.cardContainer = contentArea.querySelector('#contactCardContainer');
-    
+
     // Search input will be set in setupHeaderControls
     this.searchInput = null;
   }
@@ -134,9 +134,9 @@ class ContactsApp extends AppWindow {
   setupHeaderControls() {
     const container = document.getElementById(this.containerId);
     const titleBar = container.querySelector('.app-title-bar');
-    
+
     if (!titleBar) return;
-    
+
     // Create left controls group (after traffic lights)
     const leftControls = document.createElement('div');
     leftControls.className = 'contacts-left-controls';
@@ -154,16 +154,16 @@ class ContactsApp extends AppWindow {
       </svg>
     `;
     leftControls.appendChild(expandBtn);
-    
+
     // Insert left controls after traffic lights
     const trafficLights = titleBar.querySelector('.app-traffic-lights');
     titleBar.insertBefore(leftControls, trafficLights.nextSibling);
-    
+
     // Create right controls group (replace title-spacer)
     const spacer = titleBar.querySelector('.title-spacer');
     const rightControls = document.createElement('div');
     rightControls.className = 'contacts-header-controls';
-    
+
     // Create buttons container (Edit, Add)
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'contacts-header-buttons';
@@ -172,14 +172,14 @@ class ContactsApp extends AppWindow {
       <button class="contacts-header-btn edit-btn-text" id="editBtn" title="Edit Contact">Edit</button>
       <button class="contacts-header-btn" id="addBtn" title="Add Contact">+</button>
     `;
-    
+
     // Create search input
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'contacts-header-search';
     searchInput.id = 'headerSearch';
     searchInput.placeholder = 'Search';
-    
+
     rightControls.appendChild(buttonsContainer);
     rightControls.appendChild(searchInput);
     const trackingBtn = buttonsContainer.querySelector("#headerTrackingBtn");
@@ -193,10 +193,10 @@ class ContactsApp extends AppWindow {
         }
       };
     }
-    
+
     // Replace spacer with right controls
     spacer.parentNode.replaceChild(rightControls, spacer);
-    
+
     // Store search input reference
     this.searchInput = searchInput;
   }
@@ -331,10 +331,10 @@ class ContactsApp extends AppWindow {
         }
 
         const initials = this.getInitials(contact.name);
-        const activeIndicator = contact.active === 'ACTIVE' 
+        const activeIndicator = contact.active === 'ACTIVE'
           ? '<span class="contacts-list-active-badge" style="color: #8bc34a;">●</span>'
           : '<span class="contacts-list-active-badge" style="color: #dc2626;">●</span>';
-        
+
         const workerBadgeHtml = (!this.isWorkerUser() && window.renderWorkerBadge)
           ? window.renderWorkerBadge(contact, { compact: true })
           : '';
@@ -370,7 +370,7 @@ class ContactsApp extends AppWindow {
     document.querySelectorAll('.contacts-list-item').forEach(item => {
       item.classList.remove('active');
     });
-    
+
     // Find and highlight the active contact in the list
     const activeItem = document.querySelector(`.contacts-list-item[data-contact-id="${contactId}"]`);
     if (activeItem) {
@@ -561,8 +561,8 @@ class ContactsApp extends AppWindow {
       btn.addEventListener('click', async (e) => {
         const action = btn.dataset.action;
         const contact = this.contacts.find(c => c.id === this.selectedContactId);
-        
-        switch(action) {
+
+        switch (action) {
           case 'share-ledger':
             e.stopPropagation();
             e.preventDefault();
@@ -587,12 +587,12 @@ class ContactsApp extends AppWindow {
                     contact.token = token;
                   }
                 }
-              } catch (_) {}
+              } catch (_) { }
             }
             const baseUrl = token ? `${window.location.origin}/ledger/${token}` : `${window.location.origin}/customer-ledger.html?id=${contact.id}`;
             const copyUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=manual_share";
             const waUrl = baseUrl + (baseUrl.includes("?") ? "&" : "?") + "src=whatsapp";
-            
+
             const shareOptions = document.createElement("div");
             shareOptions.id = "shareLedgerPopup";
             shareOptions.style.cssText = "position: fixed; background: #ffffff; border: 1px solid #111827; border-radius: 6px; padding: 10px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2); z-index: 2147483646 !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; width: 190px;";
@@ -602,23 +602,23 @@ class ContactsApp extends AppWindow {
               <button id="waLinkBtn" style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-bottom: 6px; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: #25D366; color: white; border: none; border-radius: 4px; transition: opacity 0.15s;">💬 WhatsApp</button>
               <button id="viewTrackingShortcutBtn" style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: #111827; color: white; border: none; border-radius: 4px; transition: opacity 0.15s;">📡 View Activity</button>
             `;
-            
+
             const rect = btn.getBoundingClientRect();
             let topPos = rect.bottom + 6;
             let leftPos = rect.left;
-            
+
             if (topPos + 160 > window.innerHeight) {
               topPos = Math.max(10, rect.top - 165);
             }
             if (leftPos + 200 > window.innerWidth) {
               leftPos = Math.max(10, window.innerWidth - 210);
             }
-            
+
             shareOptions.style.top = topPos + "px";
             shareOptions.style.left = leftPos + "px";
-            
+
             document.body.appendChild(shareOptions);
-            
+
             const copyBtn = document.getElementById("copyLinkBtn");
             if (copyBtn) {
               copyBtn.onclick = async (ev) => {
@@ -644,7 +644,7 @@ class ContactsApp extends AppWindow {
                 if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
               };
             }
-            
+
             const waBtn = document.getElementById("waLinkBtn");
             if (waBtn) {
               waBtn.onclick = (ev) => {
@@ -654,7 +654,7 @@ class ContactsApp extends AppWindow {
                 if (document.body.contains(shareOptions)) document.body.removeChild(shareOptions);
               };
             }
-            
+
             const trackShortcut = document.getElementById("viewTrackingShortcutBtn");
             if (trackShortcut) {
               trackShortcut.onclick = (ev) => {
@@ -663,7 +663,7 @@ class ContactsApp extends AppWindow {
                 this.openTrackingModal(contact.id, contact.name);
               };
             }
-            
+
             setTimeout(() => {
               const closeFn = (ev) => {
                 if (!shareOptions.contains(ev.target) && ev.target !== btn) {
@@ -713,21 +713,21 @@ class ContactsApp extends AppWindow {
     // Add scroll animation for the avatar and glass effect
     const scrollContainer = card.querySelector('.contact-details-scroll');
     const bgAvatar = card.querySelector('.contact-fixed-bg-avatar .contact-large-avatar');
-    
+
     if (scrollContainer && bgAvatar) {
       scrollContainer.addEventListener('scroll', () => {
         const scrollTop = scrollContainer.scrollTop;
         const maxScroll = 150; // Distance to complete animation
         const progress = Math.min(scrollTop / maxScroll, 1);
-        
+
         // Transform Avatar: Shrink, move up, reduce opacity
         const scale = 1 - (progress * 0.25); // Keeps it larger (max shrink to 0.75)
-        const translateY = -(progress * 20); 
+        const translateY = -(progress * 20);
         const opacity = 1 - (progress * 0.15); // Keeps it mostly visible (min opacity 0.85)
-        
+
         bgAvatar.style.transform = `translateY(${translateY}px) scale(${scale})`;
         bgAvatar.style.opacity = opacity;
-        
+
         // Animate Container: Add blur and faint overlay to push avatar to background
         if (scrollTop > 5) {
           scrollContainer.style.background = `rgba(0, 0, 0, ${progress * 0.05})`;
@@ -763,16 +763,16 @@ class ContactsApp extends AppWindow {
     if (!amount && amount !== 0) return 'N/A';
     const num = parseFloat(amount);
     if (isNaN(num)) return 'N/A';
-    
+
     // Format number with Indian numbering system (e.g., 11,639 or 1,00,000)
     // Split into integer and decimal parts
     const [intPart, decPart] = num.toFixed(2).split('.');
     const intPartStr = intPart;
-    
+
     // For Indian format: last 3 digits, then pairs of 2 from right
     let formatted = '';
     let count = 0;
-    
+
     for (let i = intPartStr.length - 1; i >= 0; i--) {
       // Add comma after first 3 digits, then every 2 digits
       if (count === 3 || (count > 3 && (count - 3) % 2 === 0)) {
@@ -781,7 +781,7 @@ class ContactsApp extends AppWindow {
       formatted = intPartStr[i] + formatted;
       count++;
     }
-    
+
     return '₹' + formatted + '.' + decPart;
   }
 
@@ -811,131 +811,131 @@ class ContactsApp extends AppWindow {
   }
 
   async generateSlipQR(tokenOrUid) {
-    try {
-      await this.ensureQRCodeLibrary();
-      if (window.QRCode && window.QRCode.toCanvas) {
-        const portalUrl = (this.appSettings && this.appSettings.portal_base_url) || window.location.origin;
-        // Use short customer-facing tracking URL /s/:token
-        const targetUrl = `${portalUrl}/s/${encodeURIComponent(tokenOrUid)}`;
-        const canvas = document.createElement('canvas');
-        await window.QRCode.toCanvas(canvas, targetUrl, {
-          width: 140,
-          margin: 1,
-          errorCorrectionLevel: 'M',
-          color: { dark: '#000000', light: '#ffffff' }
-        });
-        return canvas.toDataURL('image/png');
+      try {
+        await this.ensureQRCodeLibrary();
+        if (window.QRCode && window.QRCode.toCanvas) {
+          const portalUrl = (this.appSettings && this.appSettings.portal_base_url) || window.location.origin;
+          // Use short customer-facing tracking URL /s/:token
+          const targetUrl = `${portalUrl}/s/${encodeURIComponent(tokenOrUid)}`;
+          const canvas = document.createElement('canvas');
+          await window.QRCode.toCanvas(canvas, targetUrl, {
+            width: 140,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000', light: '#ffffff' }
+          });
+          return canvas.toDataURL('image/png');
+        }
+      } catch (err) {
+        log.warn('Failed to generate QR data URL:', err);
       }
-    } catch (err) {
-      log.warn('Failed to generate QR data URL:', err);
+      return '';
     }
-    return '';
-  }
 
-  escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+    escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
-  printSlip(contactId) {
-    this.openShippingStudio(contactId);
-  }
+    printSlip(contactId) {
+      this.openShippingStudio(contactId);
+    }
 
   async openShippingStudio(contactId) {
-    const escapeHtml = (str) => this.escapeHtml(str);
-    const contact = this.contacts.find(c => c.id === contactId);
-    if (!contact) {
-      this.showNotification('Contact not found', 'error');
-      return;
-    }
-
-    if (!this.appSettings) {
-      await this.loadAppSettings();
-    }
-
-    const settings = this.appSettings || {};
-    const companyName = settings.company_name || 'UTKAL CHEMICAL AUSHADHALAYA';
-
-    let dynamicOrigins = [];
-    try {
-      if (settings.company_shipping_origins) {
-        dynamicOrigins = typeof settings.company_shipping_origins === 'string'
-          ? JSON.parse(settings.company_shipping_origins)
-          : settings.company_shipping_origins;
+      const escapeHtml = (str) => this.escapeHtml(str);
+      const contact = this.contacts.find(c => c.id === contactId);
+      if (!contact) {
+        this.showNotification('Contact not found', 'error');
+        return;
       }
-    } catch (e) {
-      log.warn('Failed to parse company_shipping_origins:', e);
+
+      if (!this.appSettings) {
+        await this.loadAppSettings();
+      }
+
+      const settings = this.appSettings || {};
+      const companyName = settings.company_name || 'UTKAL CHEMICAL AUSHADHALAYA';
+
+    let dynamicOrigins =[];
+          try {
+            if(settings.company_shipping_origins) {
+              dynamicOrigins = typeof settings.company_shipping_origins === 'string'
+                ? JSON.parse(settings.company_shipping_origins)
+                : settings.company_shipping_origins;
     }
+} catch (e) {
+  log.warn('Failed to parse company_shipping_origins:', e);
+}
 
-    if (!Array.isArray(dynamicOrigins) || dynamicOrigins.length === 0) {
-      dynamicOrigins = [
-        {
-          id: 'shipping',
-          label: 'Warehouse (Cuttack)',
-          address: settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
-          phone: settings.company_shipping_phone || '7749089400',
-          is_default: true
-        },
-        {
-          id: 'factory',
-          label: 'Factory (Aska)',
-          address: settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
-          phone: settings.company_phone || '06822273304 / 943933330',
-          is_default: false
-        },
-        {
-          id: 'office',
-          label: 'Office (Bhubaneswar)',
-          address: settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019',
-          phone: settings.company_phone || '06822273304 / 943933330',
-          is_default: false
-        }
-      ];
+if (!Array.isArray(dynamicOrigins) || dynamicOrigins.length === 0) {
+  dynamicOrigins = [
+    {
+      id: 'shipping',
+      label: 'Warehouse (Cuttack)',
+      address: settings.company_address_shipping || 'Beside Sai Hospital Annex, Mirkamalpatna, Mangalabagh, Cuttack - 753001',
+      phone: settings.company_shipping_phone || '7749089400',
+      is_default: true
+    },
+    {
+      id: 'factory',
+      label: 'Factory (Aska)',
+      address: settings.company_address_factory || 'Binaba Marg, Aska, Ganjam, Odisha - 761110',
+      phone: settings.company_phone || '06822273304 / 943933330',
+      is_default: false
+    },
+    {
+      id: 'office',
+      label: 'Office (Bhubaneswar)',
+      address: settings.company_address_office || 'D1, Basera Complex, Dumduma, BBSR - 751019',
+      phone: settings.company_phone || '06822273304 / 943933330',
+      is_default: false
     }
+  ];
+}
 
-    const origins = {};
-    dynamicOrigins.forEach((orig, idx) => {
-      const key = orig.id || `orig_${idx}`;
-      origins[key] = {
-        id: key,
-        label: orig.label || 'Dispatch Hub',
-        name: companyName,
-        address: orig.address || '',
-        phone: orig.phone || ''
-      };
-    });
+const origins = {};
+dynamicOrigins.forEach((orig, idx) => {
+  const key = orig.id || `orig_${idx}`;
+  origins[key] = {
+    id: key,
+    label: orig.label || 'Dispatch Hub',
+    name: companyName,
+    address: orig.address || '',
+    phone: orig.phone || ''
+  };
+});
 
-    const defaultOrigObj = dynamicOrigins.find(o => o.is_default) || dynamicOrigins[0];
-    let selectedOriginKey = (defaultOrigObj && defaultOrigObj.id && origins[defaultOrigObj.id]) ? defaultOrigObj.id : Object.keys(origins)[0];
+const defaultOrigObj = dynamicOrigins.find(o => o.is_default) || dynamicOrigins[0];
+let selectedOriginKey = (defaultOrigObj && defaultOrigObj.id && origins[defaultOrigObj.id]) ? defaultOrigObj.id : Object.keys(origins)[0];
 
-    const rawAddress = contact.address || '';
-    const pinMatch = rawAddress.match(/\b([1-9][0-9]{5})\b/);
-    let initialPin = pinMatch ? pinMatch[1] : '';
+const rawAddress = contact.address || '';
+const pinMatch = rawAddress.match(/\b([1-9][0-9]{5})\b/);
+let initialPin = pinMatch ? pinMatch[1] : '';
 
-    const now = new Date();
-    const yy = String(now.getFullYear()).slice(-2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const previewUid = `SHIP-${yy}${mm}-` + Math.floor(1000 + Math.random() * 9000);
-    const previewToken = Math.random().toString(36).substring(2, 6) + Math.random().toString(36).substring(2, 6);
+const now = new Date();
+const yy = String(now.getFullYear()).slice(-2);
+const mm = String(now.getMonth() + 1).padStart(2, '0');
+const previewUid = `SHIP-${yy}${mm}-` + Math.floor(1000 + Math.random() * 9000);
+const previewToken = Math.random().toString(36).substring(2, 6) + Math.random().toString(36).substring(2, 6);
 
-    let currentFormat = 'thermal';
-    let qrDataUrl = await this.generateSlipQR(previewToken);
+let currentFormat = 'thermal';
+let qrDataUrl = await this.generateSlipQR(previewToken);
 
-    const existing = document.getElementById('shippingStudioOverlay');
-    if (existing) existing.remove();
+const existing = document.getElementById('shippingStudioOverlay');
+if (existing) existing.remove();
 
-    const overlay = document.createElement('div');
-    overlay.id = 'shippingStudioOverlay';
-    overlay.className = 'contact-modal-overlay';
-    // Use standard modal z-index (1000001) so #macos-cursor (2147483647) paints on top and remains visible
-    overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000001; padding: 16px; box-sizing: border-box;';
+const overlay = document.createElement('div');
+overlay.id = 'shippingStudioOverlay';
+overlay.className = 'contact-modal-overlay';
+// Use standard modal z-index (1000001) so #macos-cursor (2147483647) paints on top and remains visible
+overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000001; padding: 16px; box-sizing: border-box;';
 
-    overlay.innerHTML = `
+overlay.innerHTML = `
       <div class="shipping-studio-modal" style="width: 100%; max-width: 900px; max-height: 92vh; height: 750px; background: #ffffff; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(0,0,0,0.1);">
         
         <!-- Studio Header -->
@@ -1081,23 +1081,23 @@ class ContactsApp extends AppWindow {
       </div>
     `;
 
-    document.body.appendChild(overlay);
+document.body.appendChild(overlay);
 
-    const renderPreview = () => {
-      const orig = origins[selectedOriginKey] || origins.shipping;
-      const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
-      const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
-      const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
-      const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
-      const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
-      const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
-      const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
+const renderPreview = () => {
+  const orig = origins[selectedOriginKey] || origins.shipping;
+  const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
+  const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
+  const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
+  const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
+  const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+  const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
+  const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
 
-      const isThermal = currentFormat === 'thermal';
-      const container = overlay.querySelector('#slipPreviewFrame');
-      if (!container) return;
+  const isThermal = currentFormat === 'thermal';
+  const container = overlay.querySelector('#slipPreviewFrame');
+  if (!container) return;
 
-      container.innerHTML = `
+  container.innerHTML = `
         <div style="background: #ffffff; border: 3px solid #000000; box-shadow: 0 8px 24px rgba(0,0,0,0.12); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #000000; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; ${isThermal ? 'min-height: 480px;' : 'min-height: 380px;'}">
           
           <!-- Header: Sender & Tag -->
@@ -1166,56 +1166,56 @@ class ContactsApp extends AppWindow {
           </div>
         ` : ''}
       `;
-    };
+};
 
-    renderPreview();
+renderPreview();
 
-    // Auto-fetch recent invoices & auto-link matching bill
-    (async () => {
-      try {
-        const [invRes, orderRes] = await Promise.all([
-          fetch(`/api/billing?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/billing/orders?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
-        ]);
+// Auto-fetch recent invoices & auto-link matching bill
+(async () => {
+  try {
+    const [invRes, orderRes] = await Promise.all([
+      fetch(`/api/billing?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/billing/orders?customer_id=${encodeURIComponent(contact.id)}&limit=5`).then(r => r.ok ? r.json() : []).catch(() => [])
+    ]);
 
-        const invoices = Array.isArray(invRes) ? invRes : (invRes.items || invRes.data || []);
-        const orders = Array.isArray(orderRes) ? orderRes : (orderRes.orders || orderRes.items || orderRes.data || []);
+    const invoices = Array.isArray(invRes) ? invRes : (invRes.items || invRes.data || []);
+    const orders = Array.isArray(orderRes) ? orderRes : (orderRes.orders || orderRes.items || orderRes.data || []);
 
-        const invInput = overlay.querySelector('#studioInvoiceRef');
-        const clearBtn = overlay.querySelector('#studioClearInvBtn');
-        const badgeContainer = overlay.querySelector('#studioInvoiceAutoMatchBadge');
-        const recentContainer = overlay.querySelector('#studioRecentInvoicesContainer');
+    const invInput = overlay.querySelector('#studioInvoiceRef');
+    const clearBtn = overlay.querySelector('#studioClearInvBtn');
+    const badgeContainer = overlay.querySelector('#studioInvoiceAutoMatchBadge');
+    const recentContainer = overlay.querySelector('#studioRecentInvoicesContainer');
 
-        let bestMatch = null;
-        if (orders.length > 0 && invoices.length > 0 && typeof findBestInvoiceMatchForOrder === 'function') {
-          bestMatch = findBestInvoiceMatchForOrder(orders[0], invoices, orders);
-        }
+    let bestMatch = null;
+    if (orders.length > 0 && invoices.length > 0 && typeof findBestInvoiceMatchForOrder === 'function') {
+      bestMatch = findBestInvoiceMatchForOrder(orders[0], invoices, orders);
+    }
 
-        let chosenInvoice = null;
-        let matchPct = 0;
-        let matchNote = '';
+    let chosenInvoice = null;
+    let matchPct = 0;
+    let matchNote = '';
 
-        if (bestMatch && bestMatch.invoice) {
-          chosenInvoice = bestMatch.invoice;
-          matchPct = Math.min(100, Math.round((bestMatch.score / 100) * 100));
-          matchNote = bestMatch.reasons?.[0] || 'Order match';
-        } else if (invoices.length > 0) {
-          chosenInvoice = invoices[0];
-          matchPct = 100;
-          matchNote = 'Latest customer invoice';
-        }
+    if (bestMatch && bestMatch.invoice) {
+      chosenInvoice = bestMatch.invoice;
+      matchPct = Math.min(100, Math.round((bestMatch.score / 100) * 100));
+      matchNote = bestMatch.reasons?.[0] || 'Order match';
+    } else if (invoices.length > 0) {
+      chosenInvoice = invoices[0];
+      matchPct = 100;
+      matchNote = 'Latest customer invoice';
+    }
 
-        const updateInvBadge = (invNo, amount, pct, note) => {
-          if (!badgeContainer) return;
-          if (!invNo) {
-            badgeContainer.style.display = 'none';
-            badgeContainer.innerHTML = '';
-            if (clearBtn) clearBtn.style.display = 'none';
-            return;
-          }
-          if (clearBtn) clearBtn.style.display = 'block';
-          badgeContainer.style.display = 'block';
-          badgeContainer.innerHTML = `
+    const updateInvBadge = (invNo, amount, pct, note) => {
+      if (!badgeContainer) return;
+      if (!invNo) {
+        badgeContainer.style.display = 'none';
+        badgeContainer.innerHTML = '';
+        if (clearBtn) clearBtn.style.display = 'none';
+        return;
+      }
+      if (clearBtn) clearBtn.style.display = 'block';
+      badgeContainer.style.display = 'block';
+      badgeContainer.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: space-between; background: #e0f2fe; border: 1px solid #bae6fd; padding: 4px 8px; border-radius: 6px; font-size: 11px;">
               <div style="color: #0369a1; font-weight: 700; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 <span>⚡ Auto-linked:</span>
@@ -1225,198 +1225,198 @@ class ContactsApp extends AppWindow {
               </div>
             </div>
           `;
-        };
+    };
 
-        if (chosenInvoice && invInput && !invInput.value) {
-          const invNo = chosenInvoice.invoice_no || chosenInvoice.id;
-          const amount = chosenInvoice.final_amount || chosenInvoice.grand_total || chosenInvoice.total_amount || 0;
-          invInput.value = invNo;
-          updateInvBadge(invNo, amount, matchPct, matchNote);
-          renderPreview();
+    if (chosenInvoice && invInput && !invInput.value) {
+      const invNo = chosenInvoice.invoice_no || chosenInvoice.id;
+      const amount = chosenInvoice.final_amount || chosenInvoice.grand_total || chosenInvoice.total_amount || 0;
+      invInput.value = invNo;
+      updateInvBadge(invNo, amount, matchPct, matchNote);
+      renderPreview();
+    }
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (invInput) invInput.value = '';
+        updateInvBadge('', 0, 0, '');
+        renderPreview();
+      });
+    }
+
+    if (invInput) {
+      invInput.addEventListener('input', () => {
+        const val = invInput.value.trim();
+        if (!val) {
+          updateInvBadge('', 0, 0, '');
+        } else {
+          const matched = invoices.find(i => (i.invoice_no === val || String(i.id) === val));
+          if (matched) {
+            const amt = matched.final_amount || matched.grand_total || matched.total_amount || 0;
+            updateInvBadge(val, amt, 100, 'Matched record');
+          } else {
+            if (badgeContainer) badgeContainer.style.display = 'none';
+            if (clearBtn) clearBtn.style.display = 'block';
+          }
         }
+        renderPreview();
+      });
+    }
 
-        if (clearBtn) {
-          clearBtn.addEventListener('click', () => {
-            if (invInput) invInput.value = '';
-            updateInvBadge('', 0, 0, '');
-            renderPreview();
-          });
-        }
-
-        if (invInput) {
-          invInput.addEventListener('input', () => {
-            const val = invInput.value.trim();
-            if (!val) {
-              updateInvBadge('', 0, 0, '');
-            } else {
-              const matched = invoices.find(i => (i.invoice_no === val || String(i.id) === val));
-              if (matched) {
-                const amt = matched.final_amount || matched.grand_total || matched.total_amount || 0;
-                updateInvBadge(val, amt, 100, 'Matched record');
-              } else {
-                if (badgeContainer) badgeContainer.style.display = 'none';
-                if (clearBtn) clearBtn.style.display = 'block';
-              }
-            }
-            renderPreview();
-          });
-        }
-
-        if (recentContainer && invoices.length > 0) {
-          recentContainer.style.display = 'flex';
-          recentContainer.innerHTML = `
+    if (recentContainer && invoices.length > 0) {
+      recentContainer.style.display = 'flex';
+      recentContainer.innerHTML = `
             <span style="font-size: 10px; color: #64748b; font-weight: 600; align-self: center;">Recent bills:</span>
             ${invoices.slice(0, 3).map(inv => {
-              const num = escapeHtml(inv.invoice_no || inv.id);
-              const amt = Math.round(Number(inv.final_amount || inv.grand_total || inv.total_amount || 0));
-              return `
+        const num = escapeHtml(inv.invoice_no || inv.id);
+        const amt = Math.round(Number(inv.final_amount || inv.grand_total || inv.total_amount || 0));
+        return `
                 <button type="button" class="studio-inv-pick-chip" data-inv="${num}" data-amt="${amt}" style="font-size: 10px; font-family: monospace; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 6px; cursor: pointer; color: #1e293b; font-weight: 600; transition: all 0.15s;">
                   ${num} (₹${amt})
                 </button>
               `;
-            }).join('')}
+      }).join('')}
           `;
 
-          recentContainer.querySelectorAll('.studio-inv-pick-chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-              const num = chip.getAttribute('data-inv');
-              const amt = chip.getAttribute('data-amt');
-              if (invInput) invInput.value = num;
-              updateInvBadge(num, amt, 100, 'Selected invoice');
-              renderPreview();
-            });
-          });
-        }
-      } catch (err) {
-        log.warn('Could not auto-fetch invoices for shipping studio:', err);
-      }
-    })();
-
-    // Event Bindings
-    overlay.querySelectorAll('.studio-format-pill').forEach(btn => {
-      btn.addEventListener('click', () => {
-        overlay.querySelectorAll('.studio-format-pill').forEach(b => {
-          b.style.background = '#ffffff';
-          b.style.color = '#475569';
-          b.style.borderColor = '#cbd5e1';
-          b.style.fontWeight = '600';
-        });
-        btn.style.background = '#0284c7';
-        btn.style.color = '#ffffff';
-        btn.style.borderColor = '#0284c7';
-        btn.style.fontWeight = '700';
-        currentFormat = btn.getAttribute('data-fmt');
-        renderPreview();
-      });
-    });
-
-    overlay.querySelectorAll('input[name="studioOrigin"]').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        selectedOriginKey = e.target.value;
-        overlay.querySelectorAll('.studio-origin-card').forEach(card => {
-          const isSelected = card.getAttribute('data-key') === selectedOriginKey;
-          card.style.borderColor = isSelected ? '#0284c7' : '#e2e8f0';
-          card.style.background = isSelected ? '#f0f9ff' : '#ffffff';
-        });
-        renderPreview();
-      });
-    });
-
-    ['studioRecName', 'studioRecAddr', 'studioRecPin', 'studioRecPhone', 'studioBoxesCount', 'studioInvoiceRef', 'studioRouteNote'].forEach(id => {
-      const el = overlay.querySelector('#' + id);
-      if (el) {
-        el.addEventListener('input', () => {
-          if (id === 'studioRecAddr') {
-            const addrVal = el.value;
-            const match = addrVal.match(/\b([1-9][0-9]{5})\b/);
-            const pinEl = overlay.querySelector('#studioRecPin');
-            if (match && pinEl && !pinEl.value) {
-              pinEl.value = match[1];
-            }
-          }
+      recentContainer.querySelectorAll('.studio-inv-pick-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          const num = chip.getAttribute('data-inv');
+          const amt = chip.getAttribute('data-amt');
+          if (invInput) invInput.value = num;
+          updateInvBadge(num, amt, 100, 'Selected invoice');
           renderPreview();
         });
+      });
+    }
+  } catch (err) {
+    log.warn('Could not auto-fetch invoices for shipping studio:', err);
+  }
+})();
+
+// Event Bindings
+overlay.querySelectorAll('.studio-format-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    overlay.querySelectorAll('.studio-format-pill').forEach(b => {
+      b.style.background = '#ffffff';
+      b.style.color = '#475569';
+      b.style.borderColor = '#cbd5e1';
+      b.style.fontWeight = '600';
+    });
+    btn.style.background = '#0284c7';
+    btn.style.color = '#ffffff';
+    btn.style.borderColor = '#0284c7';
+    btn.style.fontWeight = '700';
+    currentFormat = btn.getAttribute('data-fmt');
+    renderPreview();
+  });
+});
+
+overlay.querySelectorAll('input[name="studioOrigin"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    selectedOriginKey = e.target.value;
+    overlay.querySelectorAll('.studio-origin-card').forEach(card => {
+      const isSelected = card.getAttribute('data-key') === selectedOriginKey;
+      card.style.borderColor = isSelected ? '#0284c7' : '#e2e8f0';
+      card.style.background = isSelected ? '#f0f9ff' : '#ffffff';
+    });
+    renderPreview();
+  });
+});
+
+['studioRecName', 'studioRecAddr', 'studioRecPin', 'studioRecPhone', 'studioBoxesCount', 'studioInvoiceRef', 'studioRouteNote'].forEach(id => {
+  const el = overlay.querySelector('#' + id);
+  if (el) {
+    el.addEventListener('input', () => {
+      if (id === 'studioRecAddr') {
+        const addrVal = el.value;
+        const match = addrVal.match(/\b([1-9][0-9]{5})\b/);
+        const pinEl = overlay.querySelector('#studioRecPin');
+        if (match && pinEl && !pinEl.value) {
+          pinEl.value = match[1];
+        }
       }
+      renderPreview();
+    });
+  }
+});
+
+const closeStudio = () => overlay.remove();
+overlay.querySelector('#studioCloseBtn').addEventListener('click', closeStudio);
+overlay.querySelector('#studioCancelBtn').addEventListener('click', closeStudio);
+
+overlay.querySelector('#studioPrintBtn').addEventListener('click', async () => {
+  const orig = origins[selectedOriginKey] || origins.shipping;
+  const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
+  const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
+  const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
+  const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
+  const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
+  const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
+  const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
+  const syncBack = overlay.querySelector('#studioSyncBack')?.checked;
+
+  const printBtn = overlay.querySelector('#studioPrintBtn');
+  printBtn.disabled = true;
+  printBtn.innerHTML = `<span>⏳</span> <span>Generating...</span>`;
+
+  if (syncBack) {
+    try {
+      fetch(`${this.apiUrl}/${contact.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: recAddr,
+          phone: recPhone
+        })
+      }).catch(err => log.warn('Sync back contact failed:', err));
+    } catch (_) { }
+  }
+
+  let finalUid = previewUid;
+  let finalToken = previewToken;
+  try {
+    const shipRes = await fetch(`${this.apiUrl}/${contact.id}/shipments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contact_name: recName,
+        recipient_address: recAddr,
+        recipient_phone: recPhone,
+        recipient_pincode: recPin,
+        sender_address: orig.address,
+        sender_phone: orig.phone,
+        boxes_count: parseInt(boxes, 10) || 1,
+        invoice_ref: invRef,
+        route_note: route
+      })
     });
 
-    const closeStudio = () => overlay.remove();
-    overlay.querySelector('#studioCloseBtn').addEventListener('click', closeStudio);
-    overlay.querySelector('#studioCancelBtn').addEventListener('click', closeStudio);
-
-    overlay.querySelector('#studioPrintBtn').addEventListener('click', async () => {
-      const orig = origins[selectedOriginKey] || origins.shipping;
-      const recName = overlay.querySelector('#studioRecName')?.value?.trim() || contact.name || 'CUSTOMER';
-      const recAddr = overlay.querySelector('#studioRecAddr')?.value?.trim() || 'No address provided';
-      const recPin = overlay.querySelector('#studioRecPin')?.value?.trim() || '';
-      const recPhone = overlay.querySelector('#studioRecPhone')?.value?.trim() || '';
-      const boxes = overlay.querySelector('#studioBoxesCount')?.value || 1;
-      const invRef = overlay.querySelector('#studioInvoiceRef')?.value?.trim() || '';
-      const route = overlay.querySelector('#studioRouteNote')?.value?.trim() || '';
-      const syncBack = overlay.querySelector('#studioSyncBack')?.checked;
-
-      const printBtn = overlay.querySelector('#studioPrintBtn');
-      printBtn.disabled = true;
-      printBtn.innerHTML = `<span>⏳</span> <span>Generating...</span>`;
-
-      if (syncBack) {
-        try {
-          fetch(`${this.apiUrl}/${contact.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              address: recAddr,
-              phone: recPhone
-            })
-          }).catch(err => log.warn('Sync back contact failed:', err));
-        } catch (_) {}
-      }
-
-      let finalUid = previewUid;
-      let finalToken = previewToken;
-      try {
-        const shipRes = await fetch(`${this.apiUrl}/${contact.id}/shipments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contact_name: recName,
-            recipient_address: recAddr,
-            recipient_phone: recPhone,
-            recipient_pincode: recPin,
-            sender_address: orig.address,
-            sender_phone: orig.phone,
-            boxes_count: parseInt(boxes, 10) || 1,
-            invoice_ref: invRef,
-            route_note: route
-          })
-        });
-
-        if (shipRes.ok) {
-          const shipData = await shipRes.json();
-          if (shipData.shipment) {
-            if (shipData.shipment.shipment_uid) {
-              finalUid = shipData.shipment.shipment_uid;
-            }
-            if (shipData.shipment.tracking_token) {
-              finalToken = shipData.shipment.tracking_token;
-            }
+    if (shipRes.ok) {
+      const shipData = await shipRes.json();
+        if (shipData.shipment) {
+          if (shipData.shipment.shipment_uid) {
+            finalUid = shipData.shipment.shipment_uid;
+          }
+          if (shipData.shipment.tracking_token) {
+            finalToken = shipData.shipment.tracking_token;
           }
         }
-      } catch (err) {
-        log.warn('Failed to register shipment:', err);
       }
+    } catch (err) {
+      log.warn('Failed to register shipment:', err);
+    }
 
-      const finalQr = await this.generateSlipQR(finalToken);
+    const finalQr = await this.generateSlipQR(finalToken);
 
-      const isThermal = currentFormat === 'thermal';
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        this.showNotification('Please allow popups to print the shipping slip.', 'warning');
-        printBtn.disabled = false;
-        printBtn.innerHTML = `<span>🖨️</span> <span>Print Shipping Slip</span>`;
-        return;
-      }
+    const isThermal = currentFormat === 'thermal';
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      this.showNotification('Please allow popups to print the shipping slip.', 'warning');
+      printBtn.disabled = false;
+      printBtn.innerHTML = `<span>🖨️</span> <span>Print Shipping Slip</span>`;
+      return;
+    }
 
-      const printHtml = `
+    const printHtml = `
         <!DOCTYPE html>
         <html>
           <head>
@@ -1663,184 +1663,184 @@ class ContactsApp extends AppWindow {
         </html>
       `;
 
-      printWindow.document.write(printHtml);
-      printWindow.document.close();
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
 
-      overlay.remove();
-      this.showNotification('Shipping Slip Printed', `Logged shipment as ${finalUid}`, 'success');
-    });
+    overlay.remove();
+    this.showNotification('Shipping Slip Printed', `Logged shipment as ${finalUid}`, 'success');
+  });
   }
 
 
 
-  injectContactsStyles() {
-    if (document.getElementById('contacts-app-styles')) return;
+injectContactsStyles() {
+  if (document.getElementById('contacts-app-styles')) return;
 
-    const link = document.createElement('link');
-    link.id = 'contacts-app-styles';
-    link.rel = 'stylesheet';
-    link.href = '/modules/contacts/css/contacts.css';
-    // document.head.appendChild(link); /* Disabled for Vite */
+  const link = document.createElement('link');
+  link.id = 'contacts-app-styles';
+  link.rel = 'stylesheet';
+  link.href = '/modules/contacts/css/contacts.css';
+  // document.head.appendChild(link); /* Disabled for Vite */
+}
+
+loadContactsFromAPI() {
+  this.isLoading = true;
+  if (!this.contacts || this.contacts.length === 0) {
+    this.renderContactsList();
   }
 
-  loadContactsFromAPI() {
-    this.isLoading = true;
-    if (!this.contacts || this.contacts.length === 0) {
+  const normalizeContactsPayload = (payload, fallback = []) => {
+    if (Array.isArray(payload)) return payload;
+    if (!payload) return fallback;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
+    if (payload.data && Array.isArray(payload.data.contacts)) return payload.data.contacts;
+    if (Array.isArray(payload.contacts)) return payload.contacts;
+    return fallback;
+  };
+
+  return fetch(this.apiUrl, { credentials: 'same-origin' })
+    .then(response => {
+      if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+      return response.json();
+    })
+    .then(data => {
+      const contactsList = normalizeContactsPayload(data, []);
+
+      this.contacts = contactsList.map(contact => ({
+        id: contact.id,
+        name: contact.name,
+        email: contact.email || '',
+        phone: contact.phone || '',
+        address: contact.address || '',
+        gstin: contact.gstin || '',
+        licenceNo: contact.licence_no || '',
+        pan: contact.pan || '',
+        totalSales: contact.real_total_sales || 0,
+        avgSales: contact.real_avg_sales || 0,
+        favouriteProducts: contact.favorite_product || contact.favourite_products || '',
+        openingBalance: contact.opening_balance || 0,
+        notes: contact.notes || '',
+        creationDate: contact.created_at || new Date().toISOString(),
+        transportPreference: contact.transport_preference || '',
+        active: contact.active || 'INACTIVE',
+        lastActivity: contact.last_activity || null,
+        excludeFromStats: contact.exclude_from_stats || 0,
+        disableDuplexExport: contact.disable_duplex_export || 0,
+        created_by_role: contact.created_by_role,
+        created_by_name: contact.created_by_name,
+        last_edited_by_role: contact.last_edited_by_role,
+        last_edited_by_name: contact.last_edited_by_name,
+        ledger_token: contact.ledger_token || contact.ledgerToken || contact.token || null,
+        ledgerToken: contact.ledger_token || contact.ledgerToken || contact.token || null,
+        token: contact.ledger_token || contact.ledgerToken || contact.token || null,
+        color: this.generateColorForContact(contact.name)
+      }));
+      log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);
+      if (typeof window !== 'undefined' && window.MacOSStore) {
+        window.MacOSStore.reconcile('contacts', this.contacts);
+      }
       this.renderContactsList();
-    }
-
-    const normalizeContactsPayload = (payload, fallback = []) => {
-      if (Array.isArray(payload)) return payload;
-      if (!payload) return fallback;
-      if (Array.isArray(payload.items)) return payload.items;
-      if (Array.isArray(payload.data)) return payload.data;
-      if (payload.data && Array.isArray(payload.data.items)) return payload.data.items;
-      if (payload.data && Array.isArray(payload.data.contacts)) return payload.data.contacts;
-      if (Array.isArray(payload.contacts)) return payload.contacts;
-      return fallback;
-    };
-
-    return fetch(this.apiUrl, { credentials: 'same-origin' })
-      .then(response => {
-        if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-        return response.json();
-      })
-      .then(data => {
-        const contactsList = normalizeContactsPayload(data, []);
-        
-        this.contacts = contactsList.map(contact => ({
-          id: contact.id,
-          name: contact.name,
-          email: contact.email || '',
-          phone: contact.phone || '',
-          address: contact.address || '',
-          gstin: contact.gstin || '',
-          licenceNo: contact.licence_no || '',
-          pan: contact.pan || '',
-          totalSales: contact.real_total_sales || 0,
-          avgSales: contact.real_avg_sales || 0,
-          favouriteProducts: contact.favorite_product || contact.favourite_products || '',
-          openingBalance: contact.opening_balance || 0,
-          notes: contact.notes || '',
-          creationDate: contact.created_at || new Date().toISOString(),
-          transportPreference: contact.transport_preference || '',
-          active: contact.active || 'INACTIVE',
-          lastActivity: contact.last_activity || null,
-          excludeFromStats: contact.exclude_from_stats || 0,
-          disableDuplexExport: contact.disable_duplex_export || 0,
-          created_by_role: contact.created_by_role,
-          created_by_name: contact.created_by_name,
-          last_edited_by_role: contact.last_edited_by_role,
-          last_edited_by_name: contact.last_edited_by_name,
-          ledger_token: contact.ledger_token || contact.ledgerToken || contact.token || null,
-          ledgerToken: contact.ledger_token || contact.ledgerToken || contact.token || null,
-          token: contact.ledger_token || contact.ledgerToken || contact.token || null,
-          color: this.generateColorForContact(contact.name)
-        }));
-        log.debug(`✓ Loaded ${this.contacts.length} contacts from API`);
-        if (typeof window !== 'undefined' && window.MacOSStore) {
-          window.MacOSStore.reconcile('contacts', this.contacts);
+      if (this.selectedContactId) {
+        const stillExists = this.contacts.some(c => c.id === this.selectedContactId);
+        if (stillExists) {
+          this.renderContactCard();
         }
-        this.renderContactsList();
-        if (this.selectedContactId) {
-          const stillExists = this.contacts.some(c => c.id === this.selectedContactId);
-          if (stillExists) {
-            this.renderContactCard();
-          }
-        }
-        return this.contacts;
-      })
-      .catch(error => {
-        log.error('Error loading contacts from API:', error);
-        const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const port = isDev ? '3002 (dev) or 3001 (prod)' : '3001';
-        log.warn(`⚠️  Contacts API not available on :${port}. The billing-api-server may not be running.`);
-        this.contacts = [];
-        this.renderContactsList();
-        throw error;
-      })
-      .finally(() => {
-        this.isLoading = false;
-      });
-  }
+      }
+      return this.contacts;
+    })
+    .catch(error => {
+      log.error('Error loading contacts from API:', error);
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const port = isDev ? '3002 (dev) or 3001 (prod)' : '3001';
+      log.warn(`⚠️  Contacts API not available on :${port}. The billing-api-server may not be running.`);
+      this.contacts = [];
+      this.renderContactsList();
+      throw error;
+    })
+    .finally(() => {
+      this.isLoading = false;
+    });
+}
 
-  generateColorForContact(name) {
-    const colors = ['#d4516b', '#ff9500', '#af52de', '#34c759', '#0a84ff', '#ff3b30', '#ffcc00', '#ff2d55'];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
+generateColorForContact(name) {
+  const colors = ['#d4516b', '#ff9500', '#af52de', '#34c759', '#0a84ff', '#ff3b30', '#ffcc00', '#ff2d55'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
+  return colors[Math.abs(hash) % colors.length];
+}
 
-  loadContacts() {
-    // Legacy method - kept for backward compatibility
-    const saved = localStorage.getItem('contactsAppData');
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    return [];
+loadContacts() {
+  // Legacy method - kept for backward compatibility
+  const saved = localStorage.getItem('contactsAppData');
+  if (saved) {
+    return JSON.parse(saved);
   }
+  return [];
+}
 
-  saveContacts() {
-    // Legacy method - now handled by API
-    // Kept for backward compatibility
-  }
+saveContacts() {
+  // Legacy method - now handled by API
+  // Kept for backward compatibility
+}
 
-  openAddContactModal() {
-    this.editingContactId = null;
-    this.showContactModal({});
-  }
+openAddContactModal() {
+  this.editingContactId = null;
+  this.showContactModal({});
+}
 
-  openEditContactModal() {
-    if (!this.selectedContactId) return;
-    
-    // Fetch fresh data for this specific contact to ensure all analytics are current
-    fetch(`${this.apiUrl}/${this.selectedContactId}`, { credentials: 'same-origin' })
-      .then(response => response.json())
-      .then(contact => {
-        const mappedContact = {
-          id: contact.id,
-          name: contact.name,
-          email: contact.email || '',
-          phone: contact.phone || '',
-          address: contact.address || '',
-          gstin: contact.gstin || '',
-          licenceNo: contact.licence_no || '',
-          pan: contact.pan || '',
-          totalSales: contact.real_total_sales || 0,
-          avgSales: contact.real_avg_sales || 0,
-          favouriteProducts: contact.favorite_product || contact.favourite_products || '',
-          openingBalance: contact.opening_balance || 0,
-          notes: contact.notes || '',
-          creationDate: contact.created_at || new Date().toISOString(),
-          transportPreference: contact.transport_preference || '',
-          active: contact.active || 'INACTIVE',
-          lastActivity: contact.last_activity || null,
-          excludeFromStats: contact.exclude_from_stats || 0,
-          disableDuplexExport: contact.disable_duplex_export || 0,
-          color: this.generateColorForContact(contact.name)
-        };
+openEditContactModal() {
+  if (!this.selectedContactId) return;
+
+  // Fetch fresh data for this specific contact to ensure all analytics are current
+  fetch(`${this.apiUrl}/${this.selectedContactId}`, { credentials: 'same-origin' })
+    .then(response => response.json())
+    .then(contact => {
+      const mappedContact = {
+        id: contact.id,
+        name: contact.name,
+        email: contact.email || '',
+        phone: contact.phone || '',
+        address: contact.address || '',
+        gstin: contact.gstin || '',
+        licenceNo: contact.licence_no || '',
+        pan: contact.pan || '',
+        totalSales: contact.real_total_sales || 0,
+        avgSales: contact.real_avg_sales || 0,
+        favouriteProducts: contact.favorite_product || contact.favourite_products || '',
+        openingBalance: contact.opening_balance || 0,
+        notes: contact.notes || '',
+        creationDate: contact.created_at || new Date().toISOString(),
+        transportPreference: contact.transport_preference || '',
+        active: contact.active || 'INACTIVE',
+        lastActivity: contact.last_activity || null,
+        excludeFromStats: contact.exclude_from_stats || 0,
+        disableDuplexExport: contact.disable_duplex_export || 0,
+        color: this.generateColorForContact(contact.name)
+      };
+      this.editingContactId = this.selectedContactId;
+      this.showContactModal(mappedContact);
+    })
+    .catch(error => {
+      log.error('Error fetching contact for edit:', error);
+      // Fallback to local data if API fails
+      const localContact = this.contacts.find(c => c.id === this.selectedContactId);
+      if (localContact) {
         this.editingContactId = this.selectedContactId;
-        this.showContactModal(mappedContact);
-      })
-      .catch(error => {
-        log.error('Error fetching contact for edit:', error);
-        // Fallback to local data if API fails
-        const localContact = this.contacts.find(c => c.id === this.selectedContactId);
-        if (localContact) {
-          this.editingContactId = this.selectedContactId;
-          this.showContactModal(JSON.parse(JSON.stringify(localContact)));
-        }
-      });
-  }
+        this.showContactModal(JSON.parse(JSON.stringify(localContact)));
+      }
+    });
+}
 
-  showContactModal(contactData) {
-    const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
-    // Generate random color if new contact
-    const contactColor = contactData.color || this.generateColorForContact(contactData.name || 'New');
+showContactModal(contactData) {
+  const isWorker = (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  // Generate random color if new contact
+  const contactColor = contactData.color || this.generateColorForContact(contactData.name || 'New');
 
-    const modalHTML = `
+  const modalHTML = `
       <div class="contact-modal-overlay" id="contactModalOverlay">
         <div class="contact-modal">
           <div class="contact-modal-header">
@@ -1991,169 +1991,169 @@ class ContactsApp extends AppWindow {
       </div>
     `;
 
-    // Add modal to body
-    const modal = document.createElement('div');
-    modal.innerHTML = modalHTML;
-    document.body.appendChild(modal.firstElementChild);
+  // Add modal to body
+  const modal = document.createElement('div');
+  modal.innerHTML = modalHTML;
+  document.body.appendChild(modal.firstElementChild);
 
-    const overlay = document.getElementById('contactModalOverlay');
-    const closeBtn = document.getElementById('closeModalBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const form = document.getElementById('contactForm');
+  const overlay = document.getElementById('contactModalOverlay');
+  const closeBtn = document.getElementById('closeModalBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const form = document.getElementById('contactForm');
 
-    // Close handlers
-    const closeModal = () => {
-      overlay.remove();
-    };
+  // Close handlers
+  const closeModal = () => {
+    overlay.remove();
+  };
 
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) closeModal();
-    });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal();
+  });
 
-    closeBtn.addEventListener('click', closeModal);
-    cancelBtn.addEventListener('click', closeModal);
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
 
-    // Form submission
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.saveContactFromModal(form, closeModal);
-    });
+  // Form submission
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    this.saveContactFromModal(form, closeModal);
+  });
+}
+
+isWorkerUser() {
+  return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+}
+
+saveContactFromModal(form, closeModal) {
+  const formData = new FormData(form);
+  const name = formData.get('name').trim();
+
+  if (!name) {
+    this.showNotification('Contact name is required', 'warning');
+    return;
   }
 
-  isWorkerUser() {
-    return (window.currentUserData?.role || sessionStorage.getItem('macos_user_role') || localStorage.getItem('macos_user_role')) === 'worker';
+  const contactData = {
+    name,
+    phone: formData.get('phone') || '',
+    email: formData.get('email') || '',
+    address: formData.get('address') || '',
+    gstin: formData.get('gstin') || '',
+    licence_no: formData.get('licenceNo') || '',
+    pan: formData.get('pan') || '',
+    total_sales: parseFloat(formData.get('totalSales')) || 0,
+    avg_sales: parseFloat(formData.get('avgSales')) || 0,
+    favourite_products: formData.get('favouriteProducts') || '',
+    opening_balance: parseFloat(formData.get('openingBalance')) || 0,
+    exclude_from_stats: formData.get('excludeFromStats') === 'on' ? 1 : 0,
+    disable_duplex_export: formData.get('duplexPrint') === 'on' ? 0 : 1,
+    notes: formData.get('notes') || '',
+    transport_preference: formData.get('transportPreference') || ''
+  };
+
+  if (this.editingContactId) {
+    // Update existing contact via API
+    fetch(`${this.apiUrl}/${this.editingContactId}`, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(contactData)
+    })
+      .then(response => {
+        if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+        return response.json();
+      })
+      .then(() => {
+        log.debug('Contact updated successfully');
+        if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'updated', { id: this.editingContactId, name });
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.patch('contacts', arr => arr.map(c => c.id === this.editingContactId ? { ...c, ...contactData, name } : c));
+        }
+        this.loadContactsFromAPI();
+        this.showNotification('Contact Updated', `"${name}" profile saved successfully`, 'success');
+        closeModal();
+      })
+      .catch(error => {
+        log.error('Update error:', error);
+        this.showNotification('Save Failed', `Error updating contact: ${error.message}`, 'error');
+      });
+  } else {
+    // Create new contact via API
+    fetch(this.apiUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(contactData)
+    })
+      .then(response => {
+        if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+        return response.json();
+      })
+      .then((result) => {
+        log.debug('Contact created successfully');
+        const newId = result?.id;
+        if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'created', { id: newId, name });
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.patch('contacts', arr => [...arr, { ...contactData, id: newId, name }]);
+        }
+        this.loadContactsFromAPI();
+        this.showNotification('Contact Saved', `"${name}" added to directory`, 'success');
+        closeModal();
+      })
+      .catch(error => {
+        log.error('Create error:', error);
+        this.showNotification('Save Failed', `Error creating contact: ${error.message}`, 'error');
+      });
   }
+}
 
-  saveContactFromModal(form, closeModal) {
-    const formData = new FormData(form);
-    const name = formData.get('name').trim();
+deleteContact(contactId) {
+  const contact = this.contacts.find(c => c.id === contactId);
+  if (!contact) return;
 
-    if (!name) {
-      this.showNotification('Contact name is required', 'warning');
-      return;
-    }
-    
-    const contactData = {
-      name,
-      phone: formData.get('phone') || '',
-      email: formData.get('email') || '',
-      address: formData.get('address') || '',
-      gstin: formData.get('gstin') || '',
-      licence_no: formData.get('licenceNo') || '',
-      pan: formData.get('pan') || '',
-      total_sales: parseFloat(formData.get('totalSales')) || 0,
-      avg_sales: parseFloat(formData.get('avgSales')) || 0,
-      favourite_products: formData.get('favouriteProducts') || '',
-      opening_balance: parseFloat(formData.get('openingBalance')) || 0,
-      exclude_from_stats: formData.get('excludeFromStats') === 'on' ? 1 : 0,
-      disable_duplex_export: formData.get('duplexPrint') === 'on' ? 0 : 1,
-      notes: formData.get('notes') || '',
-      transport_preference: formData.get('transportPreference') || ''
-    };
-
-    if (this.editingContactId) {
-      // Update existing contact via API
-      fetch(`${this.apiUrl}/${this.editingContactId}`, {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contactData)
+  // Show confirmation dialog
+  if (confirm(`Are you sure you want to delete "${contact.name}"? This action cannot be undone.`)) {
+    // Delete contact via API
+    fetch(`${this.apiUrl}/${contactId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin'
+    })
+      .then(response => {
+        if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+        return response.json();
       })
-        .then(response => {
-          if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-          return response.json();
-        })
-        .then(() => {
-          log.debug('Contact updated successfully');
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'updated', { id: this.editingContactId, name });
-          if (typeof window !== 'undefined' && window.MacOSStore) {
-            window.MacOSStore.patch('contacts', arr => arr.map(c => c.id === this.editingContactId ? { ...c, ...contactData, name } : c));
-          }
-          this.loadContactsFromAPI();
-          this.showNotification('Contact Updated', `"${name}" profile saved successfully`, 'success');
-          closeModal();
-        })
-        .catch(error => {
-          log.error('Update error:', error);
-          this.showNotification('Save Failed', `Error updating contact: ${error.message}`, 'error');
-        });
-    } else {
-      // Create new contact via API
-      fetch(this.apiUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contactData)
-      })
-        .then(response => {
-          if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-          return response.json();
-        })
-        .then((result) => {
-          log.debug('Contact created successfully');
-          const newId = result?.id;
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'created', { id: newId, name });
-          if (typeof window !== 'undefined' && window.MacOSStore) {
-            window.MacOSStore.patch('contacts', arr => [...arr, { ...contactData, id: newId, name }]);
-          }
-          this.loadContactsFromAPI();
-          this.showNotification('Contact Saved', `"${name}" added to directory`, 'success');
-          closeModal();
-        })
-        .catch(error => {
-          log.error('Create error:', error);
-          this.showNotification('Save Failed', `Error creating contact: ${error.message}`, 'error');
-        });
-    }
-  }
-
-  deleteContact(contactId) {
-    const contact = this.contacts.find(c => c.id === contactId);
-    if (!contact) return;
-
-    // Show confirmation dialog
-    if (confirm(`Are you sure you want to delete "${contact.name}"? This action cannot be undone.`)) {
-      // Delete contact via API
-      fetch(`${this.apiUrl}/${contactId}`, {
-        method: 'DELETE',
-        credentials: 'same-origin'
-      })
-        .then(response => {
-          if (!response.ok) throw new Error(`API error: ${response.statusText}`);
-          return response.json();
-        })
-        .then(() => {
-          log.debug('Contact deleted successfully');
-          const contactName = contact.name;
-          if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'deleted', { id: contactId, name: contactName });
-          if (typeof window !== 'undefined' && window.MacOSStore) {
-            window.MacOSStore.patch('contacts', arr => arr.filter(c => c.id !== contactId));
-          }
-          this.loadContactsFromAPI();
-          this.selectedContactId = null;
-          this.cardContainer.innerHTML = `
+      .then(() => {
+        log.debug('Contact deleted successfully');
+        const contactName = contact.name;
+        if (window.CoreDataBus) window.CoreDataBus.publish('contacts:customer', 'deleted', { id: contactId, name: contactName });
+        if (typeof window !== 'undefined' && window.MacOSStore) {
+          window.MacOSStore.patch('contacts', arr => arr.filter(c => c.id !== contactId));
+        }
+        this.loadContactsFromAPI();
+        this.selectedContactId = null;
+        this.cardContainer.innerHTML = `
             <div class="contact-empty-state">
               <div class="contact-empty-state-icon">📇</div>
               <div class="contact-empty-state-text">No contact selected</div>
             </div>
           `;
-          this.showNotification('Contact Removed', `"${contactName}" deleted`, 'info');
-        })
-        .catch(error => {
-          log.error('Delete error:', error);
-          this.showNotification('Delete Failed', `Error deleting contact: ${error.message}`, 'error');
-        });
-    }
+        this.showNotification('Contact Removed', `"${contactName}" deleted`, 'info');
+      })
+      .catch(error => {
+        log.error('Delete error:', error);
+        this.showNotification('Delete Failed', `Error deleting contact: ${error.message}`, 'error');
+      });
   }
+}
 
   async openShareContactModal(contactId, contactName) {
-    try {
-      const res = await fetch(`${this.apiUrl}/${contactId}/access`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error('Failed to fetch worker access list');
-      const data = await res.json();
-      const workers = data.workers || [];
+  try {
+    const res = await fetch(`${this.apiUrl}/${contactId}/access`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Failed to fetch worker access list');
+    const data = await res.json();
+    const workers = data.workers || [];
 
-      const modalHTML = `
+    const modalHTML = `
         <div class="contact-modal-overlay" id="shareWorkerModalOverlay" style="z-index: 2147483647;">
           <div class="contact-modal" style="max-width: 440px; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.35);">
             <div class="contact-modal-header" style="background: var(--bg-secondary, #f7f7f7); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;">
@@ -2169,8 +2169,8 @@ class ContactsApp extends AppWindow {
               ` : `
                 <div class="worker-share-list" style="display: flex; flex-direction: column; gap: 8px;">
                   ${workers.map(w => {
-                    const initials = (w.fullName || w.username).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                    return `
+      const initials = (w.fullName || w.username).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      return `
                       <label class="worker-share-row" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.06); cursor: pointer; transition: background 0.2s;">
                         <div style="display: flex; align-items: center; gap: 12px;">
                           <div style="width: 36px; height: 36px; border-radius: 50%; background: #007aff; color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;">
@@ -2184,7 +2184,7 @@ class ContactsApp extends AppWindow {
                         <input type="checkbox" class="worker-access-checkbox" value="${w.id}" ${w.hasAccess ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: #007aff;">
                       </label>
                     `;
-                  }).join('')}
+    }).join('')}
                 </div>
               `}
             </div>
@@ -2196,86 +2196,86 @@ class ContactsApp extends AppWindow {
         </div>
       `;
 
-      const modalElem = document.createElement('div');
-      modalElem.innerHTML = modalHTML;
-      document.body.appendChild(modalElem.firstElementChild);
+    const modalElem = document.createElement('div');
+    modalElem.innerHTML = modalHTML;
+    document.body.appendChild(modalElem.firstElementChild);
 
-      const overlay = document.getElementById('shareWorkerModalOverlay');
-      const closeBtn = document.getElementById('closeShareModalBtn');
-      const cancelBtn = document.getElementById('cancelShareModalBtn');
-      const saveBtn = document.getElementById('saveWorkerAccessBtn');
+    const overlay = document.getElementById('shareWorkerModalOverlay');
+    const closeBtn = document.getElementById('closeShareModalBtn');
+    const cancelBtn = document.getElementById('cancelShareModalBtn');
+    const saveBtn = document.getElementById('saveWorkerAccessBtn');
 
-      const closeModal = () => overlay.remove();
-      closeBtn?.addEventListener('click', closeModal);
-      cancelBtn?.addEventListener('click', closeModal);
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal();
-      });
+    const closeModal = () => overlay.remove();
+    closeBtn?.addEventListener('click', closeModal);
+    cancelBtn?.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
 
-      saveBtn?.addEventListener('click', async () => {
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving…';
-        const checkboxes = overlay.querySelectorAll('.worker-access-checkbox:checked');
-        const userIds = Array.from(checkboxes).map(cb => cb.value);
+    saveBtn?.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      const checkboxes = overlay.querySelectorAll('.worker-access-checkbox:checked');
+      const userIds = Array.from(checkboxes).map(cb => cb.value);
 
-        try {
-          const updateRes = await fetch(`${this.apiUrl}/${contactId}/access`, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userIds })
-          });
-          const updateData = await updateRes.json();
-          if (!updateRes.ok || !updateData.success) {
-            throw new Error(updateData.error || 'Failed to update access');
-          }
-          closeModal();
-          this.showNotification(`Worker access updated for ${contactName}.`, 'success');
-        } catch (err) {
-          this.showNotification('Error saving worker access: ' + err.message, 'error');
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Access';
+      try {
+        const updateRes = await fetch(`${this.apiUrl}/${contactId}/access`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds })
+        });
+        const updateData = await updateRes.json();
+        if (!updateRes.ok || !updateData.success) {
+          throw new Error(updateData.error || 'Failed to update access');
         }
-      });
-    } catch (err) {
-      this.showNotification('Error fetching worker list: ' + err.message, 'error');
-    }
+        closeModal();
+        this.showNotification(`Worker access updated for ${contactName}.`, 'success');
+      } catch (err) {
+        this.showNotification('Error saving worker access: ' + err.message, 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Access';
+      }
+    });
+  } catch (err) {
+    this.showNotification('Error fetching worker list: ' + err.message, 'error');
+  }
+}
+
+showNotification(titleOrMsg, messageOrType = 'info', type = null) {
+  let title = 'Contacts';
+  let message = titleOrMsg;
+  let actualType = messageOrType;
+
+  if (type !== null) {
+    title = titleOrMsg;
+    message = messageOrType;
+    actualType = type;
   }
 
-  showNotification(titleOrMsg, messageOrType = 'info', type = null) {
-    let title = 'Contacts';
-    let message = titleOrMsg;
-    let actualType = messageOrType;
-
-    if (type !== null) {
-      title = titleOrMsg;
-      message = messageOrType;
-      actualType = type;
-    }
-
-    if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
-      return window.MacOSNotificationManager.notify({
-        app: 'Contacts',
-        title: title,
-        message: message,
-        type: actualType
-      });
-    }
-    let notification = document.querySelector('.contacts-notification');
-    if (!notification) {
-      notification = document.createElement('div');
-      notification.className = 'contacts-notification';
-      document.body.appendChild(notification);
-    }
-
-    notification.textContent = message;
-    notification.className = `contacts-notification contacts-notification-${actualType}`;
-    notification.style.display = 'block';
-
-    setTimeout(() => {
-      notification.style.display = 'none';
-    }, 3000);
+  if (typeof window !== 'undefined' && window.MacOSNotificationManager) {
+    return window.MacOSNotificationManager.notify({
+      app: 'Contacts',
+      title: title,
+      message: message,
+      type: actualType
+    });
   }
+  let notification = document.querySelector('.contacts-notification');
+  if (!notification) {
+    notification = document.createElement('div');
+    notification.className = 'contacts-notification';
+    document.body.appendChild(notification);
+  }
+
+  notification.textContent = message;
+  notification.className = `contacts-notification contacts-notification-${actualType}`;
+  notification.style.display = 'block';
+
+  setTimeout(() => {
+    notification.style.display = 'none';
+  }, 3000);
+}
 }
 
 // Ensure global availability

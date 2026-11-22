@@ -16,7 +16,7 @@ function getBackupManagerClass() {
   return require('../../../../backend/core/backup-manager.js');
 }
 
-module.exports = function(db) {
+module.exports = function (db) {
   const BackupManager = getBackupManagerClass();
   // Simple ID generator
   const generateId = () => `check_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -41,7 +41,7 @@ module.exports = function(db) {
 
     return null;
   };
-  
+
   return {
     getSettings: (req, res) => {
       try {
@@ -55,7 +55,7 @@ module.exports = function(db) {
         console.log(`[Settings] Fetching settings for device: ${deviceId}`);
         const stmt = db.prepare('SELECT * FROM Settings WHERE device_id = ?');
         let settings = stmt.get(deviceId);
-        
+
         // If no settings exist for this device, create defaults
         if (!settings) {
           console.log(`[Settings] No settings found for device ${deviceId}, creating defaults...`);
@@ -66,7 +66,7 @@ module.exports = function(db) {
           insertStmt.run(deviceId, 'auto', 'blue', 'blue', 'default', 'clear', 'medium', 1);
           settings = db.prepare('SELECT * FROM Settings WHERE device_id = ?').get(deviceId);
         }
-        
+
         // Map DB columns back to frontend keys
         const result = {
           theme: settings.appearance,
@@ -81,7 +81,7 @@ module.exports = function(db) {
           'dock-auto-hide': settings.dock_auto_hide !== undefined && settings.dock_auto_hide !== null ? Boolean(settings.dock_auto_hide) : false,
           'appBarOrder': settings.dock_apps_order ? (() => { try { return JSON.parse(settings.dock_apps_order); } catch (e) { return null; } })() : null
         };
-        
+
         res.json(result);
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -140,7 +140,7 @@ module.exports = function(db) {
           const columns = ['device_id', columnName];
           const placeholders = ['?', '?'];
           const values = [deviceId, value];
-          
+
           db.prepare(`INSERT INTO Settings (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`).run(...values);
         }
 
@@ -203,14 +203,14 @@ module.exports = function(db) {
             UPDATE Settings SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE device_id = ?
           `);
           const result = updateStmt.run(...values);
-          
+
           if (result.changes === 0) {
             console.log(`[Settings] No row found for device ${deviceId} during bulk update, inserting instead...`);
             // Remove deviceId from values and column lists first
             const updateValues = values.slice(0, -1);
             const columns = ['device_id', ...updates.map(u => u.split(' =')[0])];
             const placeholders = columns.map(() => '?').join(', ');
-            
+
             db.prepare(`
               INSERT INTO Settings (${columns.join(', ')}) 
               VALUES (${placeholders})
@@ -314,8 +314,8 @@ module.exports = function(db) {
               const match = latestFile.match(/(\d{8})_(\d{6})/);
               if (match) {
                 const ts = new Date(
-                  `${match[1].slice(0,4)}-${match[1].slice(4,6)}-${match[1].slice(6,8)}T` +
-                  `${match[2].slice(0,2)}:${match[2].slice(2,4)}:${match[2].slice(4,6)}Z`
+                  `${match[1].slice(0, 4)}-${match[1].slice(4, 6)}-${match[1].slice(6, 8)}T` +
+                  `${match[2].slice(0, 2)}:${match[2].slice(2, 4)}:${match[2].slice(4, 6)}Z`
                 );
                 cosReplicaAge = Math.floor((Date.now() - ts.getTime()) / 60000); // minutes
               }
@@ -486,7 +486,7 @@ module.exports = function(db) {
           // Ignore DB logging errors if the DB is truly broken
         }
 
-        res.status(500).json({ 
+        res.status(500).json({
           status: 'error',
           error: error.message,
           timestamp: new Date().toISOString()
@@ -504,7 +504,7 @@ module.exports = function(db) {
           ORDER BY checked_at DESC 
           LIMIT ?
         `);
-        
+
         const history = stmt.all(type, parseInt(limit));
         res.json(history);
       } catch (error) {
@@ -746,7 +746,7 @@ module.exports = function(db) {
             whereClause = ' WHERE (' + columns.map(col => `\`${col}\` LIKE ?`).join(' OR ') + ')';
             params = columns.map(() => `%${search}%`);
           }
-          
+
           if (Array.isArray(excludedRowIds) && excludedRowIds.length > 0) {
             const placeholders = excludedRowIds.map(() => '?').join(', ');
             if (whereClause) {
@@ -756,7 +756,7 @@ module.exports = function(db) {
             }
             params.push(...excludedRowIds);
           }
-          
+
           const stmt = db.prepare(`DELETE FROM \`${tableName}\` ${whereClause}`);
           result = stmt.run(...params);
         } else {
@@ -820,7 +820,7 @@ module.exports = function(db) {
       try {
         const backupManager = new BackupManager(db);
         const newSettings = req.body;
-        
+
         // If user left masked secret key as empty or unchanged placeholder, don't overwrite with dots
         if (newSettings.r2SecretAccessKey && newSettings.r2SecretAccessKey.includes('••••')) {
           delete newSettings.r2SecretAccessKey;
@@ -838,7 +838,7 @@ module.exports = function(db) {
       try {
         const backupManager = new BackupManager(db);
         let testConfig = req.body;
-        
+
         // If secret was omitted, fallback to saved secret
         if (!testConfig.r2SecretAccessKey || testConfig.r2SecretAccessKey.includes('••••')) {
           const current = backupManager.getConfig();
@@ -880,7 +880,7 @@ module.exports = function(db) {
         if (!filename || typeof filename !== 'string') {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
-        
+
         const backupManager = new BackupManager(db);
         const result = await backupManager.restoreBackup(filename);
         res.json(result);
@@ -896,7 +896,7 @@ module.exports = function(db) {
         if (!filename || typeof filename !== 'string') {
           return res.status(400).json({ error: 'Filename parameter required' });
         }
-        
+
         const backupManager = new BackupManager(db);
         const result = backupManager.deleteBackup(filename);
         res.json(result);

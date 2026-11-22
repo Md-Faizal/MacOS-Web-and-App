@@ -29,10 +29,10 @@ test('creates shipments table and is idempotent', () => {
 
     db.prepare(`
       INSERT INTO shipments (
-        shipment_uid, tracking_token, contact_id, contact_name, recipient_address,
-        recipient_pincode, sender_address, boxes_count, invoice_ref, route_note
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('SHIP-2611-0001', 'abc12345', 1, 'Test Chemist', 'Main Road, Aska', '761110', 'Cuttack', 2, 'INV-2026-001', 'Jagannath Bus');
+    shipment_uid, tracking_token, contact_id, contact_name, recipient_address,
+      recipient_pincode, sender_address, boxes_count, invoice_ref, route_note
+      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('SHIP-2611-0001', 'abc12345', 1, 'Test Chemist', 'Main Road, Aska', '761110', 'Cuttack', 2, 'INV-2026-001', 'Jagannath Bus');
 
     const row = db.prepare('SELECT * FROM shipments WHERE shipment_uid = ?').get('SHIP-2611-0001');
     assert.equal(row.contact_name, 'Test Chemist');

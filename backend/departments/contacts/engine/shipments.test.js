@@ -5,7 +5,7 @@ const createHandlers = require('./handlers');
 
 test('contacts shipment endpoints: create, list, and public track lookup', async () => {
   const db = new Database(':memory:');
-  
+
   // Setup minimal contacts schema
   db.exec(`
     CREATE TABLE IF NOT EXISTS contacts (

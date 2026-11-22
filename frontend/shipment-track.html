@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -18,7 +19,12 @@
       --radius: 14px;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg);
@@ -41,7 +47,7 @@
       background: var(--card-bg);
       border-radius: var(--radius);
       padding: 18px 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
       border: 1px solid var(--border);
       text-align: center;
     }
@@ -77,7 +83,7 @@
       background: var(--card-bg);
       border-radius: var(--radius);
       padding: 18px 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
       border: 1px solid var(--border);
     }
 
@@ -135,7 +141,9 @@
       border: none;
     }
 
-    .btn-action:active { opacity: 0.85; }
+    .btn-action:active {
+      opacity: 0.85;
+    }
 
     .btn-call {
       background: var(--success);
@@ -158,9 +166,18 @@
       font-size: 13px;
     }
 
-    .details-row:last-child { border-bottom: none; }
-    .details-label { color: var(--text-muted); }
-    .details-value { font-weight: 600; color: #0f172a; }
+    .details-row:last-child {
+      border-bottom: none;
+    }
+
+    .details-label {
+      color: var(--text-muted);
+    }
+
+    .details-value {
+      font-weight: 600;
+      color: #0f172a;
+    }
 
     .fragile-box {
       background: #fef2f2;
@@ -193,9 +210,14 @@
       animation: spin 0.8s linear infinite;
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="header-card">
@@ -252,9 +274,11 @@
       <!-- Shipper Card -->
       <div class="card">
         <div class="section-title">Shipped From</div>
-        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">UTKAL CHEMICAL AUSHADHALAYA</div>
+        <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 4px;">UTKAL CHEMICAL AUSHADHALAYA
+        </div>
         <div style="font-size: 12px; color: #475569; margin-bottom: 10px;" id="senderAddr">--</div>
-        <a id="btnCallSender" href="#" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #0369a1; text-decoration: none;">
+        <a id="btnCallSender" href="#"
+          style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #0369a1; text-decoration: none;">
           <span>📞</span> <span id="senderPhoneText">Call Sender</span>
         </a>
       </div>
@@ -268,7 +292,7 @@
   </div>
 
   <script>
-    (async function() {
+    (async function () {
       const params = new URLSearchParams(window.location.search);
       let uid = params.get('id') || params.get('uid');
       if (!uid) {
@@ -294,7 +318,7 @@
 
         document.getElementById('recName').textContent = s.contact_name || 'Customer';
         document.getElementById('recAddr').textContent = s.recipient_address || 'Address on file';
-        
+
         if (s.recipient_pincode) {
           document.getElementById('recPin').textContent = s.recipient_pincode;
           document.getElementById('pinBox').style.display = 'inline-flex';
@@ -312,7 +336,7 @@
         document.getElementById('btnMap').href = 'https://www.google.com/maps/search/?api=1&query=' + mapQuery;
 
         document.getElementById('pkgBoxes').textContent = (s.boxes_count || 1) + ' Box(es)';
-        
+
         if (s.invoice_ref) {
           document.getElementById('invRef').textContent = s.invoice_ref;
           document.getElementById('invRefRow').style.display = 'flex';
@@ -343,4 +367,5 @@
     })();
   </script>
 </body>
+
 </html>

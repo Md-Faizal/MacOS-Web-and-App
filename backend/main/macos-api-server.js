@@ -671,11 +671,11 @@ for (const route of routes) {
   } else if (route.path === '/api/billing') {
     app.use(route.path, (req, res, next) => {
       // Exempt public ledger access and SSE stream
-        if (req.path.startsWith('/public/') || req.path.startsWith('/orders/public/') || req.path === '/events') {
-          return next();
-        }
-        authModule.authMiddleware(req, res, next);
-      }, route.router);
+      if (req.path.startsWith('/public/') || req.path.startsWith('/orders/public/') || req.path === '/events') {
+        return next();
+      }
+      authModule.authMiddleware(req, res, next);
+    }, route.router);
   } else if (route.path === '/api/products') {
     app.use(route.path, (req, res, next) => {
       // Exempt public product details
@@ -1450,74 +1450,74 @@ app.get(['/public/product', '/public/product/:sku', '/public/batch/:batchId'], (
   return res.sendFile(path.join(__dirname, '../../frontend/public-product.html'));
 });
 
-app.get(['/s/:token', '/s', '/track/shipment', '/shipment', '/shipment/:uid', '/shipment-track.html'], (req, res) => {
-  const htmlPath = path.join(__dirname, '../../dist/shipment-track.html');
-  if (require('fs').existsSync(htmlPath)) {
-    return res.sendFile(htmlPath);
-  }
-  return res.sendFile(path.join(__dirname, '../../frontend/shipment-track.html'));
-});
+  app.get(['/s/:token', '/s', '/track/shipment', '/shipment', '/shipment/:uid', '/shipment-track.html'], (req, res) => {
+    const htmlPath = path.join(__dirname, '../../dist/shipment-track.html');
+    if (require('fs').existsSync(htmlPath)) {
+      return res.sendFile(htmlPath);
+    }
+    return res.sendFile(path.join(__dirname, '../../frontend/shipment-track.html'));
+  });
 
-app.get('/api', (req, res) => {
-  const userAgent = String(req.get('user-agent') || '');
-  const browserLike = /mozilla|chrome|safari|firefox|edg|opera/i.test(userAgent);
-  const prefersHtml = req.accepts(['html', 'json']) === 'html' || browserLike;
+  app.get('/api', (req, res) => {
+    const userAgent = String(req.get('user-agent') || '');
+    const browserLike = /mozilla|chrome|safari|firefox|edg|opera/i.test(userAgent);
+    const prefersHtml = req.accepts(['html', 'json']) === 'html' || browserLike;
 
-  if (prefersHtml) {
-    return res.type('html').send(renderApiDocumentationHtml(apiDocumentationDocument));
-  }
+    if (prefersHtml) {
+      return res.type('html').send(renderApiDocumentationHtml(apiDocumentationDocument));
+    }
 
-  return res.json(apiDocumentationDocument);
-});
+    return res.json(apiDocumentationDocument);
+  });
 
-// Debug endpoint - check notes database status
-app.get('/api/debug/notes', (req, res) => {
-  try {
-    res.json({
-      message: 'Check /api/notes/health and /api/notes/debug/all for detailed database info',
-      endpoints: {
-        health: '/api/notes/health - Database connection and table status',
-        allNotes: '/api/notes/debug/all - All notes in database',
-        createTest: 'POST /api/notes - Try creating a test note'
+  // Debug endpoint - check notes database status
+  app.get('/api/debug/notes', (req, res) => {
+    try {
+      res.json({
+        message: 'Check /api/notes/health and /api/notes/debug/all for detailed database info',
+        endpoints: {
+          health: '/api/notes/health - Database connection and table status',
+          allNotes: '/api/notes/debug/all - All notes in database',
+          createTest: 'POST /api/notes - Try creating a test note'
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Start server
+  const BASE_PORT = Number(process.env.PORT) || 3002;
+  const HOST = process.env.HOST || '0.0.0.0'; // Default to IPv4 for Ubuntu; bind to all interfaces
+
+  function startServer(port, attemptsLeft = 20) {
+    const server = app.listen(port, HOST, () => {
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log(`✨ Backend MacOS API Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
+      console.log('───────────────────────────────────────────────────────────');
+      console.log(`Local: http://localhost:${port}`);
+      console.log(`LAN:   http://127.0.0.1:${port}`);
+      if (process.env.PUBLIC_HOST) {
+        console.log(`Public: http://${process.env.PUBLIC_HOST}:${port}`);
       }
+      console.log('───────────────────────────────────────────────────────────');
+      console.log(`📚 API Documentation: http://localhost:${port}/api`);
+      console.log(`💚 Health Check:      http://localhost:${port}/api/health`);
+      console.log('═══════════════════════════════════════════════════════════\n');
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+
+    server.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE' && attemptsLeft > 0) {
+        const nextPort = port + 1;
+        console.warn(`[Server] Port ${port} in use, retrying on ${nextPort}...`);
+        try { server.close(); } catch (_) { }
+        startServer(nextPort, attemptsLeft - 1);
+        return;
+      }
+
+      console.error('[Server] Failed to start:', err && err.message ? err.message : err);
+      process.exit(1);
+    });
   }
-});
 
-// Start server
-const BASE_PORT = Number(process.env.PORT) || 3002;
-const HOST = process.env.HOST || '0.0.0.0'; // Default to IPv4 for Ubuntu; bind to all interfaces
-
-function startServer(port, attemptsLeft = 20) {
-  const server = app.listen(port, HOST, () => {
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log(`✨ Backend MacOS API Server running on port ${port}${HOST ? ` (host ${HOST})` : ''}`);
-    console.log('───────────────────────────────────────────────────────────');
-    console.log(`Local: http://localhost:${port}`);
-    console.log(`LAN:   http://127.0.0.1:${port}`);
-    if (process.env.PUBLIC_HOST) {
-      console.log(`Public: http://${process.env.PUBLIC_HOST}:${port}`);
-    }
-    console.log('───────────────────────────────────────────────────────────');
-    console.log(`📚 API Documentation: http://localhost:${port}/api`);
-    console.log(`💚 Health Check:      http://localhost:${port}/api/health`);
-    console.log('═══════════════════════════════════════════════════════════\n');
-  });
-
-  server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE' && attemptsLeft > 0) {
-      const nextPort = port + 1;
-      console.warn(`[Server] Port ${port} in use, retrying on ${nextPort}...`);
-      try { server.close(); } catch (_) { }
-      startServer(nextPort, attemptsLeft - 1);
-      return;
-    }
-
-    console.error('[Server] Failed to start:', err && err.message ? err.message : err);
-    process.exit(1);
-  });
-}
-
-startServer(BASE_PORT);
+  startServer(BASE_PORT);

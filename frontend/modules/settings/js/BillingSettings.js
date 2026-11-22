@@ -266,8 +266,8 @@ export class BillingSettingsComponent {
                             </div>
                             <div id="proprietorPdfSignatureHint" class="billing-card-subtitle">
                                 ${hasSavedProprietorSignature
-                                    ? 'When on, places the saved signature image above the signatory title on invoices and estimates. When off, leaves the standard signatory line.'
-                                    : 'No proprietor image is saved yet. Save one in the Proprietor Signature section below; otherwise PDFs show the standard signatory line.'}
+                ? 'When on, places the saved signature image above the signatory title on invoices and estimates. When off, leaves the standard signatory line.'
+                : 'No proprietor image is saved yet. Save one in the Proprietor Signature section below; otherwise PDFs show the standard signatory line.'}
                             </div>
                         </div>
                         <div>
@@ -1023,7 +1023,7 @@ export class BillingSettingsComponent {
                         window.open(`/ledger/${token}`, '_blank');
                         return;
                     }
-                } catch (_) {}
+                } catch (_) { }
                 window.open('/customer-ledger.html?id=2', '_blank');
             });
         }

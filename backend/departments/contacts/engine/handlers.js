@@ -4,7 +4,7 @@ const { generateLedgerToken, getOrCreateCustomerLedgerToken } = require('../../.
 const contactsDepartment = require('../service');
 const dataBus = require('../../../core/sync/data-bus');
 
-module.exports = function(db) {
+module.exports = function (db) {
   const activityLogger = createActivityLogger(db);
 
   function getWorkerContactScope(req, tableAlias = 'c') {
@@ -246,19 +246,19 @@ module.exports = function(db) {
         // Shared contact fields to update in contacts table
         const updates = [];
         const params = [];
-        
+
         // If worker, exclude_from_stats and disable_duplex_export are NOT written to contacts table
         const fields = isWorker
           ? [
-              'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
-              'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
-              'notes', 'transport_preference', 'type', 'active', 'last_activity'
-            ]
+            'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
+            'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
+            'notes', 'transport_preference', 'type', 'active', 'last_activity'
+          ]
           : [
-              'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
-              'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
-              'exclude_from_stats', 'notes', 'transport_preference', 'type', 'active', 'last_activity', 'disable_duplex_export'
-            ];
+            'name', 'email', 'phone', 'address', 'gstin', 'licence_no', 'pan',
+            'total_sales', 'avg_sales', 'favorite_product_id', 'opening_balance',
+            'exclude_from_stats', 'notes', 'transport_preference', 'type', 'active', 'last_activity', 'disable_duplex_export'
+          ];
 
         // Build dynamic query
         fields.forEach(field => {
@@ -347,7 +347,7 @@ module.exports = function(db) {
         db.transaction(() => {
           // Get currently assigned workers
           const currentWorkers = db.prepare('SELECT user_id FROM user_contact_access WHERE contact_id = ?').all(id).map(r => r.user_id);
-          
+
           // Remove workers not in userIds
           for (const currentUserId of currentWorkers) {
             if (!userIds.includes(currentUserId)) {
@@ -388,29 +388,29 @@ module.exports = function(db) {
 
         const contactStmt = db.prepare('SELECT name FROM contacts WHERE id = ?');
         const contact = contactStmt.get(id);
-        
+
         if (!contact) {
           return res.status(404).json({ error: 'Contact not found' });
         }
-        
+
         const contactName = contact.name;
-        
+
         // Execute deletion in a transaction to clean up dependent records and avoid FK constraint errors
         const deleteTransaction = db.transaction(() => {
-          try { db.prepare('DELETE FROM user_contact_access WHERE contact_id = ?').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE customer_id = ?)').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM invoices WHERE customer_id = ?').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM payments WHERE customer_id = ?').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM customer_item_memory WHERE customer_id = ?').run(id); } catch (_) {}
-          try { db.prepare('DELETE FROM ledger WHERE customer_id = ?').run(id); } catch (_) {}
+          try { db.prepare('DELETE FROM user_contact_access WHERE contact_id = ?').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE customer_id = ?)').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM invoices WHERE customer_id = ?').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM payments WHERE customer_id = ?').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM customer_item_memory WHERE customer_id = ?').run(id); } catch (_) { }
+          try { db.prepare('DELETE FROM ledger WHERE customer_id = ?').run(id); } catch (_) { }
           db.prepare('DELETE FROM contacts WHERE id = ?').run(id);
         });
 
         deleteTransaction();
-        
+
         console.log(`✓ Deleted contact "${contactName}" (ID: ${id})`);
-        
+
         // Audit Log
         activityLogger.logActivity(req, {
           module: 'contacts',
@@ -422,9 +422,9 @@ module.exports = function(db) {
 
         // Real-Time SSE Broadcast
         dataBus.broadcast('contacts:customer', 'deleted', { id, name: contactName });
-        
-        res.json({ 
-          success: true, 
+
+        res.json({
+          success: true,
           deleted: {
             contact_id: id,
             contact_name: contactName
@@ -439,36 +439,36 @@ module.exports = function(db) {
     checkAndUpdateActivityStatus: (req, res) => {
       try {
         const { customerId } = req.params;
-        
+
         // Calculate date from 30 days ago using SQLite datetime
         const oneMonthAgoStmt = db.prepare("SELECT datetime('now', '-30 days') as date");
         const { date: oneMonthAgoDate } = oneMonthAgoStmt.get();
-        
+
         // Check for activity in past 1 month from correct tables
         const billsStmt = db.prepare(`
           SELECT COUNT(*) as count FROM invoices 
           WHERE customer_id = ? AND created_at >= ?
         `);
         const bills = billsStmt.get(customerId, oneMonthAgoDate);
-        
+
         const paymentsStmt = db.prepare(`
           SELECT COUNT(*) as count FROM payments 
           WHERE customer_id = ? AND type = 'PAYMENT' AND created_at >= ?
         `);
         const payments = paymentsStmt.get(customerId, oneMonthAgoDate);
-        
+
         const creditNotesStmt = db.prepare(`
           SELECT COUNT(*) as count FROM payments 
           WHERE customer_id = ? AND type = 'CREDIT_NOTE' AND created_at >= ?
         `);
         const creditNotes = creditNotesStmt.get(customerId, oneMonthAgoDate);
-        
+
         const ordersStmt = db.prepare(`
           SELECT COUNT(*) as count FROM orders 
           WHERE customer_id = ? AND created_at >= ?
         `);
         const orders = ordersStmt.get(customerId, oneMonthAgoDate);
-        
+
         // Find the most recent transaction date from any activity
         const mostRecentActivityStmt = db.prepare(`
           SELECT MAX(recent_date) as most_recent FROM (
@@ -480,12 +480,12 @@ module.exports = function(db) {
           )
         `);
         const { most_recent: mostRecentDate } = mostRecentActivityStmt.get(customerId, customerId, customerId);
-        
+
         // Determine if customer is active (has any activity in past month)
         const totalActivity = (bills?.count || 0) + (payments?.count || 0) + (creditNotes?.count || 0) + (orders?.count || 0);
         const isActive = totalActivity > 0 ? 'ACTIVE' : 'INACTIVE';
         const lastActivityDate = mostRecentDate || null;
-        
+
         // Update contact's activity status and last_activity
         const updateStmt = db.prepare(`
           UPDATE contacts SET 
@@ -495,7 +495,7 @@ module.exports = function(db) {
           WHERE id = ?
         `);
         updateStmt.run(isActive, lastActivityDate, customerId);
-        
+
         res.json({
           success: true,
           customerId,
@@ -518,17 +518,17 @@ module.exports = function(db) {
       try {
         const workerScope = getWorkerContactScope(req, 'contacts');
         const whereClause = workerScope ? ` WHERE (type IS NULL OR LOWER(type) = 'customer') AND ${workerScope}` : " WHERE type IS NULL OR LOWER(type) = 'customer'";
-        
+
         const contactsStmt = db.prepare(`SELECT id, name FROM contacts ${whereClause}`);
         const customers = contactsStmt.all();
-        
+
         // Calculate date from 30 days ago using SQLite datetime
         const oneMonthAgoStmt = db.prepare("SELECT datetime('now', '-30 days') as date");
         const { date: oneMonthAgoDate } = oneMonthAgoStmt.get();
-        
+
         let updated = 0;
         const updatedStatuses = {};
-        
+
         customers.forEach(customer => {
           // Check invoices (bills)
           const billsStmt = db.prepare(`
@@ -536,31 +536,31 @@ module.exports = function(db) {
             WHERE customer_id = ? AND created_at >= ?
           `);
           const bills = billsStmt.get(customer.id, oneMonthAgoDate);
-          
+
           // Check payments
           const paymentsStmt = db.prepare(`
             SELECT COUNT(*) as count FROM payments 
             WHERE customer_id = ? AND type = 'PAYMENT' AND created_at >= ?
           `);
           const payments = paymentsStmt.get(customer.id, oneMonthAgoDate);
-          
+
           // Check credit notes
           const creditNotesStmt = db.prepare(`
             SELECT COUNT(*) as count FROM payments 
             WHERE customer_id = ? AND type = 'CREDIT_NOTE' AND created_at >= ?
           `);
           const creditNotes = creditNotesStmt.get(customer.id, oneMonthAgoDate);
-          
+
           // Check orders
           const ordersStmt = db.prepare(`
             SELECT COUNT(*) as count FROM orders 
             WHERE customer_id = ? AND created_at >= ?
           `);
           const orders = ordersStmt.get(customer.id, oneMonthAgoDate);
-          
+
           const totalActivity = (bills?.count || 0) + (payments?.count || 0) + (creditNotes?.count || 0) + (orders?.count || 0);
           const isActive = totalActivity > 0 ? 'ACTIVE' : 'INACTIVE';
-          
+
           const mostRecentActivityStmt = db.prepare(`
             SELECT MAX(recent_date) as most_recent FROM (
               SELECT MAX(COALESCE(invoice_date, created_at)) as recent_date FROM invoices WHERE customer_id = ?
@@ -572,7 +572,7 @@ module.exports = function(db) {
           `);
           const { most_recent: mostRecentDate } = mostRecentActivityStmt.get(customer.id, customer.id, customer.id);
           const lastActivityDate = mostRecentDate || null;
-          
+
           const updateStmt = db.prepare(`
             UPDATE contacts SET 
               active = ?,
@@ -581,7 +581,7 @@ module.exports = function(db) {
             WHERE id = ?
           `);
           updateStmt.run(isActive, lastActivityDate, customer.id);
-          
+
           updatedStatuses[customer.name] = {
             status: isActive,
             activityCount: totalActivity,
@@ -590,7 +590,7 @@ module.exports = function(db) {
           };
           updated++;
         });
-        
+
         res.json({
           success: true,
           updated,
@@ -662,7 +662,7 @@ module.exports = function(db) {
             db.exec('ALTER TABLE shipments ADD COLUMN tracking_token TEXT');
             db.exec('CREATE INDEX IF NOT EXISTS idx_shipments_token ON shipments(tracking_token)');
           }
-        } catch (_) {}
+        } catch (_) { }
 
         const now = new Date();
         const yy = String(now.getFullYear()).slice(-2);
@@ -708,7 +708,7 @@ module.exports = function(db) {
         try {
           const setting = db.prepare(`SELECT setting_value FROM app_settings WHERE setting_key = 'portal_base_url'`).get();
           if (setting && setting.setting_value) portalBaseUrl = setting.setting_value.replace(/\/+$/, '');
-        } catch (_) {}
+        } catch (_) { }
 
         const tracking_url = `${portalBaseUrl}/s/${tracking_token}`;
 

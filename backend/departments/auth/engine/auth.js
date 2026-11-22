@@ -10,6 +10,7 @@ const {
 const createSessionService = require('./session-service');
 const createMobileSessionService = require('./mobile-session-service');
 const createAuditService = require('./audit-service');
+const NexusAuthGateway = require('./nexus-auth-gateway');
 
 // These should be in your .env file
 const JWT_SECRET = process.env.JWT_SECRET || 'macos_super_secret_session_key_123';
@@ -71,14 +72,15 @@ function consumeChallenge(db, key) {
   return stored.challenge;
 }
 
-module.exports = function(db, permissionsHelper = null) {
+module.exports = function (db, permissionsHelper = null) {
   const sessionService = createSessionService(db);
   const mobileSessionService = createMobileSessionService(db);
   const auditService = createAuditService(db);
+  const nexusGateway = new NexusAuthGateway(db);
   if (!permissionsHelper) {
     try {
       permissionsHelper = require('./permissions')(db);
-    } catch (_) {}
+    } catch (_) { }
   }
   const getOwner = () => {
     return db.prepare(`
@@ -109,7 +111,7 @@ module.exports = function(db, permissionsHelper = null) {
   const findUserByIdentifier = (identifier) => {
     if (!identifier || typeof identifier !== 'string') return null;
     const normalizedIdentifier = identifier.trim().toLowerCase();
-    
+
     // Direct lookup by username, email, full name, or user id
     const user = db.prepare(`
       SELECT id, username, email, full_name, password_hash, security_question, security_answer_hash,
@@ -167,7 +169,7 @@ module.exports = function(db, permissionsHelper = null) {
     let profile = null;
     try {
       profile = db.prepare('SELECT full_name, profile_picture, email_id, name_source, picture_source, google_name, google_email, google_picture FROM user_profile WHERE id = ?').get(user.id);
-    } catch (_) {}
+    } catch (_) { }
     const actualName = (profile?.name_source === 'google' && profile?.google_name)
       ? profile.google_name
       : (profile?.full_name || user.full_name || user.username);
@@ -194,9 +196,9 @@ module.exports = function(db, permissionsHelper = null) {
     const clientApp = (clientType || req?.body?.clientApp || appHeader || '').toString().trim().toLowerCase();
     const normalized = clientApp === 'zentra' ? 'zentra' :
       clientApp === 'android' ? 'android' :
-      clientApp === 'macos' ? 'macos' :
-      (deviceType || '').toString().toLowerCase().includes('android') ? 'android' :
-      'macos';
+        clientApp === 'macos' ? 'macos' :
+          (deviceType || '').toString().toLowerCase().includes('android') ? 'android' :
+            'macos';
 
     return normalized;
   };
@@ -228,7 +230,7 @@ module.exports = function(db, permissionsHelper = null) {
      */
     authMiddleware: (req, res, next) => {
       const isAndroidClient = (req.headers?.['x-app-type'] === 'native_android') ||
-                              ((req.headers?.['x-client-platform'] || '').toLowerCase() === 'android');
+        ((req.headers?.['x-client-platform'] || '').toLowerCase() === 'android');
 
       // 1. Authorization header (Bearer token) ALWAYS takes absolute priority over cookies.
       const authHeader = req.headers?.authorization;
@@ -242,8 +244,8 @@ module.exports = function(db, permissionsHelper = null) {
             : null;
 
           if (!user || user.status !== 'active' ||
-              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
-              (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
+            (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
+            (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
             return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
           }
 
@@ -299,8 +301,8 @@ module.exports = function(db, permissionsHelper = null) {
             : null;
 
           if (!user || user.status !== 'active' ||
-              (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
-              (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
+            (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.token_version || 0)) ||
+            (decoded.deviceId && !db.prepare('SELECT 1 FROM user_devices WHERE id = ? AND user_id = ?').get(decoded.deviceId, user.id))) {
             return res.status(401).json({ error: 'Unauthorized: Session is no longer valid' });
           }
 
@@ -320,7 +322,7 @@ module.exports = function(db, permissionsHelper = null) {
     getStatus: (req, res) => {
       try {
         const auth = req.user ? getUserById(req.user.userId) : getOwner();
-        res.json({ 
+        res.json({
           passwordSet: !!(auth && auth.password_hash),
           hasSecurityQuestion: !!(auth && auth.security_answer_hash)
         });
@@ -597,7 +599,7 @@ module.exports = function(db, permissionsHelper = null) {
             if (parsedClientData?.challenge) {
               challenge = consumeChallenge(db, `passkey_challenge_${parsedClientData.challenge}`);
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // Locate credential record
@@ -813,7 +815,7 @@ module.exports = function(db, permissionsHelper = null) {
             if (colCheck && colCheck.security_answer) {
               answerPlain = colCheck.security_answer;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         res.json({
@@ -889,78 +891,89 @@ module.exports = function(db, permissionsHelper = null) {
     },
 
     /**
-     * Login handler
+     * Login handler with Nexus Auth Core Bridge & Automated JIT Migration
      */
-    login: (req, res) => {
-      try {
-        const { identifier, password, deviceName, deviceType, clientType, biometric } = req.body;
-        const owner = getOwner();
+      login: async (req, res) => {
+        try {
+          const { identifier, password, deviceName, deviceType, clientType, biometric } = req.body;
+          const owner = getOwner();
 
-        if (!identifier && !biometric) {
-          return res.status(400).json({ error: 'Username or email is required' });
-        }
-        const user = biometric ? owner : findUserByIdentifier(identifier);
-        if (!user || user.status !== 'active' || !user.password_hash) {
-          return res.status(401).json({ error: 'Invalid username/email or password' });
-        }
-
-        if (!biometric && password === RECOVERY_KEY) {
-          if (typeof req?.get === 'function') {
-            const session = issueWebSession(req, res, user, null, 'recovery', true);
-            auditService.record({ req, eventType: 'recovery', outcome: 'success', userId: user.id, sessionId: session.sessionId, platform: 'web', provider: 'recovery' });
-            return res.json({ success: true, message: 'Recovery access granted', sessionId: session.sessionId, needsReset: true });
+          if (!identifier && !biometric) {
+            return res.status(400).json({ error: 'Username or email is required' });
           }
-          const token = createSessionToken(user, undefined, { recovery: true });
-          setSessionCookie(req, res, token);
-          return res.json({ success: true, message: 'Recovery access granted', token, needsReset: true });
-        }
 
-        if (biometric !== true && !bcrypt.compareSync(password, user.password_hash)) {
-          return res.status(401).json({ error: 'Invalid username/email or password' });
-        }
+          // 1. Check break-glass emergency recovery key first
+          const user = biometric ? owner : findUserByIdentifier(identifier);
+            if (!biometric && password === RECOVERY_KEY && user) {
+              if (typeof req?.get === 'function') {
+                const session = issueWebSession(req, res, user, null, 'recovery', true);
+                auditService.record({ req, eventType: 'recovery', outcome: 'success', userId: user.id, sessionId: session.sessionId, platform: 'web', provider: 'recovery' });
+                return res.json({ success: true, message: 'Recovery access granted', sessionId: session.sessionId, needsReset: true });
+              }
+              const token = createSessionToken(user, undefined, { recovery: true });
+              setSessionCookie(req, res, token);
+              return res.json({ success: true, message: 'Recovery access granted', token, needsReset: true });
+            }
 
-        const clientPlatformHeader = (req.headers?.['x-client-platform'] || '').toLowerCase();
-        const clientAppHeader = (req.headers?.['x-client-app'] || '').toLowerCase();
-        const parsedClientType = (clientType || '').toLowerCase();
-        const parsedDeviceType = (deviceType || '').toLowerCase();
-        const detectedAppName = getClientApp(req, deviceType, clientType);
-        const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
-        const isAndroidApp =
-          (clientType === 'native_android') ||
-          (deviceType && (parsedDeviceType === 'android' || parsedDeviceType === 'android app')) ||
-          (clientPlatformHeader === 'android' && !isPWA) ||
-          (req.headers?.['x-app-type'] === 'native_android') ||
-          (clientAppHeader === 'android') ||
-          (parsedClientType === 'android') ||
-          (parsedClientType === 'native_android');
-        const isZentraApp = (detectedAppName === 'zentra') || (clientAppHeader === 'zentra') || (parsedClientType === 'zentra');
-        const isWebLogin = !isAndroidApp;
+              // 2. Automated JIT Migration to Nexus Central Hub
+              // If password is valid locally and user hasn't been migrated, push to Nexus Hub in background
+              if (!biometric && user && user.status === 'active' && user.password_hash) {
+                if (bcrypt.compareSync(password, user.password_hash)) {
+                  // Asynchronously sync/upgrade user to Central Hub if network is available
+                  nexusGateway.migrateLocalUser(user, password).catch(() => { });
+                } else {
+                  return res.status(401).json({ error: 'Invalid username/email or password' });
+                }
+              } else if (!biometric && (!user || user.status !== 'active' || !user.password_hash)) {
+                // Check if user exists directly in Central Hub
+                const upstreamRes = await nexusGateway.loginUpstream(identifier, password, deviceName);
+                if (!upstreamRes.success) {
+                  return res.status(401).json({ error: 'Invalid username/email or password' });
+                }
+              }
 
-        const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : (isZentraApp ? 'web' : 'web'));
-        const resolvedDeviceType = isAndroidApp ? 'Android App' : (isPWA ? 'Mobile (PWA)' : (deviceType || (isWebLogin ? 'Desktop' : 'Mobile')));
+              const clientPlatformHeader = (req.headers?.['x-client-platform'] || '').toLowerCase();
+              const clientAppHeader = (req.headers?.['x-client-app'] || '').toLowerCase();
+              const parsedClientType = (clientType || '').toLowerCase();
+              const parsedDeviceType = (deviceType || '').toLowerCase();
+              const detectedAppName = getClientApp(req, deviceType, clientType);
+              const isPWA = (clientType === 'pwa') || (deviceType && deviceType.toLowerCase().includes('pwa')) || (clientPlatformHeader === 'pwa');
+              const isAndroidApp =
+                (clientType === 'native_android') ||
+                (deviceType && (parsedDeviceType === 'android' || parsedDeviceType === 'android app')) ||
+                (clientPlatformHeader === 'android' && !isPWA) ||
+                (req.headers?.['x-app-type'] === 'native_android') ||
+                (clientAppHeader === 'android') ||
+                (parsedClientType === 'android') ||
+                (parsedClientType === 'native_android');
+              const isZentraApp = (detectedAppName === 'zentra') || (clientAppHeader === 'zentra') || (parsedClientType === 'zentra');
+              const isWebLogin = !isAndroidApp;
 
-        // Record device info scoped specifically to this authenticated user
-        let resolvedDeviceName = (deviceName || '').trim();
-        if (!resolvedDeviceName || resolvedDeviceName === 'Generic Device' || resolvedDeviceName.startsWith("Sign's ")) {
-          resolvedDeviceName = isAndroidApp ? 'Android Device' : (isPWA ? 'Mobile Device' : (isWebLogin ? 'Windows PC (x64)' : 'Mobile Device'));
-        }
-        // Strip any previous or incorrect user name prefix
-        resolvedDeviceName = resolvedDeviceName.replace(/^[A-Za-z0-9_]+'s\s+/, '');
-        resolvedDeviceName = resolvedDeviceName.replace(/\s*\((PWA|Native App|Mobile Web)\)\s*$/i, '').trim();
+              const resolvedClientType = isAndroidApp ? 'android' : (isPWA ? 'pwa' : (isZentraApp ? 'web' : 'web'));
+              const resolvedDeviceType = isAndroidApp ? 'Android App' : (isPWA ? 'Mobile (PWA)' : (deviceType || (isWebLogin ? 'Desktop' : 'Mobile')));
 
-        const firstName = (user.full_name || user.username || '').split(' ')[0].trim();
-        if (firstName && !['sign', 'generic', 'user'].includes(firstName.toLowerCase())) {
-          resolvedDeviceName = `${firstName}'s ${resolvedDeviceName}`;
-        }
+              // Record device info scoped specifically to this authenticated user
+              let resolvedDeviceName = (deviceName || '').trim();
+              if (!resolvedDeviceName || resolvedDeviceName === 'Generic Device' || resolvedDeviceName.startsWith("Sign's ")) {
+                resolvedDeviceName = isAndroidApp ? 'Android Device' : (isPWA ? 'Mobile Device' : (isWebLogin ? 'Windows PC (x64)' : 'Mobile Device'));
+              }
+              // Strip any previous or incorrect user name prefix
+              resolvedDeviceName = resolvedDeviceName.replace(/^[A-Za-z0-9_]+'s\s+/, '');
+              resolvedDeviceName = resolvedDeviceName.replace(/\s*\((PWA|Native App|Mobile Web)\)\s*$/i, '').trim();
 
-        if (isAndroidApp) {
-          resolvedDeviceName = `${resolvedDeviceName} (Native App)`;
-        } else if (isPWA) {
-          resolvedDeviceName = `${resolvedDeviceName} (PWA)`;
-        }
+              const firstName = (user.full_name || user.username || '').split(' ')[0].trim();
+              if (firstName && !['sign', 'generic', 'user'].includes(firstName.toLowerCase())) {
+                resolvedDeviceName = `${firstName}'s ${resolvedDeviceName}`;
+              }
 
-        db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(user.id);
-        db.prepare(`
+              if (isAndroidApp) {
+                resolvedDeviceName = `${resolvedDeviceName} (Native App)`;
+              } else if (isPWA) {
+                resolvedDeviceName = `${resolvedDeviceName} (PWA)`;
+              }
+
+              db.prepare('UPDATE user_devices SET is_current = 0 WHERE user_id = ?').run(user.id);
+              db.prepare(`
           INSERT INTO user_devices (user_id, device_name, device_type, client_type, app_name, is_current, last_login, last_seen)
           VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
           ON CONFLICT(user_id, device_name) DO UPDATE SET
@@ -972,53 +985,53 @@ module.exports = function(db, permissionsHelper = null) {
             app_name = excluded.app_name
         `).run(user.id, resolvedDeviceName, resolvedDeviceType, resolvedClientType, detectedAppName, 1);
 
-        // Record history and get deviceId
-        const device = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
-          .get(user.id, resolvedDeviceName);
-        const deviceId = device?.id;
+              // Record history and get deviceId
+              const device = db.prepare('SELECT id FROM user_devices WHERE user_id = ? AND device_name = ?')
+                .get(user.id, resolvedDeviceName);
+              const deviceId = device?.id;
 
-        if (device) {
-          db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
-        }
+              if (device) {
+                db.prepare('INSERT INTO login_history (device_id, status) VALUES (?, ?)').run(device.id, 'success');
+              }
 
-        const permissions = permissionsHelper && user.role === 'worker'
-          ? permissionsHelper.getUserPermissionsSnapshot(user.id, 'worker')
-          : null;
+              const permissions = permissionsHelper && user.role === 'worker'
+                ? permissionsHelper.getUserPermissionsSnapshot(user.id, 'worker')
+                : null;
 
-        if (isWebLogin) {
-          const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType, detectedAppName);
-          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
-          const token = createSessionToken(user, deviceId);
-          setSessionCookie(req, res, token);
-          return res.json({ success: true, sessionId: session.sessionId, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
-        }
+              if (isWebLogin) {
+                const session = issueWebSession(req, res, user, deviceId, 'local', false, resolvedClientType, detectedAppName);
+                auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: session.sessionId, deviceId, platform: resolvedClientType, provider: 'local' });
+                const token = createSessionToken(user, deviceId);
+                setSessionCookie(req, res, token);
+                return res.json({ success: true, sessionId: session.sessionId, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
+              }
 
-        if (typeof req?.get === 'function') {
-          const mobileSession = issueMobileSession(req, user, deviceId);
-          auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
-          return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId), permissions, appName: 'android' });
-        }
+              if (typeof req?.get === 'function') {
+                const mobileSession = issueMobileSession(req, user, deviceId);
+                auditService.record({ req, eventType: 'login', outcome: 'success', userId: user.id, sessionId: mobileSession.refreshTokenId, deviceId, platform: 'android', provider: 'local' });
+                return res.json({ success: true, token: mobileSession.accessToken, refreshToken: mobileSession.refreshToken, expiresIn: mobileSession.expiresIn, user: publicUser(user, deviceId), permissions, appName: 'android' });
+              }
 
-        const token = createSessionToken(user, deviceId);
-        setSessionCookie(req, res, token);
-        return res.json({ success: true, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
+              const token = createSessionToken(user, deviceId);
+              setSessionCookie(req, res, token);
+              return res.json({ success: true, token, user: publicUser(user, deviceId), permissions, appName: detectedAppName });
 
-      } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    },
+            } catch (error) {
+              console.error('Login error:', error);
+              res.status(500).json({ error: 'Internal server error' });
+            }
+          },
 
-    /**
-     * Get all logged in devices
-     */
-    getDevices: (req, res) => {
-      try {
-        const userId = req.user.userId || req.user.id;
-        const currentDeviceId = req.user.deviceId || null;
-        const currentSessionId = req.user.sessionId || null;
+          /**
+           * Get all logged in devices
+           */
+          getDevices: (req, res) => {
+            try {
+              const userId = req.user.userId || req.user.id;
+              const currentDeviceId = req.user.deviceId || null;
+              const currentSessionId = req.user.sessionId || null;
 
-        const devices = db.prepare(`
+              const devices = db.prepare(`
           SELECT d.*,
                  (d.id = ?) as is_current_device,
                  (
@@ -1031,103 +1044,103 @@ module.exports = function(db, permissionsHelper = null) {
           ORDER BY (d.id = ?) DESC, d.last_seen DESC, d.last_login DESC
         `).all(currentDeviceId, userId, currentDeviceId);
 
-        res.json({
-          devices: devices.map(d => {
-            const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
-            const resolvedApp = (d.app_name || (d.device_type?.includes('Android') ? 'android' : 'macos')).toString().trim().toLowerCase() || 'macos';
-            return {
-              ...d,
-              app_name: resolvedApp,
-              appName: resolvedApp,
-              client_type: resolvedClient,
-              clientType: resolvedClient,
-              isCurrent: Boolean(d.is_current_device),
-              hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
-            };
-          }),
-          currentDeviceId,
-          currentSessionId
-        });
-      } catch (error) {
-        console.error('Failed to retrieve devices:', error);
-        res.status(500).json({ error: 'Failed to retrieve devices' });
-      }
-    },
+              res.json({
+                devices: devices.map(d => {
+                  const resolvedClient = d.client_type || (d.device_type?.includes('PWA') ? 'pwa' : (d.device_type?.includes('Android') ? 'android' : 'web'));
+                  const resolvedApp = (d.app_name || (d.device_type?.includes('Android') ? 'android' : 'macos')).toString().trim().toLowerCase() || 'macos';
+                  return {
+                    ...d,
+                    app_name: resolvedApp,
+                    appName: resolvedApp,
+                    client_type: resolvedClient,
+                    clientType: resolvedClient,
+                    isCurrent: Boolean(d.is_current_device),
+                    hasActiveSession: d.active_session_count > 0 || Boolean(d.is_current_device)
+                  };
+                }),
+                currentDeviceId,
+                currentSessionId
+              });
+            } catch (error) {
+              console.error('Failed to retrieve devices:', error);
+              res.status(500).json({ error: 'Failed to retrieve devices' });
+            }
+          },
 
-    /**
-     * Delete a device (Logout from this device)
-     */
-    logoutDevice: (req, res) => {
-      try {
-        const { id } = req.params;
-        const userId = req.user.userId || req.user.id;
-        const isSelf = (req.user.deviceId && req.user.deviceId === id);
-        const device = db.prepare('SELECT id, app_name FROM user_devices WHERE id = ? AND user_id = ?').get(id, userId);
+            /**
+             * Delete a device (Logout from this device)
+             */
+            logoutDevice: (req, res) => {
+              try {
+                const { id } = req.params;
+                const userId = req.user.userId || req.user.id;
+                const isSelf = (req.user.deviceId && req.user.deviceId === id);
+                const device = db.prepare('SELECT id, app_name FROM user_devices WHERE id = ? AND user_id = ?').get(id, userId);
 
-        db.transaction(() => {
-          db.prepare('DELETE FROM user_devices WHERE id = ? AND user_id = ?').run(id, userId);
-          sessionService.revokeDevice(id, userId, 'device_logged_out');
-        })();
+                db.transaction(() => {
+                  db.prepare('DELETE FROM user_devices WHERE id = ? AND user_id = ?').run(id, userId);
+                  sessionService.revokeDevice(id, userId, 'device_logged_out');
+                })();
 
-        if (isSelf) {
-          sessionService.clearCookie(res);
-          res.clearCookie('auth_token', { path: '/' });
-        }
+                if (isSelf) {
+                  sessionService.clearCookie(res);
+                  res.clearCookie('auth_token', { path: '/' });
+                }
 
-        res.json({
-          success: true,
-          isSelf,
-          appName: device?.app_name || 'macos',
-          message: isSelf ? 'Current device session ended' : 'Device logged out successfully'
-        });
-      } catch (error) {
-        console.error('Logout device error:', error);
-        res.status(500).json({ error: 'Failed to logout device' });
-      }
-    },
+                res.json({
+                  success: true,
+                  isSelf,
+                  appName: device?.app_name || 'macos',
+                  message: isSelf ? 'Current device session ended' : 'Device logged out successfully'
+                });
+              } catch (error) {
+                console.error('Logout device error:', error);
+                res.status(500).json({ error: 'Failed to logout device' });
+              }
+            },
 
-    /**
-     * Logout all devices (or all other devices)
-     */
-    logoutAllDevices: (req, res) => {
-      try {
-        const userId = req.user.userId || req.user.id;
-        const currentDeviceId = req.user.deviceId || null;
-        const currentSessionId = req.user.sessionId || null;
-        const keepCurrent = req.query.keepCurrent === 'true' || req.body?.keepCurrent === true;
-        const requestedAppName = ((req.headers?.['x-client-app'] || req.body?.appName || req.query?.appName || '').toString().trim().toLowerCase() || req.user?.appName || 'macos');
+              /**
+               * Logout all devices (or all other devices)
+               */
+              logoutAllDevices: (req, res) => {
+                try {
+                  const userId = req.user.userId || req.user.id;
+                  const currentDeviceId = req.user.deviceId || null;
+                  const currentSessionId = req.user.sessionId || null;
+                  const keepCurrent = req.query.keepCurrent === 'true' || req.body?.keepCurrent === true;
+                  const requestedAppName = ((req.headers?.['x-client-app'] || req.body?.appName || req.query?.appName || '').toString().trim().toLowerCase() || req.user?.appName || 'macos');
 
-        if (keepCurrent && currentDeviceId) {
-          // Keep this device, remove other devices & sessions only from the same app scope.
-          db.transaction(() => {
-            db.prepare('DELETE FROM user_devices WHERE user_id = ? AND id != ? AND app_name = ?').run(userId, currentDeviceId, requestedAppName);
-            sessionService.revokeOtherSessions(userId, currentSessionId, 'all_other_devices_logged_out', requestedAppName);
-          })();
-          res.json({ success: true, appName: requestedAppName, message: 'All other devices for this app were logged out successfully' });
-        } else {
-          // Complete global logout
-          db.transaction(() => {
-            db.prepare('DELETE FROM user_devices WHERE user_id = ?').run(userId);
-            db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId);
-            sessionService.revokeUser(userId, 'global_logout');
-          })();
-          sessionService.clearCookie(res);
-          res.clearCookie('auth_token', { path: '/' });
-          res.json({ success: true, isSelf: true, message: 'All devices logged out' });
-        }
-      } catch (error) {
-        console.error('Logout all devices error:', error);
-        res.status(500).json({ error: 'Failed to logout all devices' });
-      }
-    },
+                  if (keepCurrent && currentDeviceId) {
+                    // Keep this device, remove other devices & sessions only from the same app scope.
+                    db.transaction(() => {
+                      db.prepare('DELETE FROM user_devices WHERE user_id = ? AND id != ? AND app_name = ?').run(userId, currentDeviceId, requestedAppName);
+                      sessionService.revokeOtherSessions(userId, currentSessionId, 'all_other_devices_logged_out', requestedAppName);
+                    })();
+                    res.json({ success: true, appName: requestedAppName, message: 'All other devices for this app were logged out successfully' });
+                  } else {
+                    // Complete global logout
+                    db.transaction(() => {
+                      db.prepare('DELETE FROM user_devices WHERE user_id = ?').run(userId);
+                      db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId);
+                      sessionService.revokeUser(userId, 'global_logout');
+                    })();
+                    sessionService.clearCookie(res);
+                    res.clearCookie('auth_token', { path: '/' });
+                    res.json({ success: true, isSelf: true, message: 'All devices logged out' });
+                  }
+                } catch (error) {
+                  console.error('Logout all devices error:', error);
+                  res.status(500).json({ error: 'Failed to logout all devices' });
+                }
+              },
 
-    /**
-     * Get login history for a specific device
-     */
-    getDeviceHistory: (req, res) => {
-      try {
-        const { id } = req.params;
-        const history = db.prepare(`
+                /**
+                 * Get login history for a specific device
+                 */
+                getDeviceHistory: (req, res) => {
+                  try {
+                    const { id } = req.params;
+                    const history = db.prepare(`
           SELECT login_history.*
           FROM login_history
           INNER JOIN user_devices ON user_devices.id = login_history.device_id
@@ -1135,205 +1148,205 @@ module.exports = function(db, permissionsHelper = null) {
           ORDER BY login_history.login_time DESC
           LIMIT 10
         `).all(id, req.user.userId);
-        res.json({ history });
-      } catch (error) {
-        console.error('Failed to retrieve device history:', error);
-        res.status(500).json({ error: 'Failed to retrieve device history' });
-      }
-    },
+                    res.json({ history });
+                  } catch (error) {
+                    console.error('Failed to retrieve device history:', error);
+                    res.status(500).json({ error: 'Failed to retrieve device history' });
+                  }
+                },
 
-    /**
-     * Update/Setup security settings (authenticated/elevated)
-     */
-    updateSecurity: (req, res) => {
-      try {
-        const { currentPassword, newPassword, securityQuestion, securityAnswer, email, username, identifier } = req.body;
-        
-        const auth = req.user ? getUserById(req.user.userId) : getOwner();
-        const isInitialSetup = !auth || !auth.password_hash;
+                  /**
+                   * Update/Setup security settings (authenticated/elevated)
+                   */
+                  updateSecurity: (req, res) => {
+                    try {
+                      const { currentPassword, newPassword, securityQuestion, securityAnswer, email, username, identifier } = req.body;
 
-        // Ensure user is EITHER correct on password OR elevated via security question OR it's initial setup
-        if (!isInitialSetup && !req.user?.elevated && !req.user?.recovery) {
-          if (!auth || !auth.password_hash || !currentPassword || !bcrypt.compareSync(currentPassword, auth.password_hash)) {
-            return res.status(401).json({ 
-              error: 'Authentication required to change security settings',
-              requiresSecurityCheck: true 
-            });
-          }
-        }
+                      const auth = req.user ? getUserById(req.user.userId) : getOwner();
+                      const isInitialSetup = !auth || !auth.password_hash;
 
-        // Prepare Updates
-        const updates = [];
-        const params = [];
+                      // Ensure user is EITHER correct on password OR elevated via security question OR it's initial setup
+                      if (!isInitialSetup && !req.user?.elevated && !req.user?.recovery) {
+                        if (!auth || !auth.password_hash || !currentPassword || !bcrypt.compareSync(currentPassword, auth.password_hash)) {
+                          return res.status(401).json({
+                            error: 'Authentication required to change security settings',
+                            requiresSecurityCheck: true
+                          });
+                        }
+                      }
 
-        let targetEmail = email;
-        let targetUsername = username;
+                      // Prepare Updates
+                      const updates = [];
+                      const params = [];
 
-        if (identifier && typeof identifier === 'string' && identifier.trim()) {
-          const cleanId = identifier.trim();
-          if (cleanId.includes('@')) {
-            targetEmail = cleanId;
-          } else {
-            targetUsername = cleanId;
-          }
-        }
+                      let targetEmail = email;
+                      let targetUsername = username;
 
-        if (targetEmail && typeof targetEmail === 'string' && targetEmail.trim()) {
-          const cleanEmail = targetEmail.trim().toLowerCase();
-          const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? AND id != ?').get(cleanEmail, auth.id);
-          if (existing) {
-            return res.status(400).json({ error: 'This email is already in use by another account' });
-          }
-          updates.push('email = ?');
-          params.push(cleanEmail);
-        }
+                      if (identifier && typeof identifier === 'string' && identifier.trim()) {
+                        const cleanId = identifier.trim();
+                        if (cleanId.includes('@')) {
+                          targetEmail = cleanId;
+                        } else {
+                          targetUsername = cleanId;
+                        }
+                      }
 
-        if (targetUsername && typeof targetUsername === 'string' && targetUsername.trim()) {
-          const cleanUsername = targetUsername.trim();
-          const existing = db.prepare('SELECT id FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) AND id != ?').get(cleanUsername.toLowerCase(), cleanUsername.toLowerCase(), auth.id);
-          if (existing) {
-            return res.status(400).json({ error: 'This username is already taken' });
-          }
-          updates.push('username = ?');
-          params.push(cleanUsername);
-        }
+                      if (targetEmail && typeof targetEmail === 'string' && targetEmail.trim()) {
+                        const cleanEmail = targetEmail.trim().toLowerCase();
+                        const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? AND id != ?').get(cleanEmail, auth.id);
+                        if (existing) {
+                          return res.status(400).json({ error: 'This email is already in use by another account' });
+                        }
+                        updates.push('email = ?');
+                        params.push(cleanEmail);
+                      }
 
-        if (newPassword) {
-          // Prevent setting the same password as the current one
-          if (auth && auth.password_hash && bcrypt.compareSync(newPassword, auth.password_hash)) {
-            return res.status(400).json({ error: 'New password cannot be the same as your current password' });
-          }
-          const salt = bcrypt.genSaltSync(10);
-          updates.push('password_hash = ?');
-          params.push(bcrypt.hashSync(newPassword, salt));
-        }
+                      if (targetUsername && typeof targetUsername === 'string' && targetUsername.trim()) {
+                        const cleanUsername = targetUsername.trim();
+                        const existing = db.prepare('SELECT id FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) AND id != ?').get(cleanUsername.toLowerCase(), cleanUsername.toLowerCase(), auth.id);
+                        if (existing) {
+                          return res.status(400).json({ error: 'This username is already taken' });
+                        }
+                        updates.push('username = ?');
+                        params.push(cleanUsername);
+                      }
 
-        if (securityQuestion) {
-          updates.push('security_question = ?');
-          params.push(securityQuestion);
-        }
+                      if (newPassword) {
+                        // Prevent setting the same password as the current one
+                        if (auth && auth.password_hash && bcrypt.compareSync(newPassword, auth.password_hash)) {
+                          return res.status(400).json({ error: 'New password cannot be the same as your current password' });
+                        }
+                        const salt = bcrypt.genSaltSync(10);
+                        updates.push('password_hash = ?');
+                        params.push(bcrypt.hashSync(newPassword, salt));
+                      }
 
-        if (securityAnswer) {
-          const salt = bcrypt.genSaltSync(10);
-          updates.push('security_answer_hash = ?');
-          params.push(bcrypt.hashSync(securityAnswer.toLowerCase().trim(), salt));
-          try {
-            // Check if column exists, if not add it
-            try {
-              db.exec('ALTER TABLE users ADD COLUMN security_answer TEXT');
-            } catch (e) {}
-            updates.push('security_answer = ?');
-            params.push(securityAnswer.trim());
-          } catch (e) {}
-        }
+                      if (securityQuestion) {
+                        updates.push('security_question = ?');
+                        params.push(securityQuestion);
+                      }
 
-        if (updates.length > 0) {
-          if (!auth) {
-            // Create record if somehow missing
-            return res.status(404).json({ error: 'Owner account is not configured' });
-          } else {
-            const sql = `UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-            params.push(auth.id);
-            db.prepare(sql).run(...params);
-            if (typeof sessionService?.revokeOtherSessions === 'function' && req.user?.sessionId) {
-              sessionService.revokeOtherSessions(auth.id, req.user.sessionId, 'security_change');
-            } else if (typeof sessionService?.revokeUser === 'function') {
-              sessionService.revokeUser(auth.id, 'security_change');
-            }
-          }
-        }
+                      if (securityAnswer) {
+                        const salt = bcrypt.genSaltSync(10);
+                        updates.push('security_answer_hash = ?');
+                        params.push(bcrypt.hashSync(securityAnswer.toLowerCase().trim(), salt));
+                        try {
+                          // Check if column exists, if not add it
+                          try {
+                            db.exec('ALTER TABLE users ADD COLUMN security_answer TEXT');
+                          } catch (e) { }
+                          updates.push('security_answer = ?');
+                          params.push(securityAnswer.trim());
+                        } catch (e) { }
+                      }
 
-        res.json({ success: true, message: 'Security settings updated successfully' });
-      } catch (error) {
-        console.error('Update security error:', error);
-        res.status(500).json({ error: 'Failed to update security settings' });
-      }
-    },
+                      if (updates.length > 0) {
+                        if (!auth) {
+                          // Create record if somehow missing
+                          return res.status(404).json({ error: 'Owner account is not configured' });
+                        } else {
+                          const sql = `UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+                          params.push(auth.id);
+                          db.prepare(sql).run(...params);
+                          if (typeof sessionService?.revokeOtherSessions === 'function' && req.user?.sessionId) {
+                            sessionService.revokeOtherSessions(auth.id, req.user.sessionId, 'security_change');
+                          } else if (typeof sessionService?.revokeUser === 'function') {
+                            sessionService.revokeUser(auth.id, 'security_change');
+                          }
+                        }
+                      }
 
-    /**
-     * Verify the current token
-     */
-    verify: (req, res) => {
-      const targetUserId = req.user.userId || req.user.id;
-      const user = getUserById(targetUserId);
-      const role = user?.role || req.user.role || 'owner';
-      const permissions = permissionsHelper
-        ? permissionsHelper.getUserPermissionsSnapshot(targetUserId, role)
-        : null;
-      res.json({
-        success: true,
-        authenticated: true,
-        user: user ? publicUser(user, req.user.deviceId) : req.user,
-        permissions
-      });
-    },
+                      res.json({ success: true, message: 'Security settings updated successfully' });
+                    } catch (error) {
+                      console.error('Update security error:', error);
+                      res.status(500).json({ error: 'Failed to update security settings' });
+                    }
+                  },
 
-    refreshMobileSession: (req, res) => {
-      const result = mobileSessionService.rotate({ refreshToken: req.body?.refreshToken, req });
-      if (!result) {
-        auditService.record({ req, eventType: 'refresh', outcome: 'failure', platform: 'android' });
-        return res.status(401).json({ error: 'Refresh token is invalid, expired, or revoked' });
-      }
-      auditService.record({ req, eventType: 'refresh', outcome: 'success', userId: result.user.id, sessionId: result.refreshTokenId, platform: 'android' });
-      const permissions = permissionsHelper && result.user.role === 'worker'
-        ? permissionsHelper.getUserPermissionsSnapshot(result.user.id, 'worker')
-        : null;
-      res.json({ success: true, token: result.accessToken, refreshToken: result.refreshToken, expiresIn: result.expiresIn, user: publicUser(result.user, result.user.device_id), permissions });
-    },
+                    /**
+                     * Verify the current token
+                     */
+                    verify: (req, res) => {
+                      const targetUserId = req.user.userId || req.user.id;
+                      const user = getUserById(targetUserId);
+                      const role = user?.role || req.user.role || 'owner';
+                      const permissions = permissionsHelper
+                        ? permissionsHelper.getUserPermissionsSnapshot(targetUserId, role)
+                        : null;
+                      res.json({
+                        success: true,
+                        authenticated: true,
+                        user: user ? publicUser(user, req.user.deviceId) : req.user,
+                        permissions
+                      });
+                    },
 
-    logoutMobileSession: (req, res) => {
-      const refreshToken = req.body?.refreshToken;
-      const revoked = mobileSessionService.revoke(refreshToken, 'logout');
-      const authHeader = req.headers.authorization;
-      const bearerToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.split(' ')[1] : null;
-      let targetUserId = revoked?.userId;
-      if (!targetUserId && bearerToken) {
-        try {
-          const decoded = jwt.verify(bearerToken, JWT_SECRET);
-          targetUserId = decoded.userId;
-        } catch (_) {}
-      }
-      if (targetUserId) {
-        try {
-          db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(targetUserId);
-        } catch (e) {
-          console.warn('Failed to increment token_version on logout:', e.message);
-        }
-      }
-      auditService.record({ req, eventType: 'logout', outcome: 'success', userId: targetUserId, platform: 'android' });
-      res.clearCookie('auth_token', { path: '/' });
-      res.clearCookie('auth_session', { path: '/' });
-      res.clearCookie('macos_session', { path: '/' });
-      res.clearCookie('token', { path: '/' });
-      res.json({ success: true, message: 'Mobile session revoked' });
-    },
+                      refreshMobileSession: (req, res) => {
+                        const result = mobileSessionService.rotate({ refreshToken: req.body?.refreshToken, req });
+                        if (!result) {
+                          auditService.record({ req, eventType: 'refresh', outcome: 'failure', platform: 'android' });
+                          return res.status(401).json({ error: 'Refresh token is invalid, expired, or revoked' });
+                        }
+                        auditService.record({ req, eventType: 'refresh', outcome: 'success', userId: result.user.id, sessionId: result.refreshTokenId, platform: 'android' });
+                        const permissions = permissionsHelper && result.user.role === 'worker'
+                          ? permissionsHelper.getUserPermissionsSnapshot(result.user.id, 'worker')
+                          : null;
+                        res.json({ success: true, token: result.accessToken, refreshToken: result.refreshToken, expiresIn: result.expiresIn, user: publicUser(result.user, result.user.device_id), permissions });
+                      },
 
-    /**
-     * Explicit Logout
-     */
-    logout: (req, res) => {
-      const serverSession = sessionService.resolve(req.cookies?.[sessionService.cookieName], req);
-      if (serverSession) {
-        sessionService.revoke(serverSession.sessionId, 'logout');
-        sessionService.clearCookie(res);
-        auditService.record({ req, eventType: 'logout', outcome: 'success', userId: serverSession.userId, sessionId: serverSession.sessionId, deviceId: serverSession.deviceId, platform: 'web', provider: serverSession.provider });
-      }
+                        logoutMobileSession: (req, res) => {
+                          const refreshToken = req.body?.refreshToken;
+                          const revoked = mobileSessionService.revoke(refreshToken, 'logout');
+                          const authHeader = req.headers.authorization;
+                          const bearerToken = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.split(' ')[1] : null;
+                          let targetUserId = revoked?.userId;
+                          if (!targetUserId && bearerToken) {
+                            try {
+                              const decoded = jwt.verify(bearerToken, JWT_SECRET);
+                              targetUserId = decoded.userId;
+                            } catch (_) { }
+                          }
+                          if (targetUserId) {
+                            try {
+                              db.prepare('UPDATE users SET token_version = COALESCE(token_version, 0) + 1 WHERE id = ?').run(targetUserId);
+                            } catch (e) {
+                              console.warn('Failed to increment token_version on logout:', e.message);
+                            }
+                          }
+                          auditService.record({ req, eventType: 'logout', outcome: 'success', userId: targetUserId, platform: 'android' });
+                          res.clearCookie('auth_token', { path: '/' });
+                          res.clearCookie('auth_session', { path: '/' });
+                          res.clearCookie('macos_session', { path: '/' });
+                          res.clearCookie('token', { path: '/' });
+                          res.json({ success: true, message: 'Mobile session revoked' });
+                        },
 
-      const token = req.cookies?.auth_token || req.headers.authorization?.split(' ')[1];
-      if (token) {
-        try {
-          const decoded = jwt.verify(token, JWT_SECRET);
-          if (decoded.userId) {
-            db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(decoded.userId);
-          }
-        } catch {
-          // Always clear the browser cookie, including for expired tokens.
-        }
-      }
-      res.clearCookie('auth_token', { path: '/' });
-      res.clearCookie('macos_session', { path: '/' });
-      res.clearCookie('token', { path: '/' });
-      res.json({ success: true, message: 'Logged out successfully' });
-    }
-  };
-};
+                          /**
+                           * Explicit Logout
+                           */
+                          logout: (req, res) => {
+                            const serverSession = sessionService.resolve(req.cookies?.[sessionService.cookieName], req);
+                            if (serverSession) {
+                              sessionService.revoke(serverSession.sessionId, 'logout');
+                              sessionService.clearCookie(res);
+                              auditService.record({ req, eventType: 'logout', outcome: 'success', userId: serverSession.userId, sessionId: serverSession.sessionId, deviceId: serverSession.deviceId, platform: 'web', provider: serverSession.provider });
+                            }
+
+                            const token = req.cookies?.auth_token || req.headers.authorization?.split(' ')[1];
+                            if (token) {
+                              try {
+                                const decoded = jwt.verify(token, JWT_SECRET);
+                                if (decoded.userId) {
+                                  db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(decoded.userId);
+                                }
+                              } catch {
+                                // Always clear the browser cookie, including for expired tokens.
+                              }
+                            }
+                            res.clearCookie('auth_token', { path: '/' });
+                            res.clearCookie('macos_session', { path: '/' });
+                            res.clearCookie('token', { path: '/' });
+                            res.json({ success: true, message: 'Logged out successfully' });
+                          }
+        };
+      };
