@@ -14,7 +14,6 @@ const NexusAuthGateway = require('./nexus-auth-gateway');
 
 // These should be in your .env file
 const JWT_SECRET = process.env.JWT_SECRET || 'macos_super_secret_session_key_123';
-const RECOVERY_KEY = process.env.RECOVERY_KEY || 'emergency_recovery_access';
 function challengeKey(userId, kind) {
   return `${kind}:${userId}`;
 }
@@ -942,35 +941,58 @@ module.exports = function (db, permissionsHelper = null) {
             return res.status(400).json({ error: 'Username or email is required' });
           }
 
-          // 1. Check break-glass emergency recovery key first
-          const user = biometric ? owner : findUserByIdentifier(identifier);
-            if (!biometric && password === RECOVERY_KEY && user) {
-              if (typeof req?.get === 'function') {
-                const session = issueWebSession(req, res, user, null, 'recovery', true);
-                auditService.record({ req, eventType: 'recovery', outcome: 'success', userId: user.id, sessionId: session.sessionId, platform: 'web', provider: 'recovery' });
-                return res.json({ success: true, message: 'Recovery access granted', sessionId: session.sessionId, needsReset: true });
-              }
-              const token = createSessionToken(user, undefined, { recovery: true });
-              setSessionCookie(req, res, token);
-              return res.json({ success: true, message: 'Recovery access granted', token, needsReset: true });
-            }
+          const localUser = biometric ? owner : findUserByIdentifier(identifier);
+          let authenticatedUser = localUser;
+          let upstreamToken = null;
 
-              // 2. Automated JIT Migration to Nexus Central Hub
-              // If password is valid locally and user hasn't been migrated, push to Nexus Hub in background
-              if (!biometric && user && user.status === 'active' && user.password_hash) {
-                if (bcrypt.compareSync(password, user.password_hash)) {
-                  // Asynchronously sync/upgrade user to Central Hub if network is available
-                  nexusGateway.migrateLocalUser(user, password).catch(() => { });
-                } else {
-                  return res.status(401).json({ error: 'Invalid username/email or password' });
+          if (!biometric) {
+            // 1. Authoritative Central Hub Nexus Auth
+            const upstreamRes = await nexusGateway.loginUpstream(identifier, password, deviceName);
+            if (upstreamRes.success) {
+              upstreamToken = upstreamRes.data?.token;
+              const upstreamUser = upstreamRes.data?.user;
+              if (upstreamUser) {
+                if (!authenticatedUser) {
+                  authenticatedUser = findUserByIdentifier(upstreamUser.email || upstreamUser.username);
                 }
-              } else if (!biometric && (!user || user.status !== 'active' || !user.password_hash)) {
-                // Check if user exists directly in Central Hub
-                const upstreamRes = await nexusGateway.loginUpstream(identifier, password, deviceName);
-                if (!upstreamRes.success) {
-                  return res.status(401).json({ error: 'Invalid username/email or password' });
+                if (!authenticatedUser) {
+                  const newId = upstreamUser.id || 'usr_' + Date.now();
+                  db.prepare(`
+                    INSERT INTO users (id, email, username, full_name, role, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+                  `).run(newId, upstreamUser.email, upstreamUser.username, upstreamUser.full_name, upstreamUser.role || 'user');
+                  authenticatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(newId);
                 }
               }
+            } else if (upstreamRes.isNetworkError) {
+              // Central Hub offline: offline autonomy verification
+              if (authenticatedUser && authenticatedUser.status === 'active' && authenticatedUser.password_hash) {
+                if (!bcrypt.compareSync(password, authenticatedUser.password_hash)) {
+                  return res.status(401).json({ error: 'Invalid username/email or password' });
+                }
+              } else {
+                return res.status(401).json({ error: 'Central Hub offline and no local credentials available' });
+              }
+            } else {
+              // Upstream rejected: check if legacy unmigrated local user requires first-time JIT migration
+              if (authenticatedUser && authenticatedUser.status === 'active' && authenticatedUser.password_hash && bcrypt.compareSync(password, authenticatedUser.password_hash)) {
+                const migRes = await nexusGateway.migrateLocalUser(authenticatedUser, password);
+                if (migRes.success) {
+                  const retryUpstream = await nexusGateway.loginUpstream(identifier, password, deviceName);
+                  if (retryUpstream.success) {
+                    upstreamToken = retryUpstream.data?.token;
+                  }
+                }
+              } else {
+                return res.status(401).json({ error: 'Invalid username/email or password' });
+              }
+            }
+          }
+
+          if (!authenticatedUser) {
+            return res.status(401).json({ error: 'Invalid username/email or password' });
+          }
+          const user = authenticatedUser;
 
               const clientPlatformHeader = (req.headers?.['x-client-platform'] || '').toLowerCase();
               const clientAppHeader = (req.headers?.['x-client-app'] || '').toLowerCase();

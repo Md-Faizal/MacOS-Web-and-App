@@ -1,3 +1,9 @@
+pub mod biometric;
+pub mod config;
+pub mod crypto;
+pub mod passkey;
+
+use crypto::{base64_url_decode, base64_url_encode, constant_time_eq, hmac_sha256};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,7 +116,6 @@ pub fn inspect_jwt_payload_unverified(token: &str) -> Result<VerifiedTokenClaims
     let exp = raw.exp.unwrap_or(0);
     let iat = raw.iat.unwrap_or(0);
 
-    // Timestamp check requires current epoch passed from host runtime, or defaults
     Ok(VerifiedTokenClaims {
         sub,
         email,
@@ -124,72 +129,81 @@ pub fn inspect_jwt_payload_unverified(token: &str) -> Result<VerifiedTokenClaims
     })
 }
 
-fn base64_url_decode(input: &str) -> Result<Vec<u8>, String> {
-    let mut s = input.replace('-', "+").replace('_', "/");
-    while s.len() % 4 != 0 {
-        s.push('=');
+/// Creates a signed HS256 JWT in pure Rust.
+/// Zero external C or OS dependencies — compiles directly into WebAssembly.
+pub fn create_jwt_token(claims: &VerifiedTokenClaims, secret: &[u8]) -> Result<String, String> {
+    let header_json = r#"{"alg":"HS256","typ":"JWT"}"#;
+    let header_b64 = base64_url_encode(header_json.as_bytes());
+
+    let payload_json = serde_json::to_string(claims)
+        .map_err(|e| format!("Failed to serialize claims: {}", e))?;
+    let payload_b64 = base64_url_encode(payload_json.as_bytes());
+
+    let signing_input = format!("{}.{}", header_b64, payload_b64);
+    let signature = hmac_sha256(secret, signing_input.as_bytes());
+    let sig_b64 = base64_url_encode(&signature);
+
+    Ok(format!("{}.{}", signing_input, sig_b64))
+}
+
+/// Fully verifies an HS256 JWT signature and expiration in pure Rust.
+pub fn verify_jwt_token(token: &str, secret: &[u8], current_epoch: usize) -> TokenVerifyResult {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return TokenVerifyResult {
+            valid: false,
+            error: Some("Invalid JWT format: expected 3 parts".into()),
+            claims: None,
+        };
     }
 
-    const DECODE_TABLE: [i8; 256] = {
-        let mut t = [-1i8; 256];
-        let mut i = 0u8;
-        while i < 26 {
-            t[(b'A' + i) as usize] = i as i8;
-            t[(b'a' + i) as usize] = (i + 26) as i8;
-            i += 1;
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+    let expected_sig = hmac_sha256(secret, signing_input.as_bytes());
+
+    let actual_sig = match base64_url_decode(parts[2]) {
+        Ok(s) => s,
+        Err(e) => {
+            return TokenVerifyResult {
+                valid: false,
+                error: Some(format!("Invalid signature encoding: {}", e)),
+                claims: None,
+            };
         }
-        let mut d = 0u8;
-        while d < 10 {
-            t[(b'0' + d) as usize] = (d + 52) as i8;
-            d += 1;
-        }
-        t[b'+' as usize] = 62;
-        t[b'/' as usize] = 63;
-        t
     };
 
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
-
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'=' {
-            break;
-        }
-
-        let b0 = DECODE_TABLE[bytes[i] as usize];
-        let b1 = if i + 1 < bytes.len() && bytes[i + 1] != b'=' {
-            DECODE_TABLE[bytes[i + 1] as usize]
-        } else {
-            0
+    if !constant_time_eq(&expected_sig, &actual_sig) {
+        return TokenVerifyResult {
+            valid: false,
+            error: Some("Signature verification failed".into()),
+            claims: None,
         };
-        let b2 = if i + 2 < bytes.len() && bytes[i + 2] != b'=' {
-            DECODE_TABLE[bytes[i + 2] as usize]
-        } else {
-            0
-        };
-        let b3 = if i + 3 < bytes.len() && bytes[i + 3] != b'=' {
-            DECODE_TABLE[bytes[i + 3] as usize]
-        } else {
-            0
-        };
-
-        if b0 < 0 || b1 < 0 {
-            return Err("Invalid base64 character".into());
-        }
-
-        out.push(((b0 as u8) << 2) | ((b1 as u8) >> 4));
-        if i + 2 < bytes.len() && bytes[i + 2] != b'=' {
-            out.push(((b1 as u8) << 4) | ((b2 as u8) >> 2));
-        }
-        if i + 3 < bytes.len() && bytes[i + 3] != b'=' {
-            out.push(((b2 as u8) << 6) | (b3 as u8));
-        }
-
-        i += 4;
     }
 
-    Ok(out)
+    let mut claims = match inspect_jwt_payload_unverified(token) {
+        Ok(c) => c,
+        Err(e) => {
+            return TokenVerifyResult {
+                valid: false,
+                error: Some(e),
+                claims: None,
+            };
+        }
+    };
+
+    if current_epoch > 0 && claims.exp > 0 && current_epoch > claims.exp {
+        claims.is_expired = true;
+        return TokenVerifyResult {
+            valid: false,
+            error: Some("Token expired".into()),
+            claims: Some(claims),
+        };
+    }
+
+    TokenVerifyResult {
+        valid: true,
+        error: None,
+        claims: Some(claims),
+    }
 }
 
 #[cfg(test)]
@@ -206,5 +220,39 @@ mod tests {
         let worker_scopes = vec!["business:read".to_string(), "profile:read".to_string()];
         assert!(evaluate_scope(&worker_roles, &worker_scopes, "business:read"));
         assert!(!evaluate_scope(&worker_roles, &worker_scopes, "business:write"));
+    }
+
+    #[test]
+    fn test_jwt_create_and_verify() {
+        let secret = b"my_super_jwt_secret_key_12345";
+        let claims = VerifiedTokenClaims {
+            sub: "usr_faizal".into(),
+            email: "faizal@example.com".into(),
+            name: "Faizal".into(),
+            roles: vec!["owner".into(), "admin".into()],
+            token_version: 1,
+            device_id: Some("dev_macbook_pro".into()),
+            exp: 1800000000,
+            iat: 1700000000,
+            is_expired: false,
+        };
+
+        let token = create_jwt_token(&claims, secret).expect("token creation");
+        assert_eq!(token.split('.').count(), 3);
+
+        let res = verify_jwt_token(&token, secret, 1750000000);
+        assert!(res.valid);
+        let verified = res.claims.unwrap();
+        assert_eq!(verified.sub, "usr_faizal");
+        assert_eq!(verified.roles, vec!["owner".to_string(), "admin".to_string()]);
+
+        // Wrong secret
+        let bad_res = verify_jwt_token(&token, b"wrong_secret", 1750000000);
+        assert!(!bad_res.valid);
+
+        // Expired
+        let expired_res = verify_jwt_token(&token, secret, 1850000000);
+        assert!(!expired_res.valid);
+        assert_eq!(expired_res.error, Some("Token expired".into()));
     }
 }

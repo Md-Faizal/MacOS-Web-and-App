@@ -1416,6 +1416,142 @@ pub unsafe extern "C" fn suite_auth_inspect_token(ptr: *const u8, len: usize) ->
     }
 }
 
+#[derive(Deserialize)]
+struct VerifyJwtRequest {
+    token: String,
+    secret: String,
+    #[serde(default)]
+    current_epoch: usize,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_verify_jwt(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<VerifyJwtRequest>(slice) {
+        Ok(req) => {
+            let res = crate::auth::verify_jwt_token(&req.token, req.secret.as_bytes(), req.current_epoch);
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                valid: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                valid: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateJwtRequest {
+    claims: crate::auth::VerifiedTokenClaims,
+    secret: String,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_create_jwt(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<CreateJwtRequest>(slice) {
+        Ok(req) => {
+            match crate::auth::create_jwt_token(&req.claims, req.secret.as_bytes()) {
+                Ok(token) => {
+                    #[derive(Serialize)]
+                    struct OkResp {
+                        success: bool,
+                        token: String,
+                    }
+                    package_response(&OkResp {
+                        success: true,
+                        token,
+                    })
+                }
+                Err(e) => {
+                    #[derive(Serialize)]
+                    struct ErrResp {
+                        success: bool,
+                        error: String,
+                    }
+                    package_response(&ErrResp {
+                        success: false,
+                        error: e,
+                    })
+                }
+            }
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                success: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                success: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct VerifyClientDataRequest {
+    client_data_b64: String,
+    expected_challenge: String,
+    expected_origin: String,
+    #[serde(default)]
+    is_registration: bool,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_verify_client_data(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<VerifyClientDataRequest>(slice) {
+        Ok(req) => {
+            let res = crate::auth::passkey::verify_client_data_b64(
+                &req.client_data_b64,
+                &req.expected_challenge,
+                &req.expected_origin,
+                req.is_registration,
+            );
+            package_response(&res)
+        }
+        Err(e) => {
+            #[derive(Serialize)]
+            struct ErrResp {
+                valid: bool,
+                error: String,
+            }
+            package_response(&ErrResp {
+                valid: false,
+                error: e.to_string(),
+            })
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct AuthConfigRequest {
+    app_slug: String,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn suite_auth_get_config(ptr: *const u8, len: usize) -> *mut u8 {
+    let slice = std::slice::from_raw_parts(ptr, len);
+    match serde_json::from_slice::<AuthConfigRequest>(slice) {
+        Ok(req) => {
+            let cfg = crate::auth::config::AuthConfig::for_app(&req.app_slug);
+            package_response(&cfg)
+        }
+        Err(_) => {
+            let cfg = crate::auth::config::AuthConfig::default();
+            package_response(&cfg)
+        }
+    }
+}
+
 
 
 

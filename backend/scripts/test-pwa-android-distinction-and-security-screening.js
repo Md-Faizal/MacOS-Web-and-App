@@ -62,7 +62,7 @@ async function runTests() {
 
   // 1. Login via Mobile PWA
   const pwaRes = mockRes();
-  authModule.login({
+  await authModule.login({
     body: {
       identifier: testUsername,
       password: 'WorkerPass123!',
@@ -82,7 +82,7 @@ async function runTests() {
 
   // 2. Login via Native Android App on the SAME device
   const nativeRes = mockRes();
-  authModule.login({
+  await authModule.login({
     body: {
       identifier: testUsername,
       password: 'WorkerPass123!',
@@ -114,7 +114,7 @@ async function runTests() {
 
   // 4. Verify getDevices returns client_type correctly
   const getDevicesRes = mockRes();
-  authModule.getDevices({
+  await authModule.getDevices({
     user: { id: testUserId }
   }, getDevicesRes);
 
@@ -167,7 +167,7 @@ async function runTests() {
   // 6. Verify Admin listUsers exposes client_type and platform
   console.log('\n3. Testing Admin listUsers Worker Device Metadata...');
   const listUsersRes = mockRes();
-  adminModule.listUsers({
+  await adminModule.listUsers({
     user: { id: 'admin_auth', role: 'owner' }
   }, listUsersRes);
 
@@ -190,7 +190,7 @@ async function runTests() {
     cookies: {}
   };
   const unElevatedRes = mockRes();
-  authModule.updateSecurity(unElevatedReq, unElevatedRes);
+  await authModule.updateSecurity(unElevatedReq, unElevatedRes);
   assert.strictEqual(unElevatedRes.statusCode, 401, 'Non-elevated worker session MUST be rejected with 401');
   assert.strictEqual(unElevatedRes.data.requiresSecurityCheck, true, 'Response must require security check');
   console.log('✅ Non-elevated worker correctly blocked with 401 (requiresSecurityCheck: true)');
@@ -205,7 +205,7 @@ async function runTests() {
     cookies: {}
   };
   const answerRes = mockRes();
-  authModule.verifyAnswer(answerReq, answerRes);
+  await authModule.verifyAnswer(answerReq, answerRes);
   assert.strictEqual(answerRes.statusCode, 200, 'Security answer verification should succeed');
   assert.ok(answerRes.cookies['auth_session'], 'Elevated session cookie issued');
   console.log('✅ Security question answered and elevated session cookie issued');
@@ -222,7 +222,7 @@ async function runTests() {
     cookies: {}
   };
   const elevatedRes = mockRes();
-  authModule.updateSecurity(elevatedReq, elevatedRes);
+  await authModule.updateSecurity(elevatedReq, elevatedRes);
   assert.strictEqual(elevatedRes.statusCode, 200, 'Elevated session must succeed in updating credentials');
   console.log('✅ Elevated worker session successfully updated credentials');
 
