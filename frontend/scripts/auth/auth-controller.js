@@ -107,9 +107,7 @@ export class AuthController {
           if (video && video.paused) video.play().catch(() => {});
         }
 
-        if (window.google?.accounts?.id && !document.body.classList.contains('login-active')) {
-          window.google.accounts.id.prompt();
-        }
+        // FedCM: Do not auto-spam One Tap prompt on modal close
       },
       onPostAuthSkip: () => {
         this.goHome();
@@ -401,6 +399,7 @@ export class AuthController {
      MODAL CONTROLS & NAVIGATION
      -------------------------------------------------------------------------- */
   async openLoginModal(targetUser = null) {
+    this.resetLoginForm();
     await this.checkSecurityStatus();
     this.getBackgroundBrightness();
 
@@ -451,6 +450,7 @@ export class AuthController {
   }
 
   openGenericLoginModal() {
+    this.resetLoginForm();
     if (this.modalUsername) this.modalUsername.textContent = 'Sign in';
     const modalAvatar = document.querySelector('.modal-avatar');
     if (modalAvatar) {
@@ -477,6 +477,7 @@ export class AuthController {
   }
 
   handleSwitchUser() {
+    this.resetLoginForm();
     const users = this.profileManager.getUsers();
     const isGenericLogin = this.loginIdentifierField && this.loginIdentifierField.style.display !== 'none';
 
@@ -1430,13 +1431,13 @@ export class AuthController {
         client_id: config.clientId,
         callback: (res) => this.handleGoogleCredential(res),
         auto_select: false,
-        use_fedcm_for_prompt: false,
+        use_fedcm_for_prompt: true,
         cancel_on_tap_outside: false
       });
 
       const buttonContainer = document.getElementById('googleSignInButton');
       if (buttonContainer) {
-        const buttonWidth = Math.floor(buttonContainer.getBoundingClientRect().width);
+        const buttonWidth = Math.floor(buttonContainer.getBoundingClientRect().width) || 300;
         window.google.accounts.id.renderButton(buttonContainer, {
           type: 'standard',
           theme: 'outline',
@@ -1447,11 +1448,9 @@ export class AuthController {
         });
       }
 
-      window.google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          console.info('[Google] One Tap unavailable:', notification.getNotDisplayedReason?.() || 'browser decision');
-        }
-      });
+      try {
+        window.google.accounts.id.prompt();
+      } catch (_) {}
     } catch (error) {
       console.warn('[Google] One Tap initialization failed:', error.message);
     }
@@ -1567,9 +1566,10 @@ export class AuthController {
       const forgotPassText = document.getElementById('forgotPasswordText');
       if (forgotPassText) forgotPassText.style.display = 'none';
 
-      // Hide Google sign-in during forgot password flow
+      // Hide Google sign-in and switch user during forgot password flow
       const googleSec = document.getElementById('googleSignInSection');
       if (googleSec) googleSec.style.display = 'none';
+      if (this.switchUserRow) this.switchUserRow.style.display = 'none';
 
       const questionSection = document.getElementById('securityQuestionSection');
       const questionDisplay = document.getElementById('challengeQuestionDisplay');
@@ -1658,6 +1658,15 @@ export class AuthController {
             if (questionSection) questionSection.style.display = 'none';
             const resetSection = document.getElementById('passwordResetSection');
             if (resetSection) resetSection.style.display = 'flex';
+            if (this.switchUserRow) this.switchUserRow.style.display = 'none';
+
+            const cancelResetBtn = document.getElementById('cancelResetBtn');
+            if (cancelResetBtn) {
+              cancelResetBtn.onclick = () => {
+                this.resetLoginForm();
+                this.openLoginModal();
+              };
+            }
 
             const newPassInput = document.getElementById('resetNewPassword');
             if (newPassInput) {
